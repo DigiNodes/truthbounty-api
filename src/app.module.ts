@@ -4,6 +4,13 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+
+import { BlockchainModule } from './blockchain/blockchain.module';
+import { DisputeModule } from './dispute/dispute.module';
+import { IdentityModule } from './identity/identity.module';
+import { PrismaModule } from './prisma/prisma.module';
+import { AggregationModule } from './aggregation/aggregation.module'; // if added
+
 import throttlerConfig from './config/throttler.config';
 import { WalletThrottlerGuard } from './common/guards/wallet-throttler.guard';
 
@@ -139,10 +146,29 @@ async function createThrottlerStorage(configService: ConfigService): Promise<any
   return new ThrottlerMemoryStorage();
 }
 
+
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+
+    }),
+    TypeOrmModule.forRoot({
+      type: 'postgres',
+      host: process.env.DB_HOST || 'localhost',
+      port: parseInt(process.env.DB_PORT || '5432', 10),
+      username: process.env.DB_USERNAME || 'postgres',
+      password: process.env.DB_PASSWORD || 'password',
+      database: process.env.DB_NAME || 'truthbounty',
+      entities: [__dirname + '/**/*.entity{.ts,.js}'],
+      synchronize: process.env.NODE_ENV !== 'production',
+    }),
+    BlockchainModule,
+    DisputeModule,
+    IdentityModule,
+    PrismaModule,
+    AggregationModule, // optional but recommended
+
       load: [throttlerConfig],
     }),
     ThrottlerModule.forRootAsync({
@@ -162,6 +188,7 @@ async function createThrottlerStorage(configService: ConfigService): Promise<any
         };
       },
     }),
+
   ],
   controllers: [AppController],
   providers: [
@@ -172,4 +199,8 @@ async function createThrottlerStorage(configService: ConfigService): Promise<any
     },
   ],
 })
+
+export class AppModule {}
+
 export class AppModule { }
+

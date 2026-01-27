@@ -22,12 +22,17 @@
   },
   "dependencies": {
     "@libsql/client": "^0.17.0",
-    "@nestjs/common": "^11.0.1",
+    "@nestjs/common": "^11.1.12",
     "@nestjs/config": "^4.0.2",
+
+    "@nestjs/core": "^11.1.12",
+    "@nestjs/platform-express": "^11.1.12",
+
     "@nestjs/core": "^11.0.1",
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/throttler": "^6.5.0",
     "ioredis": "^5.9.2",
+
     "@nestjs/swagger": "^11.2.5",
     "@nestjs/typeorm": "^11.0.0",
     "@prisma/adapter-libsql": "^7.3.0",
@@ -39,7 +44,7 @@
     "ethers": "^6.16.0",
     "pg": "^8.17.2",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1",
+    "rxjs": "^7.8.2",
     "swagger-ui-express": "^5.0.1",
     "typeorm": "^0.3.28",
     "web3": "^4.16.0"
