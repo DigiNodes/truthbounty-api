@@ -11,6 +11,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 import throttlerConfig from './config/throttler.config';
 import { WalletThrottlerGuard } from './common/guards/wallet-throttler.guard';
+import { SybilResistanceModule } from './sybil-resistance/sybil-resistance.module';
 
 // In-memory storage for development (no Redis needed)
 class ThrottlerMemoryStorage {
@@ -185,6 +186,7 @@ async function createThrottlerStorage(configService: ConfigService): Promise<any
         };
       },
     }),
+    SybilResistanceModule,
   ],
   controllers: [AppController],
   providers: [
