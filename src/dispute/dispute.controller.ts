@@ -9,7 +9,11 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { DisputeService } from './dispute.service';
-import { DisputeStatus, DisputeTrigger, DisputeOutcome } from './entities/dispute.entity';
+import {
+  DisputeStatus,
+  DisputeTrigger,
+  DisputeOutcome,
+} from './entities/dispute.entity';
 
 class CreateDisputeDto {
   claimId: string;

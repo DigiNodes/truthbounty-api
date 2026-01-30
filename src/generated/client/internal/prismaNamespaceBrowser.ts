@@ -52,7 +52,8 @@ export const AnyNull = runtime.AnyNull
 
 export const ModelName = {
   User: 'User',
-  Wallet: 'Wallet'
+  Wallet: 'Wallet',
+  SybilScore: 'SybilScore'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -72,7 +73,8 @@ export const UserScalarFieldEnum = {
   id: 'id',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt',
-  reputation: 'reputation'
+  reputation: 'reputation',
+  worldcoinVerified: 'worldcoinVerified'
 } as const
 
 export type UserScalarFieldEnum = (typeof UserScalarFieldEnum)[keyof typeof UserScalarFieldEnum]
@@ -89,10 +91,34 @@ export const WalletScalarFieldEnum = {
 export type WalletScalarFieldEnum = (typeof WalletScalarFieldEnum)[keyof typeof WalletScalarFieldEnum]
 
 
+export const SybilScoreScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  userId: 'userId',
+  worldcoinScore: 'worldcoinScore',
+  walletAgeScore: 'walletAgeScore',
+  stakingScore: 'stakingScore',
+  accuracyScore: 'accuracyScore',
+  compositeScore: 'compositeScore',
+  calculationDetails: 'calculationDetails'
+} as const
+
+export type SybilScoreScalarFieldEnum = (typeof SybilScoreScalarFieldEnum)[keyof typeof SybilScoreScalarFieldEnum]
+
+
 export const SortOrder = {
   asc: 'asc',
   desc: 'desc'
 } as const
 
 export type SortOrder = (typeof SortOrder)[keyof typeof SortOrder]
+
+
+export const NullsOrder = {
+  first: 'first',
+  last: 'last'
+} as const
+
+export type NullsOrder = (typeof NullsOrder)[keyof typeof NullsOrder]
 

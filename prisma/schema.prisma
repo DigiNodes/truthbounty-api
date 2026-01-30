@@ -17,6 +17,10 @@ model User {
   
   reputation Int @default(0)
 
+  // Sybil Resistance
+  worldcoinVerified Boolean @default(false)
+  sybilScores       SybilScore[]
+
   wallets Wallet[]
 }
 
@@ -32,4 +36,29 @@ model Wallet {
   @@unique([address, chain])
   // We will enforce "one address -> one user" logic in the service layer 
   // to handle multi-chain address reuse scenarios properly.
+}
+
+model SybilScore {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Component scores (0-1 normalized)
+  worldcoinScore     Float @default(0.0)  // Binary verification signal (0 or 1)
+  walletAgeScore     Float @default(0.0)  // Based on wallet age
+  stakingScore       Float @default(0.0)  // Historical participation in staking
+  accuracyScore      Float @default(0.0)  // Claim accuracy from verification history
+  
+  // Final composite score (0-1)
+  compositeScore     Float @default(0.0)  // Final Sybil resistance score
+  
+  // Metadata
+  calculationDetails String?  // JSON string for explainability
+  
+  @@unique([userId, createdAt])
+  @@index([userId])
+  @@index([compositeScore])
 }

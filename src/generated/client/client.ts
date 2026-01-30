@@ -47,3 +47,8 @@ export type User = Prisma.UserModel
  * 
  */
 export type Wallet = Prisma.WalletModel
+/**
+ * Model SybilScore
+ * 
+ */
+export type SybilScore = Prisma.SybilScoreModel

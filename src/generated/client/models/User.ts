@@ -39,6 +39,7 @@ export type UserMinAggregateOutputType = {
   createdAt: Date | null
   updatedAt: Date | null
   reputation: number | null
+  worldcoinVerified: boolean | null
 }
 
 export type UserMaxAggregateOutputType = {
@@ -46,6 +47,7 @@ export type UserMaxAggregateOutputType = {
   createdAt: Date | null
   updatedAt: Date | null
   reputation: number | null
+  worldcoinVerified: boolean | null
 }
 
 export type UserCountAggregateOutputType = {
@@ -53,6 +55,7 @@ export type UserCountAggregateOutputType = {
   createdAt: number
   updatedAt: number
   reputation: number
+  worldcoinVerified: number
   _all: number
 }
 
@@ -70,6 +73,7 @@ export type UserMinAggregateInputType = {
   createdAt?: true
   updatedAt?: true
   reputation?: true
+  worldcoinVerified?: true
 }
 
 export type UserMaxAggregateInputType = {
@@ -77,6 +81,7 @@ export type UserMaxAggregateInputType = {
   createdAt?: true
   updatedAt?: true
   reputation?: true
+  worldcoinVerified?: true
 }
 
 export type UserCountAggregateInputType = {
@@ -84,6 +89,7 @@ export type UserCountAggregateInputType = {
   createdAt?: true
   updatedAt?: true
   reputation?: true
+  worldcoinVerified?: true
   _all?: true
 }
 
@@ -178,6 +184,7 @@ export type UserGroupByOutputType = {
   createdAt: Date
   updatedAt: Date
   reputation: number
+  worldcoinVerified: boolean
   _count: UserCountAggregateOutputType | null
   _avg: UserAvgAggregateOutputType | null
   _sum: UserSumAggregateOutputType | null
@@ -208,6 +215,8 @@ export type UserWhereInput = {
   createdAt?: Prisma.DateTimeFilter<"User"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"User"> | Date | string
   reputation?: Prisma.IntFilter<"User"> | number
+  worldcoinVerified?: Prisma.BoolFilter<"User"> | boolean
+  sybilScores?: Prisma.SybilScoreListRelationFilter
   wallets?: Prisma.WalletListRelationFilter
 }
 
@@ -216,6 +225,8 @@ export type UserOrderByWithRelationInput = {
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   reputation?: Prisma.SortOrder
+  worldcoinVerified?: Prisma.SortOrder
+  sybilScores?: Prisma.SybilScoreOrderByRelationAggregateInput
   wallets?: Prisma.WalletOrderByRelationAggregateInput
 }
 
@@ -227,6 +238,8 @@ export type UserWhereUniqueInput = Prisma.AtLeast<{
   createdAt?: Prisma.DateTimeFilter<"User"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"User"> | Date | string
   reputation?: Prisma.IntFilter<"User"> | number
+  worldcoinVerified?: Prisma.BoolFilter<"User"> | boolean
+  sybilScores?: Prisma.SybilScoreListRelationFilter
   wallets?: Prisma.WalletListRelationFilter
 }, "id">
 
@@ -235,6 +248,7 @@ export type UserOrderByWithAggregationInput = {
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   reputation?: Prisma.SortOrder
+  worldcoinVerified?: Prisma.SortOrder
   _count?: Prisma.UserCountOrderByAggregateInput
   _avg?: Prisma.UserAvgOrderByAggregateInput
   _max?: Prisma.UserMaxOrderByAggregateInput
@@ -250,6 +264,7 @@ export type UserScalarWhereWithAggregatesInput = {
   createdAt?: Prisma.DateTimeWithAggregatesFilter<"User"> | Date | string
   updatedAt?: Prisma.DateTimeWithAggregatesFilter<"User"> | Date | string
   reputation?: Prisma.IntWithAggregatesFilter<"User"> | number
+  worldcoinVerified?: Prisma.BoolWithAggregatesFilter<"User"> | boolean
 }
 
 export type UserCreateInput = {
@@ -257,6 +272,8 @@ export type UserCreateInput = {
   createdAt?: Date | string
   updatedAt?: Date | string
   reputation?: number
+  worldcoinVerified?: boolean
+  sybilScores?: Prisma.SybilScoreCreateNestedManyWithoutUserInput
   wallets?: Prisma.WalletCreateNestedManyWithoutUserInput
 }
 
@@ -265,6 +282,8 @@ export type UserUncheckedCreateInput = {
   createdAt?: Date | string
   updatedAt?: Date | string
   reputation?: number
+  worldcoinVerified?: boolean
+  sybilScores?: Prisma.SybilScoreUncheckedCreateNestedManyWithoutUserInput
   wallets?: Prisma.WalletUncheckedCreateNestedManyWithoutUserInput
 }
 
@@ -273,6 +292,8 @@ export type UserUpdateInput = {
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   reputation?: Prisma.IntFieldUpdateOperationsInput | number
+  worldcoinVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  sybilScores?: Prisma.SybilScoreUpdateManyWithoutUserNestedInput
   wallets?: Prisma.WalletUpdateManyWithoutUserNestedInput
 }
 
@@ -281,6 +302,8 @@ export type UserUncheckedUpdateInput = {
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   reputation?: Prisma.IntFieldUpdateOperationsInput | number
+  worldcoinVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  sybilScores?: Prisma.SybilScoreUncheckedUpdateManyWithoutUserNestedInput
   wallets?: Prisma.WalletUncheckedUpdateManyWithoutUserNestedInput
 }
 
@@ -289,6 +312,7 @@ export type UserCreateManyInput = {
   createdAt?: Date | string
   updatedAt?: Date | string
   reputation?: number
+  worldcoinVerified?: boolean
 }
 
 export type UserUpdateManyMutationInput = {
@@ -296,6 +320,7 @@ export type UserUpdateManyMutationInput = {
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   reputation?: Prisma.IntFieldUpdateOperationsInput | number
+  worldcoinVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
 }
 
 export type UserUncheckedUpdateManyInput = {
@@ -303,6 +328,7 @@ export type UserUncheckedUpdateManyInput = {
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   reputation?: Prisma.IntFieldUpdateOperationsInput | number
+  worldcoinVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
 }
 
 export type UserCountOrderByAggregateInput = {
@@ -310,6 +336,7 @@ export type UserCountOrderByAggregateInput = {
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   reputation?: Prisma.SortOrder
+  worldcoinVerified?: Prisma.SortOrder
 }
 
 export type UserAvgOrderByAggregateInput = {
@@ -321,6 +348,7 @@ export type UserMaxOrderByAggregateInput = {
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   reputation?: Prisma.SortOrder
+  worldcoinVerified?: Prisma.SortOrder
 }
 
 export type UserMinOrderByAggregateInput = {
@@ -328,6 +356,7 @@ export type UserMinOrderByAggregateInput = {
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   reputation?: Prisma.SortOrder
+  worldcoinVerified?: Prisma.SortOrder
 }
 
 export type UserSumOrderByAggregateInput = {
@@ -355,6 +384,10 @@ export type IntFieldUpdateOperationsInput = {
   divide?: number
 }
 
+export type BoolFieldUpdateOperationsInput = {
+  set?: boolean
+}
+
 export type UserCreateNestedOneWithoutWalletsInput = {
   create?: Prisma.XOR<Prisma.UserCreateWithoutWalletsInput, Prisma.UserUncheckedCreateWithoutWalletsInput>
   connectOrCreate?: Prisma.UserCreateOrConnectWithoutWalletsInput
@@ -369,11 +402,27 @@ export type UserUpdateOneRequiredWithoutWalletsNestedInput = {
   update?: Prisma.XOR<Prisma.XOR<Prisma.UserUpdateToOneWithWhereWithoutWalletsInput, Prisma.UserUpdateWithoutWalletsInput>, Prisma.UserUncheckedUpdateWithoutWalletsInput>
 }
 
+export type UserCreateNestedOneWithoutSybilScoresInput = {
+  create?: Prisma.XOR<Prisma.UserCreateWithoutSybilScoresInput, Prisma.UserUncheckedCreateWithoutSybilScoresInput>
+  connectOrCreate?: Prisma.UserCreateOrConnectWithoutSybilScoresInput
+  connect?: Prisma.UserWhereUniqueInput
+}
+
+export type UserUpdateOneRequiredWithoutSybilScoresNestedInput = {
+  create?: Prisma.XOR<Prisma.UserCreateWithoutSybilScoresInput, Prisma.UserUncheckedCreateWithoutSybilScoresInput>
+  connectOrCreate?: Prisma.UserCreateOrConnectWithoutSybilScoresInput
+  upsert?: Prisma.UserUpsertWithoutSybilScoresInput
+  connect?: Prisma.UserWhereUniqueInput
+  update?: Prisma.XOR<Prisma.XOR<Prisma.UserUpdateToOneWithWhereWithoutSybilScoresInput, Prisma.UserUpdateWithoutSybilScoresInput>, Prisma.UserUncheckedUpdateWithoutSybilScoresInput>
+}
+
 export type UserCreateWithoutWalletsInput = {
   id?: string
   createdAt?: Date | string
   updatedAt?: Date | string
   reputation?: number
+  worldcoinVerified?: boolean
+  sybilScores?: Prisma.SybilScoreCreateNestedManyWithoutUserInput
 }
 
 export type UserUncheckedCreateWithoutWalletsInput = {
@@ -381,6 +430,8 @@ export type UserUncheckedCreateWithoutWalletsInput = {
   createdAt?: Date | string
   updatedAt?: Date | string
   reputation?: number
+  worldcoinVerified?: boolean
+  sybilScores?: Prisma.SybilScoreUncheckedCreateNestedManyWithoutUserInput
 }
 
 export type UserCreateOrConnectWithoutWalletsInput = {
@@ -404,6 +455,8 @@ export type UserUpdateWithoutWalletsInput = {
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   reputation?: Prisma.IntFieldUpdateOperationsInput | number
+  worldcoinVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  sybilScores?: Prisma.SybilScoreUpdateManyWithoutUserNestedInput
 }
 
 export type UserUncheckedUpdateWithoutWalletsInput = {
@@ -411,6 +464,60 @@ export type UserUncheckedUpdateWithoutWalletsInput = {
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   reputation?: Prisma.IntFieldUpdateOperationsInput | number
+  worldcoinVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  sybilScores?: Prisma.SybilScoreUncheckedUpdateManyWithoutUserNestedInput
+}
+
+export type UserCreateWithoutSybilScoresInput = {
+  id?: string
+  createdAt?: Date | string
+  updatedAt?: Date | string
+  reputation?: number
+  worldcoinVerified?: boolean
+  wallets?: Prisma.WalletCreateNestedManyWithoutUserInput
+}
+
+export type UserUncheckedCreateWithoutSybilScoresInput = {
+  id?: string
+  createdAt?: Date | string
+  updatedAt?: Date | string
+  reputation?: number
+  worldcoinVerified?: boolean
+  wallets?: Prisma.WalletUncheckedCreateNestedManyWithoutUserInput
+}
+
+export type UserCreateOrConnectWithoutSybilScoresInput = {
+  where: Prisma.UserWhereUniqueInput
+  create: Prisma.XOR<Prisma.UserCreateWithoutSybilScoresInput, Prisma.UserUncheckedCreateWithoutSybilScoresInput>
+}
+
+export type UserUpsertWithoutSybilScoresInput = {
+  update: Prisma.XOR<Prisma.UserUpdateWithoutSybilScoresInput, Prisma.UserUncheckedUpdateWithoutSybilScoresInput>
+  create: Prisma.XOR<Prisma.UserCreateWithoutSybilScoresInput, Prisma.UserUncheckedCreateWithoutSybilScoresInput>
+  where?: Prisma.UserWhereInput
+}
+
+export type UserUpdateToOneWithWhereWithoutSybilScoresInput = {
+  where?: Prisma.UserWhereInput
+  data: Prisma.XOR<Prisma.UserUpdateWithoutSybilScoresInput, Prisma.UserUncheckedUpdateWithoutSybilScoresInput>
+}
+
+export type UserUpdateWithoutSybilScoresInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string
+  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  reputation?: Prisma.IntFieldUpdateOperationsInput | number
+  worldcoinVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  wallets?: Prisma.WalletUpdateManyWithoutUserNestedInput
+}
+
+export type UserUncheckedUpdateWithoutSybilScoresInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string
+  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  reputation?: Prisma.IntFieldUpdateOperationsInput | number
+  worldcoinVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  wallets?: Prisma.WalletUncheckedUpdateManyWithoutUserNestedInput
 }
 
 
@@ -419,10 +526,12 @@ export type UserUncheckedUpdateWithoutWalletsInput = {
  */
 
 export type UserCountOutputType = {
+  sybilScores: number
   wallets: number
 }
 
 export type UserCountOutputTypeSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  sybilScores?: boolean | UserCountOutputTypeCountSybilScoresArgs
   wallets?: boolean | UserCountOutputTypeCountWalletsArgs
 }
 
@@ -439,6 +548,13 @@ export type UserCountOutputTypeDefaultArgs<ExtArgs extends runtime.Types.Extensi
 /**
  * UserCountOutputType without action
  */
+export type UserCountOutputTypeCountSybilScoresArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  where?: Prisma.SybilScoreWhereInput
+}
+
+/**
+ * UserCountOutputType without action
+ */
 export type UserCountOutputTypeCountWalletsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   where?: Prisma.WalletWhereInput
 }
@@ -449,6 +565,8 @@ export type UserSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = r
   createdAt?: boolean
   updatedAt?: boolean
   reputation?: boolean
+  worldcoinVerified?: boolean
+  sybilScores?: boolean | Prisma.User$sybilScoresArgs<ExtArgs>
   wallets?: boolean | Prisma.User$walletsArgs<ExtArgs>
   _count?: boolean | Prisma.UserCountOutputTypeDefaultArgs<ExtArgs>
 }, ExtArgs["result"]["user"]>
@@ -458,6 +576,7 @@ export type UserSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensio
   createdAt?: boolean
   updatedAt?: boolean
   reputation?: boolean
+  worldcoinVerified?: boolean
 }, ExtArgs["result"]["user"]>
 
 export type UserSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -465,6 +584,7 @@ export type UserSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensio
   createdAt?: boolean
   updatedAt?: boolean
   reputation?: boolean
+  worldcoinVerified?: boolean
 }, ExtArgs["result"]["user"]>
 
 export type UserSelectScalar = {
@@ -472,10 +592,12 @@ export type UserSelectScalar = {
   createdAt?: boolean
   updatedAt?: boolean
   reputation?: boolean
+  worldcoinVerified?: boolean
 }
 
-export type UserOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "reputation", ExtArgs["result"]["user"]>
+export type UserOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "reputation" | "worldcoinVerified", ExtArgs["result"]["user"]>
 export type UserInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  sybilScores?: boolean | Prisma.User$sybilScoresArgs<ExtArgs>
   wallets?: boolean | Prisma.User$walletsArgs<ExtArgs>
   _count?: boolean | Prisma.UserCountOutputTypeDefaultArgs<ExtArgs>
 }
@@ -485,6 +607,7 @@ export type UserIncludeUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensi
 export type $UserPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "User"
   objects: {
+    sybilScores: Prisma.$SybilScorePayload<ExtArgs>[]
     wallets: Prisma.$WalletPayload<ExtArgs>[]
   }
   scalars: runtime.Types.Extensions.GetPayloadResult<{
@@ -492,6 +615,7 @@ export type $UserPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs =
     createdAt: Date
     updatedAt: Date
     reputation: number
+    worldcoinVerified: boolean
   }, ExtArgs["result"]["user"]>
   composites: {}
 }
@@ -886,6 +1010,7 @@ readonly fields: UserFieldRefs;
  */
 export interface Prisma__UserClient<T, Null = never, ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs, GlobalOmitOptions = {}> extends Prisma.PrismaPromise<T> {
   readonly [Symbol.toStringTag]: "PrismaPromise"
+  sybilScores<T extends Prisma.User$sybilScoresArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.User$sybilScoresArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$SybilScorePayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   wallets<T extends Prisma.User$walletsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.User$walletsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$WalletPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   /**
    * Attaches callbacks for the resolution and/or rejection of the Promise.
@@ -920,6 +1045,7 @@ export interface UserFieldRefs {
   readonly createdAt: Prisma.FieldRef<"User", 'DateTime'>
   readonly updatedAt: Prisma.FieldRef<"User", 'DateTime'>
   readonly reputation: Prisma.FieldRef<"User", 'Int'>
+  readonly worldcoinVerified: Prisma.FieldRef<"User", 'Boolean'>
 }
     
 
@@ -1303,6 +1429,30 @@ export type UserDeleteManyArgs<ExtArgs extends runtime.Types.Extensions.Internal
    * Limit how many Users to delete.
    */
   limit?: number
+}
+
+/**
+ * User.sybilScores
+ */
+export type User$sybilScoresArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  /**
+   * Select specific fields to fetch from the SybilScore
+   */
+  select?: Prisma.SybilScoreSelect<ExtArgs> | null
+  /**
+   * Omit specific fields from the SybilScore
+   */
+  omit?: Prisma.SybilScoreOmit<ExtArgs> | null
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.SybilScoreInclude<ExtArgs> | null
+  where?: Prisma.SybilScoreWhereInput
+  orderBy?: Prisma.SybilScoreOrderByWithRelationInput | Prisma.SybilScoreOrderByWithRelationInput[]
+  cursor?: Prisma.SybilScoreWhereUniqueInput
+  take?: number
+  skip?: number
+  distinct?: Prisma.SybilScoreScalarFieldEnum | Prisma.SybilScoreScalarFieldEnum[]
 }
 
 /**

@@ -220,14 +220,14 @@ export class EventIndexerService {
       const existingEvent = await this.eventRepository.findOne({
         where: {
           transactionHash: log.transactionHash,
-          logIndex: log.logIndex,
+          logIndex: log.index,
           eventType: eventConfig.name,
         },
       });
 
       if (existingEvent) {
         this.logger.debug(
-          `Event already processed: ${log.transactionHash}:${log.logIndex}`,
+          `Event already processed: ${log.transactionHash}:${log.index}`,
         );
         return;
       }
@@ -249,7 +249,7 @@ export class EventIndexerService {
         contractAddress,
         transactionHash: log.transactionHash,
         blockNumber: log.blockNumber,
-        logIndex: log.logIndex,
+        logIndex: log.index,
         chainId: this.config.chainId,
         eventData: log,
         parsedData: parsed?.args || {},
@@ -263,11 +263,11 @@ export class EventIndexerService {
       await this.eventRepository.save(event);
 
       this.logger.debug(
-        `Stored event: ${eventConfig.name} from ${contractAddress}:${log.blockNumber}:${log.logIndex}`,
+        `Stored event: ${eventConfig.name} from ${contractAddress}:${log.blockNumber}:${log.index}`,
       );
     } catch (error) {
       this.logger.error(
-        `Failed to process event ${log.transactionHash}:${log.logIndex}:`,
+        `Failed to process event ${log.transactionHash}:${log.index}:`,
         error,
       );
     }
