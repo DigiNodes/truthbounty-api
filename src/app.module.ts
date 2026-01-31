@@ -12,8 +12,10 @@ import { BlockchainModule } from './blockchain/blockchain.module';
 import { DisputeModule } from './dispute/dispute.module';
 import { IdentityModule } from './identity/identity.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { RedisModule } from './redis/redis.module';
 import throttlerConfig from './config/throttler.config';
 import { WalletThrottlerGuard } from './common/guards/wallet-throttler.guard';
+import { SybilResistanceModule } from './sybil-resistance/sybil-resistance.module';
 
 // In-memory storage for development (no Redis needed)
 class ThrottlerMemoryStorage {
@@ -147,11 +149,33 @@ async function createThrottlerStorage(configService: ConfigService): Promise<any
   return new ThrottlerMemoryStorage();
 }
 
+
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
       load: [blockchainConfig,throttlerConfig],
+      envFilePath: ['.env.local', '.env'],
+    }),
+    TypeOrmModule.forRoot({
+      type: 'postgres',
+      host: process.env.DB_HOST || 'localhost',
+      port: parseInt(process.env.DB_PORT || '5432', 10),
+      username: process.env.DB_USERNAME || 'postgres',
+      password: process.env.DB_PASSWORD || 'password',
+      database: process.env.DB_NAME || 'truthbounty',
+      entities: [__dirname + '/**/*.entity{.ts,.js}'],
+      synchronize: process.env.DATABASE_SYNCHRONIZE === 'true', // Use env var for safety
+      logging: process.env.DATABASE_LOGGING === 'true',
+    }),
+    RedisModule,
+    BlockchainModule,
+    DisputeModule,
+    IdentityModule,
+    PrismaModule,
+    AggregationModule, // optional but recommended
+
+      load: [throttlerConfig],
     }),
     
     ThrottlerModule.forRootAsync({
@@ -187,6 +211,10 @@ async function createThrottlerStorage(configService: ConfigService): Promise<any
     IdentityModule,
     PrismaModule,
      RewardsModule,
+
+
+    SybilResistanceModule,
+
   ],
   controllers: [AppController],
   providers: [
@@ -197,4 +225,8 @@ async function createThrottlerStorage(configService: ConfigService): Promise<any
     },
   ],
 })
+
+export class AppModule {}
+
 export class AppModule { }
+

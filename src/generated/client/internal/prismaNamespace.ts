@@ -385,7 +385,8 @@ type FieldRefInputType<Model, FieldType> = Model extends never ? never : FieldRe
 
 export const ModelName = {
   User: 'User',
-  Wallet: 'Wallet'
+  Wallet: 'Wallet',
+  SybilScore: 'SybilScore'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -401,7 +402,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "user" | "wallet"
+    modelProps: "user" | "wallet" | "sybilScore"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -553,6 +554,80 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
+    SybilScore: {
+      payload: Prisma.$SybilScorePayload<ExtArgs>
+      fields: Prisma.SybilScoreFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.SybilScoreFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SybilScorePayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.SybilScoreFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SybilScorePayload>
+        }
+        findFirst: {
+          args: Prisma.SybilScoreFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SybilScorePayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.SybilScoreFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SybilScorePayload>
+        }
+        findMany: {
+          args: Prisma.SybilScoreFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SybilScorePayload>[]
+        }
+        create: {
+          args: Prisma.SybilScoreCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SybilScorePayload>
+        }
+        createMany: {
+          args: Prisma.SybilScoreCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.SybilScoreCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SybilScorePayload>[]
+        }
+        delete: {
+          args: Prisma.SybilScoreDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SybilScorePayload>
+        }
+        update: {
+          args: Prisma.SybilScoreUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SybilScorePayload>
+        }
+        deleteMany: {
+          args: Prisma.SybilScoreDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.SybilScoreUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.SybilScoreUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SybilScorePayload>[]
+        }
+        upsert: {
+          args: Prisma.SybilScoreUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SybilScorePayload>
+        }
+        aggregate: {
+          args: Prisma.SybilScoreAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateSybilScore>
+        }
+        groupBy: {
+          args: Prisma.SybilScoreGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.SybilScoreGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.SybilScoreCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.SybilScoreCountAggregateOutputType> | number
+        }
+      }
+    }
   }
 } & {
   other: {
@@ -593,7 +668,8 @@ export const UserScalarFieldEnum = {
   id: 'id',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt',
-  reputation: 'reputation'
+  reputation: 'reputation',
+  worldcoinVerified: 'worldcoinVerified'
 } as const
 
 export type UserScalarFieldEnum = (typeof UserScalarFieldEnum)[keyof typeof UserScalarFieldEnum]
@@ -610,12 +686,36 @@ export const WalletScalarFieldEnum = {
 export type WalletScalarFieldEnum = (typeof WalletScalarFieldEnum)[keyof typeof WalletScalarFieldEnum]
 
 
+export const SybilScoreScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  userId: 'userId',
+  worldcoinScore: 'worldcoinScore',
+  walletAgeScore: 'walletAgeScore',
+  stakingScore: 'stakingScore',
+  accuracyScore: 'accuracyScore',
+  compositeScore: 'compositeScore',
+  calculationDetails: 'calculationDetails'
+} as const
+
+export type SybilScoreScalarFieldEnum = (typeof SybilScoreScalarFieldEnum)[keyof typeof SybilScoreScalarFieldEnum]
+
+
 export const SortOrder = {
   asc: 'asc',
   desc: 'desc'
 } as const
 
 export type SortOrder = (typeof SortOrder)[keyof typeof SortOrder]
+
+
+export const NullsOrder = {
+  first: 'first',
+  last: 'last'
+} as const
+
+export type NullsOrder = (typeof NullsOrder)[keyof typeof NullsOrder]
 
 
 
@@ -642,6 +742,13 @@ export type DateTimeFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel
  * Reference to a field of type 'Int'
  */
 export type IntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Int'>
+    
+
+
+/**
+ * Reference to a field of type 'Boolean'
+ */
+export type BooleanFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Boolean'>
     
 
 
@@ -748,6 +855,7 @@ export type PrismaClientOptions = ({
 export type GlobalOmitConfig = {
   user?: Prisma.UserOmit
   wallet?: Prisma.WalletOmit
+  sybilScore?: Prisma.SybilScoreOmit
 }
 
 /* Types for Logging */

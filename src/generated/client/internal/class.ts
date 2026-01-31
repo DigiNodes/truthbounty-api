@@ -20,7 +20,7 @@ const config: runtime.GetPrismaClientConfig = {
   "clientVersion": "7.3.0",
   "engineVersion": "9d6ad21cbbceab97458517b147a6a09ff43aa735",
   "activeProvider": "sqlite",
-  "inlineSchema": "// This is your Prisma schema file,\n// learn more about it in the docs: https://pris.ly/d/prisma-schema\n\ngenerator client {\n  provider = \"prisma-client\"\n  output   = \"../src/generated/client\"\n}\n\ndatasource db {\n  provider = \"sqlite\"\n}\n\nmodel User {\n  id        String   @id @default(uuid())\n  createdAt DateTime @default(now())\n  updatedAt DateTime @updatedAt\n\n  reputation Int @default(0)\n\n  wallets Wallet[]\n}\n\nmodel Wallet {\n  id       String   @id @default(uuid())\n  address  String\n  chain    String\n  linkedAt DateTime @default(now())\n\n  userId String\n  user   User   @relation(fields: [userId], references: [id])\n  // We will enforce \"one address -> one user\" logic in the service layer \n  // to handle multi-chain address reuse scenarios properly.\n\n  @@unique([address, chain])\n}\n",
+  "inlineSchema": "// This is your Prisma schema file,\n// learn more about it in the docs: https://pris.ly/d/prisma-schema\n\ngenerator client {\n  provider = \"prisma-client\"\n  output   = \"../src/generated/client\"\n}\n\ndatasource db {\n  provider = \"sqlite\"\n}\n\nmodel User {\n  id        String   @id @default(uuid())\n  createdAt DateTime @default(now())\n  updatedAt DateTime @updatedAt\n\n  reputation Int @default(0)\n\n  // Sybil Resistance\n  worldcoinVerified Boolean      @default(false)\n  sybilScores       SybilScore[]\n\n  wallets Wallet[]\n}\n\nmodel Wallet {\n  id       String   @id @default(uuid())\n  address  String\n  chain    String\n  linkedAt DateTime @default(now())\n\n  userId String\n  user   User   @relation(fields: [userId], references: [id])\n  // We will enforce \"one address -> one user\" logic in the service layer \n  // to handle multi-chain address reuse scenarios properly.\n\n  @@unique([address, chain])\n}\n\nmodel SybilScore {\n  id        String   @id @default(uuid())\n  createdAt DateTime @default(now())\n  updatedAt DateTime @updatedAt\n\n  userId String\n  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)\n\n  // Component scores (0-1 normalized)\n  worldcoinScore Float @default(0.0) // Binary verification signal (0 or 1)\n  walletAgeScore Float @default(0.0) // Based on wallet age\n  stakingScore   Float @default(0.0) // Historical participation in staking\n  accuracyScore  Float @default(0.0) // Claim accuracy from verification history\n\n  // Final composite score (0-1)\n  compositeScore Float @default(0.0) // Final Sybil resistance score\n\n  // Metadata\n  calculationDetails String? // JSON string for explainability\n\n  @@unique([userId, createdAt])\n  @@index([userId])\n  @@index([compositeScore])\n}\n",
   "runtimeDataModel": {
     "models": {},
     "enums": {},
@@ -28,7 +28,7 @@ const config: runtime.GetPrismaClientConfig = {
   }
 }
 
-config.runtimeDataModel = JSON.parse("{\"models\":{\"User\":{\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"createdAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"updatedAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"reputation\",\"kind\":\"scalar\",\"type\":\"Int\"},{\"name\":\"wallets\",\"kind\":\"object\",\"type\":\"Wallet\",\"relationName\":\"UserToWallet\"}],\"dbName\":null},\"Wallet\":{\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"address\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"chain\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"linkedAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"userId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"user\",\"kind\":\"object\",\"type\":\"User\",\"relationName\":\"UserToWallet\"}],\"dbName\":null}},\"enums\":{},\"types\":{}}")
+config.runtimeDataModel = JSON.parse("{\"models\":{\"User\":{\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"createdAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"updatedAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"reputation\",\"kind\":\"scalar\",\"type\":\"Int\"},{\"name\":\"worldcoinVerified\",\"kind\":\"scalar\",\"type\":\"Boolean\"},{\"name\":\"sybilScores\",\"kind\":\"object\",\"type\":\"SybilScore\",\"relationName\":\"SybilScoreToUser\"},{\"name\":\"wallets\",\"kind\":\"object\",\"type\":\"Wallet\",\"relationName\":\"UserToWallet\"}],\"dbName\":null},\"Wallet\":{\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"address\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"chain\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"linkedAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"userId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"user\",\"kind\":\"object\",\"type\":\"User\",\"relationName\":\"UserToWallet\"}],\"dbName\":null},\"SybilScore\":{\"fields\":[{\"name\":\"id\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"createdAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"updatedAt\",\"kind\":\"scalar\",\"type\":\"DateTime\"},{\"name\":\"userId\",\"kind\":\"scalar\",\"type\":\"String\"},{\"name\":\"user\",\"kind\":\"object\",\"type\":\"User\",\"relationName\":\"SybilScoreToUser\"},{\"name\":\"worldcoinScore\",\"kind\":\"scalar\",\"type\":\"Float\"},{\"name\":\"walletAgeScore\",\"kind\":\"scalar\",\"type\":\"Float\"},{\"name\":\"stakingScore\",\"kind\":\"scalar\",\"type\":\"Float\"},{\"name\":\"accuracyScore\",\"kind\":\"scalar\",\"type\":\"Float\"},{\"name\":\"compositeScore\",\"kind\":\"scalar\",\"type\":\"Float\"},{\"name\":\"calculationDetails\",\"kind\":\"scalar\",\"type\":\"String\"}],\"dbName\":null}},\"enums\":{},\"types\":{}}")
 
 async function decodeBase64AsWasm(wasmBase64: string): Promise<WebAssembly.Module> {
   const { Buffer } = await import('node:buffer')
@@ -195,6 +195,16 @@ export interface PrismaClient<
     * ```
     */
   get wallet(): Prisma.WalletDelegate<ExtArgs, { omit: OmitOpts }>;
+
+  /**
+   * `prisma.sybilScore`: Exposes CRUD operations for the **SybilScore** model.
+    * Example usage:
+    * ```ts
+    * // Fetch zero or more SybilScores
+    * const sybilScores = await prisma.sybilScore.findMany()
+    * ```
+    */
+  get sybilScore(): Prisma.SybilScoreDelegate<ExtArgs, { omit: OmitOpts }>;
 }
 
 export function getPrismaClientClass(): PrismaClientConstructor {

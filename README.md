@@ -154,6 +154,7 @@ TruthBounty treats **truth as infrastructure**, not opinion.
 - PostgreSQL 14+
 - Redis 6+
 - Git
+- Worldcoin Developer Account (for ID verification)
 
 ---
 
@@ -169,11 +170,44 @@ npm install
 
 # Configure environment
 cp .env.example .env
-# Edit .env with your credentials
+# Edit .env with your credentials including:
+# - Database configuration
+# - Worldcoin App ID and Action ID
 
 # Start in development mode
 npm run start:dev
 
+# Access API documentation at http://localhost:3000/api
+```
+
+---
+
+## 🌐 API Endpoints
+
+### Worldcoin Identity Verification
+
+**POST** `/identity/worldcoin/verify` - Verify user with Worldcoin ID  
+**GET** `/identity/worldcoin/status/:userId` - Check verification status  
+**GET** `/identity/worldcoin/verification/:nullifierHash` - Lookup by nullifier hash
+
+### Blockchain Integration
+
+**GET** `/blockchain/events` - Get indexed blockchain events  
+**POST** `/blockchain/reconcile` - Trigger state reconciliation  
+
+---
+
+## 🧪 Testing
+
+```bash
+# Run all tests
+npm test
+
+# Run Worldcoin-specific tests
+npm test -- --testPathPattern=worldcoin
+
+# Run with coverage
+npm run test:cov
 ```
 
 ---
