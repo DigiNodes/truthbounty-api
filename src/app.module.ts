@@ -1,6 +1,7 @@
 import { Module, Logger } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { APP_GUARD } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -12,6 +13,7 @@ import { RedisModule } from './redis/redis.module';
 import throttlerConfig from './config/throttler.config';
 import { WalletThrottlerGuard } from './common/guards/wallet-throttler.guard';
 import { SybilResistanceModule } from './sybil-resistance/sybil-resistance.module';
+import { ReputationModule } from './reputation/reputation.module';
 
 // In-memory storage for development (no Redis needed)
 class ThrottlerMemoryStorage {
@@ -193,6 +195,7 @@ async function createThrottlerStorage(configService: ConfigService): Promise<any
 
 
     SybilResistanceModule,
+    ReputationModule,
 
   ],
   controllers: [AppController],
