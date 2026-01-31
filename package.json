@@ -33,7 +33,11 @@
     "@nestjs/platform-express": "^11.1.12",
 
     "@nestjs/core": "^11.0.1",
+    "@nestjs/mapped-types": "*",
     "@nestjs/platform-express": "^11.0.1",
+    "@nestjs/typeorm": "^11.0.0",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.3",
     "@nestjs/throttler": "^6.5.0",
     "ioredis": "^5.9.2",
 
@@ -49,7 +53,8 @@
     "ioredis": "^5.9.2",
     "pg": "^8.17.2",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.2",
+    "rxjs": "^7.8.1",
+    "typeorm": "^0.3.28"
     "swagger-ui-express": "^5.0.1",
     "typeorm": "^0.3.28",
     "web3": "^4.16.0"
