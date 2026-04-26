@@ -40,7 +40,6 @@ async function bootstrap() {
     .addTag('leaderboard', 'User leaderboard rankings')
     .addTag('audit', 'Audit log retrieval')
     .addTag('health', 'Health check endpoints')
-    .addApiOperation({ summary: 'Health check endpoint' })
     .build();
   
   const document = SwaggerModule.createDocument(app, config);
