@@ -162,19 +162,19 @@ export class AuditTrailService {
     limit = 100,
     offset = 0,
   ): Promise<{ logs: AuditLog[]; total: number }> {
-    const [logs, total] = await this.auditLogRepo.findAndCount({
-      order: { createdAt: 'DESC' },
-      skip: offset,
-      take: limit,
-      relations: ['user'],
-    });
+    const [logs, total] = await this.auditLogRepo
+      .createQueryBuilder('audit')
+      .leftJoinAndSelect('audit.user', 'user')
+      .where('audit.createdAt BETWEEN :startDate AND :endDate', {
+        startDate,
+        endDate,
+      })
+      .orderBy('audit.createdAt', 'DESC')
+      .skip(offset)
+      .take(limit)
+      .getManyAndCount();
 
-    // Manual filtering for date range (TypeORM SQLite limitation)
-    const filteredLogs = logs.filter(
-      (log) => log.createdAt >= startDate && log.createdAt <= endDate,
-    );
-
-    return { logs: filteredLogs, total: filteredLogs.length };
+    return { logs, total };
   }
 
   /**
