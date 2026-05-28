@@ -55,6 +55,9 @@ export class Claim {
   @CreateDateColumn()
   createdAt: Date;
 
+  @Column({ type: 'timestamp', nullable: true })
+  resolvedAt: Date | null;
+
   @OneToMany(() => Evidence, (evidence) => evidence.claim, { cascade: true })
   evidences: Evidence[];
 
