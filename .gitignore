@@ -45,6 +45,11 @@ lerna-debug.log*
 .env.development
 .env.production
 
+# Hide CI workflow and automation scripts from contributors
+.github/workflows/ci.yml
+create_issues.sh
+issues_to_created.md
+
 # temp directory
 .temp
 .tmp
