@@ -153,6 +153,7 @@ describe('AuditTrailService - IP Security', () => {
 
       const serviceWithoutRequest =
         moduleWithoutRequest.get<AuditTrailService>(AuditTrailService);
+      const innerRepo = moduleWithoutRequest.get(getRepositoryToken(AuditLog)) as any;
 
       const auditInput = {
         actionType: AuditActionType.CLAIM_CREATED,
@@ -161,15 +162,15 @@ describe('AuditTrailService - IP Security', () => {
         description: 'Test without request',
       };
 
-      repository.create.mockReturnValue({
+      innerRepo.create.mockReturnValue({
         ...auditInput,
         ipAddress: undefined,
       });
-      repository.save.mockResolvedValue({ id: 'audit-4' });
+      innerRepo.save.mockResolvedValue({ id: 'audit-4' });
 
       await serviceWithoutRequest.log(auditInput);
 
-      expect(repository.create).toHaveBeenCalledWith(
+      expect(innerRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({
           ipAddress: undefined,
         }),
