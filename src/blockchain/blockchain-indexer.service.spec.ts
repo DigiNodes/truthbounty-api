@@ -103,6 +103,23 @@ describe('BlockchainIndexerService', () => {
       expect(processedEventRepo.findOne).toHaveBeenCalled();
       // No further processing should occur
     });
+
+    it('should allow strongly typed event data using generics', () => {
+      const transferEvent: BlockchainEvent<{ from: string, to: string, amount: string, token: string }> = {
+        txHash: '0xabc',
+        logIndex: 1,
+        blockNumber: 101,
+        eventType: 'Transfer',
+        data: {
+          from: '0xsender',
+          to: '0xreceiver',
+          amount: '500',
+          token: '0xtoken',
+        },
+      };
+      
+      expect(transferEvent.data.amount).toBe('500');
+    });
   });
 
   describe('replayFromBlock', () => {
