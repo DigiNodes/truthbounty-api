@@ -1,4 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
+import { ConfigService } from '@nestjs/config';
 import { RedisService } from '../redis/redis.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -8,6 +10,7 @@ import { Claim } from '../claims/entities/claim.entity';
 import { User } from '../entities/user.entity';
 import { AggregationService } from '../aggregation/aggregation.service';
 import { ClaimsCache } from '../cache/claims.cache';
+import { AuditRetentionService } from './audit-retention.service';
 
 /**
  * JobsService
@@ -20,6 +23,8 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
 
   constructor(
     private readonly redisService: RedisService,
+    private readonly configService: ConfigService,
+    private readonly auditRetentionService: AuditRetentionService,
     @InjectRepository(Stake)
     private readonly stakeRepo: Repository<Stake>,
     @InjectRepository(Wallet)
@@ -157,5 +162,43 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
     }
 
     this.logger.debug('computeReputation: finished');
+  }
+
+  /**
+   * Scheduled job for audit log retention
+   * Runs according to the cron schedule defined in AUDIT_RETENTION_CRON (default: daily at 2 AM UTC)
+   * Automatically purges audit logs older than the retention period
+   */
+  @Cron('0 0 2 * * *') // Default: Daily at 2 AM UTC
+  async runAuditRetentionJob() {
+    const enabled = this.configService.get<boolean>(
+      'auditRetention.enabled',
+      true,
+    );
+
+    if (!enabled) {
+      this.logger.debug('Audit retention job is disabled');
+      return;
+    }
+
+    try {
+      this.logger.log('Starting scheduled audit log retention job');
+      const result = await this.auditRetentionService.executeRetention();
+
+      if (result.success) {
+        this.logger.log(
+          `Audit retention job completed successfully: ${result.totalDeleted} logs deleted in ${result.batchesProcessed} batches (${result.executionTimeMs}ms)`,
+        );
+      } else {
+        this.logger.error(
+          `Audit retention job failed: ${result.error}`,
+        );
+      }
+    } catch (err) {
+      this.logger.error(
+        `Error running audit retention job: ${err?.message || err}`,
+        err?.stack,
+      );
+    }
   }
 }
