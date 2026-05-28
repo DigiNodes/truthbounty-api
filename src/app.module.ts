@@ -27,6 +27,8 @@ import { LoggingInterceptor } from './logger/logging.interceptor';
 import { AuthModule } from './auth/auth.module';
 import { GlobalAuthGuard } from './auth/global-auth.guard';
 import { MetricsModule } from './metrics/metrics.module';
+import { ScheduleModule } from '@nestjs/schedule';
+import auditRetentionConfig from './config/audit-retention.config';
 
 // In-memory storage for development (no Redis needed)
 class ThrottlerMemoryStorage {
@@ -218,9 +220,10 @@ async function createThrottlerStorage(configService: ConfigService): Promise<any
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [blockchainConfig, throttlerConfig],
+      load: [blockchainConfig, throttlerConfig, auditRetentionConfig],
       envFilePath: ['.env.local', '.env'],
     }),
+    ScheduleModule.forRoot(),
     TypeOrmModule.forRoot({
       type: 'sqlite',
       database: 'database.sqlite',
