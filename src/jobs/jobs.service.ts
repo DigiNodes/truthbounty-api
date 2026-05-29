@@ -10,6 +10,7 @@ import { AggregationService } from '../aggregation/aggregation.service';
 import { ClaimsCache } from '../cache/claims.cache';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
+import { SybilResistanceService } from '../sybil-resistance/sybil-resistance.service';
 
 /**
  * JobsService
@@ -32,6 +33,7 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
     private readonly userRepo: Repository<User>,
     private readonly claimsCache: ClaimsCache,
     @InjectQueue('jobs-queue') private readonly jobsQueue: Queue,
+    private readonly sybilResistanceService: SybilResistanceService,
     private readonly aggregationService?: AggregationService,
   ) { }
 
@@ -63,6 +65,16 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
           jobId: 'compute-reputation-job',
         },
       );
+      await this.jobsQueue.add(
+        'cleanup-sybil-history',
+        {},
+        {
+          repeat: {
+            pattern: '0 2 * * *', // daily at 2:00 AM
+          },
+          jobId: 'cleanup-sybil-history-job',
+        },
+      );
       this.logger.log('Repeatable BullMQ jobs registered successfully');
     } catch (err) {
       this.logger.error(`Failed to register repeatable BullMQ jobs: ${err.message}`);
@@ -71,6 +83,13 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleDestroy() {
     this.logger.log('JobsService shutdown');
+  }
+
+  async cleanupSybilHistory(): Promise<number> {
+    this.logger.debug('cleanupSybilHistory: starting');
+    const count = await this.sybilResistanceService.cleanupScoreHistory();
+    this.logger.debug(`cleanupSybilHistory: deleted ${count} old records`);
+    return count;
   }
 
   async computeScores() {

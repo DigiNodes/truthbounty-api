@@ -21,6 +21,9 @@ export class JobsProcessor extends WorkerHost {
       case 'compute-reputation':
         await this.jobsService.computeReputation();
         return { success: true };
+      case 'cleanup-sybil-history':
+        const deletedCount = await this.jobsService.cleanupSybilHistory();
+        return { success: true, deletedCount };
       default:
         throw new Error(`Unknown job name: ${job.name}`);
     }

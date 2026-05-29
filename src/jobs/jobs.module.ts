@@ -11,12 +11,14 @@ import { BullModule } from '@nestjs/bullmq';
 import { BullBoardModule } from '@bull-board/nestjs';
 import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 import { JobsProcessor } from './jobs.processor';
+import { SybilResistanceModule } from '../sybil-resistance/sybil-resistance.module';
 
 @Module({
   imports: [
     RedisModule,
     TypeOrmModule.forFeature([Stake, Wallet, Claim, User]),
     AggregationModule,
+    SybilResistanceModule,
     BullModule.registerQueue({
       name: 'jobs-queue',
     }),

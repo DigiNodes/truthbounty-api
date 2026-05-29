@@ -1,5 +1,24 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { SybilResistanceService } from './sybil-resistance.service';
+
+jest.mock('../prisma/prisma.service', () => {
+  return {
+    PrismaService: jest.fn().mockImplementation(() => ({
+      user: {
+        findUnique: jest.fn(),
+        findMany: jest.fn(),
+        update: jest.fn(),
+      },
+      sybilScore: {
+        create: jest.fn(),
+        findFirst: jest.fn(),
+        findMany: jest.fn(),
+        deleteMany: jest.fn(),
+      },
+    })),
+  };
+});
+
 import { PrismaService } from '../prisma/prisma.service';
 import { NotFoundException } from '@nestjs/common';
 
@@ -41,6 +60,7 @@ describe('SybilResistanceService', () => {
               create: jest.fn(),
               findFirst: jest.fn(),
               findMany: jest.fn(),
+              deleteMany: jest.fn(),
             },
           },
         },
@@ -516,6 +536,23 @@ describe('SybilResistanceService', () => {
       const { score: score2 } = await service.computeSybilScore(mockUserId);
 
       expect(score1).toBe(score2);
+    });
+  });
+
+  describe('cleanupScoreHistory', () => {
+    it('should delete scores older than 1 year and return count', async () => {
+      jest.spyOn(prisma.sybilScore, 'deleteMany').mockResolvedValueOnce({ count: 99 });
+
+      const result = await service.cleanupScoreHistory();
+
+      expect(prisma.sybilScore.deleteMany).toHaveBeenCalledWith({
+        where: {
+          createdAt: {
+            lt: expect.any(Date),
+          },
+        },
+      });
+      expect(result).toBe(99);
     });
   });
 });
