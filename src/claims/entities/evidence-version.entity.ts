@@ -29,6 +29,12 @@ export class EvidenceVersion {
   @Column()
   cid: string;
 
+  @Column({ nullable: true })
+  hash: string;
+
+  @Column({ nullable: true })
+  submittedBy: string;
+
   @CreateDateColumn()
   createdAt: Date;
 }
