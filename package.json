@@ -48,6 +48,7 @@
     "ethers": "^6.16.0",
     "ioredis": "^5.9.3",
     "jsonwebtoken": "^9.0.3",
+    "multiformats": "^14.0.0",
     "nestjs-pino": "^4.1.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
@@ -102,6 +103,9 @@
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
+    },
+    "moduleNameMapper": {
+      "^multiformats/(.*)$": "<rootDir>/__mocks__/multiformats.js"
     },
     "collectCoverageFrom": [
       "**/*.(t|j)s"

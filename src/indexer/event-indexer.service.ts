@@ -3,6 +3,7 @@ import { Repository } from 'typeorm';
 import { ethers, EventLog } from 'ethers';
 import { IndexedEvent, IndexingState } from '../entities';
 import { EventIndexerConfig } from '../config';
+import { serializeBigInts } from '../common/utils/bigint-serialization.util';
 
 /**
  * Core event indexing service
@@ -251,8 +252,8 @@ export class EventIndexerService {
         blockNumber: log.blockNumber,
         logIndex: log.index,
         chainId: this.config.chainId,
-        eventData: log,
-        parsedData: parsed?.args || {},
+        eventData: serializeBigInts(log) as Record<string, any>,
+        parsedData: serializeBigInts(parsed?.args || {}) as Record<string, any>,
         confirmations,
         isFinalized: confirmations >= this.config.confirmationsRequired,
         isProcessed: false,

@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
@@ -41,9 +42,17 @@ export class SybilResistanceService {
   // Scoring thresholds and normalization constants
   private readonly WALLET_AGE_THRESHOLD_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
   private readonly MIN_STAKING_FOR_FULL_SCORE = BigInt('1000000000000000000'); // 1 token (assuming 18 decimals)
-  private readonly MIN_CLAIMS_FOR_ACCURACY_SCORE = 5;
+  private readonly MIN_CLAIMS_FOR_ACCURACY_SCORE: number;
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private configService: ConfigService,
+  ) {
+    this.MIN_CLAIMS_FOR_ACCURACY_SCORE = this.configService.get<number>(
+      'sybil.minClaimsForAccuracyScore',
+      5,
+    );
+  }
 
   /**
    * Compute Sybil resistance score for a user

@@ -53,21 +53,12 @@ export class BlockchainIndexerService {
         await this.updateBalances(queryRunner.manager, data as TransferEventData);
       }
 
-      // Update checkpoint
-      await queryRunner.manager.update(
-        IndexerCheckpoint,
-        { id: 1 },
-        {
-          lastBlock: Math.max(
-            (await this.getLastBlock(queryRunner.manager)) || 0,
-            blockNumber,
-          ),
-          updatedAt: new Date(),
-        },
-      );
-
       await queryRunner.commitTransaction();
       this.logger.log(`Processed event: ${eventType} at block ${blockNumber}`);
+
+      // Save checkpoint after successful commit to avoid checkpoint desyncs
+      // if the transaction is rolled back. Use repository (outside txn).
+      await this.saveCheckpointAfterCommit(blockNumber);
     } catch (error) {
       await queryRunner.rollbackTransaction();
       this.logger.error(`Failed to process event: ${error.message}`, error.stack);
@@ -90,6 +81,29 @@ export class BlockchainIndexerService {
   private async getLastBlock(manager: any): Promise<number | null> {
     const checkpoint = await manager.findOne(IndexerCheckpoint, { where: { id: 1 } });
     return checkpoint ? checkpoint.lastBlock : null;
+  }
+
+  private async saveCheckpoint(manager: any, blockNumber: number): Promise<void> {
+    const currentLastBlock = (await this.getLastBlock(manager)) || 0;
+    const nextLastBlock = Math.max(currentLastBlock, blockNumber);
+
+    await manager.save(IndexerCheckpoint, {
+      id: 1,
+      lastBlock: nextLastBlock,
+      updatedAt: new Date(),
+    });
+  }
+
+  private async saveCheckpointAfterCommit(blockNumber: number): Promise<void> {
+    const checkpoint = await this.checkpointRepo.findOne({ where: { id: 1 } });
+    const currentLastBlock = checkpoint ? checkpoint.lastBlock : 0;
+    const nextLastBlock = Math.max(currentLastBlock || 0, blockNumber);
+
+    await this.checkpointRepo.save({
+      id: 1,
+      lastBlock: nextLastBlock,
+      updatedAt: new Date(),
+    });
   }
 
   async replayFromBlock(startBlock: number): Promise<void> {

@@ -82,27 +82,47 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
         const agg = this.aggregationService ?? new AggregationService();
         const result = agg.aggregate(claim.id, verifications);
 
-        claim.confidenceScore = result.confidence / 100; // store as 0-1 precision field
+        const updateFields: Partial<Claim> = {
+          confidenceScore: result.confidence / 100,
+        };
 
-        // If strong confidence, mark finalized and set resolvedVerdict
         if (result.confidence > 50) {
-          claim.finalized = true;
-          // Assume result.status is 'VERIFIED_TRUE' or 'VERIFIED_FALSE'
-          // Parse enum name to boolean (VERIFIED_TRUE -> true)
-          if (typeof result.status === 'string') {
-            claim.resolvedVerdict = result.status === 'VERIFIED_TRUE';
-          }
+          updateFields.finalized = true;
+          updateFields.resolvedVerdict = result.status === 'VERIFIED_TRUE';
         }
 
-        await this.claimRepo.save(claim);
+        const updated = await this.tryUpdateClaimIfNotFinalized(claim.id, updateFields);
+
+        if (!updated) {
+          this.logger.debug(
+            `Claim ${claim.id} was updated by a concurrent worker; skipping stale aggregation write`,
+          );
+          continue;
+        }
+
         await this.claimsCache.invalidateClaim(claim.id);
-        this.logger.log(`Updated claim ${claim.id} confidence=${claim.confidenceScore}`);
+        this.logger.log(`Updated claim ${claim.id} confidence=${updateFields.confidenceScore}`);
       } catch (err) {
         this.logger.error(`Error processing claim ${claim.id}: ${err?.message || err}`);
       }
     }
 
     this.logger.debug('computeScores: finished');
+  }
+
+  private async tryUpdateClaimIfNotFinalized(
+    claimId: string,
+    updateFields: Partial<Claim>,
+  ): Promise<boolean> {
+    const result = await this.claimRepo
+      .createQueryBuilder()
+      .update(Claim)
+      .set(updateFields)
+      .where('id = :id', { id: claimId })
+      .andWhere('finalized = false')
+      .execute();
+
+    return (result.affected ?? 0) > 0;
   }
 
   private async computeReputation() {
