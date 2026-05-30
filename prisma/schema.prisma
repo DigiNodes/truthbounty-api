@@ -63,3 +63,21 @@ model SybilScore {
   @@index([userId])
   @@index([compositeScore])
 }
+
+model WorldIdVerification {
+  id                String   @id @default(uuid())
+  verifiedAt        DateTime @default(now())
+  
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  nullifierHash     String   @unique
+  verificationLevel String
+  worldcoinAppId    String
+  worldcoinAction   String
+  merkleRoot        String?
+  proof             Json?
+  
+  @@index([userId])
+  @@index([nullifierHash])
+}

@@ -95,7 +95,7 @@ export class SybilResistanceService {
    * Gather all signals for a user
    */
   private async gatherSignals(
-    user: { worldcoinVerified?: boolean } | null,
+    user: { id: string, worldcoinVerified?: boolean } | null,
     wallets: Array<{ linkedAt: Date }>,
   ): Promise<SybilSignals> {
 
@@ -105,6 +105,16 @@ export class SybilResistanceService {
           new Date(w.linkedAt) < new Date(oldest.linkedAt) ? w : oldest
         ).linkedAt).getTime()
       : 0;
+
+    // Check for actual verification records (not just the user's boolean, to avoid stale data)
+    let worldcoinVerified = false;
+    if (user) {
+      const verification = await this.prisma.worldIdVerification.findFirst({
+        where: { userId: user.id },
+        orderBy: { verifiedAt: 'desc' },
+      });
+      worldcoinVerified = verification !== null;
+    }
 
     // TODO: Integrate with staking module once available
     // For now, default to 0 total staked amount
@@ -116,7 +126,7 @@ export class SybilResistanceService {
     const claimsCorrect = 0;
 
     return {
-      worldcoinVerified: user?.worldcoinVerified ?? false,
+      worldcoinVerified,
       oldestWalletAgeMs,
       totalStakedAmount,
       claimsVotedOn,
