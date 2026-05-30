@@ -1,19 +1,18 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   BlockRecord,
   PendingEvent,
   ReorgEvent,
   ChainState,
   BlockInfo,
+  StateMemoryStats,
 } from './types';
 
-/**
- * In-memory state management for blockchain tracking
- * In production, this would be backed by a persistent database (PostgreSQL, MongoDB, etc.)
- */
 @Injectable()
 export class BlockchainStateService {
-  // In-memory storage (replace with database in production)
+  private readonly logger = new Logger(BlockchainStateService.name);
+
   private blocks: Map<string, BlockRecord> = new Map();
   private events: Map<string, PendingEvent> = new Map();
   private reorgHistory: ReorgEvent[] = [];
@@ -25,9 +24,30 @@ export class BlockchainStateService {
     orphanedEventCount: 0,
   };
 
-  /**
-   * Store a block record
-   */
+  private readonly maxBlocksInMemory: number;
+  private readonly maxEventsInMemory: number;
+  private readonly maxReorgHistoryEntries: number;
+
+  constructor(
+    @Optional() private configService?: ConfigService,
+  ) {
+    this.maxBlocksInMemory = this.configService?.get<number>(
+      'blockchain.maxBlocksInMemory', 10000,
+    ) ?? 10000;
+    this.maxEventsInMemory = this.configService?.get<number>(
+      'blockchain.maxEventsInMemory', 50000,
+    ) ?? 50000;
+    this.maxReorgHistoryEntries = this.configService?.get<number>(
+      'blockchain.maxReorgHistoryEntries', 1000,
+    ) ?? 1000;
+
+    this.logger.log(
+      `Memory limits — blocks: ${this.maxBlocksInMemory}, ` +
+      `events: ${this.maxEventsInMemory}, ` +
+      `reorg history: ${this.maxReorgHistoryEntries}`,
+    );
+  }
+
   async saveBlock(block: BlockInfo): Promise<BlockRecord> {
     const blockRecord: BlockRecord = {
       id: `${block.number}:${block.hash}`,
@@ -40,43 +60,31 @@ export class BlockchainStateService {
     };
 
     this.blocks.set(blockRecord.id, blockRecord);
+    this.evictOldBlocks();
     return blockRecord;
   }
 
-  /**
-   * Get block by number and hash
-   */
   async getBlock(blockNumber: number, blockHash: string): Promise<BlockRecord | null> {
     const record = this.blocks.get(`${blockNumber}:${blockHash}`);
     return record || null;
   }
 
-  /**
-   * Get all blocks at a specific block number
-   */
   async getBlocksAtHeight(blockNumber: number): Promise<BlockRecord[]> {
-    const blocks: BlockRecord[] = [];
+    const result: BlockRecord[] = [];
     this.blocks.forEach((block) => {
       if (block.blockNumber === blockNumber) {
-        blocks.push(block);
+        result.push(block);
       }
     });
-    return blocks;
+    return result;
   }
 
-  /**
-   * Get the canonical block at a height
-   */
   async getCanonicalBlock(blockNumber: number): Promise<BlockRecord | null> {
     const blocks = await this.getBlocksAtHeight(blockNumber);
     return blocks.find((b) => b.isCanonical) || null;
   }
 
-  /**
-   * Get the canonical block by its hash
-   */
   async getCanonicalBlockByHash(blockHash: string): Promise<BlockRecord | null> {
-    // Search through all blocks to find one with matching hash that is canonical
     for (const [, block] of this.blocks) {
       if (block.blockHash === blockHash && block.isCanonical) {
         return block;
@@ -85,26 +93,18 @@ export class BlockchainStateService {
     return null;
   }
 
-  /**
-   * Store a pending event
-   */
   async savePendingEvent(event: PendingEvent): Promise<void> {
     this.events.set(event.id, event);
     if (event.status === 'pending') {
       this.chainState.pendingEventCount++;
     }
+    this.evictOldEvents();
   }
 
-  /**
-   * Get event by ID
-   */
   async getEvent(eventId: string): Promise<PendingEvent | null> {
     return this.events.get(eventId) || null;
   }
 
-  /**
-   * Get all events at a specific block
-   */
   async getEventsByBlock(blockNumber: number): Promise<PendingEvent[]> {
     const blockEvents: PendingEvent[] = [];
     this.events.forEach((event) => {
@@ -115,9 +115,6 @@ export class BlockchainStateService {
     return blockEvents;
   }
 
-  /**
-   * Get all pending events
-   */
   async getPendingEvents(): Promise<PendingEvent[]> {
     const pending: PendingEvent[] = [];
     this.events.forEach((event) => {
@@ -128,9 +125,6 @@ export class BlockchainStateService {
     return pending;
   }
 
-  /**
-   * Get all orphaned events
-   */
   async getOrphanedEvents(): Promise<PendingEvent[]> {
     const orphaned: PendingEvent[] = [];
     this.events.forEach((event) => {
@@ -141,9 +135,6 @@ export class BlockchainStateService {
     return orphaned;
   }
 
-  /**
-   * Update event status
-   */
   async updateEventStatus(
     eventId: string,
     status: 'pending' | 'confirmed' | 'orphaned',
@@ -171,9 +162,6 @@ export class BlockchainStateService {
     }
   }
 
-  /**
-   * Mark blocks as non-canonical (used during reorg detection)
-   */
   async markBlocksNonCanonical(blockNumbers: number[]): Promise<void> {
     this.blocks.forEach((block) => {
       if (blockNumbers.includes(block.blockNumber)) {
@@ -182,38 +170,24 @@ export class BlockchainStateService {
     });
   }
 
-  /**
-   * Record a reorg event
-   */
   async recordReorg(reorg: ReorgEvent): Promise<void> {
     this.reorgHistory.push(reorg);
     this.chainState.lastReorgTime = reorg.detectedAt;
+    this.trimReorgHistory();
   }
 
-  /**
-   * Get reorg history
-   */
   async getReorgHistory(): Promise<ReorgEvent[]> {
     return this.reorgHistory;
   }
 
-  /**
-   * Update chain state
-   */
   async updateChainState(partial: Partial<ChainState>): Promise<void> {
     this.chainState = { ...this.chainState, ...partial };
   }
 
-  /**
-   * Get current chain state
-   */
   async getChainState(): Promise<ChainState> {
     return { ...this.chainState };
   }
 
-  /**
-   * Delete events (used during reorg rollback)
-   */
   async deleteEvents(eventIds: string[]): Promise<void> {
     for (const id of eventIds) {
       const event = this.events.get(id);
@@ -228,9 +202,6 @@ export class BlockchainStateService {
     }
   }
 
-  /**
-   * Clear all state (useful for testing)
-   */
   async clearAllState(): Promise<void> {
     this.blocks.clear();
     this.events.clear();
@@ -242,5 +213,80 @@ export class BlockchainStateService {
       pendingEventCount: 0,
       orphanedEventCount: 0,
     };
+  }
+
+  async getMemoryStats(): Promise<StateMemoryStats> {
+    let confirmed = 0;
+    let pending = 0;
+    let orphaned = 0;
+    this.events.forEach((event) => {
+      if (event.status === 'confirmed') confirmed++;
+      else if (event.status === 'pending') pending++;
+      else if (event.status === 'orphaned') orphaned++;
+    });
+
+    return {
+      currentBlockCount: this.blocks.size,
+      currentEventCount: this.events.size,
+      currentReorgHistoryCount: this.reorgHistory.length,
+      maxBlocksInMemory: this.maxBlocksInMemory,
+      maxEventsInMemory: this.maxEventsInMemory,
+      maxReorgHistoryEntries: this.maxReorgHistoryEntries,
+      confirmedEventCount: confirmed,
+      pendingEventCount: pending,
+      orphanedEventCount: orphaned,
+    };
+  }
+
+  private evictOldBlocks(): void {
+    if (this.blocks.size <= this.maxBlocksInMemory) return;
+
+    const sorted: { id: string; blockNumber: number }[] = [];
+    this.blocks.forEach((block, id) => {
+      sorted.push({ id, blockNumber: block.blockNumber });
+    });
+
+    sorted.sort((a, b) => a.blockNumber - b.blockNumber);
+
+    const excess = this.blocks.size - this.maxBlocksInMemory;
+    for (let i = 0; i < excess; i++) {
+      this.blocks.delete(sorted[i].id);
+    }
+
+    this.logger.debug(`Evicted ${excess} old block(s) from memory`);
+  }
+
+  private evictOldEvents(): void {
+    if (this.events.size <= this.maxEventsInMemory) return;
+
+    const confirmed: { id: string; confirmedAt?: Date }[] = [];
+    this.events.forEach((event, id) => {
+      if (event.status === 'confirmed') {
+        confirmed.push({ id, confirmedAt: event.confirmedAt });
+      }
+    });
+
+    confirmed.sort((a, b) => {
+      if (!a.confirmedAt && !b.confirmedAt) return 0;
+      if (!a.confirmedAt) return -1;
+      if (!b.confirmedAt) return 1;
+      return a.confirmedAt.getTime() - b.confirmedAt.getTime();
+    });
+
+    const excess = this.events.size - this.maxEventsInMemory;
+    const toRemove = Math.min(excess, confirmed.length);
+    for (let i = 0; i < toRemove; i++) {
+      this.events.delete(confirmed[i].id);
+    }
+
+    if (toRemove > 0) {
+      this.logger.debug(`Evicted ${toRemove} old confirmed event(s) from memory`);
+    }
+  }
+
+  private trimReorgHistory(): void {
+    while (this.reorgHistory.length > this.maxReorgHistoryEntries) {
+      this.reorgHistory.shift();
+    }
   }
 }
