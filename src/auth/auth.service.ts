@@ -1,36 +1,40 @@
-import { Injectable, BadRequestException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, BadRequestException, UnauthorizedException, InternalServerErrorException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { verifyMessage } from 'ethers';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
-
-interface NonceRecord {
-  nonce: string;
-  createdAt: number;
-}
+import { RedisService } from '../redis/redis.service';
 
 @Injectable()
 export class AuthService {
-  private nonces = new Map<string, NonceRecord>();
-  private readonly NONCE_TTL = 5 * 60 * 1000; // 5 minutes
+  private readonly NONCE_TTL_SECONDS = 5 * 60; // 5 minutes
+
+  private readonly logger = new Logger(AuthService.name);
 
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
-  ) {
-    // Clean up expired nonces every minute
-    setInterval(() => this.cleanupNonces(), 60 * 1000);
-  }
+    private redisService: RedisService,
+  ) {}
 
   /**
    * Generate a nonce challenge for a wallet address
    */
-  generateChallenge(address: string): string {
+  async generateChallenge(address: string): Promise<string> {
     const nonce = this.generateRandomNonce();
-    this.nonces.set(address.toLowerCase(), {
-      nonce,
-      createdAt: Date.now(),
-    });
+    // Persist nonce to Redis with TTL to allow scaling across instances
+    const key = `auth:nonce:${address.toLowerCase()}`;
+
+    try {
+      const ok = await this.redisService.set(key, nonce, this.NONCE_TTL_SECONDS);
+      if (!ok) {
+        this.logger.error(`Failed to persist nonce for ${address}`);
+        throw new InternalServerErrorException('Failed to generate challenge. Please try again later.');
+      }
+    } catch (err) {
+      this.logger.error(`Error persisting nonce for ${address}: ${err?.message ?? err}`);
+      throw new InternalServerErrorException('Failed to generate challenge. Please try again later.');
+    }
 
     return `Sign in to TruthBounty: ${nonce}`;
   }
@@ -55,24 +59,19 @@ export class AuthService {
     }
 
     // 3. Verify the message contains a valid nonce
-    const nonceRecord = this.nonces.get(address.toLowerCase());
-    if (!nonceRecord) {
-      throw new UnauthorizedException('No challenge found. Please request a challenge first.');
+    const key = `auth:nonce:${address.toLowerCase()}`;
+    const stored = await this.redisService.get(key);
+    if (!stored) {
+      throw new UnauthorizedException('No challenge found or challenge expired. Please request a challenge first.');
     }
 
-    // 4. Check if nonce has expired
-    if (Date.now() - nonceRecord.createdAt > this.NONCE_TTL) {
-      this.nonces.delete(address.toLowerCase());
-      throw new UnauthorizedException('Challenge expired. Please request a new challenge.');
-    }
-
-    // 5. Verify the message contains the correct nonce
-    if (!message.includes(nonceRecord.nonce)) {
+    // Verify the message contains the correct nonce
+    if (!message.includes(stored)) {
       throw new UnauthorizedException('Invalid nonce in message.');
     }
 
-    // 6. Delete used nonce (prevent replay attacks)
-    this.nonces.delete(address.toLowerCase());
+    // Delete used nonce (prevent replay attacks)
+    await this.redisService.del(key).catch(() => null);
 
     // 7. Find or create user
     let user = await this.prisma.wallet.findFirst({
@@ -85,10 +84,12 @@ export class AuthService {
     const userId = user?.user?.id || null;
 
     // 8. Generate JWT token
+    // Align 'sub' with RFC 7519: prefer stable unique subject (userId) when available
+    const subject = userId ? String(userId) : address.toLowerCase();
     const payload = {
       address: address.toLowerCase(),
       userId,
-      sub: address.toLowerCase(),
+      sub: subject,
     };
 
     const accessToken = this.jwtService.sign(payload);
@@ -106,16 +107,23 @@ export class AuthService {
    * Validate JWT token and return user info
    */
   async validateToken(payload: any): Promise<any> {
-    const { address, userId } = payload;
+    let { address, userId } = payload;
 
-    // Verify wallet still exists
-    const wallet = await this.prisma.wallet.findFirst({
-      where: { address },
-      include: { user: true },
-    });
+    // If sub contains an address (0x...), prefer it for the wallet lookup
+    const sub = payload.sub;
+    const candidateAddress =
+      address || (typeof sub === 'string' && sub.startsWith('0x') ? sub : undefined);
+
+    // Verify wallet still exists using the best available address
+    const wallet = candidateAddress
+      ? await this.prisma.wallet.findFirst({
+          where: { address: candidateAddress },
+          include: { user: true },
+        })
+      : null;
 
     return {
-      address,
+      address: wallet?.address || address,
       userId: wallet?.user?.id || userId,
       user: wallet?.user || null,
     };

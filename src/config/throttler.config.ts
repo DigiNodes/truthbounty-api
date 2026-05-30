@@ -14,6 +14,7 @@ export interface ThrottlerConfig {
   claims: RateLimitConfig;
   votes: RateLimitConfig;
   disputes: RateLimitConfig;
+  auth: RateLimitConfig;
   default: RateLimitConfig;
 }
 
@@ -38,6 +39,11 @@ export default registerAs(
       ttl: parseInt(process.env.RATE_LIMIT_DISPUTES_TTL || '60', 10) * 1000,
       limit: parseInt(process.env.RATE_LIMIT_DISPUTES_LIMIT || '3', 10),
       blockDuration: parseInt(process.env.RATE_LIMIT_DISPUTES_BLOCK_DURATION || process.env.RATE_LIMIT_DISPUTES_TTL || '60', 10) * 1000,
+    },
+    auth: {
+      ttl: parseInt(process.env.RATE_LIMIT_AUTH_TTL || '60', 10) * 1000,
+      limit: parseInt(process.env.RATE_LIMIT_AUTH_LIMIT || '5', 10),
+      blockDuration: parseInt(process.env.RATE_LIMIT_AUTH_BLOCK_DURATION || process.env.RATE_LIMIT_AUTH_TTL || '60', 10) * 1000,
     },
     default: {
       ttl: parseInt(process.env.RATE_LIMIT_DEFAULT_TTL || '60', 10) * 1000, // 60 seconds
