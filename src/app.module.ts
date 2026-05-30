@@ -1,11 +1,13 @@
 import { Module, Logger } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { RewardsModule } from './rewards/rewards.module';
 import blockchainConfig from './config/blockchain.config';
+import sybilConfig from './config/sybil.config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BlockchainModule } from './blockchain/blockchain.module';
 import { DisputeModule } from './dispute/dispute.module';
@@ -218,9 +220,10 @@ async function createThrottlerStorage(configService: ConfigService): Promise<any
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [blockchainConfig, throttlerConfig],
+      load: [blockchainConfig, throttlerConfig, sybilConfig],
       envFilePath: ['.env.local', '.env'],
     }),
+    ScheduleModule.forRoot(),
     TypeOrmModule.forRoot({
       type: 'sqlite',
       database: 'database.sqlite',

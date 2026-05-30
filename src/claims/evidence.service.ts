@@ -16,53 +16,41 @@ export class EvidenceService {
     private readonly auditTrailService: AuditTrailService,
   ) {}
 
-  /**
-   * Create new evidence for a claim
-   */
   async createEvidence(
     claimId: string,
     cid: string,
     userId?: string,
+    hash?: string,
   ): Promise<Evidence> {
-    const evidence = this.evidenceRepository.create({
-      claimId,
-      latestVersion: 1,
-    });
+    const evidence = this.evidenceRepository.create({ claimId, latestVersion: 1 });
     const savedEvidence = await this.evidenceRepository.save(evidence);
 
-    // Create first version
     const version = this.evidenceVersionRepository.create({
       evidenceId: savedEvidence.id,
       version: 1,
       cid,
+      hash,
+      submittedBy: userId,
     });
     await this.evidenceVersionRepository.save(version);
 
-    // Log evidence submission
     await this.auditTrailService.log({
       actionType: AuditActionType.EVIDENCE_SUBMITTED,
       entityType: AuditEntityType.EVIDENCE,
       entityId: savedEvidence.id,
       userId,
       description: `Evidence submitted for claim ${claimId} with CID: ${cid}`,
-      afterState: {
-        id: savedEvidence.id,
-        claimId,
-        version: 1,
-        cid,
-      },
+      afterState: { id: savedEvidence.id, claimId, version: 1, cid, hash },
     });
 
     return savedEvidence;
   }
 
-  /**
-   * Add a new version to existing evidence
-   */
   async addEvidenceVersion(
     evidenceId: string,
     cid: string,
     userId?: string,
+    hash?: string,
   ): Promise<EvidenceVersion> {
     const evidence = await this.evidenceRepository.findOneBy({ id: evidenceId });
     if (!evidence) {
@@ -78,10 +66,11 @@ export class EvidenceService {
       evidenceId,
       version: newVersion,
       cid,
+      hash,
+      submittedBy: userId,
     });
     const savedVersion = await this.evidenceVersionRepository.save(version);
 
-    // Log evidence update
     await this.auditTrailService.log({
       actionType: AuditActionType.EVIDENCE_UPDATED,
       entityType: AuditEntityType.EVIDENCE,
@@ -104,6 +93,7 @@ export class EvidenceService {
       where.isHidden = false;
     }
 
+  async getEvidence(evidenceId: string): Promise<Evidence | null> {
     return this.evidenceRepository.findOne({
       where,
       relations: ['versions'],
@@ -127,6 +117,9 @@ export class EvidenceService {
     if (!evidence) {
       return null;
     }
+  async getLatestEvidenceVersion(evidenceId: string): Promise<EvidenceVersion | null> {
+    const evidence = await this.evidenceRepository.findOneBy({ id: evidenceId });
+    if (!evidence) return null;
 
     return this.evidenceVersionRepository.findOne({
       where: { evidenceId, version: evidence.latestVersion },
@@ -142,6 +135,7 @@ export class EvidenceService {
       where.isHidden = false;
     }
 
+  async getEvidenceForClaim(claimId: string): Promise<Evidence[]> {
     return this.evidenceRepository.find({
       where,
       relations: ['versions'],
@@ -160,37 +154,29 @@ export class EvidenceService {
     if (evidences.length === 0) {
       return null;
     }
+  async getLatestEvidenceForClaim(claimId: string): Promise<EvidenceVersion | null> {
+    const evidences = await this.getEvidenceForClaim(claimId);
+    if (evidences.length === 0) return null;
 
-    // Assuming one evidence per claim, get the latest version
     const evidence = evidences[0];
     return this.evidenceVersionRepository.findOne({
       where: { evidenceId: evidence.id, version: evidence.latestVersion },
     });
   }
 
-  /**
-   * Mark evidence as verified
-   */
-  async verifyEvidence(
-    evidenceId: string,
-    userId?: string,
-  ): Promise<Evidence> {
+  async verifyEvidence(evidenceId: string, userId?: string): Promise<Evidence> {
     const evidence = await this.evidenceRepository.findOneBy({ id: evidenceId });
     if (!evidence) {
       throw new NotFoundException(`Evidence with ID ${evidenceId} not found`);
     }
 
-    const beforeState = { ...evidence };
-
-    // Here you would add actual verification logic
-    // For now, we just log the verification event
     await this.auditTrailService.log({
       actionType: AuditActionType.EVIDENCE_VERIFIED,
       entityType: AuditEntityType.EVIDENCE,
       entityId: evidenceId,
       userId,
       description: 'Evidence verified by user',
-      beforeState,
+      beforeState: { ...evidence },
       afterState: evidence,
     });
 

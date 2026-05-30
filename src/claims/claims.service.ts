@@ -92,8 +92,8 @@ export class ClaimsService {
         const claim = this.claimRepo.create({
             title: createClaimDto.title,
             content: createClaimDto.content,
-            source: createClaimDto.source,
-            metadata: createClaimDto.metadata,
+            source: createClaimDto.source ?? null,
+            metadata: createClaimDto.metadata ?? null,
             resolvedVerdict: null, // Will be computed later
             confidenceScore: null, // Will be computed later
             finalized: false,
@@ -172,16 +172,5 @@ export class ClaimsService {
 
         return updatedClaim;
     }
-     async findOne(id: string): Promise<Claim> {
-    const claim = await this.repo.findOne({
-      where: { id },
-    });
-
-    if (!claim) {
-      throw new NotFoundException(`Claim with id ${id} not found`);
-    }
-
-    return claim;
-  }
 }
 
