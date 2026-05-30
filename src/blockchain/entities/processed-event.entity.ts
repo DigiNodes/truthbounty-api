@@ -1,7 +1,7 @@
-import { Entity, Column, PrimaryGeneratedColumn, Index, Unique } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, Index } from 'typeorm';
 
 @Entity('processed_events')
-@Unique(['txHash', 'logIndex', 'blockNumber'])
+@Index(['txHash', 'logIndex'], { unique: true })
 export class ProcessedEvent {
   @PrimaryGeneratedColumn()
   id: number;

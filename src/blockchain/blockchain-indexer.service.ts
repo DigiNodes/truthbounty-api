@@ -23,13 +23,13 @@ export class BlockchainIndexerService {
   async processEvent(event: BlockchainEvent): Promise<void> {
     const { txHash, logIndex, blockNumber, eventType, data } = event;
 
-    // Check if event already processed
+    // Check if event already processed using the transaction/log identity.
     const existing = await this.processedEventRepo.findOne({
-      where: { txHash, logIndex, blockNumber },
+      where: { txHash, logIndex },
     });
 
     if (existing) {
-      this.logger.log(`Event already processed: ${txHash}:${logIndex}:${blockNumber}`);
+      this.logger.log(`Event already processed: ${txHash}:${logIndex}`);
       return;
     }
 

@@ -82,7 +82,7 @@ describe('BlockchainIndexerService', () => {
       await service.processEvent(event);
 
       expect(processedEventRepo.findOne).toHaveBeenCalledWith({
-        where: { txHash: event.txHash, logIndex: event.logIndex, blockNumber: event.blockNumber },
+        where: { txHash: event.txHash, logIndex: event.logIndex },
       });
       expect(mockQueryRunner.manager.save).toHaveBeenCalledWith(ProcessedEvent, expect.objectContaining({ txHash: event.txHash }));
       expect(mockQueryRunner.manager.save).toHaveBeenCalledWith(IndexerCheckpoint, expect.objectContaining({ lastBlock: 100, id: 1 }));
@@ -118,6 +118,26 @@ describe('BlockchainIndexerService', () => {
       await service.processEvent(event);
 
       expect(mockQueryRunner.manager.save).toHaveBeenCalledWith(IndexerCheckpoint, expect.objectContaining({ lastBlock: 101, id: 1 }));
+    });
+
+    it('should skip duplicate events across block numbers using txHash and logIndex', async () => {
+      const event: BlockchainEvent = {
+        txHash: '0x123',
+        logIndex: 0,
+        blockNumber: 101,
+        eventType: 'Transfer',
+        data: {},
+      };
+
+      jest.spyOn(processedEventRepo, 'findOne').mockResolvedValue({} as ProcessedEvent);
+      const createQueryRunnerSpy = jest.spyOn(dataSource, 'createQueryRunner');
+
+      await service.processEvent(event);
+
+      expect(processedEventRepo.findOne).toHaveBeenCalledWith({
+        where: { txHash: event.txHash, logIndex: event.logIndex },
+      });
+      expect(createQueryRunnerSpy).not.toHaveBeenCalled();
     });
 
     it('should skip already processed event', async () => {
