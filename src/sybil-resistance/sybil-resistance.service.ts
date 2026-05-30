@@ -229,7 +229,12 @@ Final score: ${Number(composite.toFixed(4))} (weighted average)`,
   async recordSybilScore(userId: string): Promise<any> {
     const { score: compositeScore, details } = await this.computeSybilScore(userId);
 
-    return this.prisma.sybilScore.create({
+    // Persist SybilScore without the potentially large `explanation` text
+    const detailsCopy: any = { ...details };
+    const explanationText = detailsCopy.explanation;
+    delete detailsCopy.explanation;
+
+    const scoreRecord = await this.prisma.sybilScore.create({
       data: {
         userId,
         worldcoinScore: details.componentScores.worldcoin,
@@ -237,9 +242,21 @@ Final score: ${Number(composite.toFixed(4))} (weighted average)`,
         stakingScore: details.componentScores.staking,
         accuracyScore: details.componentScores.accuracy,
         compositeScore,
-        calculationDetails: JSON.stringify(details),
+        calculationDetails: JSON.stringify(detailsCopy),
       },
     });
+
+    // Store explanation separately to avoid huge JSON columns
+    if (explanationText) {
+      await this.prisma.sybilExplanation.create({
+        data: {
+          sybilScoreId: scoreRecord.id,
+          explanation: explanationText,
+        },
+      });
+    }
+
+    return scoreRecord;
   }
 
   /**
@@ -369,11 +386,25 @@ Final score: ${Number(composite.toFixed(4))} (weighted average)`,
   }> {
     const score = await this.getLatestSybilScore(userId);
 
+    // Parse calculation details and, if explanation was stored separately, load it
+    let details = score.calculationDetails ? JSON.parse(score.calculationDetails) : null;
+    if (details && !details.explanation) {
+      // try to load explanation from separate table
+      try {
+        const expl = await this.prisma.sybilExplanation.findFirst({ where: { sybilScoreId: score.id } });
+        if (expl && expl.explanation) {
+          details.explanation = expl.explanation;
+        }
+      } catch (err) {
+        // ignore missing explanation
+      }
+    }
+
     return {
       userId,
       score: score.compositeScore,
       isVerified: score.worldcoinScore > 0,
-      details: score.calculationDetails ? JSON.parse(score.calculationDetails) : null,
+      details,
     };
   }
 }

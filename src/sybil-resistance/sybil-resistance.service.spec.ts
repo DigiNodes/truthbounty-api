@@ -44,6 +44,10 @@ describe('SybilResistanceService', () => {
               findFirst: jest.fn(),
               findMany: jest.fn(),
             },
+              sybilExplanation: {
+                create: jest.fn(),
+                findFirst: jest.fn(),
+              },
           },
         },
         {
@@ -167,10 +171,14 @@ describe('SybilResistanceService', () => {
       };
 
       jest.spyOn(prisma.sybilScore, 'create').mockResolvedValueOnce(mockScoreRecord);
+      jest.spyOn(prisma.sybilExplanation, 'create').mockResolvedValueOnce({ id: 'ex-1', sybilScoreId: 'score-1', explanation: 'exp' });
 
       const result = await service.recordSybilScore(mockUserId);
 
       expect(prisma.sybilScore.create).toHaveBeenCalled();
+      expect(prisma.sybilExplanation.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ sybilScoreId: 'score-1' }) }),
+      );
       expect(result.userId).toBe(mockUserId);
       expect(result.compositeScore).toBeDefined();
     });
@@ -417,6 +425,29 @@ describe('SybilResistanceService', () => {
       expect(result.score).toBe(0.57);
       expect(result.isVerified).toBe(true);
       expect(result.details).toBeDefined();
+    });
+
+    it('should load explanation from SybilExplanation if not present in calculationDetails', async () => {
+      const mockScore = {
+        id: 'score-1',
+        userId: mockUserId,
+        compositeScore: 0.57,
+        worldcoinScore: 1.0,
+        walletAgeScore: 0.67,
+        stakingScore: 0.0,
+        accuracyScore: 0.0,
+        calculationDetails: JSON.stringify({ componentScores: { worldcoin: 1.0 } }),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      jest.spyOn(prisma.sybilScore, 'findFirst').mockResolvedValueOnce(mockScore);
+      jest.spyOn(prisma.sybilExplanation, 'findFirst').mockResolvedValueOnce({ id: 'ex-1', sybilScoreId: 'score-1', explanation: 'Stored explanation' });
+
+      const result = await service.getSybilScoreForVoting(mockUserId);
+
+      expect(result.details).toBeDefined();
+      expect(result.details.explanation).toBe('Stored explanation');
     });
 
     it('should indicate unverified status correctly', async () => {
