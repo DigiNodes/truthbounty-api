@@ -1,7 +1,16 @@
 import { ClaimResolutionService } from "./claim-resolution.service";
 
+const claimRepoStub = {
+  findOneBy: jest.fn(),
+  save: jest.fn(),
+};
+
+const claimsCacheStub = {
+  invalidateClaim: jest.fn(),
+};
+
 describe('Confidence Scoring', () => {
-  const service = new ClaimResolutionService(null as any);
+  const service = new ClaimResolutionService(claimRepoStub as any, claimsCacheStub as any);
 
   it('returns high confidence for strong consensus', () => {
     const score = service.computeConfidenceScore({
