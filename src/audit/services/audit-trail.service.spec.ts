@@ -284,6 +284,43 @@ describe('AuditTrailService - IP Security and Masking', () => {
     });
   });
 
+  describe('deleteOldLogs', () => {
+    it('should delete audit logs older than the configured cutoff date', async () => {
+      const mockQueryBuilder = {
+        delete: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        execute: jest.fn().mockResolvedValue({ affected: 4 }),
+      } as any;
+
+      (repository.createQueryBuilder as jest.Mock).mockReturnValue(mockQueryBuilder);
+
+      const deleted = await service.deleteOldLogs(90);
+
+      expect(repository.createQueryBuilder).toHaveBeenCalledWith('audit');
+      expect(mockQueryBuilder.delete).toHaveBeenCalled();
+      expect(mockQueryBuilder.where).toHaveBeenCalledWith(
+        'audit.createdAt < :cutoff',
+        expect.objectContaining({ cutoff: expect.any(Date) }),
+      );
+      expect(mockQueryBuilder.execute).toHaveBeenCalled();
+      expect(deleted).toBe(4);
+    });
+
+    it('should return zero when no old audit logs are deleted', async () => {
+      const mockQueryBuilder = {
+        delete: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        execute: jest.fn().mockResolvedValue({ affected: 0 }),
+      } as any;
+
+      (repository.createQueryBuilder as jest.Mock).mockReturnValue(mockQueryBuilder);
+
+      const deleted = await service.deleteOldLogs(30);
+
+      expect(deleted).toBe(0);
+    });
+  });
+
   describe('maskIp utility', () => {
     it('should handle undefined and empty values', () => {
       expect(maskIp(undefined)).toBeUndefined();
