@@ -213,6 +213,21 @@ export interface PrismaClient<
     * ```
     */
   get sybilScore(): Prisma.SybilScoreDelegate<ExtArgs, { omit: OmitOpts }>;
+
+  /**
+   * `prisma.sybilExplanation`: Exposes CRUD operations for the **SybilExplanation** model.
+   */
+  get sybilExplanation(): any;
+
+  /**
+   * `prisma.worldIdVerification`: Exposes CRUD operations for the **WorldIdVerification** model.
+    * Example usage:
+    * ```ts
+    * // Fetch zero or more WorldIdVerifications
+    * const verifications = await prisma.worldIdVerification.findMany()
+    * ```
+    */
+  get worldIdVerification(): any;
 }
 
 export function getPrismaClientClass(): PrismaClientConstructor {

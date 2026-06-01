@@ -16,14 +16,19 @@ model User {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
+
+  // Primary wallet address — canonical identifier for the user
+  walletAddress String @unique
+
   reputation Int @default(0)
 
   // Sybil Resistance
-  worldcoinVerified Boolean @default(false)
-  sybilScores       SybilScore[]
+  worldcoinVerified   Boolean   @default(false)
+  worldcoinVerifiedAt DateTime?
 
-  wallets Wallet[]
+  wallets              Wallet[]
+  sybilScores          SybilScore[]
+  worldIdVerifications WorldIdVerification[]
 }
 
 model Wallet {
@@ -31,12 +36,12 @@ model Wallet {
   address   String
   chain     String
   linkedAt  DateTime @default(now())
-  
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
 
   @@unique([address, chain])
-  // We will enforce "one address -> one user" logic in the service layer 
+  // We will enforce "one address -> one user" logic in the service layer
   // to handle multi-chain address reuse scenarios properly.
 }
 
@@ -44,22 +49,24 @@ model SybilScore {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   // Component scores (0-1 normalized)
-  worldcoinScore     Float @default(0.0)  // Binary verification signal (0 or 1)
-  walletAgeScore     Float @default(0.0)  // Based on wallet age
-  stakingScore       Float @default(0.0)  // Historical participation in staking
-  accuracyScore      Float @default(0.0)  // Claim accuracy from verification history
-  
+  worldcoinScore Float @default(0.0) // Binary verification signal (0 or 1)
+  walletAgeScore Float @default(0.0) // Based on wallet age
+  stakingScore   Float @default(0.0) // Historical participation in staking
+  accuracyScore  Float @default(0.0) // Claim accuracy from verification history
+
   // Final composite score (0-1)
-  compositeScore     Float @default(0.0)  // Final Sybil resistance score
-  
+  compositeScore Float @default(0.0) // Final Sybil resistance score
+
   // Metadata
-  calculationDetails String?  // JSON string for explainability
-  
+  calculationDetails String? // JSON string for explainability
+
+  explanation SybilExplanation?
+
   @@unique([userId, createdAt])
   @@index([userId])
   @@index([compositeScore])
@@ -72,20 +79,24 @@ model SybilExplanation {
   createdAt    DateTime @default(now())
 
   sybilScore SybilScore @relation(fields: [sybilScoreId], references: [id], onDelete: Cascade)
+}
+
 model WorldIdVerification {
-  id                String   @id @default(uuid())
-  verifiedAt        DateTime @default(now())
-  
-  userId            String
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  nullifierHash     String   @unique
+  id          String   @id @default(uuid())
+  verifiedAt  DateTime @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  nullifierHash     String  @unique
   verificationLevel String
   worldcoinAppId    String
   worldcoinAction   String
   merkleRoot        String?
   proof             Json?
-  
+
   @@index([userId])
   @@index([nullifierHash])
+
+  @@map("world_id_verifications")
 }
