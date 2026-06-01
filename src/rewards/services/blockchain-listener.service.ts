@@ -4,6 +4,7 @@ import { ethers } from 'ethers';
 import { RewardSyncService } from './reward-sync.service';
 import { RewardClaimEventDto } from '../dto/reward-claim-event.dto';
 import { RewardDistributionEventDto } from '../dto/reward-distribution-event.dto';
+import { withRpcBackoff } from '../../blockchain/utils/rpc-backoff.util';
 
 @Injectable()
 export class BlockchainListenerService implements OnModuleInit {
@@ -80,12 +81,11 @@ export class BlockchainListenerService implements OnModuleInit {
 
   private async processBlockRange(fromBlock: number, toBlock: number) {
     try {
-      // Query RewardClaimed events
+      // Query RewardClaimed events. Wrapped with backoff so RPC throttling
+      // (HTTP 429) and transient server errors are retried, not fatal.
       const claimFilter = this.contract.filters.RewardClaimed();
-      const claimEvents = await this.contract.queryFilter(
-        claimFilter,
-        fromBlock,
-        toBlock,
+      const claimEvents = await withRpcBackoff(() =>
+        this.contract.queryFilter(claimFilter, fromBlock, toBlock),
       );
 
       for (const event of claimEvents) {
@@ -94,12 +94,10 @@ export class BlockchainListenerService implements OnModuleInit {
         }
       }
 
-      // Query RewardDistributed events
+      // Query RewardDistributed events (same backoff treatment).
       const distFilter = this.contract.filters.RewardDistributed();
-      const distEvents = await this.contract.queryFilter(
-        distFilter,
-        fromBlock,
-        toBlock,
+      const distEvents = await withRpcBackoff(() =>
+        this.contract.queryFilter(distFilter, fromBlock, toBlock),
       );
 
       for (const event of distEvents) {

@@ -127,6 +127,7 @@ export class ReorgDetectorService {
         divergenceDepth++;
         checkBlockNumber--;
       }
+      }
     }
 
     return divergenceDepth;

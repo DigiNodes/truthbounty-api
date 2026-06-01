@@ -59,17 +59,21 @@ describe('BlockchainIndexerService - Checkpoint Commit Behavior', () => {
     service = module.get<BlockchainIndexerService>(BlockchainIndexerService);
   });
 
-  it('saves checkpoint after commit when processing succeeds', async () => {
+  it('saves the checkpoint inside the transaction when processing succeeds', async () => {
     const event = { txHash: '0x1', logIndex: 0, blockNumber: 123, eventType: 'Transfer', data: { from: 'a', to: 'b', amount: 1, token: 'T' } } as any;
+
+    const manager = dataSource.createQueryRunner().manager;
 
     await service.processEvent(event);
 
     expect(dataSource.createQueryRunner).toHaveBeenCalled();
-    // Repository.save should be called after commit
-    expect(checkpointRepo.save).toHaveBeenCalledTimes(1);
-    const saved = checkpointRepo.save.mock.calls[0][0];
-    expect(saved.id).toBe(1);
-    expect(saved.lastBlock).toBe(123);
+    // Checkpoint must be persisted through the transaction's manager (atomic
+    // with the event + balance changes), not via the repository after commit.
+    expect(manager.save).toHaveBeenCalledWith(
+      IndexerCheckpoint,
+      expect.objectContaining({ id: 1, lastBlock: 123 }),
+    );
+    expect(checkpointRepo.save).not.toHaveBeenCalled();
   });
 
   it('does not save checkpoint when processing fails and rolls back', async () => {
