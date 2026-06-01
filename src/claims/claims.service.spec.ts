@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { BadRequestException } from '@nestjs/common';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ClaimsService } from './claims.service';
@@ -193,6 +194,24 @@ describe('ClaimsService', () => {
       await service.createClaim(createClaimDto);
 
       expect(redisService.del).toHaveBeenCalledWith('claims:latest');
+    });
+
+    it('should throw BadRequestException if claim content length exceeds 5000 characters', async () => {
+      const longContent = 'a'.repeat(5001);
+      const createClaimDto = ClaimFactory.createCreateClaimDto({ content: longContent });
+
+      await expect(service.createClaim(createClaimDto)).rejects.toThrow(
+        new BadRequestException('Claim content exceeds maximum length of 5000 characters')
+      );
+    });
+
+    it('should throw BadRequestException if claim title length exceeds 200 characters', async () => {
+      const longTitle = 'a'.repeat(201);
+      const createClaimDto = ClaimFactory.createCreateClaimDto({ title: longTitle });
+
+      await expect(service.createClaim(createClaimDto)).rejects.toThrow(
+        new BadRequestException('Claim title exceeds maximum length of 200 characters')
+      );
     });
   });
 
