@@ -164,6 +164,7 @@ describe('AuditTrailService - IP Security and Masking', () => {
 
       const serviceWithoutRequest =
         moduleWithoutRequest.get<AuditTrailService>(AuditTrailService);
+      const innerRepo = moduleWithoutRequest.get(getRepositoryToken(AuditLog)) as any;
       const tempRepository = moduleWithoutRequest.get<Repository<AuditLog>>(
         getRepositoryToken(AuditLog),
       ) as jest.Mocked<Repository<AuditLog>>;
@@ -175,6 +176,15 @@ describe('AuditTrailService - IP Security and Masking', () => {
         description: 'Test without request',
       };
 
+      innerRepo.create.mockReturnValue({
+        ...auditInput,
+        ipAddress: undefined,
+      });
+      innerRepo.save.mockResolvedValue({ id: 'audit-4' });
+
+      await serviceWithoutRequest.log(auditInput);
+
+      expect(innerRepo.create).toHaveBeenCalledWith(
       (tempRepository.create as jest.Mock).mockReturnValue({
         ...auditInput,
         ipAddress: undefined,

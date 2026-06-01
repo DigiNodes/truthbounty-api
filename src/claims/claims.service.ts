@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Claim } from './entities/claim.entity';
@@ -89,6 +89,12 @@ export class ClaimsService {
         captureAfterState: true,
     })
     async createClaim(createClaimDto: CreateClaimDto): Promise<Claim> {
+        if (createClaimDto.title && createClaimDto.title.length > 200) {
+            throw new BadRequestException('Claim title exceeds maximum length of 200 characters');
+        }
+        if (createClaimDto.content && createClaimDto.content.length > 5000) {
+            throw new BadRequestException('Claim content exceeds maximum length of 5000 characters');
+        }
         const claim = this.claimRepo.create({
             title: createClaimDto.title,
             content: createClaimDto.content,

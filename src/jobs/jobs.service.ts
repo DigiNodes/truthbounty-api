@@ -13,6 +13,9 @@ import { Claim } from '../claims/entities/claim.entity';
 import { User } from '../entities/user.entity';
 import { AggregationService } from '../aggregation/aggregation.service';
 import { ClaimsCache } from '../cache/claims.cache';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
+import { SybilResistanceService } from '../sybil-resistance/sybil-resistance.service';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -79,6 +82,53 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
 
   async runComputeScores(): Promise<BatchResult> {
     return this.computeScores();
+    @InjectQueue('jobs-queue') private readonly jobsQueue: Queue,
+    private readonly sybilResistanceService: SybilResistanceService,
+    private readonly aggregationService?: AggregationService,
+  ) { }
+
+  async onModuleInit() {
+    this.logger.log('JobsService initialized. Registering repeatable BullMQ jobs...');
+    try {
+      const repeatableJobs = await this.jobsQueue.getRepeatableJobs();
+      for (const rJob of repeatableJobs) {
+        await this.jobsQueue.removeRepeatableByKey(rJob.key);
+      }
+
+      await this.jobsQueue.add(
+        'compute-scores',
+        {},
+        {
+          repeat: {
+            pattern: '0 * * * *', // hourly
+          },
+          jobId: 'compute-scores-job',
+        },
+      );
+      await this.jobsQueue.add(
+        'compute-reputation',
+        {},
+        {
+          repeat: {
+            pattern: '0 0 * * *', // daily
+          },
+          jobId: 'compute-reputation-job',
+        },
+      );
+      await this.jobsQueue.add(
+        'cleanup-sybil-history',
+        {},
+        {
+          repeat: {
+            pattern: '0 2 * * *', // daily at 2:00 AM
+          },
+          jobId: 'cleanup-sybil-history-job',
+        },
+      );
+      this.logger.log('Repeatable BullMQ jobs registered successfully');
+    } catch (err) {
+      this.logger.error(`Failed to register repeatable BullMQ jobs: ${err.message}`);
+    }
   }
 
   async runComputeReputation(): Promise<BatchResult> {
@@ -95,6 +145,14 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
    * rather than one DB round-trip per stake.
    */
   private async computeScores(): Promise<BatchResult> {
+  async cleanupSybilHistory(): Promise<number> {
+    this.logger.debug('cleanupSybilHistory: starting');
+    const count = await this.sybilResistanceService.cleanupScoreHistory();
+    this.logger.debug(`cleanupSybilHistory: deleted ${count} old records`);
+    return count;
+  }
+
+  async computeScores() {
     this.logger.debug('computeScores: starting');
     const result: BatchResult = { processed: 0, updated: 0, errors: 0 };
 
@@ -204,19 +262,7 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
     return result;
   }
 
-  // ─── computeReputation ──────────────────────────────────────────────────
-
-  /**
-   * Recompute reputation for a batch of users based on how often their stakes
-   * aligned with the eventual resolved verdict of finalized claims.
-   *
-   * N+1 pattern eliminated: all stakes and claims for the user batch are
-   * fetched in two queries rather than one per user.
-   *
-   * NOTE: The current model assumes every stake implies a TRUE vote. Once
-   * stakes carry an explicit verdict field, update `deriveVotedTrue` below.
-   */
-  private async computeReputation(): Promise<BatchResult> {
+  async computeReputation() {
   private async tryUpdateClaimIfNotFinalized(
     claimId: string,
     updateFields: Partial<Claim>,

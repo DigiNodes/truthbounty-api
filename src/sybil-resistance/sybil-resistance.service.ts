@@ -407,4 +407,23 @@ Final score: ${Number(composite.toFixed(4))} (weighted average)`,
       details,
     };
   }
+
+  /**
+   * Delete SybilScore history records older than 1 year.
+   * Returns the count of deleted records.
+   */
+  async cleanupScoreHistory(): Promise<number> {
+    const oneYearAgo = new Date();
+    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+
+    const result = await this.prisma.sybilScore.deleteMany({
+      where: {
+        createdAt: {
+          lt: oneYearAgo,
+        },
+      },
+    });
+
+    return result.count;
+  }
 }
