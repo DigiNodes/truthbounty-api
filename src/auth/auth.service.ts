@@ -86,7 +86,7 @@ export class AuthService {
     // Redis-vs-app clock desync (BE-182). Redis TTL is the backstop;
     // this check is the authoritative gate.
     const elapsedSeconds = (Date.now() - record.issuedAt) / 1000;
-    if (elapsedSeconds > this.NONCE_TTL_SECONDS) {
+    if (elapsedSeconds >= this.NONCE_TTL_SECONDS) {
       await this.redisService.del(key).catch(() => null);
       throw new UnauthorizedException('Challenge expired. Please request a new challenge.');
     }
