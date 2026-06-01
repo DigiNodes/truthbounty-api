@@ -1,5 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { SybilResistantVotingService } from './sybil-resistant-voting.service';
+
+jest.mock('../prisma/prisma.service', () => {
+  return {
+    PrismaService: jest.fn().mockImplementation(() => ({})),
+  };
+});
+
 import { SybilResistanceService } from './sybil-resistance.service';
 
 describe('SybilResistantVotingService', () => {

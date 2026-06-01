@@ -1,13 +1,9 @@
 import { Injectable, BadRequestException, UnauthorizedException, InternalServerErrorException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { verifyMessage } from 'ethers';
+import { timingSafeEqual } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
-
-export interface NonceRecord {
-  nonce: string;
-  createdAt: number;
-}
 import { RedisService } from '../redis/redis.service';
 
 @Injectable()
@@ -70,8 +66,10 @@ export class AuthService {
       throw new UnauthorizedException('No challenge found or challenge expired. Please request a challenge first.');
     }
 
-    // Verify the message contains the correct nonce
-    if (!message.includes(stored)) {
+    const expectedMessage = `Sign in to TruthBounty: ${stored}`;
+
+    // Compare the full challenge message in constant time to avoid timing attacks.
+    if (!this.constantTimeEquals(message, expectedMessage)) {
       throw new UnauthorizedException('Invalid nonce in message.');
     }
 
@@ -154,14 +152,16 @@ export class AuthService {
   }
 
   /**
-   * Clean up expired nonces
+   * Constant-time string comparison for challenge messages.
    */
-  private cleanupNonces(): void {
-    const now = Date.now();
-    for (const [address, record] of this.nonces.entries()) {
-      if (now - record.createdAt > this.NONCE_TTL) {
-        this.nonces.delete(address);
-      }
+  private constantTimeEquals(a: string, b: string): boolean {
+    const aBuffer = Buffer.from(a, 'utf8');
+    const bBuffer = Buffer.from(b, 'utf8');
+
+    if (aBuffer.length !== bBuffer.length) {
+      return false;
     }
+
+    return timingSafeEqual(aBuffer, bBuffer);
   }
 }

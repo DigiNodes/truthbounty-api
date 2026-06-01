@@ -12,7 +12,7 @@ export class Claim {
   @Column({ type: 'varchar', length: 200 })
   title: string;
 
-  @Column({ type: 'text' })
+  @Column({ type: 'varchar', length: 5000 })
   content: string;
 
   @Column({ type: 'varchar', length: 500, nullable: true })

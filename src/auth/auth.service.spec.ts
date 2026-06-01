@@ -1,6 +1,5 @@
+import { UnauthorizedException, InternalServerErrorException } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { JwtService } from '@nestjs/jwt';
-import { PrismaService } from '../prisma/prisma.service';
 
 jest.mock('ethers', () => ({
   verifyMessage: jest.fn(),
@@ -8,10 +7,11 @@ jest.mock('ethers', () => ({
 
 import { verifyMessage } from 'ethers';
 
-describe('AuthService Nonce behaviour', () => {
+describe('AuthService', () => {
   let authService: AuthService;
-  let jwtService: Partial<JwtService>;
-  let prisma: Partial<PrismaService>;
+  let jwtService: any;
+  let prisma: any;
+  let redisService: any;
 
   beforeEach(() => {
     jwtService = {
@@ -22,63 +22,96 @@ describe('AuthService Nonce behaviour', () => {
       wallet: {
         findFirst: jest.fn().mockResolvedValue(null),
       } as any,
-    } as Partial<PrismaService>;
+    };
 
-    authService = new AuthService(prisma as PrismaService, jwtService as JwtService);
+    redisService = {
+      set: jest.fn().mockResolvedValue(true),
+      get: jest.fn().mockResolvedValue(null),
+      del: jest.fn().mockResolvedValue(true),
+    };
+
+    authService = new AuthService(prisma, jwtService, redisService);
   });
 
   afterEach(() => {
     jest.clearAllMocks();
   });
 
-  it('generates a challenge and stores NonceRecord with camelCase fields', () => {
+  it('generates a fixed-format challenge and persists the nonce with the configured TTL', async () => {
     const address = '0xAbCd';
-    const message = authService.generateChallenge(address);
-    expect(typeof message).toBe('string');
 
-    const record = (authService as any).nonces.get(address.toLowerCase());
-    expect(record).toBeDefined();
-    expect(record.nonce).toBeDefined();
-    expect(record.createdAt).toBeDefined();
-    expect(typeof record.nonce).toBe('string');
-    expect(typeof record.createdAt).toBe('number');
+    const message = await authService.generateChallenge(address);
+
+    expect(message).toMatch(/^Sign in to TruthBounty: [A-Za-z0-9]{32}$/);
+    expect(redisService.set).toHaveBeenCalledWith(
+      'auth:nonce:0xabcd',
+      expect.stringMatching(/^[A-Za-z0-9]{32}$/),
+      300,
+    );
   });
 
-  it('cleans up expired nonces (cleanupNonces removes old createdAt entries)', () => {
-    const address = '0xdead';
-    authService.generateChallenge(address);
-    const map = (authService as any).nonces;
-    const record = map.get(address.toLowerCase());
-    // simulate expiry by setting createdAt far in the past
-    record.createdAt = Date.now() - ((authService as any).NONCE_TTL + 1000);
-
-    // call private cleanup
-    (authService as any).cleanupNonces();
-    expect(map.has(address.toLowerCase())).toBe(false);
-  });
-
-  it('allows login and deletes nonce (single-use) and is case-insensitive', async () => {
+  it('rejects a challenge response when the signed message does not exactly match the stored nonce', async () => {
     const address = '0xAaBbCc';
     const lower = address.toLowerCase();
+    const storedNonce = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ123456';
+    const tamperedNonce = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ123457';
 
-    // generate challenge
-    const challenge = authService.generateChallenge(address);
-    const record = (authService as any).nonces.get(lower);
-    const nonce = record.nonce;
-
-    // Prepare login DTO
-    const message = `Sign in to TruthBounty: ${nonce}`;
-    const signature = '0xsig';
-
-    // mock verifyMessage to return mixed-case recovered address
+    redisService.get.mockResolvedValueOnce(storedNonce);
     (verifyMessage as jest.Mock).mockReturnValue(address);
 
-    // call login
-    const result = await authService.login({ address: lower, signature, message } as any);
-    expect(result).toBeDefined();
-    expect(result.accessToken).toBe('signed-token');
+    await expect(
+      authService.login({
+        address,
+        signature: '0xsig',
+        message: `Sign in to TruthBounty: ${tamperedNonce}`,
+      } as any),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
 
-    // ensure nonce deleted (single-use)
-    expect((authService as any).nonces.has(lower)).toBe(false);
+    expect(redisService.del).not.toHaveBeenCalled();
+    expect(prisma.wallet.findFirst).not.toHaveBeenCalled();
+    expect(jwtService.sign).not.toHaveBeenCalled();
+    expect(redisService.get).toHaveBeenCalledWith(`auth:nonce:${lower}`);
+  });
+
+  it('logs in with an exact challenge message, deletes the nonce, and issues a JWT', async () => {
+    const address = '0xAaBbCc';
+    const lower = address.toLowerCase();
+    const storedNonce = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ123456';
+    const challengeMessage = `Sign in to TruthBounty: ${storedNonce}`;
+
+    redisService.get.mockResolvedValueOnce(storedNonce);
+    prisma.wallet.findFirst.mockResolvedValueOnce({
+      address: lower,
+      user: { id: 'user-123' },
+    } as any);
+    (verifyMessage as jest.Mock).mockReturnValue(address);
+
+    const result = await authService.login({
+      address,
+      signature: '0xsig',
+      message: challengeMessage,
+    } as any);
+
+    expect(result).toEqual({
+      accessToken: 'signed-token',
+      user: {
+        id: 'user-123',
+        address: lower,
+      },
+    });
+    expect(redisService.del).toHaveBeenCalledWith(`auth:nonce:${lower}`);
+    expect(jwtService.sign).toHaveBeenCalledWith({
+      address: lower,
+      userId: 'user-123',
+      sub: 'user-123',
+    });
+  });
+
+  it('fails challenge generation when Redis rejects the nonce write', async () => {
+    redisService.set.mockResolvedValueOnce(false);
+
+    await expect(authService.generateChallenge('0xAbCd')).rejects.toBeInstanceOf(
+      InternalServerErrorException,
+    );
   });
 });
