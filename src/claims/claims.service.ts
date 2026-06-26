@@ -1,7 +1,7 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Claim } from './entities/claim.entity';
+import { Claim, ClaimState } from './entities/claim.entity';
 import { CreateClaimDto } from './dto/create-claim.dto';
 import { ClaimsCache } from '../cache/claims.cache';
 import { RedisService } from '../redis/redis.service';
@@ -118,6 +118,7 @@ export class ClaimsService {
 
     /**
      * Resolve a claim (update verdict and confidence)
+     * Uses state machine validation to ensure valid transitions
      */
     async resolveClaim(
         claimId: string,
@@ -130,8 +131,11 @@ export class ClaimsService {
 
         const beforeState = { ...claim };
 
-        claim.resolvedVerdict = verdict;
-        claim.confidenceScore = confidenceScore;
+        // Use transitionTo helper for validated state transition
+        claim.transitionTo(ClaimState.RESOLVED, {
+            verdict,
+            confidence: confidenceScore,
+        });
 
         const updatedClaim = await this.claimRepo.save(claim);
         // Invalidate both the claim-specific cache and the latest claims list cache
@@ -153,6 +157,7 @@ export class ClaimsService {
 
     /**
      * Finalize a claim
+     * Uses state machine validation to ensure valid transitions
      */
     async finalizeClaim(claimId: string, userId?: string): Promise<Claim> {
         const claim = await this.findOne(claimId);
@@ -160,7 +165,9 @@ export class ClaimsService {
 
         const beforeState = { ...claim };
 
-        claim.finalized = true;
+        // Use transitionTo helper for validated state transition
+        claim.transitionTo(ClaimState.FINALIZED);
+
         const updatedClaim = await this.claimRepo.save(claim);
         // Invalidate both the claim-specific cache and the latest claims list cache
         await this.claimsCache.invalidateClaim(claimId);

@@ -9,7 +9,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, IsNull, Not, Repository } from 'typeorm';
 import { Stake } from '../staking/entities/stake.entity';
 import { Wallet } from '../entities/wallet.entity';
-import { Claim } from '../claims/entities/claim.entity';
+import { Claim, ClaimState } from '../claims/entities/claim.entity';
 import { User } from '../entities/user.entity';
 import { AggregationService } from '../aggregation/aggregation.service';
 import { ClaimsCache } from '../cache/claims.cache';
@@ -82,57 +82,17 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
 
   async runComputeScores(): Promise<BatchResult> {
     return this.computeScores();
-    @InjectQueue('jobs-queue') private readonly jobsQueue: Queue,
-    private readonly sybilResistanceService: SybilResistanceService,
-    private readonly aggregationService?: AggregationService,
-  ) { }
-
-  async onModuleInit() {
-    this.logger.log('JobsService initialized. Registering repeatable BullMQ jobs...');
-    try {
-      const repeatableJobs = await this.jobsQueue.getRepeatableJobs();
-      for (const rJob of repeatableJobs) {
-        await this.jobsQueue.removeRepeatableByKey(rJob.key);
-      }
-
-      await this.jobsQueue.add(
-        'compute-scores',
-        {},
-        {
-          repeat: {
-            pattern: '0 * * * *', // hourly
-          },
-          jobId: 'compute-scores-job',
-        },
-      );
-      await this.jobsQueue.add(
-        'compute-reputation',
-        {},
-        {
-          repeat: {
-            pattern: '0 0 * * *', // daily
-          },
-          jobId: 'compute-reputation-job',
-        },
-      );
-      await this.jobsQueue.add(
-        'cleanup-sybil-history',
-        {},
-        {
-          repeat: {
-            pattern: '0 2 * * *', // daily at 2:00 AM
-          },
-          jobId: 'cleanup-sybil-history-job',
-        },
-      );
-      this.logger.log('Repeatable BullMQ jobs registered successfully');
-    } catch (err) {
-      this.logger.error(`Failed to register repeatable BullMQ jobs: ${err.message}`);
-    }
   }
 
   async runComputeReputation(): Promise<BatchResult> {
     return this.computeReputation();
+  }
+
+  async cleanupSybilHistory(): Promise<number> {
+    this.logger.debug('cleanupSybilHistory: starting');
+    const count = await this.sybilResistanceService.cleanupScoreHistory();
+    this.logger.debug(`cleanupSybilHistory: deleted ${count} old records`);
+    return count;
   }
 
   // ─── computeScores ──────────────────────────────────────────────────────
@@ -145,14 +105,6 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
    * rather than one DB round-trip per stake.
    */
   private async computeScores(): Promise<BatchResult> {
-  async cleanupSybilHistory(): Promise<number> {
-    this.logger.debug('cleanupSybilHistory: starting');
-    const count = await this.sybilResistanceService.cleanupScoreHistory();
-    this.logger.debug(`cleanupSybilHistory: deleted ${count} old records`);
-    return count;
-  }
-
-  async computeScores() {
     this.logger.debug('computeScores: starting');
     const result: BatchResult = { processed: 0, updated: 0, errors: 0 };
 
@@ -217,26 +169,16 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
         claim.confidenceScore = agg.confidence / CONFIDENCE_SCALE;
 
         if (agg.confidence > FINALIZATION_THRESHOLD) {
-          claim.finalized = true;
-          claim.resolvedVerdict = agg.status === 'VERIFIED_TRUE';
-        const updateFields: Partial<Claim> = {
-          confidenceScore: result.confidence / 100,
-        };
-
-        if (result.confidence > 50) {
-          updateFields.finalized = true;
-          updateFields.resolvedVerdict = result.status === 'VERIFIED_TRUE';
+          // Use transitionTo helper for validated state transition
+          claim.transitionTo(ClaimState.FINALIZED, {
+            verdict: agg.status === 'VERIFIED_TRUE',
+            confidence: claim.confidenceScore,
+          });
         }
 
-        const updated = await this.tryUpdateClaimIfNotFinalized(claim.id, updateFields);
+        await this.claimRepo.save(claim);
 
-        if (!updated) {
-          this.logger.debug(
-            `Claim ${claim.id} was updated by a concurrent worker; skipping stale aggregation write`,
-          );
-          continue;
-        }
-
+        await this.claimRepo.save(claim);
         await this.claimsCache.invalidateClaim(claim.id);
         result.updated++;
 
@@ -246,7 +188,6 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
               ? `, finalized → verdict=${claim.resolvedVerdict}`
               : ''),
         );
-        this.logger.log(`Updated claim ${claim.id} confidence=${updateFields.confidenceScore}`);
       } catch (err) {
         result.errors++;
         this.logger.error(
@@ -262,8 +203,7 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
     return result;
   }
 
-  async computeReputation() {
-  private async tryUpdateClaimIfNotFinalized(
+  private async computeReputation(): Promise<BatchResult> {
     claimId: string,
     updateFields: Partial<Claim>,
   ): Promise<boolean> {
