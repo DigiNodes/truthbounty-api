@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { Repository, DataSource } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Claim } from './entities/claim.entity';
+import { Claim, ClaimState } from './entities/claim.entity';
 import { ClaimsCache } from '../cache/claims.cache';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -131,15 +131,19 @@ export class ClaimResolutionService {
 
     const savedClaim = await this.dataSource.transaction(async (manager) => {
       if (confidence) {
-        claim.resolvedVerdict = confidence.verdict === 'true';
-        claim.confidenceScore = confidence.score;
+        // Use transitionTo helper for validated state transition
+        claim.transitionTo(ClaimState.FINALIZED, {
+          verdict: confidence.verdict === 'true',
+          confidence: confidence.score,
+        });
       } else {
         // Insufficient participation — record as inconclusive
+        // Direct assignment since transitionTo requires both verdict and confidence
         claim.resolvedVerdict = null;
         claim.confidenceScore = null;
+        claim.finalized = true;
       }
 
-      claim.finalized = true;
       claim.resolvedAt = resolvedAt;
 
       return manager.save(claim);
