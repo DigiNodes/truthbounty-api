@@ -79,8 +79,10 @@ export class SybilResistanceService {
     // 3. Normalize each signal to 0-1 range
     const normalizedScores = this.normalizeSignals(signals);
 
-    // 4. Apply weighted combination
-    const compositeScore = this.weightedCombination(normalizedScores);
+    // 4. Apply weighted combination and clamp to valid score range
+    const compositeScore = this.clampScore(
+      this.weightedCombination(normalizedScores),
+    );
 
     // 5. Create detailed calculation record
     const details = this.createCalculationDetails(normalizedScores);
@@ -144,20 +146,18 @@ export class SybilResistanceService {
     accuracy: number;
   } {
     // Worldcoin: binary (0 or 1)
-    const worldcoinScore = signals.worldcoinVerified ? 1.0 : 0.0;
+    const worldcoinScore = this.clampScore(signals.worldcoinVerified ? 1.0 : 0.0);
 
-    // Wallet Age: sigmoid-like curve with 90-day threshold
-    const walletAgeScore = Math.min(
+    // Wallet Age: linear ramp to 90-day threshold
+    const walletAgeScore = this.clampScore(
       signals.oldestWalletAgeMs / this.WALLET_AGE_THRESHOLD_MS,
-      1.0,
     );
 
     // Staking: logarithmic scaling to avoid whales dominating
     // Uses log1p to handle 0 gracefully
-    const stakingScore = Math.min(
+    const stakingScore = this.clampScore(
       Math.log1p(Number(signals.totalStakedAmount)) /
         Math.log1p(Number(this.MIN_STAKING_FOR_FULL_SCORE)),
-      1.0,
     );
 
     // Accuracy: ratio of correct votes, with minimum threshold
@@ -170,7 +170,7 @@ export class SybilResistanceService {
       worldcoin: worldcoinScore,
       walletAge: walletAgeScore,
       staking: stakingScore,
-      accuracy: accuracyScore,
+      accuracy: this.clampScore(accuracyScore),
     };
   }
 
@@ -192,6 +192,13 @@ export class SybilResistanceService {
   }
 
   /**
+   * Clamp any score to the 0.0-1.0 range
+   */
+  private clampScore(value: number): number {
+    return Math.max(0.0, Math.min(1.0, value));
+  }
+
+  /**
    * Create detailed calculation record for explainability
    */
   private createCalculationDetails(normalizedScores: {
@@ -200,7 +207,9 @@ export class SybilResistanceService {
     staking: number;
     accuracy: number;
   }): CalculationDetails {
-    const composite = this.weightedCombination(normalizedScores);
+    const composite = this.clampScore(
+      this.weightedCombination(normalizedScores),
+    );
 
     return {
       worldcoinWeight: this.WORLDCOIN_WEIGHT,

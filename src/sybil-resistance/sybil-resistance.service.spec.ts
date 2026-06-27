@@ -668,6 +668,21 @@ describe('SybilResistanceService', () => {
       expect(details.componentScores.accuracy).toBeLessThanOrEqual(1);
     });
 
+    it('should clamp the composite score to a maximum of 1.0 when normalized values overflow', async () => {
+      jest.spyOn(prisma.user, 'findUnique').mockResolvedValueOnce(mockUser);
+      jest.spyOn(service as any, 'normalizeSignals').mockReturnValue({
+        worldcoin: 2.0,
+        walletAge: 2.0,
+        staking: 2.0,
+        accuracy: 2.0,
+      });
+
+      const { score, details } = await service.computeSybilScore(mockUserId);
+
+      expect(score).toBe(1.0);
+      expect(details.explanation).toContain('Final score: 1.0000');
+    });
+
     it('should produce deterministic scores for same input', async () => {
       jest.spyOn(prisma.user, 'findUnique').mockResolvedValueOnce(mockUser);
 
