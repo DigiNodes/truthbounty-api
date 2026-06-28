@@ -42,6 +42,7 @@ export class SybilResistanceService {
   // Scoring thresholds and normalization constants
   private readonly WALLET_AGE_THRESHOLD_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
   private readonly MIN_STAKING_FOR_FULL_SCORE = BigInt('1000000000000000000'); // 1 token (assuming 18 decimals)
+  private readonly FIXED_POINT_SCALE = 1000000000n;
   private readonly MIN_CLAIMS_FOR_ACCURACY_SCORE: number;
 
   constructor(
@@ -148,9 +149,11 @@ export class SybilResistanceService {
     // Worldcoin: binary (0 or 1)
     const worldcoinScore = this.clampScore(signals.worldcoinVerified ? 1.0 : 0.0);
 
-    // Wallet Age: linear ramp to 90-day threshold
+    // Wallet Age: smooth sigmoid-like scaling using fixed point math
     const walletAgeScore = this.clampScore(
-      signals.oldestWalletAgeMs / this.WALLET_AGE_THRESHOLD_MS,
+      Number(
+        this.calculateFixedPointSigmoid(signals.oldestWalletAgeMs),
+      ),
     );
 
     // Staking: logarithmic scaling to avoid whales dominating
@@ -189,6 +192,18 @@ export class SybilResistanceService {
       normalizedScores.staking * this.STAKING_WEIGHT +
       normalizedScores.accuracy * this.ACCURACY_WEIGHT
     );
+  }
+
+  /**
+   * Compute a smooth sigmoid-like score for wallet age using fixed-point arithmetic.
+   * This avoids floating precision issues while still producing a 0.0-1.0 shape.
+   */
+  private calculateFixedPointSigmoid(ageMs: number): number {
+    const ageScore = BigInt(Math.max(0, ageMs));
+    const x = ageScore * this.FIXED_POINT_SCALE / BigInt(this.WALLET_AGE_THRESHOLD_MS);
+    // Use a simple fixed-point approximation: x / (1 + x)
+    const scaled = (x * this.FIXED_POINT_SCALE) / (this.FIXED_POINT_SCALE + x);
+    return Number(scaled) / Number(this.FIXED_POINT_SCALE);
   }
 
   /**
