@@ -1,6 +1,10 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { PrismaService } from '../prisma/prisma.service';
+import { StakeEvent } from '../staking/entities/stake-event.entity';
+import { StakingEventType } from '../staking/types/staking-event.type';
 
 /**
  * Calculation details structure for explainability
@@ -48,6 +52,8 @@ export class SybilResistanceService {
   constructor(
     private prisma: PrismaService,
     private configService: ConfigService,
+    @InjectRepository(StakeEvent)
+    private readonly stakeEventRepo: Repository<StakeEvent>,
   ) {
     this.MIN_CLAIMS_FOR_ACCURACY_SCORE = this.configService.get<number>(
       'sybil.minClaimsForAccuracyScore',
@@ -99,7 +105,7 @@ export class SybilResistanceService {
    */
   private async gatherSignals(
     user: { id: string, worldcoinVerified?: boolean } | null,
-    wallets: Array<{ linkedAt: Date }>,
+    wallets: Array<{ address?: string; linkedAt: Date }>,
   ): Promise<SybilSignals> {
 
     // Calculate wallet age (use oldest linked wallet)
@@ -119,9 +125,37 @@ export class SybilResistanceService {
       worldcoinVerified = verification !== null;
     }
 
-    // TODO: Integrate with staking module once available
-    // For now, default to 0 total staked amount
-    const totalStakedAmount = BigInt(0);
+    // Compute historical staking weight across all linked wallets.
+    //
+    // WHY HISTORICAL STAKE?
+    // Using only the current active stake (Stake.amount) is vulnerable to Sybil
+    // manipulation: an attacker can stake to inflate their score, wait for the
+    // score to be recorded, then withdraw — resetting their active stake to zero
+    // while retaining the inflated score history.
+    //
+    // Instead we sum all STAKE_DEPOSITED events across the user's wallets.
+    // Deposits are immutable on-chain; they cannot be "un-deposited" by
+    // withdrawing.  This makes stakingWeight reflect total historical commitment
+    // rather than a momentary snapshot, preventing stake-and-flee Sybil attacks.
+    let totalHistoricalStake = BigInt(0);
+    if (wallets.length > 0) {
+      const walletAddresses = wallets
+        .map((w: any) => w.address)
+        .filter((a: string | undefined): a is string => Boolean(a));
+
+      if (walletAddresses.length > 0) {
+        const depositEvents = await this.stakeEventRepo
+          .createQueryBuilder('se')
+          .select('SUM(se.amount::numeric)', 'total')
+          .where('se.walletAddress IN (:...addresses)', { addresses: walletAddresses })
+          .andWhere('se.type = :type', { type: StakingEventType.STAKE_DEPOSITED })
+          .getRawOne<{ total: string | null }>();
+
+        if (depositEvents?.total) {
+          totalHistoricalStake = BigInt(Math.floor(Number(depositEvents.total)));
+        }
+      }
+    }
 
     // TODO: Integrate with claims module for accuracy metrics
     // For now, default to no claims
@@ -131,7 +165,7 @@ export class SybilResistanceService {
     return {
       worldcoinVerified,
       oldestWalletAgeMs,
-      totalStakedAmount,
+      totalStakedAmount: totalHistoricalStake,
       claimsVotedOn,
       claimsCorrect,
     };
