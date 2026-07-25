@@ -9,6 +9,10 @@ import { Repository, DataSource } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Claim, ClaimState } from './entities/claim.entity';
 import { ClaimsCache } from '../cache/claims.cache';
+import {
+  assertResolvedAtInvariant,
+  buildResolvedFields,
+} from './claim-resolution.invariant';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
