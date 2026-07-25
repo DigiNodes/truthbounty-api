@@ -5,6 +5,7 @@ import { Evidence } from './evidence.entity';
 @Index(['finalized'])
 @Index(['confidenceScore'])
 @Index(['resolvedVerdict'])
+@Index(['resolvedAt'])
 export class Claim {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -34,6 +35,13 @@ export class Claim {
 
   @Column({ default: false })
   finalized: boolean;
+
+  /**
+   * Timestamp set atomically when a claim is resolved (resolvedVerdict becomes non-null).
+   * Invariant: resolvedAt is non-null if and only if resolvedVerdict is non-null.
+   */
+  @Column({ type: 'datetime', nullable: true })
+  resolvedAt: Date | null;
 
   @CreateDateColumn()
   createdAt: Date;

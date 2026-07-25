@@ -8,6 +8,7 @@ import { Claim } from '../claims/entities/claim.entity';
 import { User } from '../entities/user.entity';
 import { AggregationService } from '../aggregation/aggregation.service';
 import { ClaimsCache } from '../cache/claims.cache';
+import { buildResolvedFields } from '../claims/claim-resolution.invariant';
 
 /**
  * JobsService
@@ -84,13 +85,15 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
 
         claim.confidenceScore = result.confidence / 100; // store as 0-1 precision field
 
-        // If strong confidence, mark finalized and set resolvedVerdict
+        // If strong confidence, mark finalized and set resolvedVerdict + resolvedAt atomically (BE-219)
         if (result.confidence > 50) {
           claim.finalized = true;
-          // Assume result.status is 'VERIFIED_TRUE' or 'VERIFIED_FALSE'
           // Parse enum name to boolean (VERIFIED_TRUE -> true)
           if (typeof result.status === 'string') {
-            claim.resolvedVerdict = result.status === 'VERIFIED_TRUE';
+            const verdict = result.status === 'VERIFIED_TRUE';
+            const { resolvedVerdict, resolvedAt } = buildResolvedFields(verdict);
+            claim.resolvedVerdict = resolvedVerdict;
+            claim.resolvedAt = resolvedAt;
           }
         }
 

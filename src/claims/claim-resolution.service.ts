@@ -3,6 +3,10 @@ import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Claim } from './entities/claim.entity';
 import { ClaimsCache } from '../cache/claims.cache';
+import {
+  assertResolvedAtInvariant,
+  buildResolvedFields,
+} from './claim-resolution.invariant';
 
 interface VoteWeightSummary {
   trueWeight: number;
@@ -46,9 +50,15 @@ export class ClaimResolutionService {
     const verdict = votes.trueWeight > votes.falseWeight;
     const confidence = this.computeConfidenceScore(votes);
 
-    claim.resolvedVerdict = verdict;
+    // Set resolvedVerdict and resolvedAt atomically — invariant BE-219
+    const { resolvedVerdict, resolvedAt } = buildResolvedFields(verdict);
+    claim.resolvedVerdict = resolvedVerdict;
+    claim.resolvedAt = resolvedAt;
     claim.confidenceScore = confidence;
     claim.finalized = true;
+
+    // Guard against any inconsistent state before persisting
+    assertResolvedAtInvariant(claim);
 
     const savedClaim = await this.claimRepo.save(claim);
     // Invalidate both the claim-specific cache and the latest claims list cache

@@ -264,12 +264,13 @@ describe('ClaimsService', () => {
 
   describe('resolveClaim', () => {
     it('should resolve a claim with verdict and confidence score', async () => {
-      const claim = ClaimFactory.createClaim({ resolvedVerdict: null, confidenceScore: null });
+      const claim = ClaimFactory.createClaim({ resolvedVerdict: null, resolvedAt: null, confidenceScore: null });
       const verdict = true;
       const confidenceScore = 0.85;
+      const resolvedAt = new Date();
 
       jest.spyOn(service, 'findOne').mockResolvedValue(claim);
-      jest.spyOn(claimRepo, 'save').mockResolvedValue({ ...claim, resolvedVerdict: verdict, confidenceScore });
+      jest.spyOn(claimRepo, 'save').mockResolvedValue({ ...claim, resolvedVerdict: verdict, resolvedAt, confidenceScore });
       jest.spyOn(claimsCache, 'invalidateClaim').mockResolvedValue(undefined);
       jest.spyOn(auditTrailService, 'log').mockResolvedValue(undefined);
 
@@ -282,13 +283,57 @@ describe('ClaimsService', () => {
       expect(result.confidenceScore).toEqual(confidenceScore);
     });
 
+    it('sets resolvedAt to a non-null timestamp when resolving a claim (BE-219)', async () => {
+      const claim = ClaimFactory.createClaim({ resolvedVerdict: null, resolvedAt: null, confidenceScore: null });
+      const before = Date.now();
+
+      jest.spyOn(service, 'findOne').mockResolvedValue(claim);
+      jest.spyOn(claimRepo, 'save').mockImplementation(async (c: any) => c);
+      jest.spyOn(claimsCache, 'invalidateClaim').mockResolvedValue(undefined);
+      jest.spyOn(auditTrailService, 'log').mockResolvedValue(undefined);
+
+      const result = await service.resolveClaim(claim.id, true, 0.9);
+      const after = Date.now();
+
+      expect(result.resolvedAt).not.toBeNull();
+      expect(result.resolvedAt).toBeInstanceOf(Date);
+      expect((result.resolvedAt as Date).getTime()).toBeGreaterThanOrEqual(before);
+      expect((result.resolvedAt as Date).getTime()).toBeLessThanOrEqual(after);
+    });
+
+    it('sets resolvedAt and resolvedVerdict atomically (never one without the other, BE-219)', async () => {
+      const claim = ClaimFactory.createClaim({ resolvedVerdict: null, resolvedAt: null, confidenceScore: null });
+      const savedStates: Partial<Claim>[] = [];
+
+      jest.spyOn(service, 'findOne').mockResolvedValue(claim);
+      jest.spyOn(claimRepo, 'save').mockImplementation(async (c: any) => {
+        savedStates.push({ resolvedVerdict: c.resolvedVerdict, resolvedAt: c.resolvedAt });
+        return c;
+      });
+      jest.spyOn(claimsCache, 'invalidateClaim').mockResolvedValue(undefined);
+      jest.spyOn(auditTrailService, 'log').mockResolvedValue(undefined);
+
+      await service.resolveClaim(claim.id, false, 0.75);
+
+      // The object passed to save must have both fields set together
+      expect(savedStates).toHaveLength(1);
+      expect(savedStates[0].resolvedVerdict).not.toBeNull();
+      expect(savedStates[0].resolvedAt).not.toBeNull();
+    });
+
+    it('a non-resolved claim always has resolvedAt == null (BE-219)', () => {
+      const claim = ClaimFactory.createClaim({ resolvedVerdict: null, resolvedAt: null, confidenceScore: null, finalized: false });
+      expect(claim.resolvedVerdict).toBeNull();
+      expect(claim.resolvedAt).toBeNull();
+    });
+
     it('should invalidate claims:latest cache when resolving a claim', async () => {
-      const claim = ClaimFactory.createClaim({ resolvedVerdict: null, confidenceScore: null });
+      const claim = ClaimFactory.createClaim({ resolvedVerdict: null, resolvedAt: null, confidenceScore: null });
       const verdict = false;
       const confidenceScore = 0.65;
 
       jest.spyOn(service, 'findOne').mockResolvedValue(claim);
-      jest.spyOn(claimRepo, 'save').mockResolvedValue({ ...claim, resolvedVerdict: verdict, confidenceScore });
+      jest.spyOn(claimRepo, 'save').mockResolvedValue({ ...claim, resolvedVerdict: verdict, resolvedAt: new Date(), confidenceScore });
       jest.spyOn(claimsCache, 'invalidateClaim').mockResolvedValue(undefined);
       jest.spyOn(auditTrailService, 'log').mockResolvedValue(undefined);
 
@@ -297,26 +342,46 @@ describe('ClaimsService', () => {
       expect(claimsCache.invalidateClaim).toHaveBeenCalledWith(claim.id);
     });
 
-    it('should throw error if claim not found when resolving', async () => {
+    it('should throw NotFoundException if claim not found when resolving', async () => {
       jest.spyOn(service, 'findOne').mockResolvedValue(null);
 
       await expect(service.resolveClaim('non-existent-id', true, 0.8)).rejects.toThrow('Claim non-existent-id not found');
     });
 
     it('should log audit trail when resolving a claim', async () => {
-      const claim = ClaimFactory.createClaim({ resolvedVerdict: null, confidenceScore: null });
+      const claim = ClaimFactory.createClaim({ resolvedVerdict: null, resolvedAt: null, confidenceScore: null });
       const verdict = true;
       const confidenceScore = 0.75;
       const userId = 'user-123';
 
       jest.spyOn(service, 'findOne').mockResolvedValue(claim);
-      jest.spyOn(claimRepo, 'save').mockResolvedValue({ ...claim, resolvedVerdict: verdict, confidenceScore });
+      jest.spyOn(claimRepo, 'save').mockResolvedValue({ ...claim, resolvedVerdict: verdict, resolvedAt: new Date(), confidenceScore });
       jest.spyOn(claimsCache, 'invalidateClaim').mockResolvedValue(undefined);
       jest.spyOn(auditTrailService, 'log').mockResolvedValue(undefined);
 
       await service.resolveClaim(claim.id, verdict, confidenceScore, userId);
 
       expect(auditTrailService.log).toHaveBeenCalled();
+    });
+
+    it('idempotency: resolving an already-resolved claim overwrites resolvedAt with the new timestamp', async () => {
+      // Policy: re-resolving is allowed (no error); resolvedAt is updated to the new call time.
+      // This matches the current codebase behaviour where no duplicate-resolve guard exists.
+      const previousDate = new Date('2026-01-01T00:00:00Z');
+      const claim = ClaimFactory.createClaim({ resolvedVerdict: true, resolvedAt: previousDate, confidenceScore: 0.8 });
+
+      jest.spyOn(service, 'findOne').mockResolvedValue(claim);
+      jest.spyOn(claimRepo, 'save').mockImplementation(async (c: any) => c);
+      jest.spyOn(claimsCache, 'invalidateClaim').mockResolvedValue(undefined);
+      jest.spyOn(auditTrailService, 'log').mockResolvedValue(undefined);
+
+      const result = await service.resolveClaim(claim.id, false, 0.9);
+
+      // resolvedAt should be a new, more recent timestamp
+      expect(result.resolvedAt).not.toBeNull();
+      expect((result.resolvedAt as Date).getTime()).toBeGreaterThanOrEqual(previousDate.getTime());
+      // resolvedVerdict is updated to the new value
+      expect(result.resolvedVerdict).toBe(false);
     });
   });
 

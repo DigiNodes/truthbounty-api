@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Claim } from './entities/claim.entity';
@@ -9,6 +9,10 @@ import { Stake } from '../staking/entities/stake.entity';
 import { AuditTrailService } from '../audit/services/audit-trail.service';
 import { AuditActionType, AuditEntityType } from '../audit/entities/audit-log.entity';
 import { AuditLog } from '../audit/decorators/audit-log.decorator';
+import {
+  assertResolvedAtInvariant,
+  buildResolvedFields,
+} from './claim-resolution.invariant';
 
 
 @Injectable()
@@ -111,7 +115,8 @@ export class ClaimsService {
     }
 
     /**
-     * Resolve a claim (update verdict and confidence)
+     * Resolve a claim (update verdict and confidence).
+     * Sets resolvedAt atomically with resolvedVerdict — invariant: BE-219.
      */
     async resolveClaim(
         claimId: string,
@@ -120,12 +125,18 @@ export class ClaimsService {
         userId?: string,
     ): Promise<Claim> {
         const claim = await this.findOne(claimId);
-        if (!claim) throw new Error(`Claim ${claimId} not found`);
+        if (!claim) throw new NotFoundException(`Claim ${claimId} not found`);
 
         const beforeState = { ...claim };
 
-        claim.resolvedVerdict = verdict;
+        const { resolvedVerdict, resolvedAt } = buildResolvedFields(verdict);
+        claim.resolvedVerdict = resolvedVerdict;
+        claim.resolvedAt = resolvedAt;
         claim.confidenceScore = confidenceScore;
+
+        // Guard: reject if the object is somehow in an inconsistent state
+        // before we write (e.g. caller mutated fields directly).
+        assertResolvedAtInvariant(claim);
 
         const updatedClaim = await this.claimRepo.save(claim);
         // Invalidate both the claim-specific cache and the latest claims list cache
@@ -172,16 +183,5 @@ export class ClaimsService {
 
         return updatedClaim;
     }
-     async findOne(id: string): Promise<Claim> {
-    const claim = await this.repo.findOne({
-      where: { id },
-    });
-
-    if (!claim) {
-      throw new NotFoundException(`Claim with id ${id} not found`);
-    }
-
-    return claim;
-  }
 }
 
