@@ -27,6 +27,9 @@ export class Evidence {
   @Column({ default: 1 })
   latestVersion: number;
 
+  @Column({ default: false })
+  isHidden: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 

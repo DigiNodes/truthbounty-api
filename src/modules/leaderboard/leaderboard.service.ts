@@ -14,17 +14,27 @@ export class LeaderboardService {
         userId: string,
         score: number,
     ): Promise<void> {
-        await this.redis.zadd(
-            LEADERBOARD_KEYS.GLOBAL,
-            score,
-            userId,
-        );
+        // Use a pipeline to reduce round trips for two ZADD operations
+        const pipeline = this.redis.pipeline();
+        pipeline.zadd(LEADERBOARD_KEYS.GLOBAL, score, userId);
+        pipeline.zadd(LEADERBOARD_KEYS.WEEKLY, score, userId);
+        await pipeline.exec();
+    }
 
-        await this.redis.zadd(
-            LEADERBOARD_KEYS.WEEKLY,
-            score,
-            userId,
-        );
+    // Bulk update scores using pipelining in chunks to avoid many roundtrips
+    async bulkUpdateScores(
+        users: { id: string; reputation: number }[],
+        chunkSize = 500,
+    ): Promise<void> {
+        for (let i = 0; i < users.length; i += chunkSize) {
+            const chunk = users.slice(i, i + chunkSize);
+            const pipeline = this.redis.pipeline();
+            for (const u of chunk) {
+                pipeline.zadd(LEADERBOARD_KEYS.GLOBAL, u.reputation, u.id);
+                pipeline.zadd(LEADERBOARD_KEYS.WEEKLY, u.reputation, u.id);
+            }
+            await pipeline.exec();
+        }
     }
 
     // 🔹 Get leaderboard

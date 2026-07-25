@@ -28,10 +28,8 @@ export class LeaderboardRefreshJob {
     await this.leaderboardService.clearLeaderboard('global');
     await this.leaderboardService.clearLeaderboard('weekly');
 
-    // Rebuild rankings from real data
-    for (const user of users) {
-      await this.leaderboardService.updateScore(user.id, user.reputation);
-    }
+    // Rebuild rankings from real data using batched pipelining
+    await this.leaderboardService.bulkUpdateScores(users);
 
     this.logger.log(`Leaderboard refreshed with ${users.length} users.`);
   }

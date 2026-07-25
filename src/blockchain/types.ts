@@ -51,6 +51,18 @@ export interface ChainState {
   lastReorgTime?: Date;
 }
 
+export interface StateMemoryStats {
+  currentBlockCount: number;
+  currentEventCount: number;
+  currentReorgHistoryCount: number;
+  maxBlocksInMemory: number;
+  maxEventsInMemory: number;
+  maxReorgHistoryEntries: number;
+  confirmedEventCount: number;
+  pendingEventCount: number;
+  orphanedEventCount: number;
+}
+
 /**
  * Verification and Voting Types
  */

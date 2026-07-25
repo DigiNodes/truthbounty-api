@@ -138,6 +138,23 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Return remaining TTL in seconds for a key (-1 = no TTL, -2 = missing, null = unavailable)
+   */
+  async ttl(key: string): Promise<number | null> {
+    if (!this.client || !this.isConnected) {
+      this.logger.debug(`Redis unavailable, skipping TTL for key: ${key}`);
+      return null;
+    }
+
+    try {
+      return await this.client.ttl(key);
+    } catch (error) {
+      this.logger.error(`Redis TTL error for key ${key}: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
    * Check if Redis is healthy and connected
    */
   async isHealthy(): Promise<boolean> {

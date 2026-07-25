@@ -13,13 +13,29 @@ export class EvidenceFlagService {
     private readonly evidenceRepo: Repository<Evidence>,
   ) {}
 
-  async createFlag(evidenceId: string, reason: string, flaggedBy?: string): Promise<EvidenceFlag> {
+  async createFlag(
+    evidenceId: string,
+    reason: string,
+    flaggedBy?: string,
+    isModerator: boolean = false,
+  ): Promise<EvidenceFlag> {
     const evidence = await this.evidenceRepo.findOneBy({ id: evidenceId });
     if (!evidence) {
       throw new NotFoundException(`Evidence with ID ${evidenceId} not found`);
     }
 
-    const flag = this.flagRepo.create({ evidenceId, reason, flaggedBy });
+    // If a moderator flags evidence, we automatically hide it
+    if (isModerator) {
+      evidence.isHidden = true;
+      await this.evidenceRepo.save(evidence);
+    }
+
+    const flag = this.flagRepo.create({
+      evidenceId,
+      reason,
+      flaggedBy,
+    });
+    (flag as any).isModerator = isModerator;
     return this.flagRepo.save(flag);
   }
 

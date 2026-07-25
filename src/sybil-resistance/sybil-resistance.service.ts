@@ -1,5 +1,10 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { PrismaService } from '../prisma/prisma.service';
+import { StakeEvent } from '../staking/entities/stake-event.entity';
+import { StakingEventType } from '../staking/types/staking-event.type';
 
 /**
  * Calculation details structure for explainability
@@ -41,9 +46,20 @@ export class SybilResistanceService {
   // Scoring thresholds and normalization constants
   private readonly WALLET_AGE_THRESHOLD_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
   private readonly MIN_STAKING_FOR_FULL_SCORE = BigInt('1000000000000000000'); // 1 token (assuming 18 decimals)
-  private readonly MIN_CLAIMS_FOR_ACCURACY_SCORE = 5;
+  private readonly FIXED_POINT_SCALE = 1000000000n;
+  private readonly MIN_CLAIMS_FOR_ACCURACY_SCORE: number;
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private configService: ConfigService,
+    @InjectRepository(StakeEvent)
+    private readonly stakeEventRepo: Repository<StakeEvent>,
+  ) {
+    this.MIN_CLAIMS_FOR_ACCURACY_SCORE = this.configService.get<number>(
+      'sybil.minClaimsForAccuracyScore',
+      5,
+    );
+  }
 
   /**
    * Compute Sybil resistance score for a user
@@ -70,8 +86,10 @@ export class SybilResistanceService {
     // 3. Normalize each signal to 0-1 range
     const normalizedScores = this.normalizeSignals(signals);
 
-    // 4. Apply weighted combination
-    const compositeScore = this.weightedCombination(normalizedScores);
+    // 4. Apply weighted combination and clamp to valid score range
+    const compositeScore = this.clampScore(
+      this.weightedCombination(normalizedScores),
+    );
 
     // 5. Create detailed calculation record
     const details = this.createCalculationDetails(normalizedScores);
@@ -86,8 +104,8 @@ export class SybilResistanceService {
    * Gather all signals for a user
    */
   private async gatherSignals(
-    user: { worldcoinVerified?: boolean } | null,
-    wallets: Array<{ linkedAt: Date }>,
+    user: { id: string, worldcoinVerified?: boolean } | null,
+    wallets: Array<{ address?: string; linkedAt: Date }>,
   ): Promise<SybilSignals> {
 
     // Calculate wallet age (use oldest linked wallet)
@@ -97,9 +115,47 @@ export class SybilResistanceService {
         ).linkedAt).getTime()
       : 0;
 
-    // TODO: Integrate with staking module once available
-    // For now, default to 0 total staked amount
-    const totalStakedAmount = BigInt(0);
+    // Check for actual verification records (not just the user's boolean, to avoid stale data)
+    let worldcoinVerified = false;
+    if (user) {
+      const verification = await this.prisma.worldIdVerification.findFirst({
+        where: { userId: user.id },
+        orderBy: { verifiedAt: 'desc' },
+      });
+      worldcoinVerified = verification !== null;
+    }
+
+    // Compute historical staking weight across all linked wallets.
+    //
+    // WHY HISTORICAL STAKE?
+    // Using only the current active stake (Stake.amount) is vulnerable to Sybil
+    // manipulation: an attacker can stake to inflate their score, wait for the
+    // score to be recorded, then withdraw — resetting their active stake to zero
+    // while retaining the inflated score history.
+    //
+    // Instead we sum all STAKE_DEPOSITED events across the user's wallets.
+    // Deposits are immutable on-chain; they cannot be "un-deposited" by
+    // withdrawing.  This makes stakingWeight reflect total historical commitment
+    // rather than a momentary snapshot, preventing stake-and-flee Sybil attacks.
+    let totalHistoricalStake = BigInt(0);
+    if (wallets.length > 0) {
+      const walletAddresses = wallets
+        .map((w: any) => w.address)
+        .filter((a: string | undefined): a is string => Boolean(a));
+
+      if (walletAddresses.length > 0) {
+        const depositEvents = await this.stakeEventRepo
+          .createQueryBuilder('se')
+          .select('SUM(se.amount::numeric)', 'total')
+          .where('se.walletAddress IN (:...addresses)', { addresses: walletAddresses })
+          .andWhere('se.type = :type', { type: StakingEventType.STAKE_DEPOSITED })
+          .getRawOne<{ total: string | null }>();
+
+        if (depositEvents?.total) {
+          totalHistoricalStake = BigInt(Math.floor(Number(depositEvents.total)));
+        }
+      }
+    }
 
     // TODO: Integrate with claims module for accuracy metrics
     // For now, default to no claims
@@ -107,9 +163,9 @@ export class SybilResistanceService {
     const claimsCorrect = 0;
 
     return {
-      worldcoinVerified: user?.worldcoinVerified ?? false,
+      worldcoinVerified,
       oldestWalletAgeMs,
-      totalStakedAmount,
+      totalStakedAmount: totalHistoricalStake,
       claimsVotedOn,
       claimsCorrect,
     };
@@ -125,20 +181,20 @@ export class SybilResistanceService {
     accuracy: number;
   } {
     // Worldcoin: binary (0 or 1)
-    const worldcoinScore = signals.worldcoinVerified ? 1.0 : 0.0;
+    const worldcoinScore = this.clampScore(signals.worldcoinVerified ? 1.0 : 0.0);
 
-    // Wallet Age: sigmoid-like curve with 90-day threshold
-    const walletAgeScore = Math.min(
-      signals.oldestWalletAgeMs / this.WALLET_AGE_THRESHOLD_MS,
-      1.0,
+    // Wallet Age: smooth sigmoid-like scaling using fixed point math
+    const walletAgeScore = this.clampScore(
+      Number(
+        this.calculateFixedPointSigmoid(signals.oldestWalletAgeMs),
+      ),
     );
 
     // Staking: logarithmic scaling to avoid whales dominating
     // Uses log1p to handle 0 gracefully
-    const stakingScore = Math.min(
+    const stakingScore = this.clampScore(
       Math.log1p(Number(signals.totalStakedAmount)) /
         Math.log1p(Number(this.MIN_STAKING_FOR_FULL_SCORE)),
-      1.0,
     );
 
     // Accuracy: ratio of correct votes, with minimum threshold
@@ -151,7 +207,7 @@ export class SybilResistanceService {
       worldcoin: worldcoinScore,
       walletAge: walletAgeScore,
       staking: stakingScore,
-      accuracy: accuracyScore,
+      accuracy: this.clampScore(accuracyScore),
     };
   }
 
@@ -173,6 +229,25 @@ export class SybilResistanceService {
   }
 
   /**
+   * Compute a smooth sigmoid-like score for wallet age using fixed-point arithmetic.
+   * This avoids floating precision issues while still producing a 0.0-1.0 shape.
+   */
+  private calculateFixedPointSigmoid(ageMs: number): number {
+    const ageScore = BigInt(Math.max(0, ageMs));
+    const x = ageScore * this.FIXED_POINT_SCALE / BigInt(this.WALLET_AGE_THRESHOLD_MS);
+    // Use a simple fixed-point approximation: x / (1 + x)
+    const scaled = (x * this.FIXED_POINT_SCALE) / (this.FIXED_POINT_SCALE + x);
+    return Number(scaled) / Number(this.FIXED_POINT_SCALE);
+  }
+
+  /**
+   * Clamp any score to the 0.0-1.0 range
+   */
+  private clampScore(value: number): number {
+    return Math.max(0.0, Math.min(1.0, value));
+  }
+
+  /**
    * Create detailed calculation record for explainability
    */
   private createCalculationDetails(normalizedScores: {
@@ -181,7 +256,9 @@ export class SybilResistanceService {
     staking: number;
     accuracy: number;
   }): CalculationDetails {
-    const composite = this.weightedCombination(normalizedScores);
+    const composite = this.clampScore(
+      this.weightedCombination(normalizedScores),
+    );
 
     return {
       worldcoinWeight: this.WORLDCOIN_WEIGHT,
@@ -210,7 +287,12 @@ Final score: ${Number(composite.toFixed(4))} (weighted average)`,
   async recordSybilScore(userId: string): Promise<any> {
     const { score: compositeScore, details } = await this.computeSybilScore(userId);
 
-    return this.prisma.sybilScore.create({
+    // Persist SybilScore without the potentially large `explanation` text
+    const detailsCopy: any = { ...details };
+    const explanationText = detailsCopy.explanation;
+    delete detailsCopy.explanation;
+
+    const scoreRecord = await this.prisma.sybilScore.create({
       data: {
         userId,
         worldcoinScore: details.componentScores.worldcoin,
@@ -218,9 +300,21 @@ Final score: ${Number(composite.toFixed(4))} (weighted average)`,
         stakingScore: details.componentScores.staking,
         accuracyScore: details.componentScores.accuracy,
         compositeScore,
-        calculationDetails: JSON.stringify(details),
+        calculationDetails: JSON.stringify(detailsCopy),
       },
     });
+
+    // Store explanation separately to avoid huge JSON columns
+    if (explanationText) {
+      await this.prisma.sybilExplanation.create({
+        data: {
+          sybilScoreId: scoreRecord.id,
+          explanation: explanationText,
+        },
+      });
+    }
+
+    return scoreRecord;
   }
 
   /**
@@ -350,11 +444,44 @@ Final score: ${Number(composite.toFixed(4))} (weighted average)`,
   }> {
     const score = await this.getLatestSybilScore(userId);
 
+    // Parse calculation details and, if explanation was stored separately, load it
+    let details = score.calculationDetails ? JSON.parse(score.calculationDetails) : null;
+    if (details && !details.explanation) {
+      // try to load explanation from separate table
+      try {
+        const expl = await this.prisma.sybilExplanation.findFirst({ where: { sybilScoreId: score.id } });
+        if (expl && expl.explanation) {
+          details.explanation = expl.explanation;
+        }
+      } catch (err) {
+        // ignore missing explanation
+      }
+    }
+
     return {
       userId,
       score: score.compositeScore,
       isVerified: score.worldcoinScore > 0,
-      details: score.calculationDetails ? JSON.parse(score.calculationDetails) : null,
+      details,
     };
+  }
+
+  /**
+   * Delete SybilScore history records older than 1 year.
+   * Returns the count of deleted records.
+   */
+  async cleanupScoreHistory(): Promise<number> {
+    const oneYearAgo = new Date();
+    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+
+    const result = await this.prisma.sybilScore.deleteMany({
+      where: {
+        createdAt: {
+          lt: oneYearAgo,
+        },
+      },
+    });
+
+    return result.count;
   }
 }

@@ -127,13 +127,13 @@ export class ReorgDetectorService {
         divergenceDepth++;
         checkBlockNumber--;
       }
+      }
     }
 
     return divergenceDepth;
   }
 
   /**
-   * Get all events affected by reorg.
    * Get the hash of the ancestor at a specific depth from the current block
    * @param currentBlock The current block to start from
    * @param depth How many blocks back to go (0 = current block, 1 = parent, 2 = grandparent, etc.)

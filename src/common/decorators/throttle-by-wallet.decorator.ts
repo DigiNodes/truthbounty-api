@@ -10,5 +10,7 @@ import { THROTTLE_TYPE_KEY } from '../guards/wallet-throttler.guard';
  * @Post('claims')
  * createClaim() { ... }
  */
-export const ThrottleByWallet = (type: 'claims' | 'votes' | 'disputes') =>
+export type ThrottleType = 'claims' | 'votes' | 'disputes' | 'auth';
+
+export const ThrottleByWallet = (type: ThrottleType) =>
     SetMetadata(THROTTLE_TYPE_KEY, type);

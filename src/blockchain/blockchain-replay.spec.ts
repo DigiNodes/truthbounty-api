@@ -1,219 +1,140 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, MoreThanOrEqual } from 'typeorm';
 import { BlockchainIndexerService } from './blockchain-indexer.service';
 import { ProcessedEvent } from './entities/processed-event.entity';
 import { TokenBalance } from './entities/token-balance.entity';
 import { IndexerCheckpoint } from './entities/indexer-checkpoint.entity';
-import { BlockchainEvent } from './interfaces/blockchain-event.interface';
 
+/**
+ * Replay / reorg rollback is now transactional: it reverses the state applied
+ * by orphaned events, deletes those event records (>= startBlock), and rewinds
+ * the checkpoint — all in a single transaction.
+ */
 describe('BlockchainIndexerService - Replay Regression Tests', () => {
   let service: BlockchainIndexerService;
   let processedEventRepo: Repository<ProcessedEvent>;
-  let tokenBalanceRepo: Repository<TokenBalance>;
-  let checkpointRepo: Repository<IndexerCheckpoint>;
   let dataSource: DataSource;
+  let manager: any;
 
-  beforeEach(async () => {
+  const buildManager = (orphaned: Partial<ProcessedEvent>[] = []) => ({
+    find: jest.fn().mockResolvedValue(orphaned),
+    delete: jest.fn().mockResolvedValue({ affected: orphaned.length, raw: {} }),
+    save: jest.fn().mockResolvedValue(null),
+    increment: jest.fn().mockResolvedValue({ affected: 1 }),
+    decrement: jest.fn().mockResolvedValue({ affected: 1 }),
+    findOne: jest.fn().mockResolvedValue(null),
+  });
+
+  const setup = async (orphaned: Partial<ProcessedEvent>[] = []) => {
+    manager = buildManager(orphaned);
+    const queryRunner = {
+      connect: jest.fn().mockResolvedValue(null),
+      startTransaction: jest.fn().mockResolvedValue(null),
+      commitTransaction: jest.fn().mockResolvedValue(null),
+      rollbackTransaction: jest.fn().mockResolvedValue(null),
+      release: jest.fn().mockResolvedValue(null),
+      manager,
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         BlockchainIndexerService,
-        {
-          provide: getRepositoryToken(ProcessedEvent),
-          useClass: Repository,
-        },
-        {
-          provide: getRepositoryToken(TokenBalance),
-          useClass: Repository,
-        },
-        {
-          provide: getRepositoryToken(IndexerCheckpoint),
-          useClass: Repository,
-        },
-        {
-          provide: DataSource,
-          useValue: {
-            createQueryRunner: jest.fn(),
-          },
-        },
+        { provide: getRepositoryToken(ProcessedEvent), useClass: Repository },
+        { provide: getRepositoryToken(TokenBalance), useClass: Repository },
+        { provide: getRepositoryToken(IndexerCheckpoint), useClass: Repository },
+        { provide: DataSource, useValue: { createQueryRunner: jest.fn().mockReturnValue(queryRunner) } },
       ],
     }).compile();
 
-    service = module.get<BlockchainIndexerService>(BlockchainIndexerService);
-    processedEventRepo = module.get<Repository<ProcessedEvent>>(getRepositoryToken(ProcessedEvent));
-    tokenBalanceRepo = module.get<Repository<TokenBalance>>(getRepositoryToken(TokenBalance));
-    checkpointRepo = module.get<Repository<IndexerCheckpoint>>(getRepositoryToken(IndexerCheckpoint));
-    dataSource = module.get<DataSource>(DataSource);
-  });
+    service = module.get(BlockchainIndexerService);
+    processedEventRepo = module.get(getRepositoryToken(ProcessedEvent));
+    dataSource = module.get(DataSource);
+    return queryRunner;
+  };
 
   describe('Replay State Consistency', () => {
-    it('should produce identical state when run multiple times', async () => {
-      // Setup: Create events in blocks 100, 101, 102
-      const events = [
-        { blockNumber: 100, txHash: '0x100', logIndex: 0, eventType: 'Transfer' },
-        { blockNumber: 101, txHash: '0x101', logIndex: 0, eventType: 'Transfer' },
-        { blockNumber: 102, txHash: '0x102', logIndex: 0, eventType: 'Transfer' },
-      ];
+    it('deletes all events from startBlock onward (>=) and rewinds the checkpoint', async () => {
+      await setup();
 
-      // Mock the createQueryBuilder for delete operations
-      const mockQueryBuilder = {
-        delete: jest.fn().mockReturnThis(),
-        where: jest.fn().mockReturnThis(),
-        execute: jest.fn().mockResolvedValue({ affected: 3, raw: {} }),
-      };
-
-      jest.spyOn(processedEventRepo, 'createQueryBuilder').mockReturnValue(mockQueryBuilder as any);
-
-      // First replay
-      await service.replayFromBlock(100);
-      
-      const firstDeleteCall = mockQueryBuilder.where.mock.calls[0];
-      expect(firstDeleteCall[0]).toBe('blockNumber >= :startBlock');
-      expect(firstDeleteCall[1]).toEqual({ startBlock: 100 });
-      expect(mockQueryBuilder.execute).toHaveBeenCalledTimes(1);
-
-      // Reset mocks
-      jest.clearAllMocks();
-      jest.spyOn(processedEventRepo, 'createQueryBuilder').mockReturnValue(mockQueryBuilder as any);
-
-      // Second replay - should behave identically
-      await service.replayFromBlock(100);
-      
-      const secondDeleteCall = mockQueryBuilder.where.mock.calls[0];
-      expect(secondDeleteCall[0]).toBe('blockNumber >= :startBlock');
-      expect(secondDeleteCall[1]).toEqual({ startBlock: 100 });
-      expect(mockQueryBuilder.execute).toHaveBeenCalledTimes(1);
-
-      // Both replays should have identical behavior
-      expect(firstDeleteCall).toEqual(secondDeleteCall);
-    });
-
-    it('should clean up all events from startBlock onward preventing stale data', async () => {
-      // Mock events that would exist in database
-      const existingEvents = [
-        { id: '1', blockNumber: 99, txHash: '0x99' },  // Should NOT be deleted
-        { id: '2', blockNumber: 100, txHash: '0x100' }, // Should be deleted
-        { id: '3', blockNumber: 101, txHash: '0x101' }, // Should be deleted
-        { id: '4', blockNumber: 102, txHash: '0x102' }, // Should be deleted
-      ];
-
-      const mockQueryBuilder = {
-        delete: jest.fn().mockReturnThis(),
-        where: jest.fn().mockReturnThis(),
-        execute: jest.fn().mockResolvedValue({ affected: 3, raw: {} }), // 3 events deleted (100, 101, 102)
-      };
-
-      jest.spyOn(processedEventRepo, 'createQueryBuilder').mockReturnValue(mockQueryBuilder as any);
-
-      // Replay from block 100
       await service.replayFromBlock(100);
 
-      // Verify the correct WHERE clause is used
-      expect(mockQueryBuilder.where).toHaveBeenCalledWith('blockNumber >= :startBlock', { startBlock: 100 });
-      
-      // Verify 3 events were deleted (blocks 100, 101, 102)
-      expect(mockQueryBuilder.execute).toHaveBeenCalled();
+      // CRITICAL regression guard: deletion must cover everything >= startBlock,
+      // not just the exact block (the original double-processing bug).
+      expect(manager.delete).toHaveBeenCalledWith(ProcessedEvent, {
+        blockNumber: MoreThanOrEqual(100),
+      });
+      // Checkpoint rewound to just before the rolled-back range.
+      expect(manager.save).toHaveBeenCalledWith(
+        IndexerCheckpoint,
+        expect.objectContaining({ id: 1, lastBlock: 99 }),
+      );
     });
 
-    it('should handle edge case when startBlock is higher than existing events', async () => {
-      const mockQueryBuilder = {
-        delete: jest.fn().mockReturnThis(),
-        where: jest.fn().mockReturnThis(),
-        execute: jest.fn().mockResolvedValue({ affected: 0, raw: {} }), // No events deleted
-      };
+    it('reverses the balance effect of orphaned Transfer events', async () => {
+      await setup([
+        {
+          blockNumber: 101,
+          logIndex: 0,
+          eventType: 'Transfer',
+          payload: { from: '0xa', to: '0xb', amount: '100', token: '0xc' },
+        },
+      ]);
 
-      jest.spyOn(processedEventRepo, 'createQueryBuilder').mockReturnValue(mockQueryBuilder as any);
+      await service.replayFromBlock(100);
 
-      // Replay from a block higher than any existing events
-      await service.replayFromBlock(999);
-
-      expect(mockQueryBuilder.where).toHaveBeenCalledWith('blockNumber >= :startBlock', { startBlock: 999 });
-      expect(mockQueryBuilder.execute).toHaveBeenCalled();
+      // Inverse of applyTransfer: sender credited back, receiver debited.
+      expect(manager.increment).toHaveBeenCalledWith(
+        TokenBalance,
+        { address: '0xa', tokenAddress: '0xc' },
+        'balance',
+        '100',
+      );
+      expect(manager.decrement).toHaveBeenCalledWith(
+        TokenBalance,
+        { address: '0xb', tokenAddress: '0xc' },
+        'balance',
+        '100',
+      );
     });
 
-    it('should handle replay from block 0 (full replay)', async () => {
-      const mockQueryBuilder = {
-        delete: jest.fn().mockReturnThis(),
-        where: jest.fn().mockReturnThis(),
-        execute: jest.fn().mockResolvedValue({ affected: 100, raw: {} }), // All events deleted
-      };
+    it('rewinds the checkpoint to 0 for a full replay from block 0', async () => {
+      await setup();
 
-      jest.spyOn(processedEventRepo, 'createQueryBuilder').mockReturnValue(mockQueryBuilder as any);
-
-      // Full replay from beginning
       await service.replayFromBlock(0);
 
-      expect(mockQueryBuilder.where).toHaveBeenCalledWith('blockNumber >= :startBlock', { startBlock: 0 });
-      expect(mockQueryBuilder.execute).toHaveBeenCalled();
+      expect(manager.delete).toHaveBeenCalledWith(ProcessedEvent, {
+        blockNumber: MoreThanOrEqual(0),
+      });
+      expect(manager.save).toHaveBeenCalledWith(
+        IndexerCheckpoint,
+        expect.objectContaining({ id: 1, lastBlock: 0 }),
+      );
     });
 
-    it('should be idempotent - multiple replays from same block should be safe', async () => {
-      const mockQueryBuilder = {
-        delete: jest.fn().mockReturnThis(),
-        where: jest.fn().mockReturnThis(),
-        execute: jest.fn().mockResolvedValue({ affected: 0, raw: {} }), // No events to delete on subsequent runs
-      };
+    it('is idempotent - repeated replays from the same block behave identically', async () => {
+      const queryRunner = await setup();
 
-      jest.spyOn(processedEventRepo, 'createQueryBuilder').mockReturnValue(mockQueryBuilder as any);
-
-      // First replay
       await service.replayFromBlock(100);
-      
-      // Second replay (should be safe)
       await service.replayFromBlock(100);
-      
-      // Third replay (should still be safe)
       await service.replayFromBlock(100);
 
-      // All three calls should have identical behavior
-      expect(mockQueryBuilder.where).toHaveBeenCalledTimes(3);
-      expect(mockQueryBuilder.execute).toHaveBeenCalledTimes(3);
-      
-      // Verify all calls used the same parameters
-      mockQueryBuilder.where.mock.calls.forEach(call => {
-        expect(call[0]).toBe('blockNumber >= :startBlock');
-        expect(call[1]).toEqual({ startBlock: 100 });
+      expect(manager.delete).toHaveBeenCalledTimes(3);
+      expect(queryRunner.commitTransaction).toHaveBeenCalledTimes(3);
+      manager.delete.mock.calls.forEach((call: any[]) => {
+        expect(call[0]).toBe(ProcessedEvent);
+        expect(call[1]).toEqual({ blockNumber: MoreThanOrEqual(100) });
       });
     });
-  });
 
-  describe('Regression Tests for Double Processing Prevention', () => {
-    it('should prevent double processing by cleaning up all future events', async () => {
-      // This test ensures the fix for the original bug where only exact block matches were deleted
-      const mockQueryBuilder = {
-        delete: jest.fn().mockReturnThis(),
-        where: jest.fn().mockReturnThis(),
-        execute: jest.fn().mockResolvedValue({ affected: 5, raw: {} }),
-      };
+    it('rolls back the transaction if rollback work fails', async () => {
+      const queryRunner = await setup();
+      manager.delete.mockRejectedValueOnce(new Error('db error'));
 
-      jest.spyOn(processedEventRepo, 'createQueryBuilder').mockReturnValue(mockQueryBuilder as any);
+      await expect(service.replayFromBlock(100)).rejects.toThrow('db error');
 
-      await service.replayFromBlock(100);
-
-      // CRITICAL: Verify >= is used, not == (this was the original bug)
-      expect(mockQueryBuilder.where).toHaveBeenCalledWith('blockNumber >= :startBlock', { startBlock: 100 });
-      
-      // The original buggy code would have used: { blockNumber: 100 }
-      // The fixed code should use: 'blockNumber >= :startBlock', { startBlock: 100 }
-    });
-
-    it('should ensure no stale events remain after replay', async () => {
-      // Test scenario: Events exist in blocks 100, 101, 102, 103
-      // After replay from 101, only events from 101+ should be removed
-      // Events from block 100 should remain
-      
-      const mockQueryBuilder = {
-        delete: jest.fn().mockReturnThis(),
-        where: jest.fn().mockReturnThis(),
-        execute: jest.fn().mockResolvedValue({ affected: 3, raw: {} }), // Delete blocks 101, 102, 103
-      };
-
-      jest.spyOn(processedEventRepo, 'createQueryBuilder').mockReturnValue(mockQueryBuilder as any);
-
-      await service.replayFromBlock(101);
-
-      expect(mockQueryBuilder.where).toHaveBeenCalledWith('blockNumber >= :startBlock', { startBlock: 101 });
-      expect(mockQueryBuilder.execute).toHaveBeenCalled();
+      expect(queryRunner.rollbackTransaction).toHaveBeenCalled();
+      expect(queryRunner.commitTransaction).not.toHaveBeenCalled();
     });
   });
 });

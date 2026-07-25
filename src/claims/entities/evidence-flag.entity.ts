@@ -30,6 +30,9 @@ export class EvidenceFlag {
   @Column({ nullable: true })
   flaggedBy?: string;
 
+  @Column({ default: false })
+  isModerator: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 }

@@ -1,7 +1,7 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Claim } from './entities/claim.entity';
+import { Claim, ClaimState } from './entities/claim.entity';
 import { CreateClaimDto } from './dto/create-claim.dto';
 import { ClaimsCache } from '../cache/claims.cache';
 import { RedisService } from '../redis/redis.service';
@@ -93,11 +93,17 @@ export class ClaimsService {
         captureAfterState: true,
     })
     async createClaim(createClaimDto: CreateClaimDto): Promise<Claim> {
+        if (createClaimDto.title && createClaimDto.title.length > 200) {
+            throw new BadRequestException('Claim title exceeds maximum length of 200 characters');
+        }
+        if (createClaimDto.content && createClaimDto.content.length > 5000) {
+            throw new BadRequestException('Claim content exceeds maximum length of 5000 characters');
+        }
         const claim = this.claimRepo.create({
             title: createClaimDto.title,
             content: createClaimDto.content,
-            source: createClaimDto.source,
-            metadata: createClaimDto.metadata,
+            source: createClaimDto.source ?? null,
+            metadata: createClaimDto.metadata ?? null,
             resolvedVerdict: null, // Will be computed later
             confidenceScore: null, // Will be computed later
             finalized: false,
@@ -115,8 +121,8 @@ export class ClaimsService {
     }
 
     /**
-     * Resolve a claim (update verdict and confidence).
-     * Sets resolvedAt atomically with resolvedVerdict — invariant: BE-219.
+     * Resolve a claim (update verdict and confidence)
+     * Uses state machine validation to ensure valid transitions
      */
     async resolveClaim(
         claimId: string,
@@ -129,10 +135,11 @@ export class ClaimsService {
 
         const beforeState = { ...claim };
 
-        const { resolvedVerdict, resolvedAt } = buildResolvedFields(verdict);
-        claim.resolvedVerdict = resolvedVerdict;
-        claim.resolvedAt = resolvedAt;
-        claim.confidenceScore = confidenceScore;
+        // Use transitionTo helper for validated state transition
+        claim.transitionTo(ClaimState.RESOLVED, {
+            verdict,
+            confidence: confidenceScore,
+        });
 
         // Guard: reject if the object is somehow in an inconsistent state
         // before we write (e.g. caller mutated fields directly).
@@ -158,6 +165,7 @@ export class ClaimsService {
 
     /**
      * Finalize a claim
+     * Uses state machine validation to ensure valid transitions
      */
     async finalizeClaim(claimId: string, userId?: string): Promise<Claim> {
         const claim = await this.findOne(claimId);
@@ -165,7 +173,9 @@ export class ClaimsService {
 
         const beforeState = { ...claim };
 
-        claim.finalized = true;
+        // Use transitionTo helper for validated state transition
+        claim.transitionTo(ClaimState.FINALIZED);
+
         const updatedClaim = await this.claimRepo.save(claim);
         // Invalidate both the claim-specific cache and the latest claims list cache
         await this.claimsCache.invalidateClaim(claimId);

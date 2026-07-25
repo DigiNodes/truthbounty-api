@@ -8,6 +8,7 @@ import {
   AuditActionType,
   AuditEntityType,
 } from '../entities/audit-log.entity';
+import { maskIp } from '../utils/ip-masking';
 
 export interface AuditLogInput {
   actionType: AuditActionType;
@@ -49,7 +50,7 @@ export class AuditTrailService {
         afterState: input.afterState,
         metadata: input.metadata,
         correlationId: input.correlationId || this.getCorrelationId(),
-        ipAddress: this.getClientIp(),
+        ipAddress: maskIp(this.getClientIp()),
         userAgent: this.request?.get('user-agent'),
       });
 
@@ -298,7 +299,7 @@ export class AuditTrailService {
   }
 
   public async getAuditLogsByCorrelationId(
-    correlationId: string
+    correlationId: string,
   ): Promise<AuditLog[]> {
     return this.auditLogRepo.find({
       where: { correlationId },

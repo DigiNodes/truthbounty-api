@@ -3,6 +3,7 @@ import { BlockchainStateService } from './state.service';
 import { ReorgDetectorService } from './reorg-detector.service';
 import { ReconciliationService } from './reconciliation.service';
 import { BlockInfo, PendingEvent } from './types';
+import { serializeBigInts } from '../common/utils/bigint-serialization.util';
 
 /**
  * Event indexing service with confirmation strategy
@@ -87,7 +88,7 @@ export class EventIndexingService {
       blockNumber: block.number,
       blockHash: block.hash,
       eventType: event.type || 'unknown',
-      data: event.data || {},
+      data: serializeBigInts(event.data || {}) as Record<string, any>,
       transactionHash: event.transactionHash,
       logIndex: event.logIndex || 0,
       status: 'pending',

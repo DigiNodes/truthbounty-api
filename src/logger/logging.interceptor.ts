@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Observable, tap } from 'rxjs';
 import { PinoLogger } from 'nestjs-pino';
+import { maskIp } from '../audit/utils/ip-masking';
 
 /**
  * Interceptor to log request/response timing and metadata
@@ -33,7 +34,7 @@ export class LoggingInterceptor implements NestInterceptor {
         params: Object.keys(params || {}).length ? params : undefined,
         hasBody: !!body && Object.keys(body).length > 0,
         userAgent: request.headers['user-agent'],
-        ip: request.ip,
+        ip: maskIp(request.ip),
       },
       `Incoming ${method} ${url}`,
     );

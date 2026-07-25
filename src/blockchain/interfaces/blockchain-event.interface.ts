@@ -1,9 +1,9 @@
-export interface BlockchainEvent {
+export interface BlockchainEvent<T = Record<string, any>> {
   txHash: string;
   logIndex: number;
   blockNumber: number;
   eventType: string;
-  data: any; // Flexible for different event types
+  data: T; // Flexible for different event types
 }
 
 export interface TransferEventData {
