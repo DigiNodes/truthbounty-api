@@ -148,7 +148,7 @@ export class FeatureFlagsService {
     const nextVersion = flag.version + 1;
 
     await this.flagRepo.update(id, {
-      ...input,
+      ...(input as Record<string, unknown>),
       version: nextVersion,
       createdBy: updatedBy ?? flag.createdBy,
     });

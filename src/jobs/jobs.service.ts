@@ -12,6 +12,7 @@ import { Wallet } from '../entities/wallet.entity';
 import { Claim, ClaimState } from '../claims/entities/claim.entity';
 import { User } from '../entities/user.entity';
 import { AggregationService } from '../aggregation/aggregation.service';
+import { VerificationVerdict } from '../aggregation/aggregation.types';
 import { ClaimsCache } from '../cache/claims.cache';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Job, Queue } from 'bullmq';
@@ -34,8 +35,8 @@ const CONFIDENCE_SCALE = 100;
 interface AggregationVerification {
   id: string;
   claimId: string;
-  userId: string | null;
-  verdict: 'TRUE' | 'FALSE';
+  userId: string;
+  verdict: VerificationVerdict;
   stakeAmount: number;
   reputationWeight: number;
   createdAt: Date;
@@ -457,8 +458,8 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
       return {
         id: stake.id,
         claimId,
-        userId: user?.id ?? null,
-        verdict: 'TRUE',
+        userId: user?.id ?? '',
+        verdict: VerificationVerdict.TRUE,
         stakeAmount,
         reputationWeight,
         createdAt: (stake as any).updatedAt ?? new Date(),

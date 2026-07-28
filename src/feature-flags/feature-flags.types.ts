@@ -7,7 +7,7 @@ export interface FeatureFlagContext {
   walletAddress?: string;
 }
 
-export interface FeatureFlagRuleSet {
+export interface FeatureFlagRuleSet extends Record<string, unknown> {
   userIds?: string[];
   roles?: string[];
   walletAddresses?: string[];

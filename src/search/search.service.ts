@@ -188,7 +188,7 @@ export class SearchService {
     return this.executeOffsetPagination(qb, pagination);
   }
 
-  private applySorting<T>(
+  private applySorting<T extends Record<string, any>>(
     qb: SelectQueryBuilder<T>,
     sort: SortField,
     alias: string,
@@ -206,7 +206,7 @@ export class SearchService {
     }
   }
 
-  private async executeOffsetPagination<T>(
+  private async executeOffsetPagination<T extends Record<string, any>>(
     qb: SelectQueryBuilder<T>,
     pagination: PaginationParams,
   ): Promise<SearchResult<T>> {
