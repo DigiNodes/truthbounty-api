@@ -16,10 +16,10 @@ contract VerificationEngine {
     struct Verification {
         uint256 id;
         uint256 claimId;
-        address verifier;
-        VerificationVerdict verdict;
         uint256 stake;
+        address verifier;
         uint64 submittedAt;
+        VerificationVerdict verdict;
     }
 
     // State Variables
@@ -29,11 +29,8 @@ contract VerificationEngine {
     
     uint256 private _verificationCounter;
 
-    // claimId => verifier => hasVerified
-    mapping(uint256 => mapping(address => bool)) public hasVerified;
-    
-    // claimId => verifier => Verification
-    mapping(uint256 => mapping(address => Verification)) private _verifications;
+    // claimId => verifier => verificationId
+    mapping(uint256 => mapping(address => uint256)) private _verifierToVerificationId;
     
     // claimId => verificationIds[]
     mapping(uint256 => uint256[]) private _claimVerificationIds;
@@ -86,7 +83,7 @@ contract VerificationEngine {
         if (claimRegistry.isClaimResolved(claimId)) revert ClaimAlreadyResolved();
         if (!claimRegistry.isClaimUnderVerification(claimId)) revert ClaimNotUnderVerification();
         if (stakeAmount < minimumStake) revert InsufficientStake();
-        if (hasVerified[claimId][msg.sender]) revert AlreadyVerified();
+        if (hasVerified(claimId, msg.sender)) revert AlreadyVerified();
 
         // 2. Lock Stake
         // Reverts if allowance or balance is insufficient
@@ -99,14 +96,13 @@ contract VerificationEngine {
         Verification memory newVerification = Verification({
             id: verificationId,
             claimId: claimId,
-            verifier: msg.sender,
-            verdict: verdict,
             stake: stakeAmount,
-            submittedAt: uint64(block.timestamp)
+            verifier: msg.sender,
+            submittedAt: uint64(block.timestamp),
+            verdict: verdict
         });
 
-        hasVerified[claimId][msg.sender] = true;
-        _verifications[claimId][msg.sender] = newVerification;
+        _verifierToVerificationId[claimId][msg.sender] = verificationId;
         _claimVerificationIds[claimId].push(verificationId);
         _verificationById[verificationId] = newVerification;
 
@@ -126,7 +122,8 @@ contract VerificationEngine {
     }
 
     function getVerificationByVerifier(uint256 claimId, address verifier) external view returns (Verification memory) {
-        return _verifications[claimId][verifier];
+        uint256 vId = _verifierToVerificationId[claimId][verifier];
+        return _verificationById[vId];
     }
 
     function getClaimVerifications(uint256 claimId) external view returns (Verification[] memory) {
@@ -145,6 +142,11 @@ contract VerificationEngine {
     }
 
     function getVerifierStake(uint256 claimId, address verifier) external view returns (uint256) {
-        return _verifications[claimId][verifier].stake;
+        uint256 vId = _verifierToVerificationId[claimId][verifier];
+        return _verificationById[vId].stake;
+    }
+
+    function hasVerified(uint256 claimId, address verifier) public view returns (bool) {
+        return _verifierToVerificationId[claimId][verifier] != 0;
     }
 }
