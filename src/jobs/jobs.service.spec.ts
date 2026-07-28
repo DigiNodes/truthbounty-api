@@ -9,6 +9,11 @@ import { User } from '../entities/user.entity';
 import { ClaimsCache } from '../cache/claims.cache';
 import { RedisService } from '../redis/redis.service';
 import { AggregationService } from '../aggregation/aggregation.service';
+import { SybilResistanceService } from '../sybil-resistance/sybil-resistance.service';
+import { getQueueToken } from '@nestjs/bullmq';
+import { Repository } from 'typeorm';
+import { Job } from 'bullmq';
+import { JobName, JobPriority, QueueName } from './jobs.types';
 
 jest.mock('../prisma/prisma.service', () => {
   return {
@@ -16,29 +21,27 @@ jest.mock('../prisma/prisma.service', () => {
   };
 });
 
-import { SybilResistanceService } from '../sybil-resistance/sybil-resistance.service';
-import { getQueueToken } from '@nestjs/bullmq';
-import { Repository } from 'typeorm';
-import { Job } from 'bullmq';
-
-describe('Jobs (BullMQ & Scheduling)', () => {
+describe('JobsService', () => {
   let service: JobsService;
   let processor: JobsProcessor;
   let queueMock: any;
   let sybilResistanceServiceMock: any;
-  let stakeRepo: Repository<Stake>;
-  let walletRepo: Repository<Wallet>;
-  let claimRepo: Repository<Claim>;
-  let userRepo: Repository<User>;
 
   beforeEach(async () => {
     queueMock = {
-      getRepeatableJobs: jest.fn().mockResolvedValue([
-        { key: 'old-scores-key' },
-        { key: 'old-reputation-key' },
-      ]),
-      removeRepeatableByKey: jest.fn().mockResolvedValue(true),
       add: jest.fn().mockResolvedValue({ id: 'new-job' }),
+      getJobCounts: jest.fn().mockResolvedValue({
+        waiting: 1,
+        active: 0,
+        completed: 5,
+        failed: 0,
+        delayed: 0,
+        paused: 0,
+      }),
+      getFailed: jest.fn().mockResolvedValue([]),
+      getJob: jest.fn().mockResolvedValue(null),
+      pause: jest.fn().mockResolvedValue(undefined),
+      resume: jest.fn().mockResolvedValue(undefined),
     };
 
     sybilResistanceServiceMock = {
@@ -50,7 +53,19 @@ describe('Jobs (BullMQ & Scheduling)', () => {
         JobsService,
         JobsProcessor,
         {
-          provide: getQueueToken('jobs-queue'),
+          provide: getQueueToken(QueueName.DEFAULT),
+          useValue: queueMock,
+        },
+        {
+          provide: getQueueToken(QueueName.NOTIFICATIONS),
+          useValue: queueMock,
+        },
+        {
+          provide: getQueueToken(QueueName.BLOCKCHAIN),
+          useValue: queueMock,
+        },
+        {
+          provide: getQueueToken(QueueName.ANALYTICS),
           useValue: queueMock,
         },
         {
@@ -97,10 +112,6 @@ describe('Jobs (BullMQ & Scheduling)', () => {
 
     service = module.get<JobsService>(JobsService);
     processor = module.get<JobsProcessor>(JobsProcessor);
-    stakeRepo = module.get<Repository<Stake>>(getRepositoryToken(Stake));
-    walletRepo = module.get<Repository<Wallet>>(getRepositoryToken(Wallet));
-    claimRepo = module.get<Repository<Claim>>(getRepositoryToken(Claim));
-    userRepo = module.get<Repository<User>>(getRepositoryToken(User));
   });
 
   it('should be defined', () => {
@@ -108,75 +119,104 @@ describe('Jobs (BullMQ & Scheduling)', () => {
     expect(processor).toBeDefined();
   });
 
-  describe('onModuleInit', () => {
-    it('should clear old repeatable jobs and schedule new ones', async () => {
-      await service.onModuleInit();
+  describe('enqueue', () => {
+    it('should enqueue a job with default options', async () => {
+      const job = await service.enqueue(JobName.COMPUTE_SCORES, {});
+      expect(job).not.toBeNull();
+      expect(queueMock.add).toHaveBeenCalledWith(
+        JobName.COMPUTE_SCORES,
+        {},
+        expect.objectContaining({
+          priority: JobPriority.NORMAL,
+          attempts: 3,
+        }),
+      );
+    });
 
-      expect(queueMock.getRepeatableJobs).toHaveBeenCalled();
-      expect(queueMock.removeRepeatableByKey).toHaveBeenCalledTimes(2);
-      expect(queueMock.removeRepeatableByKey).toHaveBeenNthCalledWith(1, 'old-scores-key');
-      expect(queueMock.removeRepeatableByKey).toHaveBeenNthCalledWith(2, 'old-reputation-key');
-      
-      expect(queueMock.add).toHaveBeenCalledTimes(3);
-      expect(queueMock.add).toHaveBeenNthCalledWith(1, 'compute-scores', {}, expect.any(Object));
-      expect(queueMock.add).toHaveBeenNthCalledWith(2, 'compute-reputation', {}, expect.any(Object));
-      expect(queueMock.add).toHaveBeenNthCalledWith(3, 'cleanup-sybil-history', {}, expect.any(Object));
+    it('should enqueue a job with custom priority', async () => {
+      await service.enqueue(
+        JobName.SEND_NOTIFICATION,
+        { userId: '1' },
+        { priority: JobPriority.HIGH },
+        QueueName.NOTIFICATIONS,
+      );
+      expect(queueMock.add).toHaveBeenCalledWith(
+        JobName.SEND_NOTIFICATION,
+        { userId: '1' },
+        expect.objectContaining({ priority: JobPriority.HIGH }),
+      );
+    });
+  });
+
+  describe('queue administration', () => {
+    it('should return queue metrics', async () => {
+      const metrics = await service.getQueueMetrics(QueueName.DEFAULT);
+      expect(metrics).not.toBeNull();
+      expect(metrics?.name).toBe(QueueName.DEFAULT);
+      expect(metrics?.waiting).toBe(1);
+    });
+
+    it('should pause and resume a queue', async () => {
+      await service.pauseQueue(QueueName.DEFAULT);
+      expect(queueMock.pause).toHaveBeenCalled();
+      await service.resumeQueue(QueueName.DEFAULT);
+      expect(queueMock.resume).toHaveBeenCalled();
     });
   });
 
   describe('cleanupSybilHistory', () => {
     it('should call sybilResistanceService cleanupScoreHistory and return deleted count', async () => {
       const result = await service.cleanupSybilHistory();
-
       expect(sybilResistanceServiceMock.cleanupScoreHistory).toHaveBeenCalled();
       expect(result).toBe(42);
     });
   });
 
   describe('JobsProcessor', () => {
-    it('should invoke computeScores when processing compute-scores job', async () => {
-      const computeScoresSpy = jest.spyOn(service, 'computeScores').mockResolvedValue(undefined);
+    it('should invoke runComputeScores when processing compute-scores job', async () => {
+      const runComputeScoresSpy = jest
+        .spyOn(service, 'runComputeScores')
+        .mockResolvedValue({ processed: 0, updated: 0, errors: 0 });
 
       const mockJob = {
         id: '1',
-        name: 'compute-scores',
+        name: JobName.COMPUTE_SCORES,
         data: {},
       } as Job;
 
-      const result = await processor.process(mockJob);
-
-      expect(computeScoresSpy).toHaveBeenCalled();
-      expect(result).toEqual({ success: true });
+      await processor.process(mockJob);
+      expect(runComputeScoresSpy).toHaveBeenCalled();
     });
 
-    it('should invoke computeReputation when processing compute-reputation job', async () => {
-      const computeReputationSpy = jest.spyOn(service, 'computeReputation').mockResolvedValue(undefined);
+    it('should invoke runComputeReputation when processing compute-reputation job', async () => {
+      const runComputeReputationSpy = jest
+        .spyOn(service, 'runComputeReputation')
+        .mockResolvedValue({ processed: 0, updated: 0, errors: 0 });
 
       const mockJob = {
         id: '2',
-        name: 'compute-reputation',
+        name: JobName.COMPUTE_REPUTATION,
         data: {},
       } as Job;
 
-      const result = await processor.process(mockJob);
-
-      expect(computeReputationSpy).toHaveBeenCalled();
-      expect(result).toEqual({ success: true });
+      await processor.process(mockJob);
+      expect(runComputeReputationSpy).toHaveBeenCalled();
     });
 
     it('should invoke cleanupSybilHistory when processing cleanup-sybil-history job', async () => {
-      const cleanupSybilHistorySpy = jest.spyOn(service, 'cleanupSybilHistory').mockResolvedValue(123);
+      const cleanupSybilHistorySpy = jest
+        .spyOn(service, 'cleanupSybilHistory')
+        .mockResolvedValue(123);
 
       const mockJob = {
         id: '4',
-        name: 'cleanup-sybil-history',
+        name: JobName.CLEANUP_SYBIL_HISTORY,
         data: {},
       } as Job;
 
       const result = await processor.process(mockJob);
-
       expect(cleanupSybilHistorySpy).toHaveBeenCalled();
-      expect(result).toEqual({ success: true, deletedCount: 123 });
+      expect(result).toEqual({ deletedCount: 123 });
     });
 
     it('should throw error for unknown job name', async () => {
@@ -186,7 +226,9 @@ describe('Jobs (BullMQ & Scheduling)', () => {
         data: {},
       } as Job;
 
-      await expect(processor.process(mockJob)).rejects.toThrow('Unknown job name: unknown-job');
+      await expect(processor.process(mockJob)).rejects.toThrow(
+        'Unknown job name: unknown-job',
+      );
     });
   });
 });

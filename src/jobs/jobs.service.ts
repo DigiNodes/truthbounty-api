@@ -14,22 +14,22 @@ import { User } from '../entities/user.entity';
 import { AggregationService } from '../aggregation/aggregation.service';
 import { ClaimsCache } from '../cache/claims.cache';
 import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
+import { Job, Queue } from 'bullmq';
 import { SybilResistanceService } from '../sybil-resistance/sybil-resistance.service';
-
-// ─── Constants ────────────────────────────────────────────────────────────────
+import { Cron } from '@nestjs/schedule';
+import {
+  DEFAULT_RETRY_POLICY,
+  JobName,
+  JobOptions,
+  JobPriority,
+  QueueMetrics,
+  QueueName,
+} from './jobs.types';
 
 const SCORE_BATCH_SIZE = 50;
 const REPUTATION_BATCH_SIZE = 100;
-
-/** Confidence threshold (0–100 scale from AggregationService) above which a
- *  claim is considered resolved. Matches original > 50 logic. */
 const FINALIZATION_THRESHOLD = 50;
-
-/** Normalises AggregationService confidence (0–100) to the stored 0–1 field. */
 const CONFIDENCE_SCALE = 100;
-
-// ─── Internal types ───────────────────────────────────────────────────────────
 
 interface AggregationVerification {
   id: string;
@@ -47,11 +47,10 @@ interface BatchResult {
   errors: number;
 }
 
-// ─── Service ──────────────────────────────────────────────────────────────────
-
 @Injectable()
 export class JobsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(JobsService.name);
+  private readonly queues = new Map<QueueName, Queue>();
 
   constructor(
     private readonly redisService: RedisService,
@@ -65,20 +64,171 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
     private readonly userRepo: Repository<User>,
     private readonly claimsCache: ClaimsCache,
     private readonly aggregationService: AggregationService,
-  ) {}
-
-  // ─── Lifecycle ─────────────────────────────────────────────────────────
+    private readonly sybilResistanceService: SybilResistanceService,
+    @InjectQueue(QueueName.DEFAULT) private readonly defaultQueue: Queue,
+    @InjectQueue(QueueName.NOTIFICATIONS)
+    private readonly notificationsQueue: Queue,
+    @InjectQueue(QueueName.BLOCKCHAIN) private readonly blockchainQueue: Queue,
+    @InjectQueue(QueueName.ANALYTICS) private readonly analyticsQueue: Queue,
+  ) {
+    this.queues.set(QueueName.DEFAULT, this.defaultQueue);
+    this.queues.set(QueueName.NOTIFICATIONS, this.notificationsQueue);
+    this.queues.set(QueueName.BLOCKCHAIN, this.blockchainQueue);
+    this.queues.set(QueueName.ANALYTICS, this.analyticsQueue);
+  }
 
   async onModuleInit(): Promise<void> {
-    this.logger.log('JobsService initialized — BullMQ integration pending');
+    this.logger.log('JobsService initialized with BullMQ queues');
   }
 
   async onModuleDestroy(): Promise<void> {
     this.logger.log('JobsService shutting down');
   }
 
-  // ─── Public job entry-points ────────────────────────────────────────────
-  // These will become @Process() handlers once BullMQ is wired in.
+  async enqueue<T = unknown>(
+    name: JobName,
+    data: T,
+    options: JobOptions = {},
+    queueName: QueueName = QueueName.DEFAULT,
+  ): Promise<Job<T> | null> {
+    const queue = this.getQueue(queueName);
+    if (!queue) {
+      this.logger.error(`Queue ${queueName} not found`);
+      return null;
+    }
+
+    const priority = options.priority ?? JobPriority.NORMAL;
+    const attempts = options.attempts ?? DEFAULT_RETRY_POLICY.attempts;
+    const backoffDelay =
+      options.backoffDelay ?? DEFAULT_RETRY_POLICY.backoff.delay;
+
+    try {
+      const job = await queue.add(name, data, {
+        priority,
+        delay: options.delay,
+        attempts,
+        backoff: {
+          type: 'exponential',
+          delay: backoffDelay,
+        },
+      });
+      this.logger.log(`Enqueued job ${name} (id: ${job.id}) on ${queueName}`);
+      return job as Job<T>;
+    } catch (error) {
+      this.logger.error(
+        `Failed to enqueue job ${name}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return null;
+    }
+  }
+
+  async scheduleRecurring<T = unknown>(
+    name: JobName,
+    data: T,
+    cron: string,
+    queueName: QueueName = QueueName.DEFAULT,
+  ): Promise<Job<T> | null> {
+    const queue = this.getQueue(queueName);
+    if (!queue) return null;
+
+    try {
+      const job = await queue.add(
+        name,
+        data,
+        {
+          repeat: { pattern: cron },
+          attempts: DEFAULT_RETRY_POLICY.attempts,
+          backoff: DEFAULT_RETRY_POLICY.backoff,
+        } as any,
+      );
+      this.logger.log(`Scheduled recurring job ${name} with cron ${cron}`);
+      return job as Job<T>;
+    } catch (error) {
+      this.logger.error(
+        `Failed to schedule recurring job ${name}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return null;
+    }
+  }
+
+  @Cron('0 */1 * * *')
+  async runHourlyMaintenance(): Promise<void> {
+    this.logger.log('Hourly maintenance cron triggered');
+    await this.enqueue(JobName.COMPUTE_SCORES, {}, { priority: JobPriority.NORMAL });
+    await this.enqueue(JobName.COMPUTE_REPUTATION, {}, { priority: JobPriority.NORMAL });
+    await this.enqueue(JobName.CLEANUP_SYBIL_HISTORY, {}, { priority: JobPriority.LOW });
+  }
+
+  async retryFailed(queueName: QueueName): Promise<number> {
+    const queue = this.getQueue(queueName);
+    if (!queue) return 0;
+
+    const failed = await queue.getFailed();
+    let retried = 0;
+    for (const job of failed) {
+      try {
+        await job.retry();
+        retried++;
+      } catch (error) {
+        this.logger.warn(`Failed to retry job ${job.id}: ${error}`);
+      }
+    }
+    return retried;
+  }
+
+  async cancelJob(queueName: QueueName, jobId: string): Promise<boolean> {
+    const queue = this.getQueue(queueName);
+    if (!queue) return false;
+
+    const job = await queue.getJob(jobId);
+    if (!job) return false;
+
+    await job.remove();
+    return true;
+  }
+
+  async pauseQueue(queueName: QueueName): Promise<void> {
+    const queue = this.getQueue(queueName);
+    if (queue) await queue.pause();
+  }
+
+  async resumeQueue(queueName: QueueName): Promise<void> {
+    const queue = this.getQueue(queueName);
+    if (queue) await queue.resume();
+  }
+
+  async getQueueMetrics(queueName: QueueName): Promise<QueueMetrics | null> {
+    const queue = this.getQueue(queueName);
+    if (!queue) return null;
+
+    const counts = await queue.getJobCounts(
+      'waiting',
+      'active',
+      'completed',
+      'failed',
+      'delayed',
+      'paused',
+    );
+
+    return {
+      name: queueName,
+      waiting: counts.waiting ?? 0,
+      active: counts.active ?? 0,
+      completed: counts.completed ?? 0,
+      failed: counts.failed ?? 0,
+      delayed: counts.delayed ?? 0,
+      paused: Boolean(counts.paused),
+    };
+  }
+
+  async getAllQueueMetrics(): Promise<QueueMetrics[]> {
+    const results = await Promise.all(
+      Array.from(this.queues.keys()).map((name) =>
+        this.getQueueMetrics(name),
+      ),
+    );
+    return results.filter((m): m is QueueMetrics => m !== null);
+  }
 
   async runComputeScores(): Promise<BatchResult> {
     return this.computeScores();
@@ -95,15 +245,6 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
     return count;
   }
 
-  // ─── computeScores ──────────────────────────────────────────────────────
-
-  /**
-   * Process a batch of unfinalized claims, computing an aggregated confidence
-   * score from their stakes and marking high-confidence claims as resolved.
-   *
-   * N+1 pattern eliminated: wallets and users are bulk-fetched per claim batch
-   * rather than one DB round-trip per stake.
-   */
   private async computeScores(): Promise<BatchResult> {
     this.logger.debug('computeScores: starting');
     const result: BatchResult = { processed: 0, updated: 0, errors: 0 };
@@ -118,16 +259,13 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
       return result;
     }
 
-    // Bulk-load all stakes for this batch in one query
     const claimIds = claims.map((c) => c.id);
     const allStakes = await this.stakeRepo.find({
       where: { claimId: In(claimIds) },
     });
 
-    // Group stakes by claimId for O(1) lookup
     const stakesByClaimId = groupBy(allStakes, (s) => s.claimId);
 
-    // Bulk-load wallets and users referenced in this batch
     const walletAddresses = [...new Set(allStakes.map((s) => s.walletAddress))];
     const wallets = walletAddresses.length
       ? await this.walletRepo.find({ where: { address: In(walletAddresses) } })
@@ -142,7 +280,6 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
 
     const userById = indexBy(users, (u) => u.id);
 
-    // Process each claim
     for (const claim of claims) {
       result.processed++;
       try {
@@ -169,14 +306,11 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
         claim.confidenceScore = agg.confidence / CONFIDENCE_SCALE;
 
         if (agg.confidence > FINALIZATION_THRESHOLD) {
-          // Use transitionTo helper for validated state transition
           claim.transitionTo(ClaimState.FINALIZED, {
             verdict: agg.status === 'VERIFIED_TRUE',
             confidence: claim.confidenceScore,
           });
         }
-
-        await this.claimRepo.save(claim);
 
         await this.claimRepo.save(claim);
         await this.claimsCache.invalidateClaim(claim.id);
@@ -204,21 +338,6 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async computeReputation(): Promise<BatchResult> {
-    claimId: string,
-    updateFields: Partial<Claim>,
-  ): Promise<boolean> {
-    const result = await this.claimRepo
-      .createQueryBuilder()
-      .update(Claim)
-      .set(updateFields)
-      .where('id = :id', { id: claimId })
-      .andWhere('finalized = false')
-      .execute();
-
-    return (result.affected ?? 0) > 0;
-  }
-
-  private async computeReputation() {
     this.logger.debug('computeReputation: starting');
     const result: BatchResult = { processed: 0, updated: 0, errors: 0 };
 
@@ -230,7 +349,6 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
 
     const userIds = users.map((u) => u.id);
 
-    // Bulk-load wallets for all users in this batch
     const wallets = await this.walletRepo.find({
       where: { userId: In(userIds) },
     });
@@ -243,7 +361,6 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
       return result;
     }
 
-    // Bulk-load all stakes for these wallets
     const allStakes = await this.stakeRepo
       .createQueryBuilder('s')
       .where('s.walletAddress IN (:...addrs)', { addrs: allAddresses })
@@ -251,7 +368,6 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
 
     const stakesByWalletAddress = groupBy(allStakes, (s) => s.walletAddress);
 
-    // Bulk-load only finalized claims with a non-null verdict
     const stakedClaimIds = [...new Set(allStakes.map((s) => s.claimId))];
     const finalizedClaims =
       stakedClaimIds.length > 0
@@ -266,7 +382,6 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
 
     const claimById = indexBy(finalizedClaims, (c) => c.id);
 
-    // Process each user
     for (const user of users) {
       result.processed++;
       try {
@@ -280,7 +395,7 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
           const stakes = stakesByWalletAddress.get(wallet.address) ?? [];
           for (const stake of stakes) {
             const claim = claimById.get(stake.claimId);
-            if (!claim) continue; // not finalized or no verdict
+            if (!claim) continue;
 
             claimsVotedOn++;
             if (this.deriveVotedTrue(stake) === Boolean(claim.resolvedVerdict)) {
@@ -316,7 +431,9 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
     return result;
   }
 
-  // ─── Private helpers ────────────────────────────────────────────────────
+  private getQueue(name: QueueName): Queue | undefined {
+    return this.queues.get(name);
+  }
 
   private buildVerifications(
     claimId: string,
@@ -349,17 +466,10 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  /**
-   * Derives whether a stake represents a TRUE vote.
-   * Currently all stakes are treated as TRUE; extend this once stakes carry
-   * an explicit `verdict` field.
-   */
   private deriveVotedTrue(_stake: Stake): boolean {
     return true;
   }
 }
-
-// ─── Utility functions ────────────────────────────────────────────────────────
 
 function groupBy<T>(items: T[], keyFn: (item: T) => string): Map<string, T[]> {
   const map = new Map<string, T[]>();
