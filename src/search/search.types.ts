@@ -1,8 +1,17 @@
 export type SearchableEntity = 'claims' | 'disputes' | 'users';
 
-export type SortField = 'newest' | 'oldest' | 'relevance' | 'reputation' | 'reward';
+export enum SortField {
+  NEWEST = 'newest',
+  OLDEST = 'oldest',
+  RELEVANCE = 'relevance',
+  REPUTATION = 'reputation',
+  REWARD = 'reward',
+}
 
-export type PaginationType = 'offset' | 'cursor';
+export enum PaginationType {
+  OFFSET = 'offset',
+  CURSOR = 'cursor',
+}
 
 export interface SearchFilter {
   status?: string;

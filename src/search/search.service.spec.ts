@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SearchService } from './search.service';
+import { PaginationType, SortField } from './search.types';
 import { Claim } from '../claims/entities/claim.entity';
 import { Dispute } from '../dispute/entities/dispute.entity';
 import { User } from '../entities/user.entity';
@@ -59,8 +60,8 @@ describe('SearchService', () => {
     const result = await service.searchGlobal(
       'test',
       {},
-      { page: 1, limit: 20, type: 'offset' },
-      'newest',
+      { page: 1, limit: 20, type: PaginationType.OFFSET },
+      SortField.NEWEST,
     );
 
     expect(result.query).toBe('test');
