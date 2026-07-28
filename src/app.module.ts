@@ -32,6 +32,7 @@ import { LoggingInterceptor } from './logger/logging.interceptor';
 import { AuthModule } from './auth/auth.module';
 import { GlobalAuthGuard } from './auth/global-auth.guard';
 import { MetricsModule } from './metrics/metrics.module';
+import { HealthModule } from './health/health.module';
 
 // In-memory storage for development (no Redis needed)
 class ThrottlerMemoryStorage {
@@ -47,7 +48,9 @@ class ThrottlerMemoryStorage {
   private readonly logger = new Logger('ThrottlerMemoryStorage');
 
   constructor() {
-    this.logger.log('Using in-memory storage for rate limiting (development mode)');
+    this.logger.log(
+      'Using in-memory storage for rate limiting (development mode)',
+    );
   }
 
   async increment(
@@ -56,7 +59,12 @@ class ThrottlerMemoryStorage {
     limit: number,
     blockDuration: number,
     throttlerName: string,
-  ): Promise<{ totalHits: number; timeToExpire: number; isBlocked: boolean; timeToBlockExpire: number }> {
+  ): Promise<{
+    totalHits: number;
+    timeToExpire: number;
+    isBlocked: boolean;
+    timeToBlockExpire: number;
+  }> {
     const now = Date.now();
     const record = this.storage.get(key);
 
@@ -111,7 +119,9 @@ class ThrottlerMemoryStorage {
       totalHits: record.totalHits,
       timeToExpire: Math.max(record.expiresAt - now, 0),
       isBlocked: record.isBlocked,
-      timeToBlockExpire: record.isBlocked ? Math.max(record.blockExpiresAt - now, 0) : 0,
+      timeToBlockExpire: record.isBlocked
+        ? Math.max(record.blockExpiresAt - now, 0)
+        : 0,
     };
   }
 }
@@ -132,7 +142,12 @@ class ThrottlerRedisStorage {
     limit: number,
     blockDuration: number,
     throttlerName: string,
-  ): Promise<{ totalHits: number; timeToExpire: number; isBlocked: boolean; timeToBlockExpire: number }> {
+  ): Promise<{
+    totalHits: number;
+    timeToExpire: number;
+    isBlocked: boolean;
+    timeToBlockExpire: number;
+  }> {
     const blockKey = `${key}:blocked`;
     const [blocked, blockTimeToExpire] = await Promise.all([
       this.redis.exists(blockKey),
@@ -142,7 +157,9 @@ class ThrottlerRedisStorage {
     if (blocked) {
       const timeToExpire = await this.redis.pttl(key);
       return {
-        totalHits: await this.redis.get(key).then((value: string | null) => Number(value) || limit + 1),
+        totalHits: await this.redis
+          .get(key)
+          .then((value: string | null) => Number(value) || limit + 1),
         timeToExpire: timeToExpire > 0 ? timeToExpire : ttl,
         isBlocked: true,
         timeToBlockExpire: blockTimeToExpire > 0 ? blockTimeToExpire : 0,
@@ -183,13 +200,18 @@ class ThrottlerRedisStorage {
 }
 
 // Factory to create appropriate storage based on environment
-async function createThrottlerStorage(configService: ConfigService): Promise<any> {
+async function createThrottlerStorage(
+  configService: ConfigService,
+): Promise<any> {
   const useRedis = configService.get<string>('REDIS_HOST');
 
   if (useRedis) {
     try {
       const Redis = (await import('ioredis')).default;
-      const redisHost = configService.get<string>('throttler.redis.host', 'localhost');
+      const redisHost = configService.get<string>(
+        'throttler.redis.host',
+        'localhost',
+      );
       const redisPort = configService.get<number>('throttler.redis.port', 6379);
 
       const redis = new Redis({
@@ -210,14 +232,15 @@ async function createThrottlerStorage(configService: ConfigService): Promise<any
       return new ThrottlerRedisStorage(redis);
     } catch (error) {
       const logger = new Logger('ThrottlerModule');
-      logger.warn(`Redis connection failed, falling back to memory storage: ${error}`);
+      logger.warn(
+        `Redis connection failed, falling back to memory storage: ${error}`,
+      );
       return new ThrottlerMemoryStorage();
     }
   }
 
   return new ThrottlerMemoryStorage();
 }
-
 
 @Module({
   imports: [
@@ -232,7 +255,9 @@ async function createThrottlerStorage(configService: ConfigService): Promise<any
       database: 'database.sqlite',
       entities: [__dirname + '/**/*.entity{.ts,.js}'],
       // Allow automatic sync in development unless explicitly disabled
-      synchronize: process.env.DATABASE_SYNCHRONIZE === 'true' || process.env.NODE_ENV !== 'production',
+      synchronize:
+        process.env.DATABASE_SYNCHRONIZE === 'true' ||
+        process.env.NODE_ENV !== 'production',
       logging: process.env.DATABASE_LOGGING === 'true',
     }),
     ThrottlerModule.forRootAsync({
@@ -283,6 +308,7 @@ async function createThrottlerStorage(configService: ConfigService): Promise<any
     AuditModule,
     ThemeModule,
     MetricsModule,
+    HealthModule,
   ],
   controllers: [AppController],
   providers: [
@@ -305,5 +331,4 @@ async function createThrottlerStorage(configService: ConfigService): Promise<any
     },
   ],
 })
-export class AppModule { }
-
+export class AppModule {}
