@@ -32,6 +32,9 @@ import { LoggingInterceptor } from './logger/logging.interceptor';
 import { AuthModule } from './auth/auth.module';
 import { GlobalAuthGuard } from './auth/global-auth.guard';
 import { MetricsModule } from './metrics/metrics.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { Notification } from './notifications/entities/notification.entity';
+import { NotificationPreference } from './notifications/entities/notification-preference.entity';
 
 // In-memory storage for development (no Redis needed)
 class ThrottlerMemoryStorage {
@@ -283,6 +286,7 @@ async function createThrottlerStorage(configService: ConfigService): Promise<any
     AuditModule,
     ThemeModule,
     MetricsModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [
