@@ -11,4 +11,6 @@
 export type * from './models/User'
 export type * from './models/Wallet'
 export type * from './models/SybilScore'
+export type * from './models/SybilExplanation'
+export type * from './models/WorldIdVerification'
 export type * from './commonInputTypes'
