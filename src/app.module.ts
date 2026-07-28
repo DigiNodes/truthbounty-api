@@ -33,6 +33,7 @@ import { AuthModule } from './auth/auth.module';
 import { GlobalAuthGuard } from './auth/global-auth.guard';
 import { MetricsModule } from './metrics/metrics.module';
 import { AiAssistantModule } from './ai-assistant/ai-assistant.module';
+import { GovernanceModule } from './governance/governance.module';
 
 // In-memory storage for development (no Redis needed)
 class ThrottlerMemoryStorage {
