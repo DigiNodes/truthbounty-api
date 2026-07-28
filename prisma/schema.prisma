@@ -100,3 +100,71 @@ model WorldIdVerification {
 
   @@map("world_id_verifications")
 }
+
+model Webhook {
+  id                   String                @id @default(uuid())
+  url                  String
+  description          String?
+  ownerId              String
+  enabled              Boolean               @default(true)
+  secret               String
+  secretExpiresAt      DateTime?
+  previousSecret       String?
+  previousSecretExpiresAt DateTime?
+  consecutiveFailures  Int                   @default(0)
+  maxRetries           Int                   @default(3)
+  retryIntervalMs      Int                   @default(30000)
+  disabled             Boolean               @default(false)
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  subscriptions        WebhookSubscription[]
+  deliveries           WebhookDelivery[]
+
+  @@index([ownerId])
+  @@index([enabled])
+  @@map("webhooks")
+}
+
+model WebhookSubscription {
+  id        String   @id @default(uuid())
+  webhookId String
+  eventType String
+  filters   Json?
+  createdAt DateTime @default(now())
+
+  webhook   Webhook  @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  @@unique([webhookId, eventType])
+  @@index([webhookId])
+  @@index([eventType])
+  @@map("webhook_subscriptions")
+}
+
+model WebhookDelivery {
+  id             String   @id @default(uuid())
+  webhookId      String
+  eventType      String
+  payload        Json
+  status         String   @default("PENDING")
+  responseStatus Int?
+  responseBody   String?
+  latency        Int?
+  retryCount     Int      @default(0)
+  maxRetries     Int
+  failureReason  String?
+  requestId      String
+  nonce          String
+  signature      String
+  timestamp      String
+  createdAt      DateTime @default(now())
+  completedAt    DateTime?
+
+  webhook        Webhook  @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  @@index([webhookId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([webhookId, status])
+  @@map("webhook_deliveries")
+}

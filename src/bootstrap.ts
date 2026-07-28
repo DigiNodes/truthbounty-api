@@ -56,6 +56,7 @@ export function configureApp(app: INestApplication) {
     .addTag('leaderboard', 'User leaderboard rankings')
     .addTag('audit', 'Audit log retrieval')
     .addTag('health', 'Health check endpoints')
+    .addTag('webhooks', 'Webhook management and event delivery')
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
