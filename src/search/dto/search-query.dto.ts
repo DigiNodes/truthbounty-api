@@ -42,11 +42,11 @@ export class SearchQueryDto {
 
   @IsOptional()
   @IsEnum(SortField)
-  sort?: SortField = 'newest';
+  sort?: SortField = SortField.NEWEST;
 
   @IsOptional()
   @IsEnum(PaginationType)
-  pagination?: PaginationType = 'offset';
+  pagination?: PaginationType = PaginationType.OFFSET;
 
   @IsOptional()
   @Type(() => Number)

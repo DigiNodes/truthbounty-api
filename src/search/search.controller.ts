@@ -5,6 +5,7 @@ import { SearchQueryDto } from './dto/search-query.dto';
 import {
   GlobalSearchResult,
   PaginationParams,
+  PaginationType,
   SearchableEntity,
   SearchFilter,
   SearchResult,
@@ -27,7 +28,7 @@ export class SearchController {
       q,
       this.buildFilters(filters),
       this.buildPagination(filters),
-      (filters.sort as SortField) ?? 'newest',
+      (filters.sort as SortField) ?? SortField.NEWEST,
     );
   }
 
@@ -44,7 +45,7 @@ export class SearchController {
       q,
       this.buildFilters(filters),
       this.buildPagination(filters),
-      (filters.sort as SortField) ?? 'newest',
+      (filters.sort as SortField) ?? SortField.NEWEST,
     );
   }
 
@@ -63,7 +64,7 @@ export class SearchController {
     return {
       page: dto.page ?? 1,
       limit: dto.limit ?? 20,
-      type: dto.pagination ?? 'offset',
+      type: (dto.pagination as PaginationType) ?? PaginationType.OFFSET,
       cursor: dto.cursor,
     };
   }
