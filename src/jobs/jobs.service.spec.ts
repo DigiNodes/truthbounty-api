@@ -135,7 +135,7 @@ describe('Jobs (BullMQ & Scheduling)', () => {
 
   describe('JobsProcessor', () => {
     it('should invoke computeScores when processing compute-scores job', async () => {
-      const computeScoresSpy = jest.spyOn(service, 'computeScores').mockResolvedValue(undefined);
+      const computeScoresSpy = jest.spyOn(service as any, 'computeScores').mockResolvedValue(undefined);
 
       const mockJob = {
         id: '1',
@@ -150,7 +150,7 @@ describe('Jobs (BullMQ & Scheduling)', () => {
     });
 
     it('should invoke computeReputation when processing compute-reputation job', async () => {
-      const computeReputationSpy = jest.spyOn(service, 'computeReputation').mockResolvedValue(undefined);
+      const computeReputationSpy = jest.spyOn(service as any, 'computeReputation').mockResolvedValue(undefined);
 
       const mockJob = {
         id: '2',

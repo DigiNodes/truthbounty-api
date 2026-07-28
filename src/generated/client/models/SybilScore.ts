@@ -273,6 +273,7 @@ export type SybilScoreWhereInput = {
   compositeScore?: Prisma.FloatFilter<"SybilScore"> | number
   calculationDetails?: Prisma.StringNullableFilter<"SybilScore"> | string | null
   user?: Prisma.XOR<Prisma.UserScalarRelationFilter, Prisma.UserWhereInput>
+  explanation?: Prisma.XOR<Prisma.SybilExplanationNullableScalarRelationFilter, Prisma.SybilExplanationWhereInput> | null
 }
 
 export type SybilScoreOrderByWithRelationInput = {
@@ -287,6 +288,7 @@ export type SybilScoreOrderByWithRelationInput = {
   compositeScore?: Prisma.SortOrder
   calculationDetails?: Prisma.SortOrderInput | Prisma.SortOrder
   user?: Prisma.UserOrderByWithRelationInput
+  explanation?: Prisma.SybilExplanationOrderByWithRelationInput
 }
 
 export type SybilScoreWhereUniqueInput = Prisma.AtLeast<{
@@ -305,6 +307,7 @@ export type SybilScoreWhereUniqueInput = Prisma.AtLeast<{
   compositeScore?: Prisma.FloatFilter<"SybilScore"> | number
   calculationDetails?: Prisma.StringNullableFilter<"SybilScore"> | string | null
   user?: Prisma.XOR<Prisma.UserScalarRelationFilter, Prisma.UserWhereInput>
+  explanation?: Prisma.XOR<Prisma.SybilExplanationNullableScalarRelationFilter, Prisma.SybilExplanationWhereInput> | null
 }, "id" | "userId_createdAt">
 
 export type SybilScoreOrderByWithAggregationInput = {
@@ -352,6 +355,7 @@ export type SybilScoreCreateInput = {
   compositeScore?: number
   calculationDetails?: string | null
   user: Prisma.UserCreateNestedOneWithoutSybilScoresInput
+  explanation?: Prisma.SybilExplanationCreateNestedOneWithoutSybilScoreInput
 }
 
 export type SybilScoreUncheckedCreateInput = {
@@ -365,6 +369,7 @@ export type SybilScoreUncheckedCreateInput = {
   accuracyScore?: number
   compositeScore?: number
   calculationDetails?: string | null
+  explanation?: Prisma.SybilExplanationUncheckedCreateNestedOneWithoutSybilScoreInput
 }
 
 export type SybilScoreUpdateInput = {
@@ -378,6 +383,7 @@ export type SybilScoreUpdateInput = {
   compositeScore?: Prisma.FloatFieldUpdateOperationsInput | number
   calculationDetails?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   user?: Prisma.UserUpdateOneRequiredWithoutSybilScoresNestedInput
+  explanation?: Prisma.SybilExplanationUpdateOneWithoutSybilScoreNestedInput
 }
 
 export type SybilScoreUncheckedUpdateInput = {
@@ -391,6 +397,7 @@ export type SybilScoreUncheckedUpdateInput = {
   accuracyScore?: Prisma.FloatFieldUpdateOperationsInput | number
   compositeScore?: Prisma.FloatFieldUpdateOperationsInput | number
   calculationDetails?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  explanation?: Prisma.SybilExplanationUncheckedUpdateOneWithoutSybilScoreNestedInput
 }
 
 export type SybilScoreCreateManyInput = {
@@ -501,6 +508,11 @@ export type SybilScoreSumOrderByAggregateInput = {
   compositeScore?: Prisma.SortOrder
 }
 
+export type SybilScoreScalarRelationFilter = {
+  is?: Prisma.SybilScoreWhereInput
+  isNot?: Prisma.SybilScoreWhereInput
+}
+
 export type SybilScoreCreateNestedManyWithoutUserInput = {
   create?: Prisma.XOR<Prisma.SybilScoreCreateWithoutUserInput, Prisma.SybilScoreUncheckedCreateWithoutUserInput> | Prisma.SybilScoreCreateWithoutUserInput[] | Prisma.SybilScoreUncheckedCreateWithoutUserInput[]
   connectOrCreate?: Prisma.SybilScoreCreateOrConnectWithoutUserInput | Prisma.SybilScoreCreateOrConnectWithoutUserInput[]
@@ -555,6 +567,20 @@ export type NullableStringFieldUpdateOperationsInput = {
   set?: string | null
 }
 
+export type SybilScoreCreateNestedOneWithoutExplanationInput = {
+  create?: Prisma.XOR<Prisma.SybilScoreCreateWithoutExplanationInput, Prisma.SybilScoreUncheckedCreateWithoutExplanationInput>
+  connectOrCreate?: Prisma.SybilScoreCreateOrConnectWithoutExplanationInput
+  connect?: Prisma.SybilScoreWhereUniqueInput
+}
+
+export type SybilScoreUpdateOneRequiredWithoutExplanationNestedInput = {
+  create?: Prisma.XOR<Prisma.SybilScoreCreateWithoutExplanationInput, Prisma.SybilScoreUncheckedCreateWithoutExplanationInput>
+  connectOrCreate?: Prisma.SybilScoreCreateOrConnectWithoutExplanationInput
+  upsert?: Prisma.SybilScoreUpsertWithoutExplanationInput
+  connect?: Prisma.SybilScoreWhereUniqueInput
+  update?: Prisma.XOR<Prisma.XOR<Prisma.SybilScoreUpdateToOneWithWhereWithoutExplanationInput, Prisma.SybilScoreUpdateWithoutExplanationInput>, Prisma.SybilScoreUncheckedUpdateWithoutExplanationInput>
+}
+
 export type SybilScoreCreateWithoutUserInput = {
   id?: string
   createdAt?: Date | string
@@ -565,6 +591,7 @@ export type SybilScoreCreateWithoutUserInput = {
   accuracyScore?: number
   compositeScore?: number
   calculationDetails?: string | null
+  explanation?: Prisma.SybilExplanationCreateNestedOneWithoutSybilScoreInput
 }
 
 export type SybilScoreUncheckedCreateWithoutUserInput = {
@@ -577,6 +604,7 @@ export type SybilScoreUncheckedCreateWithoutUserInput = {
   accuracyScore?: number
   compositeScore?: number
   calculationDetails?: string | null
+  explanation?: Prisma.SybilExplanationUncheckedCreateNestedOneWithoutSybilScoreInput
 }
 
 export type SybilScoreCreateOrConnectWithoutUserInput = {
@@ -586,6 +614,7 @@ export type SybilScoreCreateOrConnectWithoutUserInput = {
 
 export type SybilScoreCreateManyUserInputEnvelope = {
   data: Prisma.SybilScoreCreateManyUserInput | Prisma.SybilScoreCreateManyUserInput[]
+  skipDuplicates?: boolean
 }
 
 export type SybilScoreUpsertWithWhereUniqueWithoutUserInput = {
@@ -620,6 +649,74 @@ export type SybilScoreScalarWhereInput = {
   calculationDetails?: Prisma.StringNullableFilter<"SybilScore"> | string | null
 }
 
+export type SybilScoreCreateWithoutExplanationInput = {
+  id?: string
+  createdAt?: Date | string
+  updatedAt?: Date | string
+  worldcoinScore?: number
+  walletAgeScore?: number
+  stakingScore?: number
+  accuracyScore?: number
+  compositeScore?: number
+  calculationDetails?: string | null
+  user: Prisma.UserCreateNestedOneWithoutSybilScoresInput
+}
+
+export type SybilScoreUncheckedCreateWithoutExplanationInput = {
+  id?: string
+  createdAt?: Date | string
+  updatedAt?: Date | string
+  userId: string
+  worldcoinScore?: number
+  walletAgeScore?: number
+  stakingScore?: number
+  accuracyScore?: number
+  compositeScore?: number
+  calculationDetails?: string | null
+}
+
+export type SybilScoreCreateOrConnectWithoutExplanationInput = {
+  where: Prisma.SybilScoreWhereUniqueInput
+  create: Prisma.XOR<Prisma.SybilScoreCreateWithoutExplanationInput, Prisma.SybilScoreUncheckedCreateWithoutExplanationInput>
+}
+
+export type SybilScoreUpsertWithoutExplanationInput = {
+  update: Prisma.XOR<Prisma.SybilScoreUpdateWithoutExplanationInput, Prisma.SybilScoreUncheckedUpdateWithoutExplanationInput>
+  create: Prisma.XOR<Prisma.SybilScoreCreateWithoutExplanationInput, Prisma.SybilScoreUncheckedCreateWithoutExplanationInput>
+  where?: Prisma.SybilScoreWhereInput
+}
+
+export type SybilScoreUpdateToOneWithWhereWithoutExplanationInput = {
+  where?: Prisma.SybilScoreWhereInput
+  data: Prisma.XOR<Prisma.SybilScoreUpdateWithoutExplanationInput, Prisma.SybilScoreUncheckedUpdateWithoutExplanationInput>
+}
+
+export type SybilScoreUpdateWithoutExplanationInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string
+  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  worldcoinScore?: Prisma.FloatFieldUpdateOperationsInput | number
+  walletAgeScore?: Prisma.FloatFieldUpdateOperationsInput | number
+  stakingScore?: Prisma.FloatFieldUpdateOperationsInput | number
+  accuracyScore?: Prisma.FloatFieldUpdateOperationsInput | number
+  compositeScore?: Prisma.FloatFieldUpdateOperationsInput | number
+  calculationDetails?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  user?: Prisma.UserUpdateOneRequiredWithoutSybilScoresNestedInput
+}
+
+export type SybilScoreUncheckedUpdateWithoutExplanationInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string
+  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  userId?: Prisma.StringFieldUpdateOperationsInput | string
+  worldcoinScore?: Prisma.FloatFieldUpdateOperationsInput | number
+  walletAgeScore?: Prisma.FloatFieldUpdateOperationsInput | number
+  stakingScore?: Prisma.FloatFieldUpdateOperationsInput | number
+  accuracyScore?: Prisma.FloatFieldUpdateOperationsInput | number
+  compositeScore?: Prisma.FloatFieldUpdateOperationsInput | number
+  calculationDetails?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+}
+
 export type SybilScoreCreateManyUserInput = {
   id?: string
   createdAt?: Date | string
@@ -642,6 +739,7 @@ export type SybilScoreUpdateWithoutUserInput = {
   accuracyScore?: Prisma.FloatFieldUpdateOperationsInput | number
   compositeScore?: Prisma.FloatFieldUpdateOperationsInput | number
   calculationDetails?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  explanation?: Prisma.SybilExplanationUpdateOneWithoutSybilScoreNestedInput
 }
 
 export type SybilScoreUncheckedUpdateWithoutUserInput = {
@@ -654,6 +752,7 @@ export type SybilScoreUncheckedUpdateWithoutUserInput = {
   accuracyScore?: Prisma.FloatFieldUpdateOperationsInput | number
   compositeScore?: Prisma.FloatFieldUpdateOperationsInput | number
   calculationDetails?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  explanation?: Prisma.SybilExplanationUncheckedUpdateOneWithoutSybilScoreNestedInput
 }
 
 export type SybilScoreUncheckedUpdateManyWithoutUserInput = {
@@ -682,6 +781,7 @@ export type SybilScoreSelect<ExtArgs extends runtime.Types.Extensions.InternalAr
   compositeScore?: boolean
   calculationDetails?: boolean
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
+  explanation?: boolean | Prisma.SybilScore$explanationArgs<ExtArgs>
 }, ExtArgs["result"]["sybilScore"]>
 
 export type SybilScoreSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -728,6 +828,7 @@ export type SybilScoreSelectScalar = {
 export type SybilScoreOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "userId" | "worldcoinScore" | "walletAgeScore" | "stakingScore" | "accuracyScore" | "compositeScore" | "calculationDetails", ExtArgs["result"]["sybilScore"]>
 export type SybilScoreInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
+  explanation?: boolean | Prisma.SybilScore$explanationArgs<ExtArgs>
 }
 export type SybilScoreIncludeCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
@@ -740,6 +841,7 @@ export type $SybilScorePayload<ExtArgs extends runtime.Types.Extensions.Internal
   name: "SybilScore"
   objects: {
     user: Prisma.$UserPayload<ExtArgs>
+    explanation: Prisma.$SybilExplanationPayload<ExtArgs> | null
   }
   scalars: runtime.Types.Extensions.GetPayloadResult<{
     id: string
@@ -1147,6 +1249,7 @@ readonly fields: SybilScoreFieldRefs;
 export interface Prisma__SybilScoreClient<T, Null = never, ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs, GlobalOmitOptions = {}> extends Prisma.PrismaPromise<T> {
   readonly [Symbol.toStringTag]: "PrismaPromise"
   user<T extends Prisma.UserDefaultArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.UserDefaultArgs<ExtArgs>>): Prisma.Prisma__UserClient<runtime.Types.Result.GetResult<Prisma.$UserPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | Null, Null, ExtArgs, GlobalOmitOptions>
+  explanation<T extends Prisma.SybilScore$explanationArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.SybilScore$explanationArgs<ExtArgs>>): Prisma.Prisma__SybilExplanationClient<runtime.Types.Result.GetResult<Prisma.$SybilExplanationPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | null, null, ExtArgs, GlobalOmitOptions>
   /**
    * Attaches callbacks for the resolution and/or rejection of the Promise.
    * @param onfulfilled The callback to execute when the Promise is resolved.
@@ -1415,6 +1518,7 @@ export type SybilScoreCreateManyArgs<ExtArgs extends runtime.Types.Extensions.In
    * The data used to create many SybilScores.
    */
   data: Prisma.SybilScoreCreateManyInput | Prisma.SybilScoreCreateManyInput[]
+  skipDuplicates?: boolean
 }
 
 /**
@@ -1433,6 +1537,7 @@ export type SybilScoreCreateManyAndReturnArgs<ExtArgs extends runtime.Types.Exte
    * The data used to create many SybilScores.
    */
   data: Prisma.SybilScoreCreateManyInput | Prisma.SybilScoreCreateManyInput[]
+  skipDuplicates?: boolean
   /**
    * Choose, which related nodes to fetch as well
    */
@@ -1577,6 +1682,25 @@ export type SybilScoreDeleteManyArgs<ExtArgs extends runtime.Types.Extensions.In
    * Limit how many SybilScores to delete.
    */
   limit?: number
+}
+
+/**
+ * SybilScore.explanation
+ */
+export type SybilScore$explanationArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  /**
+   * Select specific fields to fetch from the SybilExplanation
+   */
+  select?: Prisma.SybilExplanationSelect<ExtArgs> | null
+  /**
+   * Omit specific fields from the SybilExplanation
+   */
+  omit?: Prisma.SybilExplanationOmit<ExtArgs> | null
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.SybilExplanationInclude<ExtArgs> | null
+  where?: Prisma.SybilExplanationWhereInput
 }
 
 /**

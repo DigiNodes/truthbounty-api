@@ -1,6 +1,6 @@
 import {
   MIN_AGGREGATION_CONFIDENCE,
-} from '../constants/protocol';
+} from '../constant/protocol';
 
 export function applyConfidenceFloor(
   confidence: number,
