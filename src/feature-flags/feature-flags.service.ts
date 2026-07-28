@@ -2,7 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { RedisService } from '../redis/redis.service';
-import { FeatureFlag, FeatureFlagType } from './entities/feature-flag.entity';
+import { FeatureFlag } from './entities/feature-flag.entity';
 import {
   CreateFeatureFlagInput,
   FeatureFlagContext,
@@ -75,7 +75,7 @@ export class FeatureFlagsService {
       case 'role': {
         const enabled = Boolean(
           context.roles?.length &&
-            rules.roles?.some((role) => context.roles!.includes(role)),
+          rules.roles?.some((role) => context.roles!.includes(role)),
         );
         return { key, enabled, reason: 'role' };
       }
@@ -101,8 +101,10 @@ export class FeatureFlagsService {
   }
 
   async findAll(environment?: string): Promise<FeatureFlag[]> {
-    const env = environment ?? this.getDefaultEnvironment();
-    return this.flagRepo.find({ where: { environment }, order: { key: 'ASC' } });
+    return this.flagRepo.find({
+      where: { environment: environment ?? this.getDefaultEnvironment() },
+      order: { key: 'ASC' },
+    });
   }
 
   async findOne(id: string): Promise<FeatureFlag> {
@@ -112,8 +114,9 @@ export class FeatureFlagsService {
   }
 
   async findByKey(key: string, environment?: string): Promise<FeatureFlag> {
-    const env = environment ?? this.getDefaultEnvironment();
-    const flag = await this.flagRepo.findOne({ where: { key, environment } });
+    const flag = await this.flagRepo.findOne({
+      where: { key, environment: environment ?? this.getDefaultEnvironment() },
+    });
     if (!flag) throw new NotFoundException(`Feature flag ${key} not found`);
     return flag;
   }
@@ -197,12 +200,19 @@ export class FeatureFlagsService {
 
     const flag = await this.flagRepo.findOne({ where: { key, environment } });
     if (flag) {
-      await this.redisService.set(cacheKey, JSON.stringify(flag), CACHE_TTL_SECONDS);
+      await this.redisService.set(
+        cacheKey,
+        JSON.stringify(flag),
+        CACHE_TTL_SECONDS,
+      );
     }
     return flag;
   }
 
-  private async invalidateCache(key: string, environment: string): Promise<void> {
+  private async invalidateCache(
+    key: string,
+    environment: string,
+  ): Promise<void> {
     await this.redisService.del(this.cacheKey(key, environment));
   }
 

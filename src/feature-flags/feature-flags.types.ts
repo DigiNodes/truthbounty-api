@@ -38,7 +38,14 @@ export interface UpdateFeatureFlagInput {
 export interface FeatureFlagEvaluationResult {
   key: string;
   enabled: boolean;
-  reason: 'boolean' | 'percentage' | 'user' | 'role' | 'environment' | 'time' | 'disabled';
+  reason:
+    | 'boolean'
+    | 'percentage'
+    | 'user'
+    | 'role'
+    | 'environment'
+    | 'time'
+    | 'disabled';
 }
 
 export interface ConfigurationHistoryEntry {

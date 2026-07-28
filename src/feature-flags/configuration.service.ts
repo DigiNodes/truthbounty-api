@@ -28,7 +28,9 @@ export class ConfigurationService {
       }
     }
 
-    const record = await this.configRepo.findOne({ where: { key, environment: env } });
+    const record = await this.configRepo.findOne({
+      where: { key, environment: env },
+    });
     if (!record) return null;
 
     await this.redisService.set(
@@ -129,7 +131,10 @@ export class ConfigurationService {
     }));
   }
 
-  private async invalidateCache(key: string, environment: string): Promise<void> {
+  private async invalidateCache(
+    key: string,
+    environment: string,
+  ): Promise<void> {
     await this.redisService.del(this.cacheKey(key, environment));
   }
 

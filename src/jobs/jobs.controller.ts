@@ -1,11 +1,4 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Param,
-  Body,
-  UseGuards,
-} from '@nestjs/common';
+import { Controller, Get, Post, Param, Body, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { JobsService } from './jobs.service';
@@ -68,7 +61,9 @@ export class JobsController {
 
   @Get('metrics/:queue')
   @ApiOperation({ summary: 'Get metrics for a single queue' })
-  async getMetrics(@Param('queue') queue: QueueName): Promise<QueueMetrics | null> {
+  async getMetrics(
+    @Param('queue') queue: QueueName,
+  ): Promise<QueueMetrics | null> {
     return this.jobsService.getQueueMetrics(queue);
   }
 

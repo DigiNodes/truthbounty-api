@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+
 import { SearchService } from './search.service';
 import { PaginationType, SortField } from './search.types';
 import { Claim } from '../claims/entities/claim.entity';

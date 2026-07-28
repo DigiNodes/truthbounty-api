@@ -15,7 +15,8 @@ export class JobsProcessor extends WorkerHost {
 
   async process(job: Job<any, any, string>): Promise<any> {
     this.logger.log(`Processing job ${job.id} of name ${job.name}`);
-    switch (job.name) {
+    const name = job.name as JobName;
+    switch (name) {
       case JobName.COMPUTE_SCORES:
         return this.jobsService.runComputeScores();
       case JobName.COMPUTE_REPUTATION:

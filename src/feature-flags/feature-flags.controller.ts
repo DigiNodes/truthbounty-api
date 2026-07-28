@@ -15,7 +15,10 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { FeatureFlagsService } from './feature-flags.service';
 import { ConfigurationService } from './configuration.service';
 import { AuditTrailService } from '../audit/services/audit-trail.service';
-import { AuditActionType, AuditEntityType } from '../audit/entities/audit-log.entity';
+import {
+  AuditActionType,
+  AuditEntityType,
+} from '../audit/entities/audit-log.entity';
 import { FeatureFlag } from './entities/feature-flag.entity';
 import { ConfigurationValue } from './entities/configuration-value.entity';
 import {
@@ -24,6 +27,10 @@ import {
   FeatureFlagEvaluationResult,
   UpdateFeatureFlagInput,
 } from './feature-flags.types';
+
+interface RequestWithUser {
+  user?: { userId?: string; id?: string };
+}
 
 @ApiTags('Feature Flags & Configuration')
 @Controller()
@@ -36,7 +43,9 @@ export class FeatureFlagsController {
 
   @Get('feature-flags')
   @ApiOperation({ summary: 'List feature flags' })
-  listFlags(@Query('environment') environment?: string): Promise<FeatureFlag[]> {
+  listFlags(
+    @Query('environment') environment?: string,
+  ): Promise<FeatureFlag[]> {
     return this.flagsService.findAll(environment);
   }
 
@@ -68,10 +77,13 @@ export class FeatureFlagsController {
   @ApiOperation({ summary: 'Create a feature flag' })
   async createFlag(
     @Body() input: CreateFeatureFlagInput,
-    @Request() req: any,
+    @Request() req: RequestWithUser,
   ): Promise<FeatureFlag> {
-    const userId = req.user?.userId ?? req.user?.id;
-    const flag = await this.flagsService.create({ ...input, createdBy: userId });
+    const userId = this.userIdFrom(req);
+    const flag = await this.flagsService.create({
+      ...input,
+      createdBy: userId,
+    });
     await this.auditTrailService.log({
       actionType: AuditActionType.CONFIG_CREATED,
       entityType: AuditEntityType.CONFIGURATION,
@@ -90,9 +102,9 @@ export class FeatureFlagsController {
   async updateFlag(
     @Param('id') id: string,
     @Body() input: UpdateFeatureFlagInput,
-    @Request() req: any,
+    @Request() req: RequestWithUser,
   ): Promise<FeatureFlag> {
-    const userId = req.user?.userId ?? req.user?.id;
+    const userId = this.userIdFrom(req);
     const before = await this.flagsService.findOne(id);
     const flag = await this.flagsService.update(id, input, userId);
     await this.auditTrailService.log({
@@ -114,9 +126,9 @@ export class FeatureFlagsController {
   async toggleFlag(
     @Param('id') id: string,
     @Body('enabled') enabled: boolean,
-    @Request() req: any,
+    @Request() req: RequestWithUser,
   ): Promise<FeatureFlag> {
-    const userId = req.user?.userId ?? req.user?.id;
+    const userId = this.userIdFrom(req);
     const flag = await this.flagsService.toggle(id, enabled, userId);
     await this.auditTrailService.log({
       actionType: enabled
@@ -138,9 +150,9 @@ export class FeatureFlagsController {
   async rollbackFlag(
     @Param('id') id: string,
     @Body('targetVersion') targetVersion: number,
-    @Request() req: any,
+    @Request() req: RequestWithUser,
   ): Promise<FeatureFlag> {
-    const userId = req.user?.userId ?? req.user?.id;
+    const userId = this.userIdFrom(req);
     const flag = await this.flagsService.rollback(id, targetVersion);
     await this.auditTrailService.log({
       actionType: AuditActionType.CONFIG_ROLLED_BACK,
@@ -176,10 +188,16 @@ export class FeatureFlagsController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Set a configuration value' })
   async setConfig(
-    @Body() input: { key: string; value: unknown; environment?: string; changeReason?: string },
-    @Request() req: any,
+    @Body()
+    input: {
+      key: string;
+      value: unknown;
+      environment?: string;
+      changeReason?: string;
+    },
+    @Request() req: RequestWithUser,
   ): Promise<ConfigurationValue> {
-    const userId = req.user?.userId ?? req.user?.id;
+    const userId = this.userIdFrom(req);
     const existing = await this.configService.get(input.key, input.environment);
     const saved = await this.configService.set(
       input.key,
@@ -206,8 +224,11 @@ export class FeatureFlagsController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete a configuration value' })
-  async deleteConfig(@Param('id') id: string, @Request() req: any): Promise<void> {
-    const userId = req.user?.userId ?? req.user?.id;
+  async deleteConfig(
+    @Param('id') id: string,
+    @Request() req: RequestWithUser,
+  ): Promise<void> {
+    const userId = this.userIdFrom(req);
     const before = await this.configService.findOne(id);
     await this.configService.delete(id);
     await this.auditTrailService.log({
@@ -218,5 +239,9 @@ export class FeatureFlagsController {
       description: `Deleted configuration ${before.key}`,
       beforeState: before as unknown as Record<string, any>,
     });
+  }
+
+  private userIdFrom(req: RequestWithUser): string | undefined {
+    return req.user?.userId ?? req.user?.id;
   }
 }

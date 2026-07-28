@@ -8,10 +8,7 @@ import { User } from '../entities/user.entity';
 import { RedisModule } from '../redis/redis.module';
 
 @Module({
-  imports: [
-    TypeOrmModule.forFeature([Claim, Dispute, User]),
-    RedisModule,
-  ],
+  imports: [TypeOrmModule.forFeature([Claim, Dispute, User]), RedisModule],
   providers: [SearchService],
   controllers: [SearchController],
   exports: [SearchService],

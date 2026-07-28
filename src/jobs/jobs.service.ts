@@ -12,10 +12,13 @@ import { Wallet } from '../entities/wallet.entity';
 import { Claim, ClaimState } from '../claims/entities/claim.entity';
 import { User } from '../entities/user.entity';
 import { AggregationService } from '../aggregation/aggregation.service';
-import { VerificationVerdict } from '../aggregation/aggregation.types';
+import {
+  ClaimStatus,
+  VerificationVerdict,
+} from '../aggregation/aggregation.types';
 import { ClaimsCache } from '../cache/claims.cache';
 import { InjectQueue } from '@nestjs/bullmq';
-import { Job, Queue } from 'bullmq';
+import { Job, JobsOptions, Queue } from 'bullmq';
 import { SybilResistanceService } from '../sybil-resistance/sybil-resistance.service';
 import { Cron } from '@nestjs/schedule';
 import {
@@ -79,10 +82,12 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit(): Promise<void> {
+    await Promise.resolve();
     this.logger.log('JobsService initialized with BullMQ queues');
   }
 
   async onModuleDestroy(): Promise<void> {
+    await Promise.resolve();
     this.logger.log('JobsService shutting down');
   }
 
@@ -132,16 +137,14 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
     const queue = this.getQueue(queueName);
     if (!queue) return null;
 
+    const options: JobsOptions = {
+      repeat: { pattern: cron },
+      attempts: DEFAULT_RETRY_POLICY.attempts,
+      backoff: DEFAULT_RETRY_POLICY.backoff,
+    };
+
     try {
-      const job = await queue.add(
-        name,
-        data,
-        {
-          repeat: { pattern: cron },
-          attempts: DEFAULT_RETRY_POLICY.attempts,
-          backoff: DEFAULT_RETRY_POLICY.backoff,
-        } as any,
-      );
+      const job = await queue.add(name, data, options);
       this.logger.log(`Scheduled recurring job ${name} with cron ${cron}`);
       return job as Job<T>;
     } catch (error) {
@@ -155,9 +158,21 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
   @Cron('0 */1 * * *')
   async runHourlyMaintenance(): Promise<void> {
     this.logger.log('Hourly maintenance cron triggered');
-    await this.enqueue(JobName.COMPUTE_SCORES, {}, { priority: JobPriority.NORMAL });
-    await this.enqueue(JobName.COMPUTE_REPUTATION, {}, { priority: JobPriority.NORMAL });
-    await this.enqueue(JobName.CLEANUP_SYBIL_HISTORY, {}, { priority: JobPriority.LOW });
+    await this.enqueue(
+      JobName.COMPUTE_SCORES,
+      {},
+      { priority: JobPriority.NORMAL },
+    );
+    await this.enqueue(
+      JobName.COMPUTE_REPUTATION,
+      {},
+      { priority: JobPriority.NORMAL },
+    );
+    await this.enqueue(
+      JobName.CLEANUP_SYBIL_HISTORY,
+      {},
+      { priority: JobPriority.LOW },
+    );
   }
 
   async retryFailed(queueName: QueueName): Promise<number> {
@@ -224,9 +239,7 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
 
   async getAllQueueMetrics(): Promise<QueueMetrics[]> {
     const results = await Promise.all(
-      Array.from(this.queues.keys()).map((name) =>
-        this.getQueueMetrics(name),
-      ),
+      Array.from(this.queues.keys()).map((name) => this.getQueueMetrics(name)),
     );
     return results.filter((m): m is QueueMetrics => m !== null);
   }
@@ -287,7 +300,9 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
         const stakes = stakesByClaimId.get(claim.id) ?? [];
 
         if (stakes.length === 0) {
-          this.logger.debug(`Claim ${claim.id}: no stakes — marking inconclusive`);
+          this.logger.debug(
+            `Claim ${claim.id}: no stakes — marking inconclusive`,
+          );
           claim.confidenceScore = 0;
           await this.claimRepo.save(claim);
           result.updated++;
@@ -308,7 +323,7 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
 
         if (agg.confidence > FINALIZATION_THRESHOLD) {
           claim.transitionTo(ClaimState.FINALIZED, {
-            verdict: agg.status === 'VERIFIED_TRUE',
+            verdict: agg.status === ClaimStatus.VERIFIED_TRUE,
             confidence: claim.confidenceScore,
           });
         }
@@ -399,7 +414,9 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
             if (!claim) continue;
 
             claimsVotedOn++;
-            if (this.deriveVotedTrue(stake) === Boolean(claim.resolvedVerdict)) {
+            if (
+              this.deriveVotedTrue(stake) === Boolean(claim.resolvedVerdict)
+            ) {
               claimsCorrect++;
             }
           }
@@ -446,10 +463,12 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
       const wallet = walletByAddress.get(stake.walletAddress);
       const user = wallet ? userById.get(wallet.userId) : null;
 
+      const rawAmount = (stake as unknown as { amount?: string | number })
+        .amount;
       const stakeAmount =
-        typeof (stake as any).amount === 'string'
-          ? parseFloat((stake as any).amount)
-          : Number((stake as any).amount ?? 0);
+        typeof rawAmount === 'string'
+          ? parseFloat(rawAmount)
+          : Number(rawAmount ?? 0);
 
       const reputationWeight = user
         ? Math.max(0, Math.min(1, (user.reputation ?? 0) / 100))
@@ -462,12 +481,14 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
         verdict: VerificationVerdict.TRUE,
         stakeAmount,
         reputationWeight,
-        createdAt: (stake as any).updatedAt ?? new Date(),
+        createdAt:
+          (stake as unknown as { updatedAt?: Date }).updatedAt ?? new Date(),
       };
     });
   }
 
   private deriveVotedTrue(_stake: Stake): boolean {
+    void _stake;
     return true;
   }
 }

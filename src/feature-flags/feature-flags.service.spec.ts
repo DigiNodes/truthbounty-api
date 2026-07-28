@@ -82,10 +82,14 @@ describe('FeatureFlagsService', () => {
       version: 1,
     });
 
-    const included = await service.evaluate('beta-feature', { userId: 'user-123' });
+    const included = await service.evaluate('beta-feature', {
+      userId: 'user-123',
+    });
     expect(included.enabled).toBe(true);
 
-    const excluded = await service.evaluate('beta-feature', { userId: 'user-999' });
+    const excluded = await service.evaluate('beta-feature', {
+      userId: 'user-999',
+    });
     expect(excluded.enabled).toBe(false);
   });
 

@@ -59,7 +59,11 @@ export class SearchService {
       users,
     };
 
-    await this.redisService.set(cacheKey, JSON.stringify(result), CACHE_TTL_SECONDS);
+    await this.redisService.set(
+      cacheKey,
+      JSON.stringify(result),
+      CACHE_TTL_SECONDS,
+    );
     return result;
   }
 
@@ -78,7 +82,7 @@ export class SearchService {
       case 'users':
         return this.searchUsers(query, filters, pagination, sort);
       default:
-        throw new BadRequestException(`Unknown entity: ${entity}`);
+        throw new BadRequestException(`Unknown entity: ${String(entity)}`);
     }
   }
 
@@ -179,7 +183,7 @@ export class SearchService {
       });
     }
 
-    if (sort === 'reputation') {
+    if ((sort as string) === 'reputation') {
       qb.orderBy('user.reputation', 'DESC');
     } else {
       this.applySorting(qb, sort, 'user');
@@ -193,7 +197,8 @@ export class SearchService {
     sort: SortField,
     alias: string,
   ): void {
-    switch (sort) {
+    const sortValue = sort as string;
+    switch (sortValue) {
       case 'oldest':
         qb.orderBy(`${alias}.createdAt`, 'ASC');
         break;
@@ -231,6 +236,6 @@ export class SearchService {
     pagination: PaginationParams,
     sort: SortField,
   ): string {
-    return `search:global:${query}:${JSON.stringify(filters)}:${sort}:${pagination.page}:${pagination.limit}`;
+    return `search:global:${query}:${JSON.stringify(filters)}:${String(sort)}:${pagination.page}:${pagination.limit}`;
   }
 }
