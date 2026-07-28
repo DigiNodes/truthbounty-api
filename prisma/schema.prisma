@@ -20,6 +20,8 @@ model User {
   // Primary wallet address — canonical identifier for the user
   walletAddress String @unique
 
+  role String @default("USER")
+
   reputation Int @default(0)
 
   // Sybil Resistance

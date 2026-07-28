@@ -33,6 +33,55 @@ export enum AuditActionType {
   USER_UPDATED = 'USER_UPDATED',
   WALLET_UNLINKED = 'WALLET_UNLINKED',
   VERIFICATION_INITIATED = 'VERIFICATION_INITIATED',
+
+  // Authentication & Authorization
+  LOGIN_SUCCESS = 'LOGIN_SUCCESS',
+  LOGIN_FAILED = 'LOGIN_FAILED',
+  LOGOUT = 'LOGOUT',
+  CHALLENGE_REQUESTED = 'CHALLENGE_REQUESTED',
+  TOKEN_REFRESHED = 'TOKEN_REFRESHED',
+  TOKEN_REVOKED = 'TOKEN_REVOKED',
+  AUTHORIZATION_FAILED = 'AUTHORIZATION_FAILED',
+  PERMISSION_DENIED = 'PERMISSION_DENIED',
+
+  // Administrative actions
+  ADMIN_ACTION = 'ADMIN_ACTION',
+  USER_BANNED = 'USER_BANNED',
+  USER_UNBANNED = 'USER_UNBANNED',
+  USER_ROLE_CHANGED = 'USER_ROLE_CHANGED',
+  SYSTEM_CONFIG_CHANGED = 'SYSTEM_CONFIG_CHANGED',
+  FEATURE_FLAG_CHANGED = 'FEATURE_FLAG_CHANGED',
+
+  // Moderator actions
+  MODERATOR_ACTION = 'MODERATOR_ACTION',
+  EVIDENCE_HIDDEN = 'EVIDENCE_HIDDEN',
+  EVIDENCE_RESTORED = 'EVIDENCE_RESTORED',
+  FLAG_REVIEWED = 'FLAG_REVIEWED',
+
+  // Governance actions
+  PROPOSAL_CREATED = 'PROPOSAL_CREATED',
+  PROPOSAL_UPDATED = 'PROPOSAL_UPDATED',
+  VOTE_CAST = 'VOTE_CAST',
+  VOTE_CHANGED = 'VOTE_CHANGED',
+  PROPOSAL_EXECUTED = 'PROPOSAL_EXECUTED',
+  PROPOSAL_CANCELLED = 'PROPOSAL_CANCELLED',
+
+  // Dispute actions
+  DISPUTE_CREATED = 'DISPUTE_CREATED',
+  DISPUTE_UPDATED = 'DISPUTE_UPDATED',
+  DISPUTE_RESOLVED = 'DISPUTE_RESOLVED',
+  DISPUTE_ESCALATED = 'DISPUTE_ESCALATED',
+
+  // Staking actions
+  STAKE_DEPOSITED = 'STAKE_DEPOSITED',
+  STAKE_WITHDRAWN = 'STAKE_WITHDRAWN',
+  STAKE_SLASHED = 'STAKE_SLASHED',
+
+  // Security events
+  SUSPICIOUS_ACTIVITY = 'SUSPICIOUS_ACTIVITY',
+  RATE_LIMIT_EXCEEDED = 'RATE_LIMIT_EXCEEDED',
+  INTEGRITY_VIOLATION = 'INTEGRITY_VIOLATION',
+  ACCESS_AUDITED = 'ACCESS_AUDITED',
 }
 
 export enum AuditEntityType {
@@ -41,6 +90,35 @@ export enum AuditEntityType {
   REWARD = 'REWARD',
   USER = 'USER',
   WALLET = 'WALLET',
+  DISPUTE = 'DISPUTE',
+  PROPOSAL = 'PROPOSAL',
+  VOTE = 'VOTE',
+  STAKE = 'STAKE',
+  CONFIG = 'CONFIG',
+  AUDIT_LOG = 'AUDIT_LOG',
+  SYSTEM = 'SYSTEM',
+}
+
+export enum AuditEventType {
+  AUTHENTICATION = 'AUTHENTICATION',
+  AUTHORIZATION = 'AUTHORIZATION',
+  API_REQUEST = 'API_REQUEST',
+  ADMINISTRATIVE = 'ADMINISTRATIVE',
+  MODERATOR = 'MODERATOR',
+  GOVERNANCE = 'GOVERNANCE',
+  VERIFICATION = 'VERIFICATION',
+  DISPUTE = 'DISPUTE',
+  REWARD = 'REWARD',
+  CONFIG_CHANGE = 'CONFIG_CHANGE',
+  SECURITY = 'SECURITY',
+  STAKING = 'STAKING',
+}
+
+export enum AuditSeverity {
+  INFO = 'INFO',
+  WARNING = 'WARNING',
+  ERROR = 'ERROR',
+  CRITICAL = 'CRITICAL',
 }
 
 @Entity('audit_logs')
@@ -51,6 +129,12 @@ export enum AuditEntityType {
 @Index(['entityId'])
 @Index(['userId', 'createdAt'])
 @Index(['actionType', 'createdAt'])
+@Index(['eventType'])
+@Index(['severity'])
+@Index(['actorRole'])
+@Index(['archived'])
+@Index(['retentionUntil'])
+@Index(['integrityHash'])
 export class AuditLog {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -80,6 +164,21 @@ export class AuditLog {
   @Column({ nullable: true })
   walletAddress: string;
 
+  @Column({ type: 'varchar', nullable: true })
+  actorRole: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  eventType: AuditEventType;
+
+  @Column({ type: 'varchar', nullable: true })
+  resourceType: string;
+
+  @Column({
+    type: 'varchar',
+    default: AuditSeverity.INFO,
+  })
+  severity: AuditSeverity;
+
   @Column({ type: 'text', nullable: true })
   description: string;
 
@@ -98,9 +197,21 @@ export class AuditLog {
   @Column({ nullable: true })
   userAgent: string;
 
-  @CreateDateColumn()
-  createdAt: Date;
+  @Column({ nullable: true })
+  requestId: string;
 
   @Column({ nullable: true })
   correlationId: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  integrityHash: string;
+
+  @Column({ default: false })
+  archived: boolean;
+
+  @Column({ type: 'datetime', nullable: true })
+  retentionUntil: Date | null;
+
+  @CreateDateColumn()
+  createdAt: Date;
 }

@@ -111,12 +111,16 @@ export class AuthService {
     // until they link their wallet properly
     const userId = user?.user?.id || null;
 
-    // 8. Generate JWT token
+    // 8. Determine user role
+    const role = user?.user?.role || 'USER';
+
+    // 9. Generate JWT token
     // Align 'sub' with RFC 7519: prefer stable unique subject (userId) when available
     const subject = userId ? String(userId) : address.toLowerCase();
     const payload = {
       address: address.toLowerCase(),
       userId,
+      role,
       sub: subject,
     };
 
@@ -127,6 +131,7 @@ export class AuthService {
       user: {
         id: userId,
         address: address.toLowerCase(),
+        role,
       },
     };
   }
@@ -150,10 +155,14 @@ export class AuthService {
         })
       : null;
 
+    const role = wallet?.user?.role || payload.role || 'USER';
+
     return {
       address: wallet?.address || address,
       userId: wallet?.user?.id || userId,
+      role,
       user: wallet?.user || null,
+      sub: payload.sub,
     };
   }
 

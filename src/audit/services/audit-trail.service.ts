@@ -7,8 +7,11 @@ import {
   AuditLog,
   AuditActionType,
   AuditEntityType,
+  AuditEventType,
+  AuditSeverity,
 } from '../entities/audit-log.entity';
 import { maskIp } from '../utils/ip-masking';
+import { generateAuditHash, verifyAuditIntegrity } from '../utils/integrity';
 
 export interface AuditLogInput {
   actionType: AuditActionType;
@@ -16,11 +19,16 @@ export interface AuditLogInput {
   entityId: string;
   userId?: string;
   walletAddress?: string;
+  actorRole?: string;
+  eventType?: AuditEventType;
+  resourceType?: string;
+  severity?: AuditSeverity;
   description?: string;
   beforeState?: Record<string, any>;
   afterState?: Record<string, any>;
   metadata?: Record<string, any>;
   correlationId?: string;
+  requestId?: string;
 }
 
 @Injectable()
@@ -34,56 +42,83 @@ export class AuditTrailService {
     private readonly request: Request,
   ) {}
 
-  /**
-   * Log an action to the audit trail
-   */
   async log(input: AuditLogInput): Promise<void> {
     try {
+      const correlationId = input.correlationId || this.getCorrelationId();
+      const requestId = input.requestId || this.getRequestId();
+      const ipAddress = maskIp(this.getClientIp());
+      const userAgent = this.request?.get('user-agent');
+
       const auditLog = this.auditLogRepo.create({
         actionType: input.actionType,
         entityType: input.entityType,
         entityId: input.entityId,
         userId: input.userId,
         walletAddress: input.walletAddress,
+        actorRole: input.actorRole,
+        eventType: input.eventType,
+        resourceType: input.resourceType,
+        severity: input.severity || AuditSeverity.INFO,
         description: input.description,
         beforeState: input.beforeState,
         afterState: input.afterState,
         metadata: input.metadata,
-        correlationId: input.correlationId || this.getCorrelationId(),
-        ipAddress: maskIp(this.getClientIp()),
-        userAgent: this.request?.get('user-agent'),
+        correlationId,
+        requestId,
+        ipAddress,
+        userAgent,
       });
 
-      await this.auditLogRepo.save(auditLog);
+      const saved = await this.auditLogRepo.save(auditLog);
+
+      const hash = generateAuditHash({
+        id: saved.id,
+        actionType: saved.actionType,
+        entityType: saved.entityType,
+        entityId: saved.entityId,
+        userId: saved.userId,
+        walletAddress: saved.walletAddress,
+        description: saved.description,
+        beforeState: saved.beforeState,
+        afterState: saved.afterState,
+        metadata: saved.metadata,
+        ipAddress: saved.ipAddress,
+        userAgent: saved.userAgent,
+        correlationId: saved.correlationId,
+        createdAt: saved.createdAt,
+      });
+
+      await this.auditLogRepo.update(saved.id, { integrityHash: hash });
+
       this.logger.debug(
-        `Audit logged: ${input.actionType} on ${input.entityType} ${input.entityId}`,
+        `Audit logged: ${input.actionType} on ${input.entityType} ${input.entityId} (hash: ${hash.slice(0, 12)}...)`,
       );
     } catch (error) {
       this.logger.error(`Failed to log audit: ${error.message}`, error.stack);
-      // Don't throw - audit logging should not break the application
     }
   }
 
-  /**
-   * Get audit logs for a specific entity
-   */
+  async verifyIntegrity(id: string): Promise<{ valid: boolean; record: AuditLog | null }> {
+    const record = await this.auditLogRepo.findOne({ where: { id } });
+    if (!record) {
+      return { valid: false, record: null };
+    }
+
+    const valid = verifyAuditIntegrity(record);
+    return { valid, record };
+  }
+
   async getEntityAuditLogs(
     entityType: AuditEntityType,
     entityId: string,
   ): Promise<AuditLog[]> {
     return this.auditLogRepo.find({
-      where: {
-        entityType,
-        entityId,
-      },
+      where: { entityType, entityId },
       order: { createdAt: 'DESC' },
       relations: ['user'],
     });
   }
 
-  /**
-   * Get audit logs for a specific user
-   */
   async getUserAuditLogs(
     userId: string,
     limit = 100,
@@ -100,9 +135,6 @@ export class AuditTrailService {
     return { logs, total };
   }
 
-  /**
-   * Get audit logs for a specific action type
-   */
   async getActionAuditLogs(
     actionType: AuditActionType,
     limit = 100,
@@ -119,9 +151,6 @@ export class AuditTrailService {
     return { logs, total };
   }
 
-  /**
-   * Get all audit logs for a specific entity type with filters
-   */
   async getAuditLogs(
     entityType?: AuditEntityType,
     actionType?: AuditActionType,
@@ -154,9 +183,6 @@ export class AuditTrailService {
     return { logs, total };
   }
 
-  /**
-   * Get audit logs within a date range
-   */
   async getAuditLogsByDateRange(
     startDate: Date,
     endDate: Date,
@@ -178,9 +204,6 @@ export class AuditTrailService {
     return { logs, total };
   }
 
-  /**
-   * Get a summary of audit logs grouped by action type
-   */
   async getAuditSummary(
     entityType?: AuditEntityType,
     days = 7,
@@ -202,16 +225,13 @@ export class AuditTrailService {
     const results = await query.getRawMany();
 
     const summary: Record<string, number> = {};
-    results.forEach((r) => {
+    results.forEach((r: any) => {
       summary[r.actionType] = parseInt(r.count, 10);
     });
 
     return summary;
   }
 
-  /**
-   * Get change history for an entity
-   */
   async getChangeHistory(
     entityType: AuditEntityType,
     entityId: string,
@@ -233,18 +253,15 @@ export class AuditTrailService {
     }));
   }
 
-  /**
-   * Delete old audit logs (retention policy)
-   */
   async deleteOldLogs(daysToKeep: number): Promise<number> {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
 
-    // Use raw query due to TypeORM SQLite limitations with date comparisons
     const query = this.auditLogRepo
       .createQueryBuilder('audit')
       .delete()
-      .where('audit.createdAt < :cutoff', { cutoff: cutoffDate });
+      .where('audit.createdAt < :cutoff', { cutoff: cutoffDate })
+      .andWhere('(audit.retentionUntil IS NULL OR audit.retentionUntil < :now)', { now: new Date() });
 
     const result = await query.execute();
 
@@ -254,11 +271,69 @@ export class AuditTrailService {
     return result.affected || 0;
   }
 
+  async getRetentionStatus(): Promise<{
+    totalRecords: number;
+    archivedRecords: number;
+    legalHoldRecords: number;
+    pendingCleanup: number;
+  }> {
+    const totalRecords = await this.auditLogRepo.count();
+    const archivedRecords = await this.auditLogRepo.count({ where: { archived: true } });
+    const legalHoldRecords = await this.auditLogRepo
+      .createQueryBuilder('audit')
+      .where('audit.retentionUntil IS NOT NULL')
+      .getCount();
+
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - 365);
+    const pendingCleanup = await this.auditLogRepo
+      .createQueryBuilder('audit')
+      .where('audit.createdAt < :cutoff', { cutoff: cutoffDate })
+      .andWhere('(audit.retentionUntil IS NULL OR audit.retentionUntil < :now)', { now: new Date() })
+      .getCount();
+
+    return {
+      totalRecords,
+      archivedRecords,
+      legalHoldRecords,
+      pendingCleanup,
+    };
+  }
+
+  async placeLegalHold(entityId: string, reason: string, initiatedBy: string): Promise<number> {
+    const result = await this.auditLogRepo
+      .createQueryBuilder()
+      .update(AuditLog)
+      .set({ retentionUntil: () => "'9999-12-31 23:59:59'" })
+      .where('entityId = :entityId', { entityId })
+      .execute();
+
+    this.logger.log(`Legal hold placed on ${entityId}: ${reason} (by ${initiatedBy})`);
+    return result.affected || 0;
+  }
+
+  async removeLegalHold(entityId: string): Promise<number> {
+    const result = await this.auditLogRepo
+      .createQueryBuilder()
+      .update(AuditLog)
+      .set({ retentionUntil: null })
+      .where('entityId = :entityId', { entityId })
+      .andWhere('retentionUntil IS NOT NULL')
+      .execute();
+
+    this.logger.log(`Legal hold removed from ${entityId}`);
+    return result.affected || 0;
+  }
+
+  async getAuditLogsByCorrelationId(correlationId: string): Promise<AuditLog[]> {
+    return this.auditLogRepo.find({
+      where: { correlationId },
+      order: { createdAt: 'ASC' },
+    });
+  }
+
   private getClientIp(): string | undefined {
     if (!this.request) return undefined;
-
-    // Use req.ip which respects trust proxy configuration
-    // Falls back to socket remoteAddress for direct connections
     return this.request.ip || this.request.socket?.remoteAddress;
   }
 
@@ -266,10 +341,17 @@ export class AuditTrailService {
     if (this.request?.headers['x-correlation-id']) {
       return this.request.headers['x-correlation-id'] as string;
     }
-    return this.generateCorrelationId();
+    return this.generateId();
   }
 
-  private generateCorrelationId(): string {
+  private getRequestId(): string {
+    if (this.request?.headers['x-request-id']) {
+      return this.request.headers['x-request-id'] as string;
+    }
+    return this.generateId();
+  }
+
+  private generateId(): string {
     return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   }
 
@@ -296,14 +378,5 @@ export class AuditTrailService {
     });
 
     return changes;
-  }
-
-  public async getAuditLogsByCorrelationId(
-    correlationId: string,
-  ): Promise<AuditLog[]> {
-    return this.auditLogRepo.find({
-      where: { correlationId },
-      order: { createdAt: 'ASC' },
-    });
   }
 }
