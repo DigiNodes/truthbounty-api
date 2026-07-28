@@ -34,6 +34,7 @@ import { GlobalAuthGuard } from './auth/global-auth.guard';
 import { MetricsModule } from './metrics/metrics.module';
 import { HealthModule } from './health/health.module';
 import { FeatureFlagsModule } from './feature-flags/feature-flags.module';
+import { SearchModule } from './search/search.module';
 
 // In-memory storage for development (no Redis needed)
 class ThrottlerMemoryStorage {
@@ -311,6 +312,7 @@ async function createThrottlerStorage(
     MetricsModule,
     HealthModule,
     FeatureFlagsModule,
+    SearchModule,
   ],
   controllers: [AppController],
   providers: [
