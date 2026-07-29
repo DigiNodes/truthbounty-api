@@ -37,6 +37,7 @@ export class ClaimFactory {
       confidenceScore: Math.random() * 0.9 + 0.1,
       finalized: false,
       createdAt: new Date(),
+      resolvedAt: null,
       evidences: [],
       ...overrides,
     } as Claim;

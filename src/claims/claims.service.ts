@@ -132,6 +132,7 @@ export class ClaimsService {
         const beforeState = { ...claim };
 
         // Use transitionTo helper for validated state transition
+        // transitionTo sets resolvedAt on the claim entity when first resolved
         claim.transitionTo(ClaimState.RESOLVED, {
             verdict,
             confidence: confidenceScore,
@@ -166,6 +167,7 @@ export class ClaimsService {
         const beforeState = { ...claim };
 
         // Use transitionTo helper for validated state transition
+        // transitionTo preserves resolvedAt if already set (RESOLVED → FINALIZED path)
         claim.transitionTo(ClaimState.FINALIZED);
 
         const updatedClaim = await this.claimRepo.save(claim);

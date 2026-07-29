@@ -38,24 +38,33 @@ export type UserMinAggregateOutputType = {
   id: string | null
   createdAt: Date | null
   updatedAt: Date | null
+  walletAddress: string | null
   reputation: number | null
+  role: $Enums.UserRole | null
   worldcoinVerified: boolean | null
+  worldcoinVerifiedAt: Date | null
 }
 
 export type UserMaxAggregateOutputType = {
   id: string | null
   createdAt: Date | null
   updatedAt: Date | null
+  walletAddress: string | null
   reputation: number | null
+  role: $Enums.UserRole | null
   worldcoinVerified: boolean | null
+  worldcoinVerifiedAt: Date | null
 }
 
 export type UserCountAggregateOutputType = {
   id: number
   createdAt: number
   updatedAt: number
+  walletAddress: number
   reputation: number
+  role: number
   worldcoinVerified: number
+  worldcoinVerifiedAt: number
   _all: number
 }
 
@@ -72,24 +81,33 @@ export type UserMinAggregateInputType = {
   id?: true
   createdAt?: true
   updatedAt?: true
+  walletAddress?: true
   reputation?: true
+  role?: true
   worldcoinVerified?: true
+  worldcoinVerifiedAt?: true
 }
 
 export type UserMaxAggregateInputType = {
   id?: true
   createdAt?: true
   updatedAt?: true
+  walletAddress?: true
   reputation?: true
+  role?: true
   worldcoinVerified?: true
+  worldcoinVerifiedAt?: true
 }
 
 export type UserCountAggregateInputType = {
   id?: true
   createdAt?: true
   updatedAt?: true
+  walletAddress?: true
   reputation?: true
+  role?: true
   worldcoinVerified?: true
+  worldcoinVerifiedAt?: true
   _all?: true
 }
 
@@ -183,8 +201,11 @@ export type UserGroupByOutputType = {
   id: string
   createdAt: Date
   updatedAt: Date
+  walletAddress: string
   reputation: number
+  role: $Enums.UserRole
   worldcoinVerified: boolean
+  worldcoinVerifiedAt: Date | null
   _count: UserCountAggregateOutputType | null
   _avg: UserAvgAggregateOutputType | null
   _sum: UserSumAggregateOutputType | null
@@ -214,41 +235,56 @@ export type UserWhereInput = {
   id?: Prisma.StringFilter<"User"> | string
   createdAt?: Prisma.DateTimeFilter<"User"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"User"> | Date | string
+  walletAddress?: Prisma.StringFilter<"User"> | string
   reputation?: Prisma.IntFilter<"User"> | number
+  role?: Prisma.EnumUserRoleFilter<"User"> | $Enums.UserRole
   worldcoinVerified?: Prisma.BoolFilter<"User"> | boolean
-  sybilScores?: Prisma.SybilScoreListRelationFilter
+  worldcoinVerifiedAt?: Prisma.DateTimeNullableFilter<"User"> | Date | string | null
   wallets?: Prisma.WalletListRelationFilter
+  sybilScores?: Prisma.SybilScoreListRelationFilter
+  worldIdVerifications?: Prisma.WorldIdVerificationListRelationFilter
 }
 
 export type UserOrderByWithRelationInput = {
   id?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
+  walletAddress?: Prisma.SortOrder
   reputation?: Prisma.SortOrder
+  role?: Prisma.SortOrder
   worldcoinVerified?: Prisma.SortOrder
-  sybilScores?: Prisma.SybilScoreOrderByRelationAggregateInput
+  worldcoinVerifiedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   wallets?: Prisma.WalletOrderByRelationAggregateInput
+  sybilScores?: Prisma.SybilScoreOrderByRelationAggregateInput
+  worldIdVerifications?: Prisma.WorldIdVerificationOrderByRelationAggregateInput
 }
 
 export type UserWhereUniqueInput = Prisma.AtLeast<{
   id?: string
+  walletAddress?: string
   AND?: Prisma.UserWhereInput | Prisma.UserWhereInput[]
   OR?: Prisma.UserWhereInput[]
   NOT?: Prisma.UserWhereInput | Prisma.UserWhereInput[]
   createdAt?: Prisma.DateTimeFilter<"User"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"User"> | Date | string
   reputation?: Prisma.IntFilter<"User"> | number
+  role?: Prisma.EnumUserRoleFilter<"User"> | $Enums.UserRole
   worldcoinVerified?: Prisma.BoolFilter<"User"> | boolean
-  sybilScores?: Prisma.SybilScoreListRelationFilter
+  worldcoinVerifiedAt?: Prisma.DateTimeNullableFilter<"User"> | Date | string | null
   wallets?: Prisma.WalletListRelationFilter
-}, "id">
+  sybilScores?: Prisma.SybilScoreListRelationFilter
+  worldIdVerifications?: Prisma.WorldIdVerificationListRelationFilter
+}, "id" | "walletAddress">
 
 export type UserOrderByWithAggregationInput = {
   id?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
+  walletAddress?: Prisma.SortOrder
   reputation?: Prisma.SortOrder
+  role?: Prisma.SortOrder
   worldcoinVerified?: Prisma.SortOrder
+  worldcoinVerifiedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   _count?: Prisma.UserCountOrderByAggregateInput
   _avg?: Prisma.UserAvgOrderByAggregateInput
   _max?: Prisma.UserMaxOrderByAggregateInput
@@ -263,80 +299,111 @@ export type UserScalarWhereWithAggregatesInput = {
   id?: Prisma.StringWithAggregatesFilter<"User"> | string
   createdAt?: Prisma.DateTimeWithAggregatesFilter<"User"> | Date | string
   updatedAt?: Prisma.DateTimeWithAggregatesFilter<"User"> | Date | string
+  walletAddress?: Prisma.StringWithAggregatesFilter<"User"> | string
   reputation?: Prisma.IntWithAggregatesFilter<"User"> | number
+  role?: Prisma.EnumUserRoleWithAggregatesFilter<"User"> | $Enums.UserRole
   worldcoinVerified?: Prisma.BoolWithAggregatesFilter<"User"> | boolean
+  worldcoinVerifiedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"User"> | Date | string | null
 }
 
 export type UserCreateInput = {
   id?: string
   createdAt?: Date | string
   updatedAt?: Date | string
+  walletAddress: string
   reputation?: number
+  role?: $Enums.UserRole
   worldcoinVerified?: boolean
-  sybilScores?: Prisma.SybilScoreCreateNestedManyWithoutUserInput
+  worldcoinVerifiedAt?: Date | string | null
   wallets?: Prisma.WalletCreateNestedManyWithoutUserInput
+  sybilScores?: Prisma.SybilScoreCreateNestedManyWithoutUserInput
+  worldIdVerifications?: Prisma.WorldIdVerificationCreateNestedManyWithoutUserInput
 }
 
 export type UserUncheckedCreateInput = {
   id?: string
   createdAt?: Date | string
   updatedAt?: Date | string
+  walletAddress: string
   reputation?: number
+  role?: $Enums.UserRole
   worldcoinVerified?: boolean
-  sybilScores?: Prisma.SybilScoreUncheckedCreateNestedManyWithoutUserInput
+  worldcoinVerifiedAt?: Date | string | null
   wallets?: Prisma.WalletUncheckedCreateNestedManyWithoutUserInput
+  sybilScores?: Prisma.SybilScoreUncheckedCreateNestedManyWithoutUserInput
+  worldIdVerifications?: Prisma.WorldIdVerificationUncheckedCreateNestedManyWithoutUserInput
 }
 
 export type UserUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  walletAddress?: Prisma.StringFieldUpdateOperationsInput | string
   reputation?: Prisma.IntFieldUpdateOperationsInput | number
+  role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
   worldcoinVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  sybilScores?: Prisma.SybilScoreUpdateManyWithoutUserNestedInput
+  worldcoinVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   wallets?: Prisma.WalletUpdateManyWithoutUserNestedInput
+  sybilScores?: Prisma.SybilScoreUpdateManyWithoutUserNestedInput
+  worldIdVerifications?: Prisma.WorldIdVerificationUpdateManyWithoutUserNestedInput
 }
 
 export type UserUncheckedUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  walletAddress?: Prisma.StringFieldUpdateOperationsInput | string
   reputation?: Prisma.IntFieldUpdateOperationsInput | number
+  role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
   worldcoinVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  sybilScores?: Prisma.SybilScoreUncheckedUpdateManyWithoutUserNestedInput
+  worldcoinVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   wallets?: Prisma.WalletUncheckedUpdateManyWithoutUserNestedInput
+  sybilScores?: Prisma.SybilScoreUncheckedUpdateManyWithoutUserNestedInput
+  worldIdVerifications?: Prisma.WorldIdVerificationUncheckedUpdateManyWithoutUserNestedInput
 }
 
 export type UserCreateManyInput = {
   id?: string
   createdAt?: Date | string
   updatedAt?: Date | string
+  walletAddress: string
   reputation?: number
+  role?: $Enums.UserRole
   worldcoinVerified?: boolean
+  worldcoinVerifiedAt?: Date | string | null
 }
 
 export type UserUpdateManyMutationInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  walletAddress?: Prisma.StringFieldUpdateOperationsInput | string
   reputation?: Prisma.IntFieldUpdateOperationsInput | number
+  role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
   worldcoinVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  worldcoinVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
 }
 
 export type UserUncheckedUpdateManyInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  walletAddress?: Prisma.StringFieldUpdateOperationsInput | string
   reputation?: Prisma.IntFieldUpdateOperationsInput | number
+  role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
   worldcoinVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  worldcoinVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
 }
 
 export type UserCountOrderByAggregateInput = {
   id?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
+  walletAddress?: Prisma.SortOrder
   reputation?: Prisma.SortOrder
+  role?: Prisma.SortOrder
   worldcoinVerified?: Prisma.SortOrder
+  worldcoinVerifiedAt?: Prisma.SortOrder
 }
 
 export type UserAvgOrderByAggregateInput = {
@@ -347,16 +414,22 @@ export type UserMaxOrderByAggregateInput = {
   id?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
+  walletAddress?: Prisma.SortOrder
   reputation?: Prisma.SortOrder
+  role?: Prisma.SortOrder
   worldcoinVerified?: Prisma.SortOrder
+  worldcoinVerifiedAt?: Prisma.SortOrder
 }
 
 export type UserMinOrderByAggregateInput = {
   id?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
+  walletAddress?: Prisma.SortOrder
   reputation?: Prisma.SortOrder
+  role?: Prisma.SortOrder
   worldcoinVerified?: Prisma.SortOrder
+  worldcoinVerifiedAt?: Prisma.SortOrder
 }
 
 export type UserSumOrderByAggregateInput = {
@@ -384,8 +457,16 @@ export type IntFieldUpdateOperationsInput = {
   divide?: number
 }
 
+export type EnumUserRoleFieldUpdateOperationsInput = {
+  set?: $Enums.UserRole
+}
+
 export type BoolFieldUpdateOperationsInput = {
   set?: boolean
+}
+
+export type NullableDateTimeFieldUpdateOperationsInput = {
+  set?: Date | string | null
 }
 
 export type UserCreateNestedOneWithoutWalletsInput = {
@@ -416,22 +497,44 @@ export type UserUpdateOneRequiredWithoutSybilScoresNestedInput = {
   update?: Prisma.XOR<Prisma.XOR<Prisma.UserUpdateToOneWithWhereWithoutSybilScoresInput, Prisma.UserUpdateWithoutSybilScoresInput>, Prisma.UserUncheckedUpdateWithoutSybilScoresInput>
 }
 
+export type UserCreateNestedOneWithoutWorldIdVerificationsInput = {
+  create?: Prisma.XOR<Prisma.UserCreateWithoutWorldIdVerificationsInput, Prisma.UserUncheckedCreateWithoutWorldIdVerificationsInput>
+  connectOrCreate?: Prisma.UserCreateOrConnectWithoutWorldIdVerificationsInput
+  connect?: Prisma.UserWhereUniqueInput
+}
+
+export type UserUpdateOneRequiredWithoutWorldIdVerificationsNestedInput = {
+  create?: Prisma.XOR<Prisma.UserCreateWithoutWorldIdVerificationsInput, Prisma.UserUncheckedCreateWithoutWorldIdVerificationsInput>
+  connectOrCreate?: Prisma.UserCreateOrConnectWithoutWorldIdVerificationsInput
+  upsert?: Prisma.UserUpsertWithoutWorldIdVerificationsInput
+  connect?: Prisma.UserWhereUniqueInput
+  update?: Prisma.XOR<Prisma.XOR<Prisma.UserUpdateToOneWithWhereWithoutWorldIdVerificationsInput, Prisma.UserUpdateWithoutWorldIdVerificationsInput>, Prisma.UserUncheckedUpdateWithoutWorldIdVerificationsInput>
+}
+
 export type UserCreateWithoutWalletsInput = {
   id?: string
   createdAt?: Date | string
   updatedAt?: Date | string
+  walletAddress: string
   reputation?: number
+  role?: $Enums.UserRole
   worldcoinVerified?: boolean
+  worldcoinVerifiedAt?: Date | string | null
   sybilScores?: Prisma.SybilScoreCreateNestedManyWithoutUserInput
+  worldIdVerifications?: Prisma.WorldIdVerificationCreateNestedManyWithoutUserInput
 }
 
 export type UserUncheckedCreateWithoutWalletsInput = {
   id?: string
   createdAt?: Date | string
   updatedAt?: Date | string
+  walletAddress: string
   reputation?: number
+  role?: $Enums.UserRole
   worldcoinVerified?: boolean
+  worldcoinVerifiedAt?: Date | string | null
   sybilScores?: Prisma.SybilScoreUncheckedCreateNestedManyWithoutUserInput
+  worldIdVerifications?: Prisma.WorldIdVerificationUncheckedCreateNestedManyWithoutUserInput
 }
 
 export type UserCreateOrConnectWithoutWalletsInput = {
@@ -454,36 +557,52 @@ export type UserUpdateWithoutWalletsInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  walletAddress?: Prisma.StringFieldUpdateOperationsInput | string
   reputation?: Prisma.IntFieldUpdateOperationsInput | number
+  role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
   worldcoinVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  worldcoinVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   sybilScores?: Prisma.SybilScoreUpdateManyWithoutUserNestedInput
+  worldIdVerifications?: Prisma.WorldIdVerificationUpdateManyWithoutUserNestedInput
 }
 
 export type UserUncheckedUpdateWithoutWalletsInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  walletAddress?: Prisma.StringFieldUpdateOperationsInput | string
   reputation?: Prisma.IntFieldUpdateOperationsInput | number
+  role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
   worldcoinVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  worldcoinVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   sybilScores?: Prisma.SybilScoreUncheckedUpdateManyWithoutUserNestedInput
+  worldIdVerifications?: Prisma.WorldIdVerificationUncheckedUpdateManyWithoutUserNestedInput
 }
 
 export type UserCreateWithoutSybilScoresInput = {
   id?: string
   createdAt?: Date | string
   updatedAt?: Date | string
+  walletAddress: string
   reputation?: number
+  role?: $Enums.UserRole
   worldcoinVerified?: boolean
+  worldcoinVerifiedAt?: Date | string | null
   wallets?: Prisma.WalletCreateNestedManyWithoutUserInput
+  worldIdVerifications?: Prisma.WorldIdVerificationCreateNestedManyWithoutUserInput
 }
 
 export type UserUncheckedCreateWithoutSybilScoresInput = {
   id?: string
   createdAt?: Date | string
   updatedAt?: Date | string
+  walletAddress: string
   reputation?: number
+  role?: $Enums.UserRole
   worldcoinVerified?: boolean
+  worldcoinVerifiedAt?: Date | string | null
   wallets?: Prisma.WalletUncheckedCreateNestedManyWithoutUserInput
+  worldIdVerifications?: Prisma.WorldIdVerificationUncheckedCreateNestedManyWithoutUserInput
 }
 
 export type UserCreateOrConnectWithoutSybilScoresInput = {
@@ -506,18 +625,94 @@ export type UserUpdateWithoutSybilScoresInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  walletAddress?: Prisma.StringFieldUpdateOperationsInput | string
   reputation?: Prisma.IntFieldUpdateOperationsInput | number
+  role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
   worldcoinVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  worldcoinVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   wallets?: Prisma.WalletUpdateManyWithoutUserNestedInput
+  worldIdVerifications?: Prisma.WorldIdVerificationUpdateManyWithoutUserNestedInput
 }
 
 export type UserUncheckedUpdateWithoutSybilScoresInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  walletAddress?: Prisma.StringFieldUpdateOperationsInput | string
   reputation?: Prisma.IntFieldUpdateOperationsInput | number
+  role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
   worldcoinVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  worldcoinVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   wallets?: Prisma.WalletUncheckedUpdateManyWithoutUserNestedInput
+  worldIdVerifications?: Prisma.WorldIdVerificationUncheckedUpdateManyWithoutUserNestedInput
+}
+
+export type UserCreateWithoutWorldIdVerificationsInput = {
+  id?: string
+  createdAt?: Date | string
+  updatedAt?: Date | string
+  walletAddress: string
+  reputation?: number
+  role?: $Enums.UserRole
+  worldcoinVerified?: boolean
+  worldcoinVerifiedAt?: Date | string | null
+  wallets?: Prisma.WalletCreateNestedManyWithoutUserInput
+  sybilScores?: Prisma.SybilScoreCreateNestedManyWithoutUserInput
+}
+
+export type UserUncheckedCreateWithoutWorldIdVerificationsInput = {
+  id?: string
+  createdAt?: Date | string
+  updatedAt?: Date | string
+  walletAddress: string
+  reputation?: number
+  role?: $Enums.UserRole
+  worldcoinVerified?: boolean
+  worldcoinVerifiedAt?: Date | string | null
+  wallets?: Prisma.WalletUncheckedCreateNestedManyWithoutUserInput
+  sybilScores?: Prisma.SybilScoreUncheckedCreateNestedManyWithoutUserInput
+}
+
+export type UserCreateOrConnectWithoutWorldIdVerificationsInput = {
+  where: Prisma.UserWhereUniqueInput
+  create: Prisma.XOR<Prisma.UserCreateWithoutWorldIdVerificationsInput, Prisma.UserUncheckedCreateWithoutWorldIdVerificationsInput>
+}
+
+export type UserUpsertWithoutWorldIdVerificationsInput = {
+  update: Prisma.XOR<Prisma.UserUpdateWithoutWorldIdVerificationsInput, Prisma.UserUncheckedUpdateWithoutWorldIdVerificationsInput>
+  create: Prisma.XOR<Prisma.UserCreateWithoutWorldIdVerificationsInput, Prisma.UserUncheckedCreateWithoutWorldIdVerificationsInput>
+  where?: Prisma.UserWhereInput
+}
+
+export type UserUpdateToOneWithWhereWithoutWorldIdVerificationsInput = {
+  where?: Prisma.UserWhereInput
+  data: Prisma.XOR<Prisma.UserUpdateWithoutWorldIdVerificationsInput, Prisma.UserUncheckedUpdateWithoutWorldIdVerificationsInput>
+}
+
+export type UserUpdateWithoutWorldIdVerificationsInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string
+  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  walletAddress?: Prisma.StringFieldUpdateOperationsInput | string
+  reputation?: Prisma.IntFieldUpdateOperationsInput | number
+  role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
+  worldcoinVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  worldcoinVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  wallets?: Prisma.WalletUpdateManyWithoutUserNestedInput
+  sybilScores?: Prisma.SybilScoreUpdateManyWithoutUserNestedInput
+}
+
+export type UserUncheckedUpdateWithoutWorldIdVerificationsInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string
+  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  walletAddress?: Prisma.StringFieldUpdateOperationsInput | string
+  reputation?: Prisma.IntFieldUpdateOperationsInput | number
+  role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
+  worldcoinVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  worldcoinVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  wallets?: Prisma.WalletUncheckedUpdateManyWithoutUserNestedInput
+  sybilScores?: Prisma.SybilScoreUncheckedUpdateManyWithoutUserNestedInput
 }
 
 
@@ -526,13 +721,15 @@ export type UserUncheckedUpdateWithoutSybilScoresInput = {
  */
 
 export type UserCountOutputType = {
-  sybilScores: number
   wallets: number
+  sybilScores: number
+  worldIdVerifications: number
 }
 
 export type UserCountOutputTypeSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-  sybilScores?: boolean | UserCountOutputTypeCountSybilScoresArgs
   wallets?: boolean | UserCountOutputTypeCountWalletsArgs
+  sybilScores?: boolean | UserCountOutputTypeCountSybilScoresArgs
+  worldIdVerifications?: boolean | UserCountOutputTypeCountWorldIdVerificationsArgs
 }
 
 /**
@@ -548,6 +745,13 @@ export type UserCountOutputTypeDefaultArgs<ExtArgs extends runtime.Types.Extensi
 /**
  * UserCountOutputType without action
  */
+export type UserCountOutputTypeCountWalletsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  where?: Prisma.WalletWhereInput
+}
+
+/**
+ * UserCountOutputType without action
+ */
 export type UserCountOutputTypeCountSybilScoresArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   where?: Prisma.SybilScoreWhereInput
 }
@@ -555,8 +759,8 @@ export type UserCountOutputTypeCountSybilScoresArgs<ExtArgs extends runtime.Type
 /**
  * UserCountOutputType without action
  */
-export type UserCountOutputTypeCountWalletsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-  where?: Prisma.WalletWhereInput
+export type UserCountOutputTypeCountWorldIdVerificationsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  where?: Prisma.WorldIdVerificationWhereInput
 }
 
 
@@ -564,10 +768,14 @@ export type UserSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = r
   id?: boolean
   createdAt?: boolean
   updatedAt?: boolean
+  walletAddress?: boolean
   reputation?: boolean
+  role?: boolean
   worldcoinVerified?: boolean
-  sybilScores?: boolean | Prisma.User$sybilScoresArgs<ExtArgs>
+  worldcoinVerifiedAt?: boolean
   wallets?: boolean | Prisma.User$walletsArgs<ExtArgs>
+  sybilScores?: boolean | Prisma.User$sybilScoresArgs<ExtArgs>
+  worldIdVerifications?: boolean | Prisma.User$worldIdVerificationsArgs<ExtArgs>
   _count?: boolean | Prisma.UserCountOutputTypeDefaultArgs<ExtArgs>
 }, ExtArgs["result"]["user"]>
 
@@ -575,30 +783,40 @@ export type UserSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensio
   id?: boolean
   createdAt?: boolean
   updatedAt?: boolean
+  walletAddress?: boolean
   reputation?: boolean
+  role?: boolean
   worldcoinVerified?: boolean
+  worldcoinVerifiedAt?: boolean
 }, ExtArgs["result"]["user"]>
 
 export type UserSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
   id?: boolean
   createdAt?: boolean
   updatedAt?: boolean
+  walletAddress?: boolean
   reputation?: boolean
+  role?: boolean
   worldcoinVerified?: boolean
+  worldcoinVerifiedAt?: boolean
 }, ExtArgs["result"]["user"]>
 
 export type UserSelectScalar = {
   id?: boolean
   createdAt?: boolean
   updatedAt?: boolean
+  walletAddress?: boolean
   reputation?: boolean
+  role?: boolean
   worldcoinVerified?: boolean
+  worldcoinVerifiedAt?: boolean
 }
 
-export type UserOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "reputation" | "worldcoinVerified", ExtArgs["result"]["user"]>
+export type UserOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "walletAddress" | "reputation" | "role" | "worldcoinVerified" | "worldcoinVerifiedAt", ExtArgs["result"]["user"]>
 export type UserInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-  sybilScores?: boolean | Prisma.User$sybilScoresArgs<ExtArgs>
   wallets?: boolean | Prisma.User$walletsArgs<ExtArgs>
+  sybilScores?: boolean | Prisma.User$sybilScoresArgs<ExtArgs>
+  worldIdVerifications?: boolean | Prisma.User$worldIdVerificationsArgs<ExtArgs>
   _count?: boolean | Prisma.UserCountOutputTypeDefaultArgs<ExtArgs>
 }
 export type UserIncludeCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {}
@@ -607,15 +825,19 @@ export type UserIncludeUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensi
 export type $UserPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "User"
   objects: {
-    sybilScores: Prisma.$SybilScorePayload<ExtArgs>[]
     wallets: Prisma.$WalletPayload<ExtArgs>[]
+    sybilScores: Prisma.$SybilScorePayload<ExtArgs>[]
+    worldIdVerifications: Prisma.$WorldIdVerificationPayload<ExtArgs>[]
   }
   scalars: runtime.Types.Extensions.GetPayloadResult<{
     id: string
     createdAt: Date
     updatedAt: Date
+    walletAddress: string
     reputation: number
+    role: $Enums.UserRole
     worldcoinVerified: boolean
+    worldcoinVerifiedAt: Date | null
   }, ExtArgs["result"]["user"]>
   composites: {}
 }
@@ -1010,8 +1232,9 @@ readonly fields: UserFieldRefs;
  */
 export interface Prisma__UserClient<T, Null = never, ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs, GlobalOmitOptions = {}> extends Prisma.PrismaPromise<T> {
   readonly [Symbol.toStringTag]: "PrismaPromise"
-  sybilScores<T extends Prisma.User$sybilScoresArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.User$sybilScoresArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$SybilScorePayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   wallets<T extends Prisma.User$walletsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.User$walletsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$WalletPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
+  sybilScores<T extends Prisma.User$sybilScoresArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.User$sybilScoresArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$SybilScorePayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
+  worldIdVerifications<T extends Prisma.User$worldIdVerificationsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.User$worldIdVerificationsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$WorldIdVerificationPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   /**
    * Attaches callbacks for the resolution and/or rejection of the Promise.
    * @param onfulfilled The callback to execute when the Promise is resolved.
@@ -1044,8 +1267,11 @@ export interface UserFieldRefs {
   readonly id: Prisma.FieldRef<"User", 'String'>
   readonly createdAt: Prisma.FieldRef<"User", 'DateTime'>
   readonly updatedAt: Prisma.FieldRef<"User", 'DateTime'>
+  readonly walletAddress: Prisma.FieldRef<"User", 'String'>
   readonly reputation: Prisma.FieldRef<"User", 'Int'>
+  readonly role: Prisma.FieldRef<"User", 'UserRole'>
   readonly worldcoinVerified: Prisma.FieldRef<"User", 'Boolean'>
+  readonly worldcoinVerifiedAt: Prisma.FieldRef<"User", 'DateTime'>
 }
     
 
@@ -1432,6 +1658,30 @@ export type UserDeleteManyArgs<ExtArgs extends runtime.Types.Extensions.Internal
 }
 
 /**
+ * User.wallets
+ */
+export type User$walletsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  /**
+   * Select specific fields to fetch from the Wallet
+   */
+  select?: Prisma.WalletSelect<ExtArgs> | null
+  /**
+   * Omit specific fields from the Wallet
+   */
+  omit?: Prisma.WalletOmit<ExtArgs> | null
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.WalletInclude<ExtArgs> | null
+  where?: Prisma.WalletWhereInput
+  orderBy?: Prisma.WalletOrderByWithRelationInput | Prisma.WalletOrderByWithRelationInput[]
+  cursor?: Prisma.WalletWhereUniqueInput
+  take?: number
+  skip?: number
+  distinct?: Prisma.WalletScalarFieldEnum | Prisma.WalletScalarFieldEnum[]
+}
+
+/**
  * User.sybilScores
  */
 export type User$sybilScoresArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
@@ -1456,27 +1706,27 @@ export type User$sybilScoresArgs<ExtArgs extends runtime.Types.Extensions.Intern
 }
 
 /**
- * User.wallets
+ * User.worldIdVerifications
  */
-export type User$walletsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+export type User$worldIdVerificationsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   /**
-   * Select specific fields to fetch from the Wallet
+   * Select specific fields to fetch from the WorldIdVerification
    */
-  select?: Prisma.WalletSelect<ExtArgs> | null
+  select?: Prisma.WorldIdVerificationSelect<ExtArgs> | null
   /**
-   * Omit specific fields from the Wallet
+   * Omit specific fields from the WorldIdVerification
    */
-  omit?: Prisma.WalletOmit<ExtArgs> | null
+  omit?: Prisma.WorldIdVerificationOmit<ExtArgs> | null
   /**
    * Choose, which related nodes to fetch as well
    */
-  include?: Prisma.WalletInclude<ExtArgs> | null
-  where?: Prisma.WalletWhereInput
-  orderBy?: Prisma.WalletOrderByWithRelationInput | Prisma.WalletOrderByWithRelationInput[]
-  cursor?: Prisma.WalletWhereUniqueInput
+  include?: Prisma.WorldIdVerificationInclude<ExtArgs> | null
+  where?: Prisma.WorldIdVerificationWhereInput
+  orderBy?: Prisma.WorldIdVerificationOrderByWithRelationInput | Prisma.WorldIdVerificationOrderByWithRelationInput[]
+  cursor?: Prisma.WorldIdVerificationWhereUniqueInput
   take?: number
   skip?: number
-  distinct?: Prisma.WalletScalarFieldEnum | Prisma.WalletScalarFieldEnum[]
+  distinct?: Prisma.WorldIdVerificationScalarFieldEnum | Prisma.WorldIdVerificationScalarFieldEnum[]
 }
 
 /**
