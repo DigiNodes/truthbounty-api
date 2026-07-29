@@ -34,6 +34,7 @@ import { GlobalAuthGuard } from './auth/global-auth.guard';
 import { MetricsModule } from './metrics/metrics.module';
 import { ReputationModule } from './reputation/reputation.module';
 import { GovernanceModule } from './governance/governance.module';
+import { AiAssistantModule } from './ai-assistant/ai-assistant.module';
 import { AdminModule } from './admin/admin.module';
 import { ProfilerModule } from './profiler/profiler.module';
 import { ProfilerInterceptor } from './profiler/profiler.interceptor';
@@ -314,6 +315,7 @@ async function createThrottlerStorage(
     MetricsModule,
     ReputationModule,
     GovernanceModule,
+    AiAssistantModule,
     AdminModule,
     ProfilerModule,
   ],
