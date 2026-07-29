@@ -1,53 +1,43 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bullmq';
-import { BullBoardModule } from '@bull-board/nestjs';
-import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 import { Notification } from './entities/notification.entity';
-import { NotificationDelivery } from './entities/notification-delivery.entity';
-import { UserNotificationPreference } from './entities/user-notification-preference.entity';
-import { NotificationTemplate } from './entities/notification-template.entity';
-import { NotificationController } from './notification.controller';
+import { NotificationDeliveryHistory } from './entities/notification.entity';
+import { UserNotificationPreferences } from './entities/notification.entity';
 import { NotificationService } from './services/notification.service';
-import { NotificationProcessor } from './notification.processor';
-import { TemplateService } from './services/template.service';
-import { InAppDeliveryService } from './services/delivery/in-app-delivery.service';
-import { EmailDeliveryService } from './services/delivery/email-delivery.service';
-import { WebhookDeliveryService } from './services/delivery/webhook-delivery.service';
-import { PushDeliveryService } from './services/delivery/push-delivery.service';
-import { SmsDeliveryService } from './services/delivery/sms-delivery.service';
+import { NotificationProcessor } from './processors/notification.processor';
+import { NotificationMetricsService } from './metrics/notification.metrics';
+import { WebSocketGateway } from './websockets/websocket.gateway';
+import { InAppChannel } from './channels/in-app.channel';
+import { WebSocketChannel } from './channels/websocket.channel';
+import { EmailChannel } from './channels/email.channel';
+import { WebhookChannel } from './channels/webhook.channel';
+import { PushChannel } from './channels/push.channel';
+import { NotificationController } from './controllers/notification.controller';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
       Notification,
-      NotificationDelivery,
-      UserNotificationPreference,
-      NotificationTemplate,
+      NotificationDeliveryHistory,
+      UserNotificationPreferences,
     ]),
     BullModule.registerQueue({
-      name: 'notifications-queue',
-    }),
-    BullBoardModule.forFeature({
-      name: 'notifications-queue',
-      adapter: BullMQAdapter,
+      name: 'notifications',
     }),
   ],
-  controllers: [NotificationController],
   providers: [
     NotificationService,
     NotificationProcessor,
-    TemplateService,
-    InAppDeliveryService,
-    EmailDeliveryService,
-    WebhookDeliveryService,
-    PushDeliveryService,
-    SmsDeliveryService,
+    NotificationMetricsService,
+    WebSocketGateway,
+    InAppChannel,
+    WebSocketChannel,
+    EmailChannel,
+    WebhookChannel,
+    PushChannel,
   ],
-  exports: [
-    NotificationService,
-    TemplateService,
-    BullModule,
-  ],
+  controllers: [NotificationController],
+  exports: [NotificationService],
 })
 export class NotificationModule {}
