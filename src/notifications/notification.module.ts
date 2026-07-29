@@ -31,7 +31,7 @@ import { InternalNotificationController } from './controllers/internal-notificat
     NotificationService,
     NotificationProcessor,
     NotificationMetricsService,
-    WebSocketGateway,
+    NotificationGateway,
     InAppChannel,
     WebSocketChannel,
     EmailChannel,
