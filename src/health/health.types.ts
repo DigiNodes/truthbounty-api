@@ -8,11 +8,20 @@ export interface DependencyStatus {
   failureReason?: string;
 }
 
+export interface HealthSummary {
+  healthy: number;
+  degraded: number;
+  unhealthy: number;
+  total: number;
+}
+
 export interface HealthCheckResult {
   status: HealthStatus;
   timestamp: string;
   version: string;
   uptime: number;
+  environment: string;
+  summary: HealthSummary;
   services: Record<string, HealthStatus>;
   dependencies: DependencyStatus[];
   diagnostics?: SystemDiagnostics;
@@ -31,9 +40,24 @@ export interface ReadinessResult {
   dependencies: DependencyStatus[];
 }
 
+export interface StartupResult {
+  status: HealthStatus;
+  timestamp: string;
+  ready: boolean;
+  startupComplete: boolean;
+  dependencies: DependencyStatus[];
+}
+
+export interface DependencyHealthResult {
+  status: HealthStatus;
+  timestamp: string;
+  dependencies: DependencyStatus[];
+}
+
 export interface SystemDiagnostics {
   memoryUsage: NodeJS.MemoryUsage;
   cpuUsage: NodeJS.CpuUsage;
+  resourceUsage?: NodeJS.ResourceUsage;
   eventLoopDelayMs?: number;
-  activeConnections?: number;
+  openFileDescriptors?: number;
 }
