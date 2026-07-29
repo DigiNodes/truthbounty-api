@@ -11,7 +11,7 @@ import { DeliveryHistoryService } from './services/delivery-history.service';
 import { WebSocketService } from './services/websocket.service';
 import { EmailService } from './services/email.service';
 import { WebhookService } from './services/webhook.service';
-import { NotificationProcessor } from './processors/notification.processor';
+import { NotificationProcessor } from './services/notification.processor';
 import { Notification } from './entities/notification.entity';
 import { NotificationPreference } from './entities/notification-preference.entity';
 import { DeliveryHistory } from './entities/delivery-history.entity';
