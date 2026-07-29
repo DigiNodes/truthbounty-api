@@ -32,6 +32,7 @@ import { LoggingInterceptor } from './logger/logging.interceptor';
 import { AuthModule } from './auth/auth.module';
 import { GlobalAuthGuard } from './auth/global-auth.guard';
 import { MetricsModule } from './metrics/metrics.module';
+import { ReputationModule } from './reputation/reputation.module';
 import { GovernanceModule } from './governance/governance.module';
 
 // In-memory storage for development (no Redis needed)
@@ -284,6 +285,7 @@ async function createThrottlerStorage(configService: ConfigService): Promise<any
     AuditModule,
     ThemeModule,
     MetricsModule,
+    ReputationModule,
     GovernanceModule,
   ],
   controllers: [AppController],
