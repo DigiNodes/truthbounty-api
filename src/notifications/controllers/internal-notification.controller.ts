@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { ServiceAuthGuard } from '../../auth/guards/service-auth.guard';
 import { NotificationService } from '../services/notification.service';
-import { ProcessProtocolEventDto } from '../dto/notification.dto';
+import { ProtocolEventDto } from '../dto/notification.dto';
 
 @Controller('internal/notifications')
 @UseGuards(ServiceAuthGuard)
@@ -21,7 +21,7 @@ export class InternalNotificationController {
    */
   @Post('process-event')
   @HttpCode(HttpStatus.ACCEPTED)
-  async processProtocolEvent(@Body() eventDto: ProcessProtocolEventDto) {
+  async processProtocolEvent(@Body() eventDto: ProtocolEventDto) {
     const { source, eventType, recipientId, payload } = eventDto;
     const notification = await this.notificationService.processProtocolEvent(
       source,
