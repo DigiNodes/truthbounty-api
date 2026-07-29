@@ -10,13 +10,13 @@ import {
   HttpStatus,
   HttpCode,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/jwt';
+import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { NotificationService } from '../services/notification.service';
 import { UpdatePreferencesDto, NotificationQueryDto } from '../dto/notification.dto';
-import { CurrentUser } from '../../auth/decorators/current-user.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
 @Controller('notifications')
-@UseGuards(AuthGuard)
+@UseGuards(JwtAuthGuard)
 export class NotificationController {
   constructor(private readonly notificationService: NotificationService) {}
 
