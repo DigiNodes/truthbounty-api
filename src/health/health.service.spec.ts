@@ -3,6 +3,10 @@ import { HealthService } from './health.service';
 import { RedisService } from '../redis/redis.service';
 import { DataSource } from 'typeorm';
 import { Queue } from 'bullmq';
+import { JobsService } from '../jobs/jobs.service';
+import { NotificationService } from '../notifications/services/notification.service';
+import { IpfsService } from '../ipfs/ipfs.service';
+import { BlockchainStateService } from '../blockchain/state.service';
 
 const mockDataSource = () => ({
   isInitialized: true,
@@ -17,11 +21,31 @@ const mockQueue = () => ({
   getJobCounts: jest.fn(),
 });
 
+const mockJobsService = () => ({
+  getQueueMetrics: jest.fn(),
+});
+
+const mockNotificationService = () => ({
+  getMetrics: jest.fn(),
+});
+
+const mockIpfsService = () => ({
+  uploadBuffer: jest.fn(),
+});
+
+const mockBlockchainStateService = () => ({
+  getChainState: jest.fn(),
+});
+
 describe('HealthService', () => {
   let service: HealthService;
   let dataSource: DataSource;
   let redisService: RedisService;
   let queue: Queue;
+  let jobsService: JobsService;
+  let notificationService: NotificationService;
+  let ipfsService: IpfsService;
+  let blockchainStateService: BlockchainStateService;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -30,6 +54,10 @@ describe('HealthService', () => {
         { provide: DataSource, useFactory: mockDataSource },
         { provide: RedisService, useFactory: mockRedisService },
         { provide: 'BullQueue_jobs-queue', useFactory: mockQueue },
+        { provide: JobsService, useFactory: mockJobsService },
+        { provide: NotificationService, useFactory: mockNotificationService },
+        { provide: IpfsService, useFactory: mockIpfsService },
+        { provide: BlockchainStateService, useFactory: mockBlockchainStateService },
       ],
     }).compile();
 
@@ -37,6 +65,10 @@ describe('HealthService', () => {
     dataSource = module.get<DataSource>(DataSource);
     redisService = module.get<RedisService>(RedisService);
     queue = module.get<Queue>('BullQueue_jobs-queue');
+    jobsService = module.get<JobsService>(JobsService);
+    notificationService = module.get<NotificationService>(NotificationService);
+    ipfsService = module.get<IpfsService>(IpfsService);
+    blockchainStateService = module.get<BlockchainStateService>(BlockchainStateService);
   });
 
   it('should return alive liveness result', () => {

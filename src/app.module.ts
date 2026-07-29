@@ -37,6 +37,7 @@ import { GovernanceModule } from './governance/governance.module';
 import { AdminModule } from './admin/admin.module';
 import { ProfilerModule } from './profiler/profiler.module';
 import { ProfilerInterceptor } from './profiler/profiler.interceptor';
+import { HealthModule } from './health/health.module';
 
 // In-memory storage for development (no Redis needed)
 class ThrottlerMemoryStorage {
@@ -316,6 +317,7 @@ async function createThrottlerStorage(
     GovernanceModule,
     AdminModule,
     ProfilerModule,
+    HealthModule,
   ],
   controllers: [AppController],
   providers: [
