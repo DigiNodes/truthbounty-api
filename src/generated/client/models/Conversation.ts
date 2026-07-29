@@ -408,7 +408,6 @@ export type ConversationCreateOrConnectWithoutUserInput = {
 
 export type ConversationCreateManyUserInputEnvelope = {
   data: Prisma.ConversationCreateManyUserInput | Prisma.ConversationCreateManyUserInput[]
-  skipDuplicates?: boolean
 }
 
 export type ConversationUpsertWithWhereUniqueWithoutUserInput = {
@@ -1268,7 +1267,6 @@ export type ConversationCreateManyArgs<ExtArgs extends runtime.Types.Extensions.
    * The data used to create many Conversations.
    */
   data: Prisma.ConversationCreateManyInput | Prisma.ConversationCreateManyInput[]
-  skipDuplicates?: boolean
 }
 
 /**
@@ -1287,7 +1285,6 @@ export type ConversationCreateManyAndReturnArgs<ExtArgs extends runtime.Types.Ex
    * The data used to create many Conversations.
    */
   data: Prisma.ConversationCreateManyInput | Prisma.ConversationCreateManyInput[]
-  skipDuplicates?: boolean
   /**
    * Choose, which related nodes to fetch as well
    */

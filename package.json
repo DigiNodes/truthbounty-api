@@ -26,6 +26,7 @@
     "migration:run": "typeorm-ts-node-commonjs migration:run -d src/config/data-source.ts",
     "migration:revert": "typeorm-ts-node-commonjs migration:revert -d src/config/data-source.ts",
     "seed": "ts-node src/scripts/seed.ts",
+    "seed:ai": "ts-node src/scripts/seed-ai-knowledge-base.ts",
     "benchmark:indexes": "ts-node scripts/benchmark-indexes.ts",
     "benchmark:compare": "ts-node scripts/compare-benchmarks.ts"
   },
