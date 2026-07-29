@@ -4,6 +4,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Repository, Between, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
 import { Queue } from 'bullmq';
 import { Notification } from '../entities/notification.entity';
+import { NotificationPreference } from '../entities/notification-preference.entity';
 import { DeliveryHistoryService } from './delivery-history.service';
 import { NotificationPreferencesService } from './notification-preferences.service';
 import { ListNotificationsDto } from '../dto';
@@ -260,7 +261,7 @@ export class NotificationsService {
     };
   }
 
-  private async queueNotificationForDelivery(notification: Notification, preferences: any) {
+  private async queueNotificationForDelivery(notification: Notification, preferences: NotificationPreference) {
     const enabledChannels = preferences.settings.enabledChannels;
     
     for (const channel of enabledChannels) {
