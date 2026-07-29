@@ -7,9 +7,22 @@ generator client {
   binaryTargets = ["native", "linux-musl"]
 }
 
+// Actual runtime datasource is SQLite via the libsql driver adapter
+// (see src/prisma/prisma.service.ts, DATABASE_URL=file:./dev.db) — this
+// matches prisma/migrations/migration_lock.toml, which already records
+// "sqlite" as the migration dialect. Declaring "postgresql" here caused
+// PrismaClientInitializationError at runtime ("Driver Adapter
+// @prisma/adapter-libsql, based on sqlite, is not compatible with the
+// provider postgres") once the client was regenerated against the
+// package-lock-pinned prisma@7.4.1, which validates this consistency.
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider = "sqlite"
+}
+
+enum UserRole {
+  contributor
+  moderator
+  admin
 }
 
 model User {
@@ -21,6 +34,8 @@ model User {
   walletAddress String @unique
 
   reputation Int @default(0)
+
+  role UserRole @default(contributor)
 
   // Sybil Resistance
   worldcoinVerified   Boolean   @default(false)

@@ -26,6 +26,7 @@
     "migration:run": "typeorm-ts-node-commonjs migration:run -d src/config/data-source.ts",
     "migration:revert": "typeorm-ts-node-commonjs migration:revert -d src/config/data-source.ts",
     "seed": "ts-node src/scripts/seed.ts",
+    "seed:ai": "ts-node src/scripts/seed-ai-knowledge-base.ts",
     "benchmark:indexes": "ts-node scripts/benchmark-indexes.ts",
     "benchmark:compare": "ts-node scripts/compare-benchmarks.ts"
   },
@@ -58,6 +59,7 @@
     "jsonwebtoken": "^9.0.3",
     "multiformats": "^14.0.0",
     "nestjs-pino": "^4.1.0",
+    "openai": "^7.0.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "pg": "^8.17.2",
