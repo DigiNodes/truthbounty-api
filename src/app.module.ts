@@ -35,10 +35,11 @@ import { MetricsModule } from './metrics/metrics.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { Notification } from './notifications/entities/notification.entity';
 import { NotificationPreference } from './notifications/entities/notification-preference.entity';
+import { GovernanceModule } from './governance/governance.module';
 
 // In-memory storage for development (no Redis needed)
 class ThrottlerMemoryStorage {
-  private storage = new Map<
+  private storage = new Map
     string,
     {
       totalHits: number;
@@ -287,6 +288,7 @@ async function createThrottlerStorage(configService: ConfigService): Promise<any
     ThemeModule,
     MetricsModule,
     NotificationsModule,
+    GovernanceModule,
   ],
   controllers: [AppController],
   providers: [
@@ -310,4 +312,3 @@ async function createThrottlerStorage(configService: ConfigService): Promise<any
   ],
 })
 export class AppModule { }
-
