@@ -90,4 +90,44 @@ describe('HealthService', () => {
     expect(result.ready).toBe(true);
     expect(result.status).toBe('degraded');
   });
+
+  it('should include health metadata and dependency summary', async () => {
+    (dataSource.query as jest.Mock).mockResolvedValue([{ 1: 1 }]);
+    (redisService.isHealthy as jest.Mock).mockResolvedValue(true);
+    (queue.getJobCounts as jest.Mock).mockResolvedValue({
+      waiting: 0,
+      active: 0,
+      completed: 0,
+      failed: 0,
+    });
+
+    const result = await service.getHealth();
+
+    expect(result.environment).toBe(process.env.NODE_ENV ?? 'development');
+    expect(result.summary).toEqual(
+      expect.objectContaining({
+        healthy: expect.any(Number),
+        degraded: expect.any(Number),
+        unhealthy: expect.any(Number),
+      }),
+    );
+    expect(result.dependencies.some((dep) => dep.name === 'database')).toBe(true);
+  });
+
+  it('should return not ready while shutting down', async () => {
+    (dataSource.query as jest.Mock).mockResolvedValue([{ 1: 1 }]);
+    (redisService.isHealthy as jest.Mock).mockResolvedValue(true);
+    (queue.getJobCounts as jest.Mock).mockResolvedValue({
+      waiting: 0,
+      active: 0,
+      completed: 0,
+      failed: 0,
+    });
+
+    (service as unknown as { shuttingDown: boolean }).shuttingDown = true;
+
+    const result = await service.getReadiness();
+    expect(result.ready).toBe(false);
+    expect(result.status).toBe('unhealthy');
+  });
 });
