@@ -3,6 +3,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { FeatureFlagsService } from './feature-flags.service';
 import { FeatureFlag } from './entities/feature-flag.entity';
+import { FeatureFlagsMetricsService } from './metrics/feature-flag.metrics';
 import { RedisService } from '../redis/redis.service';
 
 describe('FeatureFlagsService', () => {
@@ -24,12 +25,21 @@ describe('FeatureFlagsService', () => {
     del: jest.fn(),
   });
 
+  const mockMetrics = () => ({
+    recordActiveFlags: jest.fn(),
+    recordDisabledFlags: jest.fn(),
+    incrementConfigChanges: jest.fn(),
+    recordCacheHitRatio: jest.fn(),
+    observeRefreshLatency: jest.fn(),
+  });
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         FeatureFlagsService,
         { provide: getRepositoryToken(FeatureFlag), useFactory: mockRepo },
         { provide: RedisService, useFactory: mockRedis },
+        { provide: FeatureFlagsMetricsService, useFactory: mockMetrics },
       ],
     }).compile();
 

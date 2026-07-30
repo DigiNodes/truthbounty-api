@@ -3,7 +3,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { RedisService } from '../redis/redis.service';
 import { ConfigurationValue } from './entities/configuration-value.entity';
+import { ConfigurationHistory } from './entities/configuration-history.entity';
 import { ConfigurationHistoryEntry } from './feature-flags.types';
+import { FeatureFlagsMetricsService } from './metrics/feature-flag.metrics';
 
 const CACHE_TTL_SECONDS = 60;
 
@@ -14,7 +16,10 @@ export class ConfigurationService {
   constructor(
     @InjectRepository(ConfigurationValue)
     private readonly configRepo: Repository<ConfigurationValue>,
+    @InjectRepository(ConfigurationHistory)
+    private readonly historyRepo: Repository<ConfigurationHistory>,
     private readonly redisService: RedisService,
+    private readonly metrics: FeatureFlagsMetricsService,
   ) {}
 
   async get<T = unknown>(key: string, environment?: string): Promise<T | null> {
@@ -72,7 +77,17 @@ export class ConfigurationService {
         createdBy,
         changeReason,
       });
+      await this.historyRepo.insert({
+        configurationId: existing.id,
+        key,
+        value: value as unknown,
+        environment: env,
+        version: nextVersion,
+        createdBy,
+        changeReason,
+      });
       await this.invalidateCache(key, env);
+      this.metrics.incrementConfigChanges(env, 'config');
       return this.configRepo.findOneOrFail({ where: { id: existing.id } });
     }
 
@@ -85,7 +100,17 @@ export class ConfigurationService {
       changeReason,
     });
     const saved = await this.configRepo.save(record);
+    await this.historyRepo.insert({
+      configurationId: saved.id,
+      key,
+      value: value as unknown,
+      environment: env,
+      version: 1,
+      createdBy,
+      changeReason,
+    });
     await this.invalidateCache(key, env);
+    this.metrics.incrementConfigChanges(env, 'config');
     return saved;
   }
 
@@ -115,7 +140,7 @@ export class ConfigurationService {
     limit = 50,
   ): Promise<ConfigurationHistoryEntry[]> {
     const env = environment ?? this.getDefaultEnvironment();
-    const records = await this.configRepo.find({
+    const records = await this.historyRepo.find({
       where: { key, environment: env },
       order: { createdAt: 'DESC' },
       take: limit,
@@ -129,6 +154,29 @@ export class ConfigurationService {
       changeReason: r.changeReason,
       createdAt: r.createdAt,
     }));
+  }
+
+  async rollback(id: string, targetVersion: number, rolledBackBy?: string): Promise<ConfigurationValue> {
+    const current = await this.findOne(id);
+    if (targetVersion >= current.version || targetVersion < 1) {
+      throw new Error('Invalid rollback target version');
+    }
+
+    const historyRecord = await this.historyRepo.findOne({
+      where: { configurationId: id, version: targetVersion },
+    });
+
+    if (!historyRecord) {
+      throw new NotFoundException(`History record for version ${targetVersion} not found`);
+    }
+
+    return this.set(
+      current.key,
+      historyRecord.value,
+      current.environment,
+      rolledBackBy,
+      `Rolled back to version ${targetVersion}`,
+    );
   }
 
   private async invalidateCache(

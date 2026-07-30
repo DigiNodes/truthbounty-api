@@ -10,6 +10,7 @@ import {
   FeatureFlagRuleSet,
   UpdateFeatureFlagInput,
 } from './feature-flags.types';
+import { FeatureFlagsMetricsService } from './metrics/feature-flag.metrics';
 
 const CACHE_TTL_SECONDS = 60;
 
@@ -38,6 +39,7 @@ export class FeatureFlagsService {
     @InjectRepository(FeatureFlag)
     private readonly flagRepo: Repository<FeatureFlag>,
     private readonly redisService: RedisService,
+    private readonly metrics: FeatureFlagsMetricsService,
   ) {}
 
   async evaluate(
@@ -58,6 +60,8 @@ export class FeatureFlagsService {
     const rules: FeatureFlagRuleSet = (flag.rules as FeatureFlagRuleSet) ?? {};
 
     switch (flag.type) {
+      case 'kill-switch':
+        return { key, enabled: false, reason: 'disabled' };
       case 'boolean':
         return { key, enabled: true, reason: 'boolean' };
       case 'percentage': {
@@ -139,6 +143,7 @@ export class FeatureFlagsService {
     });
     const saved = await this.flagRepo.save(flag);
     await this.invalidateCache(saved.key, saved.environment);
+    this.metrics.incrementConfigChanges(environment, 'flag');
     return saved;
   }
 
@@ -156,6 +161,7 @@ export class FeatureFlagsService {
       createdBy: updatedBy ?? flag.createdBy,
     });
     await this.invalidateCache(flag.key, flag.environment);
+    this.metrics.incrementConfigChanges(flag.environment, 'flag');
     return this.findOne(id);
   }
 
@@ -189,13 +195,18 @@ export class FeatureFlagsService {
     environment: string,
   ): Promise<FeatureFlag | null> {
     const cacheKey = this.cacheKey(key, environment);
+    const startTime = Date.now();
     const cached = await this.redisService.get(cacheKey);
     if (cached) {
+      this.metrics.recordCacheHitRatio(environment, 1.0);
+      this.metrics.observeRefreshLatency(environment, (Date.now() - startTime) / 1000);
       try {
         return JSON.parse(cached) as FeatureFlag;
       } catch {
         // fall through to DB
       }
+    } else {
+      this.metrics.recordCacheHitRatio(environment, 0.0);
     }
 
     const flag = await this.flagRepo.findOne({ where: { key, environment } });
@@ -206,6 +217,7 @@ export class FeatureFlagsService {
         CACHE_TTL_SECONDS,
       );
     }
+    this.metrics.observeRefreshLatency(environment, (Date.now() - startTime) / 1000);
     return flag;
   }
 
