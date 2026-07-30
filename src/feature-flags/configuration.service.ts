@@ -67,7 +67,7 @@ export class ConfigurationService {
     if (existing) {
       const nextVersion = existing.version + 1;
       await this.configRepo.update(existing.id, {
-        value: value as unknown,
+        value: value as any,
         version: nextVersion,
         createdBy,
         changeReason,
@@ -78,7 +78,7 @@ export class ConfigurationService {
 
     const record = this.configRepo.create({
       key,
-      value: value as unknown,
+      value: value as any,
       environment: env,
       version: 1,
       createdBy,

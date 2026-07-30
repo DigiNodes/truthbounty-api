@@ -172,6 +172,25 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Flush all Redis data (use with extreme caution)
+   */
+  async flushall(): Promise<boolean> {
+    if (!this.client || !this.isConnected) {
+      this.logger.warn('Redis unavailable, skipping FLUSHALL');
+      return false;
+    }
+
+    try {
+      await this.client.flushall();
+      this.logger.warn('Redis flushed all data');
+      return true;
+    } catch (error) {
+      this.logger.error(`Redis FLUSHALL error: ${error.message}`);
+      return false;
+    }
+  }
+
+  /**
    * Get Redis connection status
    */
   getStatus(): { connected: boolean; enabled: boolean } {
