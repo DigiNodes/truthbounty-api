@@ -3,12 +3,18 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { DataSource } from 'typeorm';
 import { RedisService } from '../redis/redis.service';
+import { IpfsService } from '../ipfs/ipfs.service';
+import { NotificationService } from '../notifications/services/notification.service';
+import { JobsService } from '../jobs/jobs.service';
+import { BlockchainStateService } from '../blockchain/state.service';
 import {
+  DependencyHealthResult,
   DependencyStatus,
   HealthCheckResult,
   HealthStatus,
   LivenessResult,
   ReadinessResult,
+  StartupResult,
   SystemDiagnostics,
 } from './health.types';
 
@@ -24,11 +30,17 @@ export class HealthService {
   private readonly startTime = Date.now();
   private readonly lastSuccess = new Map<string, string>();
   private appVersion: string;
+  private readonly environment = process.env.NODE_ENV ?? 'development';
+  private shuttingDown = false;
 
   constructor(
     private readonly dataSource: DataSource,
     private readonly redisService: RedisService,
     @InjectQueue('jobs-queue') private readonly jobsQueue: Queue,
+    private readonly jobsService: JobsService,
+    private readonly notificationService: NotificationService,
+    private readonly ipfsService: IpfsService,
+    private readonly blockchainStateService: BlockchainStateService,
   ) {
     this.appVersion = process.env.npm_package_version ?? '0.0.1';
   }
@@ -42,15 +54,22 @@ export class HealthService {
   }
 
   async getReadiness(): Promise<ReadinessResult> {
-    const dependencies = await this.runChecks();
-    const unhealthyCritical = dependencies.some(
-      (d) => d.status === 'unhealthy',
-    );
-    const degraded = dependencies.some((d) => d.status === 'degraded');
+    if (this.shuttingDown) {
+      return {
+        status: 'unhealthy',
+        timestamp: new Date().toISOString(),
+        ready: false,
+        dependencies: [],
+      };
+    }
 
-    let status: HealthStatus = 'healthy';
-    if (unhealthyCritical) status = 'unhealthy';
-    else if (degraded) status = 'degraded';
+    const dependencies = await this.runChecks();
+    const unhealthyCritical = dependencies.some((d) => d.status === 'unhealthy');
+    const status = unhealthyCritical
+      ? 'unhealthy'
+      : dependencies.some((d) => d.status === 'degraded')
+        ? 'degraded'
+        : 'healthy';
 
     return {
       status,
@@ -60,22 +79,55 @@ export class HealthService {
     };
   }
 
+  async getStartup(): Promise<StartupResult> {
+    const dependencies = await this.runChecks();
+    const status = this.aggregateStatus(dependencies);
+
+    return {
+      status,
+      timestamp: new Date().toISOString(),
+      ready: status !== 'unhealthy',
+      startupComplete: !this.shuttingDown,
+      dependencies,
+    };
+  }
+
+  getDependencyHealth(): DependencyHealthResult {
+    const dependencies = Array.from(this.lastSuccess.keys()).map((name) => ({
+      name,
+      status: 'healthy' as HealthStatus,
+      responseTimeMs: 0,
+      lastSuccessfulCheck: this.lastSuccess.get(name),
+    }));
+
+    return {
+      status: this.aggregateStatus(dependencies),
+      timestamp: new Date().toISOString(),
+      dependencies,
+    };
+  }
+
   async getHealth(): Promise<HealthCheckResult> {
     const dependencies = await this.runChecks();
     const diagnostics = this.collectDiagnostics();
     const services = this.aggregateServices(dependencies);
-
     const status = this.aggregateStatus(dependencies);
 
     return {
       status,
       timestamp: new Date().toISOString(),
       version: this.appVersion,
+      environment: this.environment,
       uptime: this.getUptime(),
+      summary: this.buildSummary(dependencies),
       services,
       dependencies,
       diagnostics,
     };
+  }
+
+  async shutdown(): Promise<void> {
+    this.shuttingDown = true;
   }
 
   private async runChecks(): Promise<DependencyStatus[]> {
@@ -94,6 +146,21 @@ export class HealthService {
         name: 'queue',
         critical: true,
         check: () => this.checkQueue(),
+      },
+      {
+        name: 'notifications',
+        critical: false,
+        check: () => this.checkNotifications(),
+      },
+      {
+        name: 'ipfs',
+        critical: false,
+        check: () => this.checkIpfs(),
+      },
+      {
+        name: 'blockchain',
+        critical: true,
+        check: () => this.checkBlockchain(),
       },
     ];
 
@@ -140,25 +207,35 @@ export class HealthService {
   }
 
   private async checkQueue(): Promise<void> {
-    // A quick BullMQ liveness check: fetch job counts without heavy iteration.
-    await this.jobsQueue.getJobCounts(
-      'waiting',
-      'active',
-      'completed',
-      'failed',
-    );
+    await this.jobsQueue.getJobCounts('waiting', 'active', 'completed', 'failed', 'delayed', 'paused');
   }
 
-  private aggregateServices(
-    dependencies: DependencyStatus[],
-  ): Record<string, HealthStatus> {
-    return dependencies.reduce(
-      (acc, dep) => {
-        acc[dep.name] = dep.status;
-        return acc;
-      },
-      {} as Record<string, HealthStatus>,
-    );
+  private async checkNotifications(): Promise<void> {
+    const metrics = await this.notificationService.getMetrics();
+    if (metrics.queueDepth > 1000) {
+      throw new Error('Notification queue depth exceeds threshold');
+    }
+  }
+
+  private async checkIpfs(): Promise<void> {
+    const cid = await this.ipfsService.uploadBuffer(Buffer.from('health-check'), 'health-check.txt');
+    if (!cid?.cid) {
+      throw new Error('IPFS provider did not return a valid CID');
+    }
+  }
+
+  private async checkBlockchain(): Promise<void> {
+    const state = await this.blockchainStateService.getChainState();
+    if (typeof state.lastProcessedBlock !== 'number') {
+      throw new Error('Blockchain state is unavailable');
+    }
+  }
+
+  private aggregateServices(dependencies: DependencyStatus[]): Record<string, HealthStatus> {
+    return dependencies.reduce((acc, dep) => {
+      acc[dep.name] = dep.status;
+      return acc;
+    }, {} as Record<string, HealthStatus>);
   }
 
   private aggregateStatus(dependencies: DependencyStatus[]): HealthStatus {
@@ -171,6 +248,24 @@ export class HealthService {
     return {
       memoryUsage: process.memoryUsage(),
       cpuUsage: process.cpuUsage(),
+      resourceUsage: process.resourceUsage(),
+    };
+  }
+
+  private buildSummary(dependencies: DependencyStatus[]): {
+    healthy: number;
+    degraded: number;
+    unhealthy: number;
+    total: number;
+  } {
+    const healthy = dependencies.filter((d) => d.status === 'healthy').length;
+    const degraded = dependencies.filter((d) => d.status === 'degraded').length;
+    const unhealthy = dependencies.filter((d) => d.status === 'unhealthy').length;
+    return {
+      healthy,
+      degraded,
+      unhealthy,
+      total: dependencies.length,
     };
   }
 

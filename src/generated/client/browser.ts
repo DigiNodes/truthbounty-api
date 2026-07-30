@@ -42,3 +42,18 @@ export type SybilExplanation = Prisma.SybilExplanationModel
  * 
  */
 export type WorldIdVerification = Prisma.WorldIdVerificationModel
+/**
+ * Model Conversation
+ * 
+ */
+export type Conversation = Prisma.ConversationModel
+/**
+ * Model Message
+ * 
+ */
+export type Message = Prisma.MessageModel
+/**
+ * Model AiUsageMetric
+ * 
+ */
+export type AiUsageMetric = Prisma.AiUsageMetricModel

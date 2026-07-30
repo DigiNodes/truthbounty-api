@@ -353,6 +353,7 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
     return result;
   }
 
+
   private async computeReputation(): Promise<BatchResult> {
     this.logger.debug('computeReputation: starting');
     const result: BatchResult = { processed: 0, updated: 0, errors: 0 };

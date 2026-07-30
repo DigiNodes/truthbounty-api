@@ -13,7 +13,8 @@ export type FeatureFlagType =
   | 'user'
   | 'role'
   | 'environment'
-  | 'time';
+  | 'time'
+  | 'kill-switch';
 
 @Entity('feature_flags')
 @Index(['key', 'environment'], { unique: true })
@@ -41,6 +42,12 @@ export class FeatureFlag {
 
   @Column({ type: 'text', nullable: true })
   description: string;
+
+  @Column({ type: 'boolean', default: false })
+  isPermanent: boolean;
+
+  @Column({ type: 'json', nullable: true })
+  metadata: Record<string, unknown>;
 
   @Column({ nullable: true })
   expiresAt: Date;

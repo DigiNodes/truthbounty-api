@@ -1,8 +1,3 @@
-import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, CreateDateColumn, UpdateDateColumn } from 'typeorm';
-import { User } from '../../entities/user.entity';
-import { NotificationCategory, NotificationPriority } from '../interfaces/notification.types';
-
-@Entity('notifications')
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -10,104 +5,67 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   Index,
-  ManyToOne,
-  OneToMany,
-  JoinColumn,
 } from 'typeorm';
-import { User } from '../../entities/user.entity';
-import {
-  NotificationType,
-  DeliveryChannel,
-  NotificationPriority,
-} from '../enums/notification-type.enum';
-import { NotificationDelivery } from './notification-delivery.entity';
+
+export enum NotificationType {
+  NEW_CLAIM = 'new_claim',
+  VERIFICATION_ASSIGNMENT = 'verification_assignment',
+  DISPUTE_CREATED = 'dispute_created',
+  DISPUTE_RESOLVED = 'dispute_resolved',
+  REPUTATION_UPDATE = 'reputation_update',
+  STAKING_CHANGE = 'staking_change',
+  GOVERNANCE_PROPOSAL = 'governance_proposal',
+  PROPOSAL_VOTE = 'proposal_vote',
+  REWARD_DISTRIBUTED = 'reward_distributed',
+  MODERATION_ACTION = 'moderation_action',
+  SECURITY_ALERT = 'security_alert',
+}
+
+export enum NotificationChannel {
+  IN_APP = 'in_app',
+  WEBSOCKET = 'websocket',
+  PUSH = 'push',
+  EMAIL = 'email',
+  WEBHOOK = 'webhook',
+}
+
+export enum DeliveryStatus {
+  PENDING = 'pending',
+  DELIVERED = 'delivered',
+  FAILED = 'failed',
+  RETRYING = 'retrying',
+  DEAD_LETTER = 'dead_letter',
+}
 
 @Entity('notifications')
-@Index(['userId', 'createdAt'])
-@Index(['userId', 'readAt'])
-@Index(['type'])
-@Index(['status'])
 export class Notification {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
   @Column()
-  userId: string;
-
-  @ManyToOne(() => User, { onDelete: 'CASCADE' })
-  user: User;
-
-  @Column()
-  title: string;
-
-  @Column('text')
-  message: string;
+  @Index()
+  recipientId: string;
 
   @Column({
     type: 'varchar',
     length: 50,
   })
-  category: NotificationCategory;
-
-  @Column({
-    type: 'varchar',
-    length: 20,
-    default: 'medium',
-  })
-  priority: NotificationPriority;
-
-  @Column({ type: 'jsonb', nullable: true })
-  metadata: Record<string, any>;
-
-  @Column({ type: 'jsonb', nullable: true })
-  sourceEvent: Record<string, any>;
-
-  @Column({ default: false })
-  read: boolean;
-
-  @Column({ nullable: true })
-  readAt: Date;
-
-  @Column({ nullable: true })
-  scheduledFor: Date;
-  @JoinColumn({ name: 'userId' })
-  user: User;
-
-  @Column({ nullable: true })
-  walletAddress: string;
-
-  @Column({ type: 'varchar', enum: NotificationType })
   type: NotificationType;
 
-  @Column()
+  @Column('text')
   title: string;
 
-  @Column({ type: 'text' })
-  body: string;
+  @Column('text')
+  message: string;
 
-  @Column({ type: 'json', nullable: true })
-  data: Record<string, any>;
-
-  @Column({ type: 'varchar', enum: NotificationPriority, default: NotificationPriority.NORMAL })
-  priority: NotificationPriority;
+  @Column('jsonb', { nullable: true })
+  metadata: Record<string, any>;
 
   @Column({ default: false })
   read: boolean;
 
-  @Column({ type: 'datetime', nullable: true })
+  @Column({ nullable: true })
   readAt: Date;
-
-  @Column({ type: 'varchar', default: 'PENDING' })
-  status: string;
-
-  @Column({ type: 'datetime', nullable: true })
-  scheduledAt: Date;
-
-  @Column({ type: 'datetime', nullable: true })
-  sentAt: Date;
-
-  @OneToMany(() => NotificationDelivery, (delivery) => delivery.notification, { cascade: true })
-  deliveries: NotificationDelivery[];
 
   @CreateDateColumn()
   createdAt: Date;
@@ -115,4 +73,97 @@ export class Notification {
   @UpdateDateColumn()
   updatedAt: Date;
 }
+
+@Entity('notification_delivery_history')
+export class NotificationDeliveryHistory {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column()
+  @Index()
+  notificationId: string;
+
+  @Column()
+  @Index()
+  recipientId: string;
+
+  @Column({
+    type: 'varchar',
+    length: 30,
+  })
+  channel: NotificationChannel;
+
+  @Column({
+    type: 'varchar',
+    length: 30,
+  })
+  status: DeliveryStatus;
+
+  @Column({ nullable: true })
+  deliveredAt: Date;
+
+  @Column({ default: 0 })
+  retryAttempts: number;
+
+  @Column('text', { nullable: true })
+  failureReason: string;
+
+  @CreateDateColumn()
+  createdAt: Date;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
+}
+
+@Entity('user_notification_preferences')
+@Index(['userId'], { unique: true })
+export class UserNotificationPreferences {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column()
+  userId: string;
+
+  @Column('jsonb')
+  enabledChannels: Record<NotificationChannel, boolean>;
+
+  @Column('jsonb')
+  enabledCategories: Record<NotificationType, boolean>;
+
+  @Column({ default: true })
+  emailEnabled: boolean;
+
+  @Column({ nullable: true })
+  emailAddress: string;
+
+  @Column({ default: true })
+  governanceAlerts: boolean;
+
+  @Column({ default: true })
+  stakingAlerts: boolean;
+
+  @Column({ default: true })
+  rewardNotifications: boolean;
+
+  @Column({ default: true })
+  securityAlerts: boolean;
+
+  @Column('jsonb', { nullable: true })
+  webhookConfig: {
+    url: string;
+    secret: string;
+    enabled: boolean;
+  };
+
+  @Column('jsonb', { nullable: true })
+  pushSubscription: {
+    endpoint: string;
+    keys: Record<string, string>;
+  };
+
+  @CreateDateColumn()
+  createdAt: Date;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
 }

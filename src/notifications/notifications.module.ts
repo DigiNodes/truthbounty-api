@@ -5,6 +5,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { RedisModule } from '../redis/redis.module';
 import { LoggerModule } from '../logger/logger.module';
 import { NotificationsController } from './controllers/notifications.controller';
+import { InternalNotificationController } from './controllers/internal-notification.controller';
 import { NotificationsService } from './services/notifications.service';
 import { NotificationPreferencesService } from './services/notification-preferences.service';
 import { DeliveryHistoryService } from './services/delivery-history.service';
@@ -38,7 +39,7 @@ import { AuthModule } from '../auth/auth.module';
     MetricsModule,
     AuthModule,
   ],
-  controllers: [NotificationsController],
+  controllers: [NotificationsController, InternalNotificationController],
   providers: [
     NotificationsService,
     NotificationPreferencesService,

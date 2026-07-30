@@ -55,7 +55,10 @@ export const ModelName = {
   Wallet: 'Wallet',
   SybilScore: 'SybilScore',
   SybilExplanation: 'SybilExplanation',
-  WorldIdVerification: 'WorldIdVerification'
+  WorldIdVerification: 'WorldIdVerification',
+  Conversation: 'Conversation',
+  Message: 'Message',
+  AiUsageMetric: 'AiUsageMetric'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -135,6 +138,43 @@ export const WorldIdVerificationScalarFieldEnum = {
 } as const
 
 export type WorldIdVerificationScalarFieldEnum = (typeof WorldIdVerificationScalarFieldEnum)[keyof typeof WorldIdVerificationScalarFieldEnum]
+
+
+export const ConversationScalarFieldEnum = {
+  id: 'id',
+  title: 'title',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  userId: 'userId'
+} as const
+
+export type ConversationScalarFieldEnum = (typeof ConversationScalarFieldEnum)[keyof typeof ConversationScalarFieldEnum]
+
+
+export const MessageScalarFieldEnum = {
+  id: 'id',
+  role: 'role',
+  content: 'content',
+  conversationId: 'conversationId',
+  createdAt: 'createdAt'
+} as const
+
+export type MessageScalarFieldEnum = (typeof MessageScalarFieldEnum)[keyof typeof MessageScalarFieldEnum]
+
+
+export const AiUsageMetricScalarFieldEnum = {
+  id: 'id',
+  userId: 'userId',
+  provider: 'provider',
+  model: 'model',
+  promptTokens: 'promptTokens',
+  completionTokens: 'completionTokens',
+  totalTokens: 'totalTokens',
+  latencyMs: 'latencyMs',
+  createdAt: 'createdAt'
+} as const
+
+export type AiUsageMetricScalarFieldEnum = (typeof AiUsageMetricScalarFieldEnum)[keyof typeof AiUsageMetricScalarFieldEnum]
 
 
 export const SortOrder = {
