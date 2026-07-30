@@ -28,13 +28,7 @@ export class DisputeController {
   @ApiResponse({ status: 201, description: 'Dispute created' })
   @ApiResponse({ status: 400, description: 'Bad request' })
   async create(@Body() dto: CreateDisputeDto) {
-    return this.disputeService.createDispute(
-      dto.claimId,
-      dto.trigger,
-      dto.originalConfidence,
-      dto.initiatorId,
-      dto.metadata,
-    );
+    return this.disputeService.createDispute(dto);
   }
 
   @Patch(':id/start-review')
@@ -50,12 +44,7 @@ export class DisputeController {
   @ApiResponse({ status: 200, description: 'Dispute resolved' })
   @ApiResponse({ status: 404, description: 'Dispute not found' })
   async resolve(@Param('id') id: string, @Body() dto: ResolveDisputeDto) {
-    return this.disputeService.resolveDispute(
-      id,
-      dto.outcome,
-      dto.finalConfidence,
-      dto.metadata,
-    );
+    return this.disputeService.resolveDispute({ disputeId: id, outcome: dto.outcome, finalConfidence: dto.finalConfidence, metadata: dto.metadata });
   }
 
   @Patch(':id/reject')
@@ -63,7 +52,7 @@ export class DisputeController {
   @ApiResponse({ status: 200, description: 'Dispute rejected' })
   @ApiResponse({ status: 404, description: 'Dispute not found' })
   async reject(@Param('id') id: string, @Body() dto: RejectDisputeDto) {
-    return this.disputeService.rejectDispute(id, dto.reason);
+    return this.disputeService.rejectDispute({ disputeId: id, reason: dto.reason, rejectedBy: dto.rejectedBy });
   }
 
   @Get('claim/:claimId')
@@ -88,6 +77,6 @@ export class DisputeController {
     @Query('status') status?: DisputeStatus,
     @Query('trigger') trigger?: DisputeTrigger,
   ) {
-    return this.disputeService.findAll(status, trigger);
+    return this.disputeService.findAll({ status, trigger });
   }
 }

@@ -12,6 +12,8 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { AdminGuard } from '../auth/guards/admin.guard';
+import { AdminOnly } from '../auth/decorators/admin-only.decorator';
 import { FeatureFlagsService } from './feature-flags.service';
 import { ConfigurationService } from './configuration.service';
 import { AuditTrailService } from '../audit/services/audit-trail.service';
@@ -72,7 +74,8 @@ export class FeatureFlagsController {
   }
 
   @Post('feature-flags')
-  @UseGuards(JwtAuthGuard)
+  @AdminOnly()
+  @UseGuards(JwtAuthGuard, AdminGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create a feature flag' })
   async createFlag(
@@ -96,7 +99,8 @@ export class FeatureFlagsController {
   }
 
   @Patch('feature-flags/:id')
-  @UseGuards(JwtAuthGuard)
+  @AdminOnly()
+  @UseGuards(JwtAuthGuard, AdminGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update a feature flag' })
   async updateFlag(
@@ -120,7 +124,8 @@ export class FeatureFlagsController {
   }
 
   @Post('feature-flags/:id/toggle')
-  @UseGuards(JwtAuthGuard)
+  @AdminOnly()
+  @UseGuards(JwtAuthGuard, AdminGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Toggle a feature flag' })
   async toggleFlag(
@@ -144,7 +149,8 @@ export class FeatureFlagsController {
   }
 
   @Post('feature-flags/:id/rollback')
-  @UseGuards(JwtAuthGuard)
+  @AdminOnly()
+  @UseGuards(JwtAuthGuard, AdminGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Rollback a feature flag' })
   async rollbackFlag(
@@ -184,7 +190,8 @@ export class FeatureFlagsController {
   }
 
   @Post('configuration')
-  @UseGuards(JwtAuthGuard)
+  @AdminOnly()
+  @UseGuards(JwtAuthGuard, AdminGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Set a configuration value' })
   async setConfig(
@@ -221,7 +228,8 @@ export class FeatureFlagsController {
   }
 
   @Delete('configuration/:id')
-  @UseGuards(JwtAuthGuard)
+  @AdminOnly()
+  @UseGuards(JwtAuthGuard, AdminGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete a configuration value' })
   async deleteConfig(
@@ -239,6 +247,67 @@ export class FeatureFlagsController {
       description: `Deleted configuration ${before.key}`,
       beforeState: before as unknown as Record<string, any>,
     });
+  }
+
+  @Get('configuration/:key/history')
+  @ApiOperation({ summary: 'Get configuration history' })
+  getHistory(
+    @Param('key') key: string,
+    @Query('environment') environment?: string,
+  ) {
+    return this.configService.getHistory(key, environment);
+  }
+
+  @Post('configuration/:id/rollback')
+  @AdminOnly()
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Rollback a configuration value' })
+  async rollbackConfig(
+    @Param('id') id: string,
+    @Body('targetVersion') targetVersion: number,
+    @Request() req: RequestWithUser,
+  ): Promise<ConfigurationValue> {
+    const userId = this.userIdFrom(req);
+    const config = await this.configService.rollback(id, targetVersion, userId);
+    await this.auditTrailService.log({
+      actionType: AuditActionType.CONFIG_ROLLED_BACK,
+      entityType: AuditEntityType.CONFIGURATION,
+      entityId: config.id,
+      userId,
+      description: `Rolled back configuration ${config.key} to version ${targetVersion}`,
+      afterState: { version: config.version } as Record<string, any>,
+    });
+    return config;
+  }
+
+  @Post('configuration/promote')
+  @AdminOnly()
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Promote a configuration to another environment' })
+  async promoteConfig(
+    @Body() input: { key: string; sourceEnvironment: string; targetEnvironment: string },
+    @Request() req: RequestWithUser,
+  ): Promise<ConfigurationValue> {
+    const userId = this.userIdFrom(req);
+    const sourceValue = await this.configService.getRequired(input.key, input.sourceEnvironment);
+    const saved = await this.configService.set(
+      input.key,
+      sourceValue,
+      input.targetEnvironment,
+      userId,
+      `Promoted from ${input.sourceEnvironment}`,
+    );
+    await this.auditTrailService.log({
+      actionType: AuditActionType.CONFIG_UPDATED,
+      entityType: AuditEntityType.CONFIGURATION,
+      entityId: saved.id,
+      userId,
+      description: `Promoted configuration ${saved.key} from ${input.sourceEnvironment} to ${input.targetEnvironment}`,
+      afterState: { value: saved.value, environment: input.targetEnvironment },
+    });
+    return saved;
   }
 
   private userIdFrom(req: RequestWithUser): string | undefined {
