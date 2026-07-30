@@ -7,9 +7,22 @@ generator client {
   binaryTargets = ["native", "linux-musl"]
 }
 
+// Actual runtime datasource is SQLite via the libsql driver adapter
+// (see src/prisma/prisma.service.ts, DATABASE_URL=file:./dev.db) — this
+// matches prisma/migrations/migration_lock.toml, which already records
+// "sqlite" as the migration dialect. Declaring "postgresql" here caused
+// PrismaClientInitializationError at runtime ("Driver Adapter
+// @prisma/adapter-libsql, based on sqlite, is not compatible with the
+// provider postgres") once the client was regenerated against the
+// package-lock-pinned prisma@7.4.1, which validates this consistency.
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider = "sqlite"
+}
+
+enum UserRole {
+  contributor
+  moderator
+  admin
 }
 
 model User {
@@ -22,6 +35,8 @@ model User {
 
   reputation Int @default(0)
 
+  role UserRole @default(contributor)
+
   // Sybil Resistance
   worldcoinVerified   Boolean   @default(false)
   worldcoinVerifiedAt DateTime?
@@ -29,6 +44,7 @@ model User {
   wallets              Wallet[]
   sybilScores          SybilScore[]
   worldIdVerifications WorldIdVerification[]
+  conversations        Conversation[]
 }
 
 model Wallet {
@@ -101,70 +117,40 @@ model WorldIdVerification {
   @@map("world_id_verifications")
 }
 
-model Webhook {
-  id                   String                @id @default(uuid())
-  url                  String
-  description          String?
-  ownerId              String
-  enabled              Boolean               @default(true)
-  secret               String
-  secretExpiresAt      DateTime?
-  previousSecret       String?
-  previousSecretExpiresAt DateTime?
-  consecutiveFailures  Int                   @default(0)
-  maxRetries           Int                   @default(3)
-  retryIntervalMs      Int                   @default(30000)
-  disabled             Boolean               @default(false)
-  createdAt            DateTime              @default(now())
-  updatedAt            DateTime              @updatedAt
-
-  subscriptions        WebhookSubscription[]
-  deliveries           WebhookDelivery[]
-
-  @@index([ownerId])
-  @@index([enabled])
-  @@map("webhooks")
-}
-
-model WebhookSubscription {
+model Conversation {
   id        String   @id @default(uuid())
-  webhookId String
-  eventType String
-  filters   Json?
+  title     String?
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages  Message[]
 
-  webhook   Webhook  @relation(fields: [webhookId], references: [id], onDelete: Cascade)
-
-  @@unique([webhookId, eventType])
-  @@index([webhookId])
-  @@index([eventType])
-  @@map("webhook_subscriptions")
+  @@index([userId])
 }
 
-model WebhookDelivery {
-  id             String   @id @default(uuid())
-  webhookId      String
-  eventType      String
-  payload        Json
-  status         String   @default("PENDING")
-  responseStatus Int?
-  responseBody   String?
-  latency        Int?
-  retryCount     Int      @default(0)
-  maxRetries     Int
-  failureReason  String?
-  requestId      String
-  nonce          String
-  signature      String
-  timestamp      String
-  createdAt      DateTime @default(now())
-  completedAt    DateTime?
+model Message {
+  id             String       @id @default(uuid())
+  role           String       // "user", "assistant", "system"
+  content        String
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
 
-  webhook        Webhook  @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  @@index([conversationId])
+}
 
-  @@index([webhookId])
-  @@index([status])
-  @@index([createdAt])
-  @@index([webhookId, status])
-  @@map("webhook_deliveries")
+model AiUsageMetric {
+  id              String   @id @default(uuid())
+  userId          String?
+  provider        String   // e.g., "openai", "anthropic"
+  model           String
+  promptTokens    Int      @default(0)
+  completionTokens Int     @default(0)
+  totalTokens     Int      @default(0)
+  latencyMs       Int      @default(0)
+  createdAt       DateTime @default(now())
+
+  @@index([userId])
+  @@index([provider])
 }

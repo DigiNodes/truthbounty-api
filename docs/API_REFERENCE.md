@@ -446,6 +446,32 @@ Audit log retrieval.
 
 ---
 
+### AI Assistant
+
+Conversational AI assistance over protocol knowledge, with context retrieval, streaming, safety guardrails, and usage analytics. All routes require a JWT (`Authorization: Bearer <token>`), including GETs — conversations are private per user. Responses are wrapped in a standard envelope: `{ success, requestId, timestamp, data, error, meta? }`. Full request/response schemas are in Swagger under the `ai-assistant` tag. See [AI_ASSISTANT_ARCHITECTURE.md](./AI_ASSISTANT_ARCHITECTURE.md), [AI_ASSISTANT_OPERATIONS.md](./AI_ASSISTANT_OPERATIONS.md), and [AI_ASSISTANT_SECURITY.md](./AI_ASSISTANT_SECURITY.md) for details.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/ai-assistant/conversations` | Create a conversation (`mode`: general / moderation_assist / admin_analytics, role-gated) |
+| GET | `/ai-assistant/conversations` | List the current user's conversations |
+| GET | `/ai-assistant/conversations/:id` | Get a single conversation |
+| GET | `/ai-assistant/conversations/:id/messages` | Get a conversation's message history |
+| PATCH | `/ai-assistant/conversations/:id/archive` | Archive a conversation |
+| DELETE | `/ai-assistant/conversations/:id` | Delete (soft) a conversation |
+| POST | `/ai-assistant/conversations/:id/messages` | Send a message, get a non-streaming assistant reply with citations |
+| POST | `/ai-assistant/conversations/:id/messages/stream` | Stage a message for a streamed reply; returns `messageId` + `streamUrl` |
+| GET | `/ai-assistant/conversations/:id/stream/:messageId` | Server-Sent Events stream (`citation`, `chunk`, `done`/`error` events) |
+| GET | `/ai-assistant/knowledge-base` | List knowledge-base documents used for context retrieval |
+| GET | `/ai-assistant/knowledge-base/:id` | Get a single knowledge-base document |
+| POST | `/ai-assistant/knowledge-base` | Create a document (moderator/admin only) |
+| PATCH | `/ai-assistant/knowledge-base/:id` | Update a document (moderator/admin only) |
+| DELETE | `/ai-assistant/knowledge-base/:id` | Deactivate a document (moderator/admin only) |
+| GET | `/ai-assistant/analytics/usage` | Usage analytics summary (admin only) |
+
+Rate limits: `POST .../messages` uses the `ai` throttle bucket; streaming (`.../messages/stream` and the SSE GET) uses the stricter `aiStream` bucket. Both are configurable via `RATE_LIMIT_AI_*`/`RATE_LIMIT_AI_STREAM_*` env vars.
+
+---
+
 ## Error Responses
 
 All endpoints may return the following error responses:
