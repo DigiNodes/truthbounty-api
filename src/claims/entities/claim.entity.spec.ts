@@ -11,6 +11,7 @@ describe('Claim Entity', () => {
     claim.resolvedVerdict = null;
     claim.confidenceScore = null;
     claim.finalized = false;
+    claim.resolvedAt = null;
   });
 
   describe('getCurrentState', () => {
@@ -327,6 +328,91 @@ describe('Claim Entity', () => {
           confidence: 0.90,
         });
       }).toThrow('Cannot transition from FINALIZED state');
+    });
+  });
+
+  // ─── BE-219: resolvedAt invariant tests ──────────────────────────────────
+  describe('resolvedAt invariants (BE-219)', () => {
+    it('new claim has resolvedAt === null', () => {
+      expect(claim.resolvedAt).toBeNull();
+    });
+
+    it('PENDING → RESOLVED sets resolvedAt to a Date', () => {
+      const before = new Date();
+      claim.transitionTo(ClaimState.RESOLVED, { verdict: true, confidence: 0.85 });
+      const after = new Date();
+
+      expect(claim.resolvedAt).toBeInstanceOf(Date);
+      expect(claim.resolvedAt!.getTime()).toBeGreaterThanOrEqual(before.getTime());
+      expect(claim.resolvedAt!.getTime()).toBeLessThanOrEqual(after.getTime());
+    });
+
+    it('PENDING → FINALIZED sets resolvedAt to a Date', () => {
+      const before = new Date();
+      claim.transitionTo(ClaimState.FINALIZED, { verdict: false, confidence: 0.92 });
+      const after = new Date();
+
+      expect(claim.resolvedAt).toBeInstanceOf(Date);
+      expect(claim.resolvedAt!.getTime()).toBeGreaterThanOrEqual(before.getTime());
+      expect(claim.resolvedAt!.getTime()).toBeLessThanOrEqual(after.getTime());
+    });
+
+    it('RESOLVED → RESOLVED does not overwrite the original resolvedAt', () => {
+      claim.transitionTo(ClaimState.RESOLVED, { verdict: true, confidence: 0.80 });
+      const firstResolvedAt = claim.resolvedAt!;
+
+      claim.transitionTo(ClaimState.RESOLVED, { verdict: false, confidence: 0.90 });
+
+      expect(claim.resolvedAt).toEqual(firstResolvedAt);
+    });
+
+    it('RESOLVED → FINALIZED preserves the original resolvedAt', () => {
+      claim.transitionTo(ClaimState.RESOLVED, { verdict: true, confidence: 0.75 });
+      const firstResolvedAt = claim.resolvedAt!;
+
+      claim.transitionTo(ClaimState.FINALIZED);
+
+      expect(claim.resolvedAt).toEqual(firstResolvedAt);
+      expect(claim.finalized).toBe(true);
+    });
+
+    it('PENDING → RESOLVED → FINALIZED: resolvedAt is set once and preserved', () => {
+      claim.transitionTo(ClaimState.RESOLVED, { verdict: true, confidence: 0.70 });
+      const resolvedAtAfterResolution = claim.resolvedAt!;
+
+      expect(resolvedAtAfterResolution).toBeInstanceOf(Date);
+
+      claim.transitionTo(ClaimState.FINALIZED);
+
+      expect(claim.resolvedAt).toEqual(resolvedAtAfterResolution);
+    });
+
+    it('invalid transition from FINALIZED does not modify resolvedAt', () => {
+      claim.transitionTo(ClaimState.FINALIZED, { verdict: true, confidence: 0.85 });
+      const resolvedAtSnapshot = claim.resolvedAt!;
+
+      expect(() => {
+        claim.transitionTo(ClaimState.RESOLVED, { verdict: false, confidence: 0.50 });
+      }).toThrow('Cannot transition from FINALIZED state');
+
+      expect(claim.resolvedAt).toEqual(resolvedAtSnapshot);
+    });
+
+    it('a resolved claim (RESOLVED state) always has a non-null resolvedAt', () => {
+      claim.transitionTo(ClaimState.RESOLVED, { verdict: true, confidence: 0.80 });
+      expect(claim.getCurrentState()).toBe(ClaimState.RESOLVED);
+      expect(claim.resolvedAt).not.toBeNull();
+    });
+
+    it('a finalized claim always has a non-null resolvedAt', () => {
+      claim.transitionTo(ClaimState.FINALIZED, { verdict: false, confidence: 0.65 });
+      expect(claim.getCurrentState()).toBe(ClaimState.FINALIZED);
+      expect(claim.resolvedAt).not.toBeNull();
+    });
+
+    it('an unresolved (PENDING) claim always has a null resolvedAt', () => {
+      expect(claim.getCurrentState()).toBe(ClaimState.PENDING);
+      expect(claim.resolvedAt).toBeNull();
     });
   });
 });

@@ -1,14 +1,18 @@
-import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
+import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { ROLES_KEY } from '../decorators/roles.decorator';
-import { UserRole } from '../../entities/user.entity';
+import { AppUserRole, ROLES_KEY } from '../decorators/roles.decorator';
 
+/**
+ * Authorizes routes decorated with @Roles(...). Must run after JwtAuthGuard,
+ * since it reads request.user (set by JwtStrategy.validate -> AuthService.validateToken),
+ * shape: { address, userId, user: PrismaUser | null }.
+ */
 @Injectable()
 export class RolesGuard implements CanActivate {
-  constructor(private reflector: Reflector) {}
+  constructor(private readonly reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
-    const requiredRoles = this.reflector.getAllAndOverride<UserRole[]>(ROLES_KEY, [
+    const requiredRoles = this.reflector.getAllAndOverride<AppUserRole[]>(ROLES_KEY, [
       context.getHandler(),
       context.getClass(),
     ]);
@@ -18,16 +22,12 @@ export class RolesGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest();
-    const user = request.user;
+    const role: AppUserRole | undefined = request.user?.user?.role;
 
-    if (!user) {
-      throw new ForbiddenException('Authentication required');
-    }
-
-    const hasRole = requiredRoles.some((role) => user.role === role);
-
-    if (!hasRole) {
-      throw new ForbiddenException('Insufficient permissions');
+    if (!role || !requiredRoles.includes(role)) {
+      throw new ForbiddenException(
+        `This action requires one of the following roles: ${requiredRoles.join(', ')}`,
+      );
     }
 
     return true;

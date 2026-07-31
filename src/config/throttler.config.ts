@@ -15,6 +15,8 @@ export interface ThrottlerConfig {
   votes: RateLimitConfig;
   disputes: RateLimitConfig;
   auth: RateLimitConfig;
+  ai: RateLimitConfig;
+  aiStream: RateLimitConfig;
   default: RateLimitConfig;
 }
 
@@ -44,6 +46,16 @@ export default registerAs(
       ttl: parseInt(process.env.RATE_LIMIT_AUTH_TTL || '60', 10) * 1000,
       limit: parseInt(process.env.RATE_LIMIT_AUTH_LIMIT || '5', 10),
       blockDuration: parseInt(process.env.RATE_LIMIT_AUTH_BLOCK_DURATION || process.env.RATE_LIMIT_AUTH_TTL || '60', 10) * 1000,
+    },
+    ai: {
+      ttl: parseInt(process.env.RATE_LIMIT_AI_TTL || '60', 10) * 1000,
+      limit: parseInt(process.env.RATE_LIMIT_AI_LIMIT || '10', 10),
+      blockDuration: parseInt(process.env.RATE_LIMIT_AI_BLOCK_DURATION || process.env.RATE_LIMIT_AI_TTL || '60', 10) * 1000,
+    },
+    aiStream: {
+      ttl: parseInt(process.env.RATE_LIMIT_AI_STREAM_TTL || '60', 10) * 1000,
+      limit: parseInt(process.env.RATE_LIMIT_AI_STREAM_LIMIT || '3', 10),
+      blockDuration: parseInt(process.env.RATE_LIMIT_AI_STREAM_BLOCK_DURATION || process.env.RATE_LIMIT_AI_STREAM_TTL || '60', 10) * 1000,
     },
     default: {
       ttl: parseInt(process.env.RATE_LIMIT_DEFAULT_TTL || '60', 10) * 1000, // 60 seconds

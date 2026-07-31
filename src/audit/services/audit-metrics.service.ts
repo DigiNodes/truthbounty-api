@@ -1,115 +1,141 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, MoreThan } from 'typeorm';
 import { AuditLog } from '../entities/audit-log.entity';
+import * as client from 'prom-client';
 
 @Injectable()
-export class AuditMetricsService {
+export class AuditMetricsService implements OnModuleInit {
   private readonly logger = new Logger(AuditMetricsService.name);
 
-  private metrics = {
-    eventsGenerated: 0,
-    failedWrites: 0,
-    searchOperations: 0,
-    searchLatencyMs: 0,
-    exportRequests: 0,
-    integrityChecks: 0,
-    integrityFailures: 0,
-    storageUtilizationBytes: 0,
-    lastCalculatedStorage: Date.now(),
-  };
+  private auditEventsTotal: client.Counter<string>;
+  private auditEventsByAction: client.Counter<string>;
+  private auditEventsBySeverity: client.Counter<string>;
+  private auditEventsByCategory: client.Counter<string>;
+  private auditWriteDuration: client.Histogram<string>;
+  private auditSearchDuration: client.Histogram<string>;
+  private auditStorageSize: client.Gauge<string>;
+  private auditOldestRecord: client.Gauge<string>;
+  private auditFailedWrites: client.Counter<string>;
+  private auditExportOperations: client.Counter<string>;
+  private auditRetentionOperations: client.Counter<string>;
 
   constructor(
     @InjectRepository(AuditLog)
     private readonly auditLogRepo: Repository<AuditLog>,
   ) {}
 
-  incrementEventsGenerated(): void {
-    this.metrics.eventsGenerated++;
+  onModuleInit(): void {
+    const prefix = 'audit_';
+
+    this.auditEventsTotal = new client.Counter({
+      name: `${prefix}events_total`,
+      help: 'Total number of audit events recorded',
+    });
+
+    this.auditEventsByAction = new client.Counter({
+      name: `${prefix}events_by_action_total`,
+      help: 'Audit events by action type',
+      labelNames: ['action'],
+    });
+
+    this.auditEventsBySeverity = new client.Counter({
+      name: `${prefix}events_by_severity_total`,
+      help: 'Audit events by severity',
+      labelNames: ['severity'],
+    });
+
+    this.auditEventsByCategory = new client.Counter({
+      name: `${prefix}events_by_category_total`,
+      help: 'Audit events by category',
+      labelNames: ['category'],
+    });
+
+    this.auditWriteDuration = new client.Histogram({
+      name: `${prefix}write_duration_seconds`,
+      help: 'Duration of audit log write operations',
+      buckets: [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1],
+    });
+
+    this.auditSearchDuration = new client.Histogram({
+      name: `${prefix}search_duration_seconds`,
+      help: 'Duration of audit search operations',
+      buckets: [0.01, 0.05, 0.1, 0.5, 1, 2, 5],
+    });
+
+    this.auditStorageSize = new client.Gauge({
+      name: `${prefix}storage_records_total`,
+      help: 'Total number of audit log records in storage',
+    });
+
+    this.auditOldestRecord = new client.Gauge({
+      name: `${prefix}oldest_record_age_days`,
+      help: 'Age in days of the oldest audit record',
+    });
+
+    this.auditFailedWrites = new client.Counter({
+      name: `${prefix}failed_writes_total`,
+      help: 'Total number of failed audit write operations',
+    });
+
+    this.auditExportOperations = new client.Counter({
+      name: `${prefix}export_operations_total`,
+      help: 'Total number of audit export operations',
+    });
+
+    this.auditRetentionOperations = new client.Counter({
+      name: `${prefix}retention_operations_total`,
+      help: 'Total number of audit retention operations',
+    });
   }
 
-  incrementFailedWrites(): void {
-    this.metrics.failedWrites++;
+  incrementWrite(action: string, severity: string, category: string): void {
+    this.auditEventsTotal.inc();
+    this.auditEventsByAction.inc({ action });
+    this.auditEventsBySeverity.inc({ severity });
+    this.auditEventsByCategory.inc({ category });
   }
 
-  recordSearchOperation(latencyMs: number): void {
-    this.metrics.searchOperations++;
-    this.metrics.searchLatencyMs = latencyMs;
+  observeWriteDuration(seconds: number): void {
+    this.auditWriteDuration.observe(seconds);
   }
 
-  incrementExportRequests(): void {
-    this.metrics.exportRequests++;
+  observeSearchDuration(seconds: number): void {
+    this.auditSearchDuration.observe(seconds);
   }
 
-  recordIntegrityCheck(passed: boolean): void {
-    this.metrics.integrityChecks++;
-    if (!passed) {
-      this.metrics.integrityFailures++;
+  incrementFailedWrite(): void {
+    this.auditFailedWrites.inc();
+  }
+
+  incrementExport(): void {
+    this.auditExportOperations.inc();
+  }
+
+  incrementRetention(): void {
+    this.auditRetentionOperations.inc();
+  }
+
+  async updateStorageMetrics(): Promise<void> {
+    try {
+      const totalRecords = await this.auditLogRepo.count();
+      this.auditStorageSize.set(totalRecords);
+
+      const oldest = await this.auditLogRepo
+        .createQueryBuilder('audit')
+        .orderBy('audit.createdAt', 'ASC')
+        .getOne();
+
+      if (oldest) {
+        const ageDays = (Date.now() - oldest.createdAt.getTime()) / (1000 * 60 * 60 * 24);
+        this.auditOldestRecord.set(ageDays);
+      }
+    } catch (error) {
+      this.logger.error(`Failed to update storage metrics: ${error.message}`);
     }
   }
 
-  async getMetrics(): Promise<{
-    eventsGenerated: number;
-    failedWrites: number;
-    searchOperations: number;
-    averageSearchLatencyMs: number;
-    exportRequests: number;
-    integrityChecks: number;
-    integrityFailures: number;
-    integrityHealthPercent: number;
-    storageUtilizationBytes: number;
-    totalRecords: number;
-    recordsByEventType: Record<string, number>;
-    recordsBySeverity: Record<string, number>;
-  }> {
-    const totalRecords = await this.auditLogRepo.count();
-    const avgLatency = this.metrics.searchOperations > 0
-      ? Math.round(this.metrics.searchLatencyMs / this.metrics.searchOperations)
-      : 0;
-    const integrityHealth = this.metrics.integrityChecks > 0
-      ? Math.round(((this.metrics.integrityChecks - this.metrics.integrityFailures) / this.metrics.integrityChecks) * 100)
-      : 100;
-
-    const eventTypeCounts = await this.auditLogRepo
-      .createQueryBuilder('audit')
-      .select('audit.eventType', 'eventType')
-      .addSelect('COUNT(*)', 'count')
-      .groupBy('audit.eventType')
-      .getRawMany();
-
-    const severityCounts = await this.auditLogRepo
-      .createQueryBuilder('audit')
-      .select('audit.severity', 'severity')
-      .addSelect('COUNT(*)', 'count')
-      .groupBy('audit.severity')
-      .getRawMany();
-
-    const recordsByEventType: Record<string, number> = {};
-    eventTypeCounts.forEach((r: any) => {
-      recordsByEventType[r.eventType || 'UNKNOWN'] = parseInt(r.count, 10);
-    });
-
-    const recordsBySeverity: Record<string, number> = {};
-    severityCounts.forEach((r: any) => {
-      recordsBySeverity[r.severity || 'UNKNOWN'] = parseInt(r.count, 10);
-    });
-
-    const recordSize = 1024;
-    const storageUtilizationBytes = totalRecords * recordSize;
-
-    return {
-      eventsGenerated: this.metrics.eventsGenerated,
-      failedWrites: this.metrics.failedWrites,
-      searchOperations: this.metrics.searchOperations,
-      averageSearchLatencyMs: avgLatency,
-      exportRequests: this.metrics.exportRequests,
-      integrityChecks: this.metrics.integrityChecks,
-      integrityFailures: this.metrics.integrityFailures,
-      integrityHealthPercent: integrityHealth,
-      storageUtilizationBytes,
-      totalRecords,
-      recordsByEventType,
-      recordsBySeverity,
-    };
+  getMetrics(): Promise<string> {
+    return client.register.metrics();
   }
 }

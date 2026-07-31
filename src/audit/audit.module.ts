@@ -1,36 +1,51 @@
 import { Module, Global } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
+import { BullModule } from '@nestjs/bullmq';
 import { AuditLog } from './entities/audit-log.entity';
 import { AuditTrailService } from './services/audit-trail.service';
-import { AuditSearchService } from './services/audit-search.service';
-import { AuditComplianceService } from './services/audit-compliance.service';
-import { AuditMetricsService } from './services/audit-metrics.service';
 import { AuditRetentionService } from './services/audit-retention.service';
+import { AuditQueueService, AUDIT_QUEUE_NAME } from './services/audit-queue.service';
+import { ComplianceService } from './services/compliance.service';
+import { SecurityMonitoringService } from './services/security-monitoring.service';
+import { AuditMetricsService } from './services/audit-metrics.service';
 import { AuditController } from './controllers/audit-log.controller';
 import { AuditLoggingInterceptor } from './interceptors/audit-logging.interceptor';
-import { RolesGuard } from '../auth/guards/roles.guard';
+import { AuditLogProcessor } from './processors/audit-log.processor';
 
 @Global()
 @Module({
-  imports: [TypeOrmModule.forFeature([AuditLog]), ScheduleModule],
+  imports: [
+    TypeOrmModule.forFeature([AuditLog]),
+    ScheduleModule,
+    BullModule.registerQueue({
+      name: AUDIT_QUEUE_NAME,
+      defaultJobOptions: {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 1000 },
+        removeOnComplete: true,
+        removeOnFail: false,
+      },
+    }),
+  ],
   providers: [
     AuditTrailService,
-    AuditSearchService,
-    AuditComplianceService,
-    AuditMetricsService,
-    AuditRetentionService,
     AuditLoggingInterceptor,
-    RolesGuard,
+    AuditRetentionService,
+    AuditQueueService,
+    ComplianceService,
+    SecurityMonitoringService,
+    AuditMetricsService,
+    AuditLogProcessor,
   ],
   controllers: [AuditController],
   exports: [
     AuditTrailService,
-    AuditSearchService,
-    AuditComplianceService,
-    AuditMetricsService,
-    AuditRetentionService,
     AuditLoggingInterceptor,
+    AuditQueueService,
+    ComplianceService,
+    SecurityMonitoringService,
+    AuditMetricsService,
   ],
 })
 export class AuditModule {}
