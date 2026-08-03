@@ -12,6 +12,7 @@ import { RewardsModule } from './rewards/rewards.module';
 import blockchainConfig from './config/blockchain.config';
 import sybilConfig from './config/sybil.config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { DatabaseModule } from './database/database.module';
 import { BlockchainModule } from './blockchain/blockchain.module';
 import { DisputeModule } from './dispute/dispute.module';
 import { IdentityModule } from './identity/identity.module';
@@ -257,16 +258,14 @@ async function createThrottlerStorage(
       envFilePath: ['.env.local', '.env'],
     }),
     ScheduleModule.forRoot(),
-    TypeOrmModule.forRoot({
-      type: 'sqlite',
-      database: 'database.sqlite',
-      entities: [__dirname + '/**/*.entity{.ts,.js}'],
-      // Allow automatic sync in development unless explicitly disabled
-      synchronize:
-        process.env.DATABASE_SYNCHRONIZE === 'true' ||
-        process.env.NODE_ENV !== 'production',
-      logging: process.env.DATABASE_LOGGING === 'true',
-    }),
+    // PostgreSQL Database Infrastructure (Issue #269)
+    // DatabaseModule provides:
+    // - PostgreSQL connectivity with connection pooling
+    // - Transaction management via TransactionRunner
+    // - Health reporting via DatabaseService
+    // - Repository base class for all domain repositories
+    // Falls back to SQLite when DATABASE_URL is not set (development).
+    DatabaseModule,
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
