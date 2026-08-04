@@ -1073,7 +1073,6 @@ export type SybilExplanationCreateManyArgs<ExtArgs extends runtime.Types.Extensi
    * The data used to create many SybilExplanations.
    */
   data: Prisma.SybilExplanationCreateManyInput | Prisma.SybilExplanationCreateManyInput[]
-  skipDuplicates?: boolean
 }
 
 /**
@@ -1092,7 +1091,6 @@ export type SybilExplanationCreateManyAndReturnArgs<ExtArgs extends runtime.Type
    * The data used to create many SybilExplanations.
    */
   data: Prisma.SybilExplanationCreateManyInput | Prisma.SybilExplanationCreateManyInput[]
-  skipDuplicates?: boolean
   /**
    * Choose, which related nodes to fetch as well
    */

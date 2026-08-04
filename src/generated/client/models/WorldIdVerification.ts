@@ -470,7 +470,6 @@ export type WorldIdVerificationCreateOrConnectWithoutUserInput = {
 
 export type WorldIdVerificationCreateManyUserInputEnvelope = {
   data: Prisma.WorldIdVerificationCreateManyUserInput | Prisma.WorldIdVerificationCreateManyUserInput[]
-  skipDuplicates?: boolean
 }
 
 export type WorldIdVerificationUpsertWithWhereUniqueWithoutUserInput = {
@@ -1289,7 +1288,6 @@ export type WorldIdVerificationCreateManyArgs<ExtArgs extends runtime.Types.Exte
    * The data used to create many WorldIdVerifications.
    */
   data: Prisma.WorldIdVerificationCreateManyInput | Prisma.WorldIdVerificationCreateManyInput[]
-  skipDuplicates?: boolean
 }
 
 /**
@@ -1308,7 +1306,6 @@ export type WorldIdVerificationCreateManyAndReturnArgs<ExtArgs extends runtime.T
    * The data used to create many WorldIdVerifications.
    */
   data: Prisma.WorldIdVerificationCreateManyInput | Prisma.WorldIdVerificationCreateManyInput[]
-  skipDuplicates?: boolean
   /**
    * Choose, which related nodes to fetch as well
    */

@@ -1,17 +1,17 @@
-import * as client from "prom-client";
+import { Counter, Histogram, register } from "prom-client";
 
 export class MetricsService {
-  private readonly requestCounter: client.Counter<string>;
-  private readonly latencyHistogram: client.Histogram<string>;
+  private readonly requestCounter: Counter<string>;
+  private readonly latencyHistogram: Histogram<string>;
 
   constructor() {
-    this.requestCounter = new client.Counter({
+    this.requestCounter = new Counter({
       name: "http_requests_total",
       help: "Total number of HTTP requests",
       labelNames: ["method", "route", "status"],
     });
 
-    this.latencyHistogram = new client.Histogram({
+    this.latencyHistogram = new Histogram({
       name: "http_request_duration_seconds",
       help: "Duration of HTTP requests in seconds",
       labelNames: ["method", "route", "status"],
@@ -28,6 +28,6 @@ export class MetricsService {
   }
 
   async getMetrics() {
-    return await client.register.metrics();
+    return await register.metrics();
   }
 }

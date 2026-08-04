@@ -1,38 +1,25 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, OneToOne, JoinColumn } from 'typeorm';
+import { User } from '../../entities/user.entity';
+import { UserPreferenceSettings } from '../interfaces/notification.types';
 
 @Entity('notification_preferences')
 export class NotificationPreference {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'varchar', unique: true })
-  @Index()
+  @Column({ unique: true })
   userId: string;
 
-  @Column({ type: 'simple-json', default: '["IN_APP", "EMAIL"]' })
-  enabledChannels: string[];
+  @OneToOne(() => User, { onDelete: 'CASCADE' })
+  @JoinColumn()
+  user: User;
 
-  @Column({ type: 'simple-json', default: '[]' })
-  disabledCategories: string[];
+  @Column({ type: 'jsonb' })
+  settings: UserPreferenceSettings;
 
-  @Column({ type: 'boolean', default: false })
-  digestMode: boolean;
-
-  @Column({ type: 'boolean', default: false })
-  quietHoursEnabled: boolean;
-
-  @Column({ type: 'varchar', nullable: true })
-  quietHoursStart: string;
-
-  @Column({ type: 'varchar', nullable: true })
-  quietHoursEnd: string;
-
-  @Column({ type: 'varchar', default: 'en' })
-  language: string;
-
-  @CreateDateColumn()
+  @Column({ default: () => 'now()' })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @Column({ default: () => 'now()' })
   updatedAt: Date;
 }

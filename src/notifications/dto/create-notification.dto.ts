@@ -1,36 +1,69 @@
-import { IsEnum, IsNotEmpty, IsObject, IsOptional, IsString } from 'class-validator';
-import { NotificationCategory } from '../enums/notification-category.enum';
-import { NotificationChannel } from '../enums/notification-channel.enum';
+import {
+  IsString,
+  IsEnum,
+  IsOptional,
+  IsObject,
+  IsArray,
+  IsDateString,
+  IsUUID,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  NotificationType,
+  DeliveryChannel,
+  NotificationPriority,
+} from '../enums/notification-type.enum';
 
 export class CreateNotificationDto {
+  @ApiProperty({ enum: NotificationType })
+  @IsEnum(NotificationType)
+  type: NotificationType;
+
   @ApiProperty()
-  @IsString()
-  @IsNotEmpty()
+  @IsUUID()
   userId: string;
 
-  @ApiProperty({ enum: NotificationCategory })
-  @IsEnum(NotificationCategory)
-  @IsNotEmpty()
-  category: NotificationCategory;
-
-  @ApiPropertyOptional({ enum: NotificationChannel })
-  @IsEnum(NotificationChannel)
+  @ApiPropertyOptional()
+  @IsString()
   @IsOptional()
-  channel?: NotificationChannel;
+  walletAddress?: string;
 
   @ApiProperty()
   @IsString()
-  @IsNotEmpty()
   title: string;
 
   @ApiProperty()
   @IsString()
-  @IsNotEmpty()
-  content: string;
+  body: string;
 
   @ApiPropertyOptional()
   @IsObject()
   @IsOptional()
-  metadata?: Record<string, any>;
+  data?: Record<string, any>;
+
+  @ApiPropertyOptional({ enum: NotificationPriority })
+  @IsEnum(NotificationPriority)
+  @IsOptional()
+  priority?: NotificationPriority;
+
+  @ApiPropertyOptional({ enum: DeliveryChannel, isArray: true })
+  @IsArray()
+  @IsEnum(DeliveryChannel, { each: true })
+  @IsOptional()
+  channels?: DeliveryChannel[];
+
+  @ApiPropertyOptional()
+  @IsDateString()
+  @IsOptional()
+  scheduledAt?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  templateName?: string;
+
+  @ApiPropertyOptional()
+  @IsObject()
+  @IsOptional()
+  templateVariables?: Record<string, string>;
 }
