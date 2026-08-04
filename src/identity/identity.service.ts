@@ -9,9 +9,11 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { LinkWalletDto } from './dto/link-wallet.dto';
 import { verifyMessage, getAddress } from 'ethers';
-import { Prisma, User, Wallet } from '@prisma/client';
+import { Prisma, User, Wallet } from '../generated/client/client';
 import { AuditTrailService } from '../audit/services/audit-trail.service';
 import { AuditActionType, AuditEntityType } from '../audit/entities/audit-log.entity';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 export type UserWithWallets = User & { wallets: Wallet[] };
 
@@ -36,15 +38,25 @@ export class IdentityService {
     private readonly auditTrailService: AuditTrailService,
   ) {}
 
+  // ─── User ──────────────────────────────────────────────────────────────
+
+  /**
+   * Create a new user with no initial wallets.
+   * The caller is responsible for linking at least one wallet afterward.
+   */
   async createUser(): Promise<User> {
     return this.prisma.$transaction(async (tx) => {
-      const user = await tx.user.create({ data: {} });
+      const user = await tx.user.create({ data: { walletAddress: 'temp-' + Date.now().toString() } });
       await tx.sybilScore.create({ data: { userId: user.id } });
       this.logger.log(`User created: ${user.id}`);
       return user;
     });
   }
 
+  /**
+   * Fetch a user by ID, including their linked wallets.
+   * Throws `NotFoundException` if no user exists with that ID.
+   */
   async getUser(id: string): Promise<UserWithWallets> {
     const user = await this.prisma.user.findUnique({
       where: { id },
@@ -138,7 +150,7 @@ export class IdentityService {
     await this.findUserOrThrow(userId);
     return this.prisma.wallet.findMany({
       where: { userId, ...(chain ? { chain } : {}) },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { linkedAt: 'asc' },
     });
   }
 
@@ -174,7 +186,7 @@ export class IdentityService {
   private isPrismaUniqueViolation(err: unknown): boolean {
     return (
       err instanceof Prisma.PrismaClientKnownRequestError &&
-      err.code === 'P2002'
+      (err as Prisma.PrismaClientKnownRequestError).code === 'P2002'
     );
   }
 }

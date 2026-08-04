@@ -81,6 +81,8 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
     this.queues.set(QueueName.ANALYTICS, this.analyticsQueue);
   }
 
+  // ─── Lifecycle ─────────────────────────────────────────────────────────
+
   async onModuleInit(): Promise<void> {
     await Promise.resolve();
     this.logger.log('JobsService initialized with BullMQ queues');
@@ -259,6 +261,15 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
     return count;
   }
 
+  // ─── computeScores ──────────────────────────────────────────────────────
+
+  /**
+   * Process a batch of unfinalized claims, computing an aggregated confidence
+   * score from their stakes and marking high-confidence claims as resolved.
+   *
+   * N+1 pattern eliminated: wallets and users are bulk-fetched per claim batch
+   * rather than one DB round-trip per stake.
+   */
   private async computeScores(): Promise<BatchResult> {
     this.logger.debug('computeScores: starting');
     const result: BatchResult = { processed: 0, updated: 0, errors: 0 };
@@ -353,6 +364,20 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
     return result;
   }
 
+  private async updateClaim(
+    claimId: string,
+    updateFields: Partial<Claim>,
+  ): Promise<boolean> {
+    const result = await this.claimRepo
+      .createQueryBuilder()
+      .update(Claim)
+      .set(updateFields)
+      .where('id = :id', { id: claimId })
+      .andWhere('finalized = false')
+      .execute();
+
+    return (result.affected ?? 0) > 0;
+  }
 
   private async computeReputation(): Promise<BatchResult> {
     this.logger.debug('computeReputation: starting');

@@ -14,6 +14,7 @@ export enum DisputeStatus {
   REVIEWING = 'REVIEWING',
   RESOLVED = 'RESOLVED',
   REJECTED = 'REJECTED',
+  EXPIRED = 'EXPIRED',
 }
 
 export enum DisputeOutcome {

@@ -44,7 +44,10 @@ export class DisputeController {
   @ApiResponse({ status: 200, description: 'Dispute resolved' })
   @ApiResponse({ status: 404, description: 'Dispute not found' })
   async resolve(@Param('id') id: string, @Body() dto: ResolveDisputeDto) {
-    return this.disputeService.resolveDispute({ disputeId: id, outcome: dto.outcome, finalConfidence: dto.finalConfidence, metadata: dto.metadata });
+    return this.disputeService.resolveDispute({
+      disputeId: id,
+      ...dto,
+    });
   }
 
   @Patch(':id/reject')
@@ -52,7 +55,10 @@ export class DisputeController {
   @ApiResponse({ status: 200, description: 'Dispute rejected' })
   @ApiResponse({ status: 404, description: 'Dispute not found' })
   async reject(@Param('id') id: string, @Body() dto: RejectDisputeDto) {
-    return this.disputeService.rejectDispute({ disputeId: id, reason: dto.reason, rejectedBy: dto.rejectedBy });
+    return this.disputeService.rejectDispute({
+      disputeId: id,
+      ...dto,
+    });
   }
 
   @Get('claim/:claimId')

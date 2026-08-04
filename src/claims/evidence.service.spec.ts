@@ -7,11 +7,7 @@ import { Evidence } from './entities/evidence.entity';
 import { EvidenceVersion } from './entities/evidence-version.entity';
 import { AuditTrailService } from '../audit/services/audit-trail.service';
 
-describe('EvidenceService', () => {
-  let service: EvidenceService;
-  let evidenceRepo: Repository<Evidence>;
-  let evidenceVersionRepo: Repository<EvidenceVersion>;
-  let auditTrailService: AuditTrailService;
+
 const makeEvidence = (overrides: Partial<Evidence> = {}): Evidence =>
   ({
     id: 'ev-1',
@@ -80,14 +76,11 @@ describe('EvidenceService', () => {
       ],
     }).compile();
 
-    service = module.get<EvidenceService>(EvidenceService);
-    evidenceRepo = module.get<Repository<Evidence>>(getRepositoryToken(Evidence));
-    evidenceVersionRepo = module.get<Repository<EvidenceVersion>>(getRepositoryToken(EvidenceVersion));
-    auditTrailService = module.get<AuditTrailService>(AuditTrailService);
+
     service = module.get(EvidenceService);
     evidenceRepo = module.get(getRepositoryToken(Evidence));
     versionRepo = module.get(getRepositoryToken(EvidenceVersion));
-    auditTrailService = module.get(AuditTrailService);
+    auditTrailService = module.get(AuditTrailService) as any;
   });
 
   it('should be defined', () => {
@@ -134,6 +127,9 @@ describe('EvidenceService', () => {
           where: { id: 'ev-1' },
         }),
       );
+    });
+  });
+
   describe('createEvidence', () => {
     it('creates evidence with version 1', async () => {
       const evidence = makeEvidence();
@@ -321,6 +317,8 @@ describe('EvidenceService', () => {
           where: { claimId },
         }),
       );
+    });
+
     it('returns all evidence for a claim', async () => {
       const evidences = [makeEvidence()];
       evidenceRepo.find.mockResolvedValue(evidences);
