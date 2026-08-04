@@ -32,3 +32,13 @@ export type Wallet = Prisma.WalletModel
  * 
  */
 export type SybilScore = Prisma.SybilScoreModel
+/**
+ * Model SybilExplanation
+ * 
+ */
+export type SybilExplanation = Prisma.SybilExplanationModel
+/**
+ * Model WorldIdVerification
+ * 
+ */
+export type WorldIdVerification = Prisma.WorldIdVerificationModel

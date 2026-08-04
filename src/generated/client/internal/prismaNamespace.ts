@@ -386,7 +386,9 @@ type FieldRefInputType<Model, FieldType> = Model extends never ? never : FieldRe
 export const ModelName = {
   User: 'User',
   Wallet: 'Wallet',
-  SybilScore: 'SybilScore'
+  SybilScore: 'SybilScore',
+  SybilExplanation: 'SybilExplanation',
+  WorldIdVerification: 'WorldIdVerification'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -402,7 +404,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "user" | "wallet" | "sybilScore"
+    modelProps: "user" | "wallet" | "sybilScore" | "sybilExplanation" | "worldIdVerification"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -628,6 +630,154 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
+    SybilExplanation: {
+      payload: Prisma.$SybilExplanationPayload<ExtArgs>
+      fields: Prisma.SybilExplanationFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.SybilExplanationFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SybilExplanationPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.SybilExplanationFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SybilExplanationPayload>
+        }
+        findFirst: {
+          args: Prisma.SybilExplanationFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SybilExplanationPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.SybilExplanationFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SybilExplanationPayload>
+        }
+        findMany: {
+          args: Prisma.SybilExplanationFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SybilExplanationPayload>[]
+        }
+        create: {
+          args: Prisma.SybilExplanationCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SybilExplanationPayload>
+        }
+        createMany: {
+          args: Prisma.SybilExplanationCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.SybilExplanationCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SybilExplanationPayload>[]
+        }
+        delete: {
+          args: Prisma.SybilExplanationDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SybilExplanationPayload>
+        }
+        update: {
+          args: Prisma.SybilExplanationUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SybilExplanationPayload>
+        }
+        deleteMany: {
+          args: Prisma.SybilExplanationDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.SybilExplanationUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.SybilExplanationUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SybilExplanationPayload>[]
+        }
+        upsert: {
+          args: Prisma.SybilExplanationUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$SybilExplanationPayload>
+        }
+        aggregate: {
+          args: Prisma.SybilExplanationAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateSybilExplanation>
+        }
+        groupBy: {
+          args: Prisma.SybilExplanationGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.SybilExplanationGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.SybilExplanationCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.SybilExplanationCountAggregateOutputType> | number
+        }
+      }
+    }
+    WorldIdVerification: {
+      payload: Prisma.$WorldIdVerificationPayload<ExtArgs>
+      fields: Prisma.WorldIdVerificationFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.WorldIdVerificationFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WorldIdVerificationPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.WorldIdVerificationFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WorldIdVerificationPayload>
+        }
+        findFirst: {
+          args: Prisma.WorldIdVerificationFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WorldIdVerificationPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.WorldIdVerificationFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WorldIdVerificationPayload>
+        }
+        findMany: {
+          args: Prisma.WorldIdVerificationFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WorldIdVerificationPayload>[]
+        }
+        create: {
+          args: Prisma.WorldIdVerificationCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WorldIdVerificationPayload>
+        }
+        createMany: {
+          args: Prisma.WorldIdVerificationCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.WorldIdVerificationCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WorldIdVerificationPayload>[]
+        }
+        delete: {
+          args: Prisma.WorldIdVerificationDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WorldIdVerificationPayload>
+        }
+        update: {
+          args: Prisma.WorldIdVerificationUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WorldIdVerificationPayload>
+        }
+        deleteMany: {
+          args: Prisma.WorldIdVerificationDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.WorldIdVerificationUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.WorldIdVerificationUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WorldIdVerificationPayload>[]
+        }
+        upsert: {
+          args: Prisma.WorldIdVerificationUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WorldIdVerificationPayload>
+        }
+        aggregate: {
+          args: Prisma.WorldIdVerificationAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateWorldIdVerification>
+        }
+        groupBy: {
+          args: Prisma.WorldIdVerificationGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.WorldIdVerificationGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.WorldIdVerificationCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.WorldIdVerificationCountAggregateOutputType> | number
+        }
+      }
+    }
   }
 } & {
   other: {
@@ -658,6 +808,9 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
  */
 
 export const TransactionIsolationLevel = runtime.makeStrictEnum({
+  ReadUncommitted: 'ReadUncommitted',
+  ReadCommitted: 'ReadCommitted',
+  RepeatableRead: 'RepeatableRead',
   Serializable: 'Serializable'
 } as const)
 
@@ -668,8 +821,10 @@ export const UserScalarFieldEnum = {
   id: 'id',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt',
+  walletAddress: 'walletAddress',
   reputation: 'reputation',
-  worldcoinVerified: 'worldcoinVerified'
+  worldcoinVerified: 'worldcoinVerified',
+  worldcoinVerifiedAt: 'worldcoinVerifiedAt'
 } as const
 
 export type UserScalarFieldEnum = (typeof UserScalarFieldEnum)[keyof typeof UserScalarFieldEnum]
@@ -702,6 +857,31 @@ export const SybilScoreScalarFieldEnum = {
 export type SybilScoreScalarFieldEnum = (typeof SybilScoreScalarFieldEnum)[keyof typeof SybilScoreScalarFieldEnum]
 
 
+export const SybilExplanationScalarFieldEnum = {
+  id: 'id',
+  sybilScoreId: 'sybilScoreId',
+  explanation: 'explanation',
+  createdAt: 'createdAt'
+} as const
+
+export type SybilExplanationScalarFieldEnum = (typeof SybilExplanationScalarFieldEnum)[keyof typeof SybilExplanationScalarFieldEnum]
+
+
+export const WorldIdVerificationScalarFieldEnum = {
+  id: 'id',
+  verifiedAt: 'verifiedAt',
+  userId: 'userId',
+  nullifierHash: 'nullifierHash',
+  verificationLevel: 'verificationLevel',
+  worldcoinAppId: 'worldcoinAppId',
+  worldcoinAction: 'worldcoinAction',
+  merkleRoot: 'merkleRoot',
+  proof: 'proof'
+} as const
+
+export type WorldIdVerificationScalarFieldEnum = (typeof WorldIdVerificationScalarFieldEnum)[keyof typeof WorldIdVerificationScalarFieldEnum]
+
+
 export const SortOrder = {
   asc: 'asc',
   desc: 'desc'
@@ -710,12 +890,37 @@ export const SortOrder = {
 export type SortOrder = (typeof SortOrder)[keyof typeof SortOrder]
 
 
+export const NullableJsonNullValueInput = {
+  DbNull: DbNull,
+  JsonNull: JsonNull
+} as const
+
+export type NullableJsonNullValueInput = (typeof NullableJsonNullValueInput)[keyof typeof NullableJsonNullValueInput]
+
+
+export const QueryMode = {
+  default: 'default',
+  insensitive: 'insensitive'
+} as const
+
+export type QueryMode = (typeof QueryMode)[keyof typeof QueryMode]
+
+
 export const NullsOrder = {
   first: 'first',
   last: 'last'
 } as const
 
 export type NullsOrder = (typeof NullsOrder)[keyof typeof NullsOrder]
+
+
+export const JsonNullValueFilter = {
+  DbNull: DbNull,
+  JsonNull: JsonNull,
+  AnyNull: AnyNull
+} as const
+
+export type JsonNullValueFilter = (typeof JsonNullValueFilter)[keyof typeof JsonNullValueFilter]
 
 
 
@@ -732,6 +937,13 @@ export type StringFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 
 
 
 /**
+ * Reference to a field of type 'String[]'
+ */
+export type ListStringFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'String[]'>
+    
+
+
+/**
  * Reference to a field of type 'DateTime'
  */
 export type DateTimeFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'DateTime'>
@@ -739,9 +951,23 @@ export type DateTimeFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel
 
 
 /**
+ * Reference to a field of type 'DateTime[]'
+ */
+export type ListDateTimeFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'DateTime[]'>
+    
+
+
+/**
  * Reference to a field of type 'Int'
  */
 export type IntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Int'>
+    
+
+
+/**
+ * Reference to a field of type 'Int[]'
+ */
+export type ListIntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Int[]'>
     
 
 
@@ -756,6 +982,27 @@ export type BooleanFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel,
  * Reference to a field of type 'Float'
  */
 export type FloatFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Float'>
+    
+
+
+/**
+ * Reference to a field of type 'Float[]'
+ */
+export type ListFloatFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Float[]'>
+    
+
+
+/**
+ * Reference to a field of type 'Json'
+ */
+export type JsonFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Json'>
+    
+
+
+/**
+ * Reference to a field of type 'QueryMode'
+ */
+export type EnumQueryModeFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'QueryMode'>
     
 
 /**
@@ -856,6 +1103,8 @@ export type GlobalOmitConfig = {
   user?: Prisma.UserOmit
   wallet?: Prisma.WalletOmit
   sybilScore?: Prisma.SybilScoreOmit
+  sybilExplanation?: Prisma.SybilExplanationOmit
+  worldIdVerification?: Prisma.WorldIdVerificationOmit
 }
 
 /* Types for Logging */

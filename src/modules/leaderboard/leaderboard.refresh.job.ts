@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { LeaderboardService } from './leaderboard.service';
 import { LEADERBOARD_REFRESH_CRON } from './leaderboard.constants';
-import { PrismaClient } from 'src/generated/client/client';
+import { PrismaClient } from '../../generated/client/client';
 
 @Injectable()
 export class LeaderboardRefreshJob {

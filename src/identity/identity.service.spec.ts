@@ -309,7 +309,7 @@ describe('IdentityService', () => {
       prisma.wallet.count.mockResolvedValue(2);
       prisma.wallet.delete.mockResolvedValue(wallet);
 
-      const result = await service.unlinkWallet(mockUser.id, '0x123', 'ETH');
+      const result = await service.unlinkWallet(mockUser.id, { address: '0x123', chain: 'ETH' });
 
       expect(prisma.wallet.findUnique).toHaveBeenCalledWith({
         where: {
@@ -342,7 +342,7 @@ describe('IdentityService', () => {
       prisma.wallet.findUnique.mockResolvedValue(null);
 
       await expect(
-        service.unlinkWallet(mockUser.id, '0x123', 'ETH'),
+        service.unlinkWallet(mockUser.id, { address: '0x123', chain: 'ETH' }),
       ).rejects.toThrow(NotFoundException);
     });
 
@@ -357,7 +357,7 @@ describe('IdentityService', () => {
       prisma.wallet.findUnique.mockResolvedValue(wallet);
 
       await expect(
-        service.unlinkWallet(mockUser.id, '0x123', 'ETH'),
+        service.unlinkWallet(mockUser.id, { address: '0x123', chain: 'ETH' }),
       ).rejects.toThrow(BadRequestException);
     });
   });

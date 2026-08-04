@@ -39,7 +39,7 @@ import { GovernanceModule } from './governance/governance.module';
 
 // In-memory storage for development (no Redis needed)
 class ThrottlerMemoryStorage {
-  private storage = new Map
+  private storage = new Map<
     string,
     {
       totalHits: number;

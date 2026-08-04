@@ -185,15 +185,6 @@ describe('AuditTrailService - IP Security and Masking', () => {
       await serviceWithoutRequest.log(auditInput);
 
       expect(innerRepo.create).toHaveBeenCalledWith(
-      (tempRepository.create as jest.Mock).mockReturnValue({
-        ...auditInput,
-        ipAddress: undefined,
-      });
-      (tempRepository.save as jest.Mock).mockResolvedValue({ id: 'audit-4' });
-
-      await serviceWithoutRequest.log(auditInput);
-
-      expect(tempRepository.create).toHaveBeenCalledWith(
         expect.objectContaining({
           ipAddress: undefined,
         }),

@@ -1,0 +1,84 @@
+
+> truth-bounty_backend@0.0.1 build
+> nest build
+
+[96msrc/identity/identity.controller.ts[0m:[93m36[0m:[93m63[0m - [91merror[0m[90m TS2554: [0mExpected 2 arguments, but got 3.
+
+[7m36[0m     return this.identityService.unlinkWallet(userId, address, chain);
+[7m  [0m [91m                                                              ~~~~~[0m
+[96msrc/identity/identity.service.ts[0m:[93m12[0m:[93m10[0m - [91merror[0m[90m TS2305: [0mModule '"@prisma/client"' has no exported member 'Prisma'.
+
+[7m12[0m import { Prisma, User, Wallet } from '@prisma/client';
+[7m  [0m [91m         ~~~~~~[0m
+[96msrc/identity/identity.service.ts[0m:[93m12[0m:[93m18[0m - [91merror[0m[90m TS2305: [0mModule '"@prisma/client"' has no exported member 'User'.
+
+[7m12[0m import { Prisma, User, Wallet } from '@prisma/client';
+[7m  [0m [91m                 ~~~~[0m
+[96msrc/identity/identity.service.ts[0m:[93m12[0m:[93m24[0m - [91merror[0m[90m TS2305: [0mModule '"@prisma/client"' has no exported member 'Wallet'.
+
+[7m12[0m import { Prisma, User, Wallet } from '@prisma/client';
+[7m  [0m [91m                       ~~~~~~[0m
+[96msrc/identity/identity.service.ts[0m:[93m53[0m:[93m50[0m - [91merror[0m[90m TS2322: [0mType '{}' is not assignable to type '(Without<UserCreateInput, UserUncheckedCreateInput> & UserUncheckedCreateInput) | (Without<...> & UserCreateInput)'.
+
+[7m53[0m     const user = await this.prisma.user.create({ data: {} });
+[7m  [0m [91m                                                 ~~~~[0m
+
+  [96msrc/generated/client/models/User.ts[0m:[93m1449[0m:[93m3[0m
+    [7m1449[0m   data: Prisma.XOR<Prisma.UserCreateInput, Prisma.UserUncheckedCreateInput>
+    [7m    [0m [96m  ~~~~[0m
+    The expected type comes from property 'data' which is declared here on type '{ select?: UserSelect<DefaultArgs> | null | undefined; omit?: UserOmit<DefaultArgs> | null | undefined; include?: UserInclude<DefaultArgs> | null | undefined; data: (Without<...> & UserUncheckedCreateInput) | (Without<...> & UserCreateInput); }'
+[96msrc/identity/identity.service.ts[0m:[93m226[0m:[93m18[0m - [91merror[0m[90m TS2353: [0mObject literal may only specify known properties, and 'createdAt' does not exist in type 'WalletOrderByWithRelationInput | WalletOrderByWithRelationInput[]'.
+
+[7m226[0m       orderBy: { createdAt: 'asc' },
+[7m   [0m [91m                 ~~~~~~~~~[0m
+[96msrc/identity/identity.service.ts[0m:[93m280[0m:[93m7[0m - [91merror[0m[90m TS18046: [0m'err' is of type 'unknown'.
+
+[7m280[0m       err.code === 'P2002'
+[7m   [0m [91m      ~~~[0m
+[96msrc/jobs/jobs.processor.ts[0m:[93m19[0m:[93m32[0m - [91merror[0m[90m TS2341: [0mProperty 'computeScores' is private and only accessible within class 'JobsService'.
+
+[7m19[0m         await this.jobsService.computeScores();
+[7m  [0m [91m                               ~~~~~~~~~~~~~[0m
+[96msrc/jobs/jobs.processor.ts[0m:[93m22[0m:[93m32[0m - [91merror[0m[90m TS2341: [0mProperty 'computeReputation' is private and only accessible within class 'JobsService'.
+
+[7m22[0m         await this.jobsService.computeReputation();
+[7m  [0m [91m                               ~~~~~~~~~~~~~~~~~[0m
+[96msrc/jobs/jobs.service.ts[0m:[93m93[0m:[93m30[0m - [91merror[0m[90m TS2339: [0mProperty 'sybilResistanceService' does not exist on type 'JobsService'.
+
+[7m93[0m     const count = await this.sybilResistanceService.cleanupScoreHistory();
+[7m  [0m [91m                             ~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/jobs/jobs.service.ts[0m:[93m166[0m:[93m65[0m - [91merror[0m[90m TS2345: [0mArgument of type 'AggregationVerification[]' is not assignable to parameter of type 'Verification[]'.
+  Type 'AggregationVerification' is not assignable to type 'Verification'.
+    Types of property 'userId' are incompatible.
+      Type 'string | null' is not assignable to type 'string'.
+        Type 'null' is not assignable to type 'string'.
+
+[7m166[0m         const agg = this.aggregationService.aggregate(claim.id, verifications);
+[7m   [0m [91m                                                                ~~~~~~~~~~~~~[0m
+[96msrc/modules/sybil/controllers/sybil-admin.controller.ts[0m:[93m8[0m:[93m27[0m - [91merror[0m[90m TS2307: [0mCannot find module '../../auth/guards/auth.guard' or its corresponding type declarations.
+
+[7m8[0m import { AuthGuard } from '../../auth/guards/auth.guard';
+[7m [0m [91m                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/modules/sybil/controllers/sybil-admin.controller.ts[0m:[93m9[0m:[93m28[0m - [91merror[0m[90m TS2307: [0mCannot find module '../../auth/guards/roles.guard' or its corresponding type declarations.
+
+[7m9[0m import { RolesGuard } from '../../auth/guards/roles.guard';
+[7m [0m [91m                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/modules/sybil/controllers/sybil-admin.controller.ts[0m:[93m10[0m:[93m23[0m - [91merror[0m[90m TS2307: [0mCannot find module '../../auth/decorators/roles.decorator' or its corresponding type declarations.
+
+[7m10[0m import { Roles } from '../../auth/decorators/roles.decorator';
+[7m  [0m [91m                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/modules/sybil/services/sybil-score.service.ts[0m:[93m54[0m:[93m53[0m - [91merror[0m[90m TS2353: [0mObject literal may only specify known properties, and 'sybilScore' does not exist in type '_QueryDeepPartialEntity<User>'.
+
+[7m54[0m               await this.userRepo.update(user.id, { sybilScore: score });
+[7m  [0m [91m                                                    ~~~~~~~~~~[0m
+[96msrc/modules/sybil/services/sybil-score.service.ts[0m:[93m89[0m:[93m14[0m - [91merror[0m[90m TS2339: [0mProperty 'isVerified' does not exist on type 'User'.
+
+[7m89[0m     if (user.isVerified) score += 50;
+[7m  [0m [91m             ~~~~~~~~~~[0m
+[96msrc/utils/confidence.ts[0m:[93m3[0m:[93m8[0m - [91merror[0m[90m TS2307: [0mCannot find module '../constants/protocol' or its corresponding type declarations.
+
+[7m3[0m } from '../constants/protocol';
+[7m [0m [91m       ~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+Found 17 error(s).
+

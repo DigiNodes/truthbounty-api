@@ -12,6 +12,7 @@ import { Wallet } from '../entities/wallet.entity';
 import { Claim, ClaimState } from '../claims/entities/claim.entity';
 import { User } from '../entities/user.entity';
 import { AggregationService } from '../aggregation/aggregation.service';
+import { VerificationVerdict } from '../aggregation/aggregation.types';
 import { ClaimsCache } from '../cache/claims.cache';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
@@ -34,8 +35,8 @@ const CONFIDENCE_SCALE = 100;
 interface AggregationVerification {
   id: string;
   claimId: string;
-  userId: string | null;
-  verdict: 'TRUE' | 'FALSE';
+  userId: string;
+  verdict: VerificationVerdict;
   stakeAmount: number;
   reputationWeight: number;
   createdAt: Date;
@@ -65,6 +66,7 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
     private readonly userRepo: Repository<User>,
     private readonly claimsCache: ClaimsCache,
     private readonly aggregationService: AggregationService,
+    private readonly sybilResistanceService: SybilResistanceService,
   ) {}
 
   // ─── Lifecycle ─────────────────────────────────────────────────────────
@@ -104,7 +106,7 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
    * N+1 pattern eliminated: wallets and users are bulk-fetched per claim batch
    * rather than one DB round-trip per stake.
    */
-  private async computeScores(): Promise<BatchResult> {
+  async computeScores(): Promise<BatchResult> {
     this.logger.debug('computeScores: starting');
     const result: BatchResult = { processed: 0, updated: 0, errors: 0 };
 
@@ -203,7 +205,7 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
     return result;
   }
 
-  private async computeReputation(): Promise<BatchResult> {
+  private async updateClaim(
     claimId: string,
     updateFields: Partial<Claim>,
   ): Promise<boolean> {
@@ -218,7 +220,7 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
     return (result.affected ?? 0) > 0;
   }
 
-  private async computeReputation() {
+  async computeReputation() {
     this.logger.debug('computeReputation: starting');
     const result: BatchResult = { processed: 0, updated: 0, errors: 0 };
 
@@ -340,8 +342,8 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
       return {
         id: stake.id,
         claimId,
-        userId: user?.id ?? null,
-        verdict: 'TRUE',
+        userId: user?.id ?? 'unknown',
+        verdict: VerificationVerdict.TRUE,
         stakeAmount,
         reputationWeight,
         createdAt: (stake as any).updatedAt ?? new Date(),

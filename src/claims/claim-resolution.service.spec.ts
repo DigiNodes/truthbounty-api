@@ -10,7 +10,7 @@ const claimsCacheStub = {
 };
 
 describe('Confidence Scoring', () => {
-  const service = new ClaimResolutionService(claimRepoStub as any, claimsCacheStub as any);
+  const service = new ClaimResolutionService(claimRepoStub as any, claimsCacheStub as any, {} as any);
 
   it('returns high confidence for strong consensus', () => {
     const score = service.computeConfidenceScore({

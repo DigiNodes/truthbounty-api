@@ -53,7 +53,9 @@ export const AnyNull = runtime.AnyNull
 export const ModelName = {
   User: 'User',
   Wallet: 'Wallet',
-  SybilScore: 'SybilScore'
+  SybilScore: 'SybilScore',
+  SybilExplanation: 'SybilExplanation',
+  WorldIdVerification: 'WorldIdVerification'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -63,6 +65,9 @@ export type ModelName = (typeof ModelName)[keyof typeof ModelName]
  */
 
 export const TransactionIsolationLevel = runtime.makeStrictEnum({
+  ReadUncommitted: 'ReadUncommitted',
+  ReadCommitted: 'ReadCommitted',
+  RepeatableRead: 'RepeatableRead',
   Serializable: 'Serializable'
 } as const)
 
@@ -73,8 +78,10 @@ export const UserScalarFieldEnum = {
   id: 'id',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt',
+  walletAddress: 'walletAddress',
   reputation: 'reputation',
-  worldcoinVerified: 'worldcoinVerified'
+  worldcoinVerified: 'worldcoinVerified',
+  worldcoinVerifiedAt: 'worldcoinVerifiedAt'
 } as const
 
 export type UserScalarFieldEnum = (typeof UserScalarFieldEnum)[keyof typeof UserScalarFieldEnum]
@@ -107,6 +114,31 @@ export const SybilScoreScalarFieldEnum = {
 export type SybilScoreScalarFieldEnum = (typeof SybilScoreScalarFieldEnum)[keyof typeof SybilScoreScalarFieldEnum]
 
 
+export const SybilExplanationScalarFieldEnum = {
+  id: 'id',
+  sybilScoreId: 'sybilScoreId',
+  explanation: 'explanation',
+  createdAt: 'createdAt'
+} as const
+
+export type SybilExplanationScalarFieldEnum = (typeof SybilExplanationScalarFieldEnum)[keyof typeof SybilExplanationScalarFieldEnum]
+
+
+export const WorldIdVerificationScalarFieldEnum = {
+  id: 'id',
+  verifiedAt: 'verifiedAt',
+  userId: 'userId',
+  nullifierHash: 'nullifierHash',
+  verificationLevel: 'verificationLevel',
+  worldcoinAppId: 'worldcoinAppId',
+  worldcoinAction: 'worldcoinAction',
+  merkleRoot: 'merkleRoot',
+  proof: 'proof'
+} as const
+
+export type WorldIdVerificationScalarFieldEnum = (typeof WorldIdVerificationScalarFieldEnum)[keyof typeof WorldIdVerificationScalarFieldEnum]
+
+
 export const SortOrder = {
   asc: 'asc',
   desc: 'desc'
@@ -115,10 +147,35 @@ export const SortOrder = {
 export type SortOrder = (typeof SortOrder)[keyof typeof SortOrder]
 
 
+export const NullableJsonNullValueInput = {
+  DbNull: DbNull,
+  JsonNull: JsonNull
+} as const
+
+export type NullableJsonNullValueInput = (typeof NullableJsonNullValueInput)[keyof typeof NullableJsonNullValueInput]
+
+
+export const QueryMode = {
+  default: 'default',
+  insensitive: 'insensitive'
+} as const
+
+export type QueryMode = (typeof QueryMode)[keyof typeof QueryMode]
+
+
 export const NullsOrder = {
   first: 'first',
   last: 'last'
 } as const
 
 export type NullsOrder = (typeof NullsOrder)[keyof typeof NullsOrder]
+
+
+export const JsonNullValueFilter = {
+  DbNull: DbNull,
+  JsonNull: JsonNull,
+  AnyNull: AnyNull
+} as const
+
+export type JsonNullValueFilter = (typeof JsonNullValueFilter)[keyof typeof JsonNullValueFilter]
 

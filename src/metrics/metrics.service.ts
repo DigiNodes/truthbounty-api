@@ -1,4 +1,4 @@
-import client from "prom-client";
+import * as client from "prom-client";
 
 export class MetricsService {
   private readonly requestCounter: client.Counter<string>;
