@@ -80,7 +80,7 @@ describe('EvidenceService', () => {
     service = module.get(EvidenceService);
     evidenceRepo = module.get(getRepositoryToken(Evidence));
     versionRepo = module.get(getRepositoryToken(EvidenceVersion));
-    auditTrailService = module.get(AuditTrailService);
+    auditTrailService = module.get(AuditTrailService) as any;
   });
 
   it('should be defined', () => {
