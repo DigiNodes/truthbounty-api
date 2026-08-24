@@ -7,9 +7,22 @@ generator client {
   binaryTargets = ["native", "linux-musl"]
 }
 
+// Actual runtime datasource is SQLite via the libsql driver adapter
+// (see src/prisma/prisma.service.ts, DATABASE_URL=file:./dev.db) — this
+// matches prisma/migrations/migration_lock.toml, which already records
+// "sqlite" as the migration dialect. Declaring "postgresql" here caused
+// PrismaClientInitializationError at runtime ("Driver Adapter
+// @prisma/adapter-libsql, based on sqlite, is not compatible with the
+// provider postgres") once the client was regenerated against the
+// package-lock-pinned prisma@7.4.1, which validates this consistency.
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider = "sqlite"
+}
+
+enum UserRole {
+  contributor
+  moderator
+  admin
 }
 
 model User {
@@ -22,6 +35,8 @@ model User {
 
   reputation Int @default(0)
 
+  role UserRole @default(contributor)
+
   // Sybil Resistance
   worldcoinVerified   Boolean   @default(false)
   worldcoinVerifiedAt DateTime?
@@ -29,6 +44,7 @@ model User {
   wallets              Wallet[]
   sybilScores          SybilScore[]
   worldIdVerifications WorldIdVerification[]
+  conversations        Conversation[]
 }
 
 model Wallet {
@@ -99,4 +115,42 @@ model WorldIdVerification {
   @@index([nullifierHash])
 
   @@map("world_id_verifications")
+}
+
+model Conversation {
+  id        String   @id @default(uuid())
+  title     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages  Message[]
+
+  @@index([userId])
+}
+
+model Message {
+  id             String       @id @default(uuid())
+  role           String       // "user", "assistant", "system"
+  content        String
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId])
+}
+
+model AiUsageMetric {
+  id              String   @id @default(uuid())
+  userId          String?
+  provider        String   // e.g., "openai", "anthropic"
+  model           String
+  promptTokens    Int      @default(0)
+  completionTokens Int     @default(0)
+  totalTokens     Int      @default(0)
+  latencyMs       Int      @default(0)
+  createdAt       DateTime @default(now())
+
+  @@index([userId])
+  @@index([provider])
 }

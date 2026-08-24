@@ -12,6 +12,8 @@ import { BullBoardModule } from '@bull-board/nestjs';
 import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 import { JobsProcessor } from './jobs.processor';
 import { SybilResistanceModule } from '../sybil-resistance/sybil-resistance.module';
+import { JobsController } from './jobs.controller';
+import { QueueName } from './jobs.types';
 
 @Module({
   imports: [
@@ -19,15 +21,19 @@ import { SybilResistanceModule } from '../sybil-resistance/sybil-resistance.modu
     TypeOrmModule.forFeature([Stake, Wallet, Claim, User]),
     AggregationModule,
     SybilResistanceModule,
-    BullModule.registerQueue({
-      name: 'jobs-queue',
-    }),
+    BullModule.registerQueue(
+      { name: QueueName.DEFAULT },
+      { name: QueueName.NOTIFICATIONS },
+      { name: QueueName.BLOCKCHAIN },
+      { name: QueueName.ANALYTICS },
+    ),
     BullBoardModule.forFeature({
-      name: 'jobs-queue',
+      name: QueueName.DEFAULT,
       adapter: BullMQAdapter,
     }),
   ],
   providers: [JobsService, JobsProcessor],
+  controllers: [JobsController],
   exports: [JobsService, BullModule],
 })
 export class JobsModule {}
