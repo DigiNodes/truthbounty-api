@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
-import { LlmProviderService } from './llm-provider.service';
+import { PrismaService } from '../../prisma/prisma.service';
+import { RedisService } from '../../redis/redis.service';
 
 @Injectable()
 export class RagService {
@@ -8,10 +8,17 @@ export class RagService {
 
   constructor(
     private prisma: PrismaService,
-    private llmProvider: LlmProviderService,
+    private redisService: RedisService,
   ) {}
 
   async retrieveContext(query: string): Promise<{ context: string; citations: string[] }> {
+    const cacheKey = `rag_context:${query.trim().toLowerCase()}`;
+    const cached = await this.redisService.get(cacheKey);
+    if (cached) {
+      this.logger.debug(`Cache hit for query: ${query}`);
+      return JSON.parse(cached);
+    }
+
     this.logger.debug(`Retrieving context for query: ${query}`);
     
     // 1. Fetch all active documents
@@ -32,10 +39,13 @@ export class RagService {
       .sort((a, b) => b.score - a.score)
       .slice(0, 3); // Take top 3
 
-    return {
+    const result = {
       context: relevantDocs.map(doc => `[${doc.title}]: ${doc.content}`).join('\n\n'),
       citations: relevantDocs.map(doc => doc.title)
     };
+
+    await this.redisService.set(cacheKey, JSON.stringify(result), 3600); // 1 hour cache
+    return result;
   }
 
   private calculateRelevance(query: string, content: string): number {

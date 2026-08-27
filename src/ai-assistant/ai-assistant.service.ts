@@ -79,7 +79,7 @@ export class AiAssistantService {
     });
 
     // 3. RAG Retrieval
-    const context = await this.ragService.retrieveContext(dto.content);
+    const { content: context, citations } = await this.ragService.retrieveContext(dto.content);
 
     // 4. Construct Prompt Pipeline
     const systemPrompt = `You are the TruthBounty AI Assistant. You help contributors navigate the protocol.
@@ -91,7 +91,7 @@ ${context}
 
     const messagesToLlm: { role: 'user' | 'assistant' | 'system'; content: string }[] = [
       { role: 'system', content: systemPrompt },
-      ...history.map(msg => ({
+      ...history.map((msg) => ({
         role: msg.role as 'user' | 'assistant' | 'system',
         content: msg.content,
       })),
@@ -101,7 +101,7 @@ ${context}
 
     // 5. Orchestrate LLM request
     const llmResponse = await this.llmProvider.generateResponse(messagesToLlm);
-    
+
     const latencyMs = Date.now() - startTime;
 
     // 6. Save assistant response
@@ -139,8 +139,8 @@ ${context}
         provider: llmResponse.provider,
         latencyMs,
         tokens: llmResponse.usage?.total_tokens || 0,
-        citations: ['MOCKED_CITATION_1', 'MOCKED_CITATION_2'] // Placeholder for standardizing API
-      }
+        citations,
+      },
     };
   }
 
