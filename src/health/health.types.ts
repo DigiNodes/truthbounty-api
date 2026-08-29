@@ -60,4 +60,14 @@ export interface SystemDiagnostics {
   resourceUsage?: NodeJS.ResourceUsage;
   eventLoopDelayMs?: number;
   openFileDescriptors?: number;
+  database?: {
+    connectivity: boolean;
+    latencyMs: number;
+    migrationsApplied: number;
+    migrationsPending: number;
+    poolTotal: number;
+    poolIdle: number;
+    poolActive: number;
+    poolWaiting: number;
+  };
 }
