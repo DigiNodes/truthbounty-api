@@ -7,6 +7,7 @@ import { JobsService } from '../jobs/jobs.service';
 import { NotificationService } from '../notifications/services/notification.service';
 import { IpfsService } from '../ipfs/ipfs.service';
 import { BlockchainStateService } from '../blockchain/state.service';
+import { MetricsService } from '../metrics/metrics.service';
 
 const mockDataSource = () => ({
   isInitialized: true,
@@ -37,6 +38,13 @@ const mockBlockchainStateService = () => ({
   getChainState: jest.fn(),
 });
 
+const mockMetricsService = () => ({
+  setMemoryUsage: jest.fn(),
+  setCpuUsage: jest.fn(),
+  setQueueDepth: jest.fn(),
+  setBlockchainIndexingState: jest.fn(),
+});
+
 describe('HealthService', () => {
   let service: HealthService;
   let dataSource: DataSource;
@@ -46,6 +54,7 @@ describe('HealthService', () => {
   let notificationService: NotificationService;
   let ipfsService: IpfsService;
   let blockchainStateService: BlockchainStateService;
+  let metricsService: MetricsService;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -58,6 +67,7 @@ describe('HealthService', () => {
         { provide: NotificationService, useFactory: mockNotificationService },
         { provide: IpfsService, useFactory: mockIpfsService },
         { provide: BlockchainStateService, useFactory: mockBlockchainStateService },
+        { provide: MetricsService, useFactory: mockMetricsService },
       ],
     }).compile();
 
@@ -69,6 +79,7 @@ describe('HealthService', () => {
     notificationService = module.get<NotificationService>(NotificationService);
     ipfsService = module.get<IpfsService>(IpfsService);
     blockchainStateService = module.get<BlockchainStateService>(BlockchainStateService);
+    metricsService = module.get<MetricsService>(MetricsService);
   });
 
   it('should return alive liveness result', () => {
