@@ -118,6 +118,7 @@ src/
 | **BlockchainIndexerService** | Processes blockchain events | Variable | Blockchain RPC |
 | **ReorgDetectorService** | Detects & handles chain forks | 5-20ms | Blockchain RPC |
 | **IdentityService** | User/wallet management with signatures | 20-100ms | Database |
+| **RealtimeEventStream** | Projection-backed SSE stream (publish-after-commit, resume cursor, heartbeat, backpressure, rollback) | <10ms (stream) | Database (Postgres outbox) |
 
 **Usage:** Lightning-fast verification, blockchain event synchronization, user identity
 
@@ -125,6 +126,7 @@ src/
 - `src/blockchain/blockchain-indexer.service.ts`
 - `src/blockchain/reorg-detector.service.ts`
 - `src/identity/identity.service.ts`
+- `src/realtime/realtime.service.ts`
 
 ---
 
