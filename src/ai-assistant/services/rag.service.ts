@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { ContextDocument } from '../entities/context-document.entity';
 import { RedisService } from '../../redis/redis.service';
 
 @Injectable()
@@ -7,7 +9,8 @@ export class RagService {
   private readonly logger = new Logger(RagService.name);
 
   constructor(
-    private prisma: PrismaService,
+    @InjectRepository(ContextDocument)
+    private readonly contextDocumentRepository: Repository<ContextDocument>,
     private redisService: RedisService,
   ) {}
 
@@ -22,7 +25,7 @@ export class RagService {
     this.logger.debug(`Retrieving context for query: ${query}`);
     
     // 1. Fetch all active documents
-    const documents = await this.prisma.contextDocument.findMany({
+    const documents = await this.contextDocumentRepository.find({
       where: { isActive: true },
     });
 
