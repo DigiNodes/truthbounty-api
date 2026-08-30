@@ -25,8 +25,46 @@ export interface RpcBackoffOptions {
   sleep?: (ms: number) => Promise<void>;
 }
 
+export interface RpcProviderValidationOptions {
+  expectedChainId?: number;
+  expectedBlockHash?: string;
+  blockHashField?: string;
+}
+
+export interface RpcProviderManagerOptions extends RpcBackoffOptions {
+  chainId?: number;
+  circuitBreakerThreshold?: number;
+  circuitBreakerResetMs?: number;
+  rateLimitMs?: number;
+}
+
+interface ProviderCircuitState {
+  status: 'closed' | 'open';
+  failures: number;
+  openedAt: number;
+  nextRetryAt: number;
+  rateLimitUntil: number;
+}
+
 const defaultSleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
+
+function normalizeChainId(value: unknown): number | null {
+  if (typeof value === 'bigint') {
+    return Number(value);
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
+}
 
 /**
  * Detect HTTP 429 / rate-limit responses across the shapes ethers, web3 and
@@ -152,4 +190,196 @@ export async function withRpcBackoff<T>(
 
   // Unreachable, but keeps the type checker happy.
   throw lastError;
+}
+
+export class RpcProviderManager {
+  private readonly providerStates = new Map<string, ProviderCircuitState>();
+
+  constructor(
+    private readonly providers: Array<Record<string, any>>,
+    private readonly options: RpcProviderManagerOptions = {},
+  ) {
+    this.providers.forEach((provider, index) => {
+      const key = this.getProviderKey(provider, index);
+      this.providerStates.set(key, {
+        status: 'closed',
+        failures: 0,
+        openedAt: 0,
+        nextRetryAt: 0,
+        rateLimitUntil: 0,
+      });
+    });
+  }
+
+  getProviderState(providerKey: string): ProviderCircuitState | undefined {
+    return this.providerStates.get(providerKey);
+  }
+
+  async call<T = any>(
+    method: string,
+    args: any[] = [],
+    validation: RpcProviderValidationOptions = {},
+  ): Promise<T> {
+    const expectedChainId = validation.expectedChainId ?? this.options.chainId;
+    let lastError: unknown;
+
+    for (let index = 0; index < this.providers.length; index++) {
+      const provider = this.providers[index];
+      const providerKey = this.getProviderKey(provider, index);
+      const state = this.providerStates.get(providerKey) ?? this.createState(providerKey);
+
+      if (state.status === 'open' && Date.now() < state.nextRetryAt) {
+        continue;
+      }
+
+      if (state.status === 'open' && Date.now() >= state.nextRetryAt) {
+        state.status = 'closed';
+        state.failures = 0;
+      }
+
+      if (state.rateLimitUntil > Date.now()) {
+        continue;
+      }
+
+      try {
+        const network = await provider.getNetwork?.();
+        const observedChainId = normalizeChainId(network?.chainId);
+        if (
+          expectedChainId !== undefined &&
+          observedChainId !== null &&
+          observedChainId !== expectedChainId
+        ) {
+          throw new Error(
+            `RPC chain mismatch on ${providerKey}: expected ${expectedChainId}, got ${observedChainId}`,
+          );
+        }
+
+        const result = await withRpcBackoff(
+          () => provider[method](...args),
+          {
+            maxRetries: this.options.maxRetries ?? 5,
+            baseDelayMs: this.options.baseDelayMs ?? 250,
+            maxDelayMs: this.options.maxDelayMs ?? 10_000,
+            jitter: this.options.jitter ?? true,
+            isRetryable: this.options.isRetryable ?? isRetryableRpcError,
+            onRetry: (error, attempt, delayMs) => {
+              if (this.options.onRetry) {
+                this.options.onRetry(error, attempt, delayMs);
+              }
+            },
+            sleep: this.options.sleep ?? defaultSleep,
+          },
+        );
+
+        if (
+          validation.expectedBlockHash &&
+          result && typeof result === 'object' &&
+          'hash' in result
+        ) {
+          const actualHash = String((result as Record<string, any>).hash ?? '').toLowerCase();
+          const expectedHash = validation.expectedBlockHash.toLowerCase();
+          if (actualHash && actualHash !== expectedHash) {
+            throw new Error(
+              `RPC block hash mismatch for ${providerKey}: expected ${expectedHash}, got ${actualHash}`,
+            );
+          }
+        }
+
+        this.markSuccess(providerKey);
+        return result as T;
+      } catch (error) {
+        lastError = error;
+        this.markFailure(providerKey, error);
+      }
+    }
+
+    throw lastError ?? new Error(`All RPC providers failed for method ${method}`);
+  }
+
+  private createState(providerKey: string): ProviderCircuitState {
+    const state = {
+      status: 'closed' as const,
+      failures: 0,
+      openedAt: 0,
+      nextRetryAt: 0,
+      rateLimitUntil: 0,
+    };
+    this.providerStates.set(providerKey, state);
+    return state;
+  }
+
+  private getProviderKey(provider: Record<string, any>, index: number): string {
+    if (provider?.name) {
+      return String(provider.name);
+    }
+    if (provider?.url) {
+      return String(provider.url);
+    }
+    if (index === 0) {
+      return 'primary';
+    }
+    if (index === 1) {
+      return 'secondary';
+    }
+    return `provider-${index}`;
+  }
+
+  private markSuccess(providerKey: string): void {
+    const state = this.providerStates.get(providerKey);
+    if (!state) {
+      return;
+    }
+    state.failures = 0;
+    state.status = 'closed';
+    state.openedAt = 0;
+    state.nextRetryAt = 0;
+    state.rateLimitUntil = 0;
+  }
+
+  private markFailure(providerKey: string, error: unknown): void {
+    const state = this.providerStates.get(providerKey);
+    if (!state) {
+      return;
+    }
+
+    const threshold = this.options.circuitBreakerThreshold ?? 3;
+    const resetMs = this.options.circuitBreakerResetMs ?? 60_000;
+    const rateLimitDelayMs = this.options.rateLimitMs ?? 1_000;
+
+    if (isRateLimitError(error)) {
+      state.rateLimitUntil = Date.now() + rateLimitDelayMs;
+      state.failures += 1;
+    } else {
+      state.failures += 1;
+    }
+
+    if (state.failures >= threshold) {
+      state.status = 'open';
+      state.openedAt = Date.now();
+      state.nextRetryAt = state.openedAt + resetMs;
+    }
+  }
+}
+
+export async function withRpcFailover<T>(
+  providers: Array<Record<string, any>>,
+  fn: (provider: Record<string, any>) => Promise<T>,
+  options: RpcProviderManagerOptions = {},
+): Promise<T> {
+  const manager = new RpcProviderManager(providers, options);
+
+  for (let index = 0; index < providers.length; index++) {
+    const provider = providers[index];
+    try {
+      return await manager.call<T>(
+        'call',
+        [provider, fn],
+        { expectedChainId: options.chainId },
+      );
+    } catch {
+      // continue to the next provider in the ordered list
+    }
+  }
+
+  throw new Error('All configured RPC providers failed');
 }
