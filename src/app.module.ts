@@ -258,15 +258,37 @@ async function createThrottlerStorage(
       envFilePath: ['.env.local', '.env'],
     }),
     ScheduleModule.forRoot(),
-    TypeOrmModule.forRoot({
-      type: 'sqlite',
-      database: 'database.sqlite',
-      entities: [__dirname + '/**/*.entity{.ts,.js}'],
-      // Allow automatic sync in development unless explicitly disabled
-      synchronize:
-        process.env.DATABASE_SYNCHRONIZE === 'true' ||
-        process.env.NODE_ENV !== 'production',
-      logging: process.env.DATABASE_LOGGING === 'true',
+    TypeOrmModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        type: 'postgres',
+        host: configService.get<string>('DB_HOST', 'localhost'),
+        port: configService.get<number>('DB_PORT', 5432),
+        username: configService.get<string>('DB_USERNAME', 'postgres'),
+        password: configService.get<string>('DB_PASSWORD', 'postgres'),
+        database: configService.get<string>('DB_NAME', 'truthbounty'),
+        entities: [__dirname + '/**/*.entity{.ts,.js}'],
+        // Migrations are the source of truth. Never auto-sync schema.
+        synchronize: false,
+        logging: configService.get<string>('DATABASE_LOGGING') === 'true',
+        // Connection pooling for high-concurrency production workloads
+        extra: {
+          max: configService.get<number>('DB_POOL_MAX', 20),
+          idleTimeoutMillis: configService.get<number>('DB_POOL_IDLE_TIMEOUT', 30000),
+          connectionTimeoutMillis: configService.get<number>('DB_POOL_ACQUIRE_TIMEOUT', 10000),
+          maxRetries: configService.get<number>('DB_POOL_RETRIES', 3),
+          retryDelay: configService.get<number>('DB_POOL_RETRY_DELAY', 1000),
+        },
+        // SSL support for production
+        ssl:
+          configService.get<string>('DATABASE_SSL') === 'true'
+            ? {
+                rejectUnauthorized:
+                  configService.get<string>('DATABASE_SSL_REJECT_UNAUTHORIZED') !== 'false',
+              }
+            : false,
+      }),
     }),
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],

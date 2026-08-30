@@ -244,12 +244,49 @@ export class HealthService {
     return 'healthy';
   }
 
-  private collectDiagnostics(): SystemDiagnostics {
-    return {
+  private async collectDiagnostics(): Promise<SystemDiagnostics> {
+    const diagnostics: SystemDiagnostics = {
       memoryUsage: process.memoryUsage(),
       cpuUsage: process.cpuUsage(),
       resourceUsage: process.resourceUsage(),
     };
+
+    // Add database diagnostics
+    try {
+      const start = Date.now();
+      await this.dataSource.query('SELECT 1');
+      const latencyMs = Date.now() - start;
+
+      const appliedMigrations = await this.dataSource.query(
+        'SELECT COUNT(*) as count FROM migrations',
+      );
+      const totalMigrations = this.dataSource.migrations.length;
+      const pool = (this.dataSource.driver as any).master;
+
+      diagnostics.database = {
+        connectivity: true,
+        latencyMs,
+        migrationsApplied: Number(appliedMigrations[0]?.count ?? 0),
+        migrationsPending: Math.max(0, totalMigrations - Number(appliedMigrations[0]?.count ?? 0)),
+        poolTotal: pool?.totalCount ?? 0,
+        poolIdle: pool?.idleCount ?? 0,
+        poolActive: pool?.totalCount ? pool.totalCount - (pool.idleCount ?? 0) : 0,
+        poolWaiting: pool?.waitingCount ?? 0,
+      };
+    } catch {
+      diagnostics.database = {
+        connectivity: false,
+        latencyMs: 0,
+        migrationsApplied: 0,
+        migrationsPending: 0,
+        poolTotal: 0,
+        poolIdle: 0,
+        poolActive: 0,
+        poolWaiting: 0,
+      };
+    }
+
+    return diagnostics;
   }
 
   private buildSummary(dependencies: DependencyStatus[]): {
