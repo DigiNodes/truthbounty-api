@@ -1,6 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { BlockchainStateService } from './state.service';
 import { ReorgDetectorService } from './reorg-detector.service';
+import { BlockchainReorgAlertService } from './blockchain-reorg-alert.service';
 import { ReorgEvent, PendingEvent, BlockInfo } from './types';
 
 /**
@@ -10,9 +11,15 @@ import { ReorgEvent, PendingEvent, BlockInfo } from './types';
 export class ReconciliationService {
   private readonly logger = new Logger(ReconciliationService.name);
 
+  /** ID of the reorg event record currently being handled. */
+  private lastReorgEventId: number | null = null;
+  /** Timestamp when the current reorg handling started. */
+  private reorgStartTime = 0;
+
   constructor(
     private stateService: BlockchainStateService,
     private reorgDetector: ReorgDetectorService,
+    @Optional() private readonly alertService?: BlockchainReorgAlertService,
   ) {}
 
   /**
@@ -23,6 +30,24 @@ export class ReconciliationService {
       `Handling reorg: ${reorg.orphanedEvents.length} events to rollback`,
     );
 
+    this.reorgStartTime = Date.now();
+    this.lastReorgEventId = null;
+
+    // Record detection alert before rollback (best-effort)
+    if (this.alertService) {
+      try {
+        const record = await this.alertService.recordDetection({
+          reorgDepth: reorg.reorgDepth,
+          affectedBlockStart: reorg.affectedBlockStart,
+          affectedBlockEnd: reorg.affectedBlockEnd,
+          orphanedEventCount: reorg.orphanedEvents.length,
+        });
+        this.lastReorgEventId = record.id;
+      } catch (err) {
+        this.logger.error(`Failed to record reorg detection: ${err}`);
+      }
+    }
+
     try {
       // Start transaction (in production, use database transactions)
       await this.rollbackAffectedEvents(reorg.orphanedEvents);
@@ -32,11 +57,24 @@ export class ReconciliationService {
       );
       await this.stateService.recordReorg(reorg);
 
+      // Emit rollback-complete alert (best-effort)
+      if (this.alertService && this.lastReorgEventId) {
+        this.alertService.recordRollbackComplete(this.lastReorgEventId, Date.now() - this.reorgStartTime)
+          .catch(() => {});
+      }
+
       this.logger.log(
         `Reorg handled successfully. Rolled back ${reorg.orphanedEvents.length} events`,
       );
     } catch (error) {
       this.logger.error(`Failed to handle reorg: ${error}`, error);
+
+      // Emit error alert (best-effort)
+      if (this.alertService && this.lastReorgEventId) {
+        this.alertService.recordError(this.lastReorgEventId, String(error))
+          .catch(() => {});
+      }
+
       throw error;
     }
   }
@@ -140,6 +178,18 @@ export class ReconciliationService {
         reconciled.push(event.id);
         this.logger.debug(`Reconciled orphaned event: ${event.id}`);
       }
+    }
+
+    // Emit replay-complete alert if we reconciled any events
+    if (reconciled.length > 0 && this.alertService && this.lastReorgEventId) {
+      const durationMs = Date.now() - this.reorgStartTime;
+      this.alertService.recordReplayComplete(
+        this.lastReorgEventId,
+        reconciled.length,
+        null, // canonical hash not available from in-memory state
+        durationMs,
+      ).catch(() => {});
+      this.lastReorgEventId = null;
     }
 
     return reconciled;

@@ -1,8 +1,10 @@
-import { Controller, Get, Post, Body, Param } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
+import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { EventIndexingService } from './event-indexing.service';
 import { ReconciliationService } from './reconciliation.service';
 import { BlockchainStateService } from './state.service';
+import { BlockchainIndexerService } from './blockchain-indexer.service';
+import { BlockchainReorgAlertService } from './blockchain-reorg-alert.service';
 import { WeightedVoteResolutionService } from './weighted-vote-resolution.service';
 import { BlockInfo, VerificationVote, ResolutionConfig } from './types';
 
@@ -13,6 +15,8 @@ export class BlockchainController {
     private eventIndexing: EventIndexingService,
     private reconciliation: ReconciliationService,
     private stateService: BlockchainStateService,
+    private indexerService: BlockchainIndexerService,
+    private alertService: BlockchainReorgAlertService,
     private voteResolver: WeightedVoteResolutionService,
   ) {}
 
@@ -139,6 +143,111 @@ export class BlockchainController {
   async resetState() {
     await this.stateService.clearAllState();
     return { success: true, message: 'State cleared' };
+  }
+
+  // -------------------------------------------------------------------
+  // Reorg handling endpoints
+  // -------------------------------------------------------------------
+
+  /**
+   * Verify a block hash against the canonical chain.
+   *
+   * GET /api/v1/blockchain/reorg/verify?blockNumber=12345&expectedHash=0x...
+   */
+  @Get('reorg/verify')
+  @ApiOperation({ summary: 'Verify a block hash against the canonical chain' })
+  @ApiQuery({ name: 'blockNumber', required: true, type: Number })
+  @ApiQuery({ name: 'expectedHash', required: true, type: String })
+  @ApiQuery({ name: 'rpcUrl', required: false, type: String })
+  async verifyBlockHash(
+    @Query('blockNumber') blockNumber: number,
+    @Query('expectedHash') expectedHash: string,
+    @Query('rpcUrl') rpcUrl?: string,
+  ) {
+    const matches = await this.indexerService.verifyBlockHash(
+      blockNumber,
+      expectedHash,
+      rpcUrl,
+    );
+    return {
+      blockNumber,
+      expectedHash,
+      matches,
+      verifiedAt: new Date(),
+    };
+  }
+
+  /**
+   * Trigger a reorg rollback and replay for a given block range.
+   *
+   * This is the primary entry point for operational reorg handling. It:
+   * 1. Rolls back all events from `startBlock` onward
+   * 2. Emits operational alerts at each phase
+   * 3. Returns the result for callers to re-index the canonical chain
+   *
+   * POST /api/v1/blockchain/reorg/handle
+   */
+  @Post('reorg/handle')
+  @ApiOperation({ summary: 'Trigger reorg rollback and emit operational alerts' })
+  async handleReorg(
+    @Body()
+    payload: {
+      startBlock: number;
+      canonicalHash?: string;
+      rpcUrl?: string;
+    },
+  ) {
+    try {
+      const result = await this.indexerService.handleReorg(
+        payload.startBlock,
+        payload.canonicalHash,
+        payload.rpcUrl,
+      );
+      return {
+        success: true,
+        ...result,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+
+  /**
+   * Get recent operational alerts (in-memory ring buffer, newest-first).
+   *
+   * GET /api/v1/blockchain/reorg/alerts?limit=50
+   */
+  @Get('reorg/alerts')
+  @ApiOperation({ summary: 'Get recent reorg operational alerts' })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  async getReorgAlerts(@Query('limit') limit?: number) {
+    return this.alertService.getRecentAlerts(limit ?? 50);
+  }
+
+  /**
+   * Get persisted reorg history from the database.
+   *
+   * GET /api/v1/blockchain/reorg/history?limit=50
+   */
+  @Get('reorg/history-db')
+  @ApiOperation({ summary: 'Get persisted reorg history from the database' })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  async getReorgHistoryDb(@Query('limit') limit?: number) {
+    return this.alertService.getRecentReorgs(limit ?? 50);
+  }
+
+  /**
+   * Get reorg summary statistics for health checks.
+   *
+   * GET /api/v1/blockchain/reorg/summary
+   */
+  @Get('reorg/summary')
+  @ApiOperation({ summary: 'Get reorg summary statistics' })
+  async getReorgSummary() {
+    return this.alertService.getReorgSummary();
   }
 
   /**

@@ -1,6 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { BlockchainStateService } from './state.service';
+import { BlockchainReorgAlertService } from './blockchain-reorg-alert.service';
 import { BlockInfo, ReorgEvent, PendingEvent } from './types';
 
 /**
@@ -19,6 +20,7 @@ export class ReorgDetectorService {
   constructor(
     private stateService: BlockchainStateService,
     private configService: ConfigService,
+    @Optional() private readonly alertService?: BlockchainReorgAlertService,
   ) {
     this.confirmationDepth = this.configService.get<number>(
       'BLOCKCHAIN_CONFIRMATION_DEPTH',
@@ -81,6 +83,18 @@ export class ReorgDetectorService {
         `Affected blocks: ${affectedBlockStart}-${affectedBlockEnd}. ` +
         `Orphaned events: ${orphanedEventIds.length}`,
     );
+
+    // Emit operational alert (best-effort — never block detection)
+    if (this.alertService) {
+      this.alertService.recordDetection({
+        reorgDepth,
+        affectedBlockStart,
+        affectedBlockEnd,
+        orphanedEventCount: orphanedEventIds.length,
+      }).catch((err) =>
+        this.logger.error(`Failed to persist reorg alert: ${err.message}`),
+      );
+    }
 
     return reorg;
   }
