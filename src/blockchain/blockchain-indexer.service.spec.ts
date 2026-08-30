@@ -5,6 +5,7 @@ import { BlockchainIndexerService } from './blockchain-indexer.service';
 import { ProcessedEvent } from './entities/processed-event.entity';
 import { TokenBalance } from './entities/token-balance.entity';
 import { IndexerCheckpoint } from './entities/indexer-checkpoint.entity';
+import { BlockchainReorgAlertService } from './blockchain-reorg-alert.service';
 import { BlockchainEvent } from './interfaces/blockchain-event.interface';
 
 describe('BlockchainIndexerService', () => {
@@ -204,6 +205,135 @@ describe('BlockchainIndexerService', () => {
       expect(manager.delete).toHaveBeenCalledWith(ProcessedEvent, {
         blockNumber: MoreThanOrEqual(100),
       });
+    });
+  });
+
+  describe('handleReorg', () => {
+    it('should rollback from the specified block and return stats', async () => {
+      const manager = {
+        find: jest.fn().mockResolvedValue([
+          { blockNumber: 100, eventType: 'Transfer', payload: { from: '0xa', to: '0xb', amount: '10', token: '0xt' } },
+          { blockNumber: 101, eventType: 'Transfer', payload: { from: '0xa', to: '0xb', amount: '20', token: '0xt' } },
+        ]),
+        delete: jest.fn().mockResolvedValue({ affected: 2, raw: {} }),
+        save: jest.fn().mockResolvedValue(null),
+        increment: jest.fn().mockResolvedValue({ affected: 1 }),
+        decrement: jest.fn().mockResolvedValue({ affected: 1 }),
+        findOne: jest.fn().mockResolvedValue(null),
+      };
+      const queryRunner = {
+        connect: jest.fn(),
+        startTransaction: jest.fn(),
+        commitTransaction: jest.fn(),
+        rollbackTransaction: jest.fn(),
+        release: jest.fn(),
+        manager,
+      };
+      jest.spyOn(dataSource, 'createQueryRunner').mockReturnValue(queryRunner as any);
+
+      // Provide canonicalHash to skip auto-detection
+      const result = await service.handleReorg(100, '0xabc');
+
+      expect(result.rolledBack).toBe(2);
+      expect(result.rewoundTo).toBe(99);
+      expect(result.durationMs).toBeGreaterThanOrEqual(0);
+      expect(queryRunner.commitTransaction).toHaveBeenCalled();
+      expect(manager.delete).toHaveBeenCalledWith(ProcessedEvent, {
+        blockNumber: MoreThanOrEqual(100),
+      });
+    });
+
+    it('should handle zero orphaned events gracefully', async () => {
+      const manager = {
+        find: jest.fn().mockResolvedValue([]),
+        delete: jest.fn().mockResolvedValue({ affected: 0, raw: {} }),
+        save: jest.fn().mockResolvedValue(null),
+        increment: jest.fn().mockResolvedValue({ affected: 0 }),
+        decrement: jest.fn().mockResolvedValue({ affected: 0 }),
+        findOne: jest.fn().mockResolvedValue(null),
+      };
+      const queryRunner = {
+        connect: jest.fn(),
+        startTransaction: jest.fn(),
+        commitTransaction: jest.fn(),
+        rollbackTransaction: jest.fn(),
+        release: jest.fn(),
+        manager,
+      };
+      jest.spyOn(dataSource, 'createQueryRunner').mockReturnValue(queryRunner as any);
+
+      // Provide canonicalHash to skip auto-detection
+      const result = await service.handleReorg(200, '0xdef');
+
+      expect(result.rolledBack).toBe(0);
+      expect(result.rewoundTo).toBe(199);
+    });
+
+    it('should emit alerts when alertService is provided', async () => {
+      const mockAlertService = {
+        recordDetection: jest.fn().mockResolvedValue({ id: 42 }),
+        recordRollbackComplete: jest.fn().mockResolvedValue(undefined),
+        recordError: jest.fn().mockResolvedValue(undefined),
+      };
+
+      // Re-create service with alertService
+      const moduleWithAlerts: TestingModule = await Test.createTestingModule({
+        providers: [
+          BlockchainIndexerService,
+          {
+            provide: getRepositoryToken(ProcessedEvent),
+            useValue: {
+              findOne: jest.fn().mockResolvedValue(null),
+            },
+          },
+          {
+            provide: getRepositoryToken(TokenBalance),
+            useValue: {},
+          },
+          {
+            provide: getRepositoryToken(IndexerCheckpoint),
+            useValue: {
+              findOne: jest.fn().mockResolvedValue(null),
+            },
+          },
+          {
+            provide: DataSource,
+            useValue: {
+              createQueryRunner: jest.fn().mockReturnValue({
+                connect: jest.fn(),
+                startTransaction: jest.fn(),
+                commitTransaction: jest.fn(),
+                rollbackTransaction: jest.fn(),
+                release: jest.fn(),
+                manager: {
+                  find: jest.fn().mockResolvedValue([]),
+                  delete: jest.fn().mockResolvedValue({ affected: 0, raw: {} }),
+                  save: jest.fn().mockResolvedValue(null),
+                  increment: jest.fn(),
+                  decrement: jest.fn(),
+                  findOne: jest.fn().mockResolvedValue(null),
+                },
+              }),
+            },
+          },
+          {
+            provide: BlockchainReorgAlertService,
+            useValue: mockAlertService,
+          },
+        ],
+      }).compile();
+
+      const svcWithAlerts = moduleWithAlerts.get(BlockchainIndexerService);
+      // Provide canonicalHash to skip auto-detection
+      await svcWithAlerts.handleReorg(50, '0xabc');
+
+      expect(mockAlertService.recordDetection).toHaveBeenCalledWith(
+        expect.objectContaining({
+          affectedBlockStart: 50,
+          orphanedEventCount: 0,
+        }),
+      );
+      expect(mockAlertService.recordRollbackComplete).toHaveBeenCalled();
     });
   });
 });
