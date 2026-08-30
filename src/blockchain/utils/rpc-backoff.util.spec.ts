@@ -2,6 +2,8 @@ import {
   withRpcBackoff,
   isRateLimitError,
   isRetryableRpcError,
+  RpcProviderManager,
+  withRpcFailover,
 } from './rpc-backoff.util';
 
 describe('rpc-backoff', () => {
@@ -105,6 +107,97 @@ describe('rpc-backoff', () => {
 
       expect(fn).toHaveBeenCalledTimes(1);
       expect(sleep).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('rpc provider failover', () => {
+    it('fails over to the next ordered provider after a rate limit', async () => {
+      const primary = {
+        getNetwork: jest.fn().mockResolvedValue({ chainId: 10 }),
+        getBlockNumber: jest.fn().mockRejectedValue({ status: 429 }),
+      };
+      const secondary = {
+        getNetwork: jest.fn().mockResolvedValue({ chainId: 10 }),
+        getBlockNumber: jest.fn().mockResolvedValue(42),
+      };
+
+      const manager = new RpcProviderManager([primary as any, secondary as any], {
+        chainId: 10,
+        maxRetries: 0,
+        rateLimitMs: 0,
+      });
+
+      await expect(manager.call('getBlockNumber')).resolves.toBe(42);
+      expect(primary.getBlockNumber).toHaveBeenCalledTimes(1);
+      expect(secondary.getBlockNumber).toHaveBeenCalledTimes(1);
+    });
+
+    it('opens the circuit after repeated failures and blocks unhealthy providers', async () => {
+      const primary = {
+        getNetwork: jest.fn().mockResolvedValue({ chainId: 10 }),
+        getBlockNumber: jest.fn().mockRejectedValue(new Error('boom')),
+      };
+      const secondary = {
+        getNetwork: jest.fn().mockResolvedValue({ chainId: 10 }),
+        getBlockNumber: jest.fn().mockResolvedValue(9),
+      };
+
+      const manager = new RpcProviderManager([primary as any, secondary as any], {
+        chainId: 10,
+        circuitBreakerThreshold: 2,
+        circuitBreakerResetMs: 60000,
+        maxRetries: 0,
+        rateLimitMs: 0,
+      });
+
+      await expect(manager.call('getBlockNumber')).rejects.toThrow();
+      await expect(manager.call('getBlockNumber')).rejects.toThrow();
+      expect(manager.getProviderState('primary')).toMatchObject({ status: 'open' });
+    });
+
+    it('validates chain id and block hash before trusting a read result', async () => {
+      const block = { number: 123, hash: '0xabc', parentHash: '0xdef' };
+      const provider = {
+        getNetwork: jest.fn().mockResolvedValue({ chainId: 10 }),
+        getBlock: jest.fn().mockResolvedValue(block),
+      };
+
+      const manager = new RpcProviderManager([provider as any], {
+        chainId: 10,
+        maxRetries: 0,
+        rateLimitMs: 0,
+      });
+
+      await expect(
+        manager.call('getBlock', [123, true], {
+          expectedBlockHash: '0xabc',
+        }),
+      ).resolves.toMatchObject({ hash: '0xabc' });
+
+      await expect(
+        manager.call('getBlock', [123, true], {
+          expectedBlockHash: '0xdef',
+        }),
+      ).rejects.toThrow('block hash');
+    });
+  });
+
+  describe('withRpcFailover', () => {
+    it('uses failover wrapper for a provider chain', async () => {
+      const primary = {
+        getBlockNumber: jest.fn().mockRejectedValue({ status: 429 }),
+      };
+      const secondary = {
+        getBlockNumber: jest.fn().mockResolvedValue(7),
+      };
+
+      await expect(
+        withRpcFailover(
+          [primary as any, secondary as any],
+          (provider: any) => provider.getBlockNumber(),
+          { chainId: 10, maxRetries: 0, rateLimitMs: 0 },
+        ),
+      ).resolves.toBe(7);
     });
   });
 });
