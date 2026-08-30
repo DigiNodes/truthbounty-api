@@ -1,6 +1,6 @@
 import { LocalFsIpfsProvider } from './ipfs.providers';
 import { readFileSync, promises as fsPromises } from 'fs';
-import path from 'path';
+import * as path from 'path';
 
 describe('LocalFsIpfsProvider', () => {
   const tmpDir = path.join(process.cwd(), 'tmp-ipfs-test');

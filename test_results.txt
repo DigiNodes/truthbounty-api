@@ -1,0 +1,522 @@
+
+> truth-bounty_backend@0.0.1 test
+> jest
+
+FAIL src/claims/claims.service.spec.ts
+  ● Test suite failed to run
+
+    [96msrc/claims/claims.service.spec.ts[0m:[93m291[0m:[93m55[0m - [91merror[0m[90m TS2345: [0mArgument of type '{ resolvedVerdict: true; confidenceScore: number; id: string; title: string; content: string; source: string | null; metadata: Record<string, any> | null; finalized: boolean; createdAt: Date; resolvedAt: Date | null; evidences: Evidence[]; }' is not assignable to parameter of type '(DeepPartial<Claim> & Claim) | Promise<DeepPartial<Claim> & Claim>'.
+      Type '{ resolvedVerdict: true; confidenceScore: number; id: string; title: string; content: string; source: string | null; metadata: Record<string, any> | null; finalized: boolean; createdAt: Date; resolvedAt: Date | null; evidences: Evidence[]; }' is not assignable to type '{ id?: string | undefined; title?: string | undefined; content?: string | undefined; source?: DeepPartial<string | null> | undefined; metadata?: DeepPartial<Record<string, any> | null> | undefined; ... 7 more ...; transitionTo?: DeepPartial<...> | undefined; } & Claim'.
+        Type '{ resolvedVerdict: true; confidenceScore: number; id: string; title: string; content: string; source: string | null; metadata: Record<string, any> | null; finalized: boolean; createdAt: Date; resolvedAt: Date | null; evidences: Evidence[]; }' is missing the following properties from type 'Claim': getCurrentState, transitionTo
+
+    [7m291[0m       jest.spyOn(claimRepo, 'save').mockResolvedValue({ ...claim, resolvedVerdict: verdict, confidenceScore });
+    [7m   [0m [91m                                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+    [96msrc/claims/claims.service.spec.ts[0m:[93m310[0m:[93m55[0m - [91merror[0m[90m TS2345: [0mArgument of type '{ resolvedVerdict: false; confidenceScore: number; id: string; title: string; content: string; source: string | null; metadata: Record<string, any> | null; finalized: boolean; createdAt: Date; resolvedAt: Date | null; evidences: Evidence[]; }' is not assignable to parameter of type '(DeepPartial<Claim> & Claim) | Promise<DeepPartial<Claim> & Claim>'.
+      Type '{ resolvedVerdict: false; confidenceScore: number; id: string; title: string; content: string; source: string | null; metadata: Record<string, any> | null; finalized: boolean; createdAt: Date; resolvedAt: Date | null; evidences: Evidence[]; }' is not assignable to type '{ id?: string | undefined; title?: string | undefined; content?: string | undefined; source?: DeepPartial<string | null> | undefined; metadata?: DeepPartial<Record<string, any> | null> | undefined; ... 7 more ...; transitionTo?: DeepPartial<...> | undefined; } & Claim'.
+        Type '{ resolvedVerdict: false; confidenceScore: number; id: string; title: string; content: string; source: string | null; metadata: Record<string, any> | null; finalized: boolean; createdAt: Date; resolvedAt: Date | null; evidences: Evidence[]; }' is missing the following properties from type 'Claim': getCurrentState, transitionTo
+
+    [7m310[0m       jest.spyOn(claimRepo, 'save').mockResolvedValue({ ...claim, resolvedVerdict: verdict, confidenceScore });
+    [7m   [0m [91m                                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+    [96msrc/claims/claims.service.spec.ts[0m:[93m332[0m:[93m55[0m - [91merror[0m[90m TS2345: [0mArgument of type '{ resolvedVerdict: true; confidenceScore: number; id: string; title: string; content: string; source: string | null; metadata: Record<string, any> | null; finalized: boolean; createdAt: Date; resolvedAt: Date | null; evidences: Evidence[]; }' is not assignable to parameter of type '(DeepPartial<Claim> & Claim) | Promise<DeepPartial<Claim> & Claim>'.
+      Type '{ resolvedVerdict: true; confidenceScore: number; id: string; title: string; content: string; source: string | null; metadata: Record<string, any> | null; finalized: boolean; createdAt: Date; resolvedAt: Date | null; evidences: Evidence[]; }' is not assignable to type '{ id?: string | undefined; title?: string | undefined; content?: string | undefined; source?: DeepPartial<string | null> | undefined; metadata?: DeepPartial<Record<string, any> | null> | undefined; ... 7 more ...; transitionTo?: DeepPartial<...> | undefined; } & Claim'.
+        Type '{ resolvedVerdict: true; confidenceScore: number; id: string; title: string; content: string; source: string | null; metadata: Record<string, any> | null; finalized: boolean; createdAt: Date; resolvedAt: Date | null; evidences: Evidence[]; }' is missing the following properties from type 'Claim': getCurrentState, transitionTo
+
+    [7m332[0m       jest.spyOn(claimRepo, 'save').mockResolvedValue({ ...claim, resolvedVerdict: verdict, confidenceScore });
+    [7m   [0m [91m                                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+    [96msrc/claims/claims.service.spec.ts[0m:[93m347[0m:[93m55[0m - [91merror[0m[90m TS2345: [0mArgument of type '{ finalized: true; id: string; title: string; content: string; source: string | null; metadata: Record<string, any> | null; resolvedVerdict: boolean | null; confidenceScore: number | null; createdAt: Date; resolvedAt: Date | null; evidences: Evidence[]; }' is not assignable to parameter of type '(DeepPartial<Claim> & Claim) | Promise<DeepPartial<Claim> & Claim>'.
+      Type '{ finalized: true; id: string; title: string; content: string; source: string | null; metadata: Record<string, any> | null; resolvedVerdict: boolean | null; confidenceScore: number | null; createdAt: Date; resolvedAt: Date | null; evidences: Evidence[]; }' is not assignable to type '{ id?: string | undefined; title?: string | undefined; content?: string | undefined; source?: DeepPartial<string | null> | undefined; metadata?: DeepPartial<Record<string, any> | null> | undefined; ... 7 more ...; transitionTo?: DeepPartial<...> | undefined; } & Claim'.
+        Type '{ finalized: true; id: string; title: string; content: string; source: string | null; metadata: Record<string, any> | null; resolvedVerdict: boolean | null; confidenceScore: number | null; createdAt: Date; resolvedAt: Date | null; evidences: Evidence[]; }' is missing the following properties from type 'Claim': getCurrentState, transitionTo
+
+    [7m347[0m       jest.spyOn(claimRepo, 'save').mockResolvedValue({ ...claim, finalized: true });
+    [7m   [0m [91m                                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+FAIL src/claims/evidence.service.spec.ts
+  ● Test suite failed to run
+
+    [96msrc/claims/evidence.service.spec.ts[0m:[93m84[0m:[93m5[0m - [91merror[0m[90m TS2322: [0mType 'Repository<Evidence>' is not assignable to type 'Mocked<Repository<Evidence>>'.
+      Type 'Repository<Evidence>' is not assignable to type '{ readonly target: EntityTarget<Evidence>; readonly manager: EntityManager; readonly queryRunner?: QueryRunner | undefined; ... 43 more ...; extend: MockInstance<...>; }'.
+        Types of property 'createQueryBuilder' are incompatible.
+          Type '(alias?: string | undefined, queryRunner?: QueryRunner | undefined) => SelectQueryBuilder<Evidence>' is not assignable to type 'MockInstance<SelectQueryBuilder<Evidence>, [alias?: string | undefined, queryRunner?: QueryRunner | undefined], unknown>'.
+
+    [7m84[0m     evidenceRepo = module.get<Repository<Evidence>>(getRepositoryToken(Evidence));
+    [7m  [0m [91m    ~~~~~~~~~~~~[0m
+    [96msrc/claims/evidence.service.spec.ts[0m:[93m86[0m:[93m5[0m - [91merror[0m[90m TS2322: [0mType 'AuditTrailService' is not assignable to type '{ log: Mock<any, any, any>; }'.
+      Types of property 'log' are incompatible.
+        Type '(input: AuditLogInput) => Promise<void>' is missing the following properties from type 'Mock<any, any, any>': getMockName, mock, mockClear, mockReset, and 13 more.
+
+    [7m86[0m     auditTrailService = module.get<AuditTrailService>(AuditTrailService);
+    [7m  [0m [91m    ~~~~~~~~~~~~~~~~~[0m
+    [96msrc/claims/evidence.service.spec.ts[0m:[93m384[0m:[93m1[0m - [91merror[0m[90m TS1005: [0m'}' expected.
+
+    [7m384[0m 
+    [7m   [0m [91m[0m
+
+      [96msrc/claims/evidence.service.spec.ts[0m:[93m10[0m:[93m35[0m
+        [7m10[0m describe('EvidenceService', () => {
+        [7m  [0m [96m                                  ~[0m
+        The parser expected to find a '}' to match the '{' token here.
+
+PASS src/blockchain/state.service.spec.ts (29.502 s)
+FAIL src/identity/identity.service.spec.ts
+  ● Test suite failed to run
+
+    [96msrc/identity/identity.service.spec.ts[0m:[93m312[0m:[93m71[0m - [91merror[0m[90m TS2554: [0mExpected 2 arguments, but got 3.
+
+    [7m312[0m       const result = await service.unlinkWallet(mockUser.id, '0x123', 'ETH');
+    [7m   [0m [91m                                                                      ~~~~~[0m
+    [96msrc/identity/identity.service.spec.ts[0m:[93m345[0m:[93m52[0m - [91merror[0m[90m TS2554: [0mExpected 2 arguments, but got 3.
+
+    [7m345[0m         service.unlinkWallet(mockUser.id, '0x123', 'ETH'),
+    [7m   [0m [91m                                                   ~~~~~[0m
+    [96msrc/identity/identity.service.spec.ts[0m:[93m360[0m:[93m52[0m - [91merror[0m[90m TS2554: [0mExpected 2 arguments, but got 3.
+
+    [7m360[0m         service.unlinkWallet(mockUser.id, '0x123', 'ETH'),
+    [7m   [0m [91m                                                   ~~~~~[0m
+
+PASS src/sybil-resistance/sybil-resistance.service.spec.ts (32.612 s)
+PASS src/identity/worldcoin/worldcoin.service.spec.ts
+PASS src/audit/services/audit-trail.service.spec.ts
+PASS src/claims/entities/claim.entity.spec.ts
+PASS src/sybil-resistance/sybil-resistant-voting.service.spec.ts
+FAIL src/jobs/jobs.service.spec.ts
+  ● Test suite failed to run
+
+    [96msrc/jobs/jobs.service.spec.ts[0m:[93m138[0m:[93m87[0m - [91merror[0m[90m TS2345: [0mArgument of type 'undefined' is not assignable to parameter of type 'BatchResult | Promise<BatchResult>'.
+
+    [7m138[0m       const computeScoresSpy = jest.spyOn(service, 'computeScores').mockResolvedValue(undefined);
+    [7m   [0m [91m                                                                                      ~~~~~~~~~[0m
+    [96msrc/jobs/jobs.service.spec.ts[0m:[93m153[0m:[93m95[0m - [91merror[0m[90m TS2345: [0mArgument of type 'undefined' is not assignable to parameter of type 'BatchResult | Promise<BatchResult>'.
+
+    [7m153[0m       const computeReputationSpy = jest.spyOn(service, 'computeReputation').mockResolvedValue(undefined);
+    [7m   [0m [91m                                                                                              ~~~~~~~~~[0m
+
+PASS src/blockchain/blockchain-indexer.service.spec.ts
+[31m[Nest] 6730  - [39m04/08/2026, 07:11:29 [31m  ERROR[39m [38;5;3m[BlockchainIndexerService] [39m[31mFailed to roll back from block 100: db error[39m
+Error: db error
+    at Object.<anonymous> (/home/semicolon/Drip/truthbounty-api/src/blockchain/blockchain-replay.spec.ts:132:44)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+PASS src/blockchain/blockchain-replay.spec.ts
+[31m[Nest] 6736  - [39m04/08/2026, 07:11:30 [31m  ERROR[39m [38;5;3m[AuthService] [39m[31mFailed to persist nonce for 0xAbCd[39m
+[31m[Nest] 6736  - [39m04/08/2026, 07:11:30 [31m  ERROR[39m [38;5;3m[AuthService] [39m[31mError persisting nonce for 0xAbCd: Failed to generate challenge. Please try again later.[39m
+PASS src/auth/auth.service.spec.ts
+  ● Console
+
+    console.log
+      [dotenv@17.3.1] injecting env (0) from .env -- tip: ⚙️  enable debug logging with { debug: true }
+
+      at _log (../node_modules/dotenv/lib/main.js:139:11)
+
+[32m[Nest] 6729  - [39m04/08/2026, 07:11:30 [32m    LOG[39m [38;5;3m[BlockchainIndexerService] [39m[32mProcessed event: Transfer at block 1[39m
+[32m[Nest] 6729  - [39m04/08/2026, 07:11:30 [32m    LOG[39m [38;5;3m[BlockchainIndexerService] [39m[32mProcessed event: Transfer at block 2[39m
+[32m[Nest] 6729  - [39m04/08/2026, 07:11:30 [32m    LOG[39m [38;5;3m[BlockchainIndexerService] [39m[32mProcessed event: Transfer at block 3[39m
+[32m[Nest] 6729  - [39m04/08/2026, 07:11:30 [32m    LOG[39m [38;5;3m[BlockchainIndexerService] [39m[32mProcessed event: Transfer at block 4[39m
+[32m[Nest] 6729  - [39m04/08/2026, 07:11:30 [32m    LOG[39m [38;5;3m[BlockchainIndexerService] [39m[32mProcessed event: Transfer at block 5[39m
+[32m[Nest] 6729  - [39m04/08/2026, 07:11:30 [32m    LOG[39m [38;5;3m[BlockchainIndexerService] [39m[32mProcessed event: Transfer at block 6[39m
+[32m[Nest] 6729  - [39m04/08/2026, 07:11:30 [32m    LOG[39m [38;5;3m[BlockchainIndexerService] [39m[32mProcessed event: Transfer at block 7[39m
+[32m[Nest] 6729  - [39m04/08/2026, 07:11:30 [32m    LOG[39m [38;5;3m[BlockchainIndexerService] [39m[32mProcessed event: Transfer at block 8[39m
+[32m[Nest] 6729  - [39m04/08/2026, 07:11:31 [32m    LOG[39m [38;5;3m[BlockchainIndexerService] [39m[32mProcessed event: Transfer at block 9[39m
+[32m[Nest] 6729  - [39m04/08/2026, 07:11:31 [32m    LOG[39m [38;5;3m[BlockchainIndexerService] [39m[32mProcessed event: Transfer at block 10[39m
+[32m[Nest] 6729  - [39m04/08/2026, 07:11:31 [32m    LOG[39m [38;5;3m[BlockchainIndexerService] [39m[32mRolling back state from block 6[39m
+[32m[Nest] 6729  - [39m04/08/2026, 07:11:31 [32m    LOG[39m [38;5;3m[BlockchainIndexerService] [39m[32mRolled back 5 event(s); checkpoint rewound to block 5[39m
+[32m[Nest] 6729  - [39m04/08/2026, 07:11:31 [32m    LOG[39m [38;5;3m[BlockchainIndexerService] [39m[32mProcessed event: Transfer at block 6[39m
+[32m[Nest] 6729  - [39m04/08/2026, 07:11:31 [32m    LOG[39m [38;5;3m[BlockchainIndexerService] [39m[32mProcessed event: Transfer at block 7[39m
+[32m[Nest] 6729  - [39m04/08/2026, 07:11:31 [32m    LOG[39m [38;5;3m[BlockchainIndexerService] [39m[32mProcessed event: Transfer at block 8[39m
+[32m[Nest] 6729  - [39m04/08/2026, 07:11:31 [32m    LOG[39m [38;5;3m[BlockchainIndexerService] [39m[32mProcessed event: Transfer at block 9[39m
+[32m[Nest] 6729  - [39m04/08/2026, 07:11:31 [32m    LOG[39m [38;5;3m[BlockchainIndexerService] [39m[32mProcessed event: Transfer at block 10[39m
+[32m[Nest] 6729  - [39m04/08/2026, 07:11:31 [32m    LOG[39m [38;5;3m[BlockchainIndexerService] [39m[32mProcessed event: Transfer at block 1[39m
+[32m[Nest] 6729  - [39m04/08/2026, 07:11:31 [32m    LOG[39m [38;5;3m[BlockchainIndexerService] [39m[32mEvent already processed: 0xtx1:0[39m
+[32m[Nest] 6729  - [39m04/08/2026, 07:11:31 [32m    LOG[39m [38;5;3m[BlockchainIndexerService] [39m[32mEvent already processed: 0xtx1:0[39m
+[31m[Nest] 6736  - [39m04/08/2026, 07:11:31 [31m  ERROR[39m [38;5;3m[BlockchainIndexerService] [39m[31mFailed to process event: db error[39m
+Error: db error
+    at Object.<anonymous> (/home/semicolon/Drip/truthbounty-api/src/blockchain/blockchain-indexer.spec.ts:82:41)
+    at Promise.then.completed (/home/semicolon/Drip/truthbounty-api/node_modules/jest-circus/build/utils.js:298:28)
+    at new Promise (<anonymous>)
+    at callAsyncCircusFn (/home/semicolon/Drip/truthbounty-api/node_modules/jest-circus/build/utils.js:231:10)
+    at _callCircusTest (/home/semicolon/Drip/truthbounty-api/node_modules/jest-circus/build/run.js:316:40)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at _runTest (/home/semicolon/Drip/truthbounty-api/node_modules/jest-circus/build/run.js:252:3)
+    at _runTestsForDescribeBlock (/home/semicolon/Drip/truthbounty-api/node_modules/jest-circus/build/run.js:126:9)
+    at _runTestsForDescribeBlock (/home/semicolon/Drip/truthbounty-api/node_modules/jest-circus/build/run.js:121:9)
+    at run (/home/semicolon/Drip/truthbounty-api/node_modules/jest-circus/build/run.js:71:3)
+    at runAndTransformResultsToJestFormat (/home/semicolon/Drip/truthbounty-api/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapterInit.js:122:21)
+    at jestAdapter (/home/semicolon/Drip/truthbounty-api/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapter.js:79:19)
+    at runTestInternal (/home/semicolon/Drip/truthbounty-api/node_modules/jest-runner/build/runTest.js:367:16)
+    at runTest (/home/semicolon/Drip/truthbounty-api/node_modules/jest-runner/build/runTest.js:444:34)
+    at Object.worker (/home/semicolon/Drip/truthbounty-api/node_modules/jest-runner/build/testWorker.js:106:12)
+PASS src/blockchain/blockchain-indexer.spec.ts
+[32m[Nest] 6729  - [39m04/08/2026, 07:11:31 [32m    LOG[39m [38;5;3m[BlockchainIndexerService] [39m[32mProcessed event: Transfer at block 1[39m
+[31m[Nest] 6729  - [39m04/08/2026, 07:11:31 [31m  ERROR[39m [38;5;3m[BlockchainIndexerService] [39m[31mFailed to process event: SQLITE_ERROR: no such table: indexer_checkpoint[39m
+QueryFailedError: SQLITE_ERROR: no such table: indexer_checkpoint
+    at handler (/home/semicolon/Drip/truthbounty-api/src/driver/sqlite/SqliteQueryRunner.ts:133:29)
+    at replacement (/home/semicolon/Drip/truthbounty-api/node_modules/sqlite3/lib/trace.js:25:27)
+    at Statement.errBack (/home/semicolon/Drip/truthbounty-api/node_modules/sqlite3/lib/sqlite3.js:15:21)
+PASS src/blockchain/blockchain-reorg.integration.spec.ts
+PASS src/governance/governance.service.spec.ts
+PASS src/blockchain/utils/rpc-backoff.util.spec.ts
+PASS src/claims/evidence-flag.service.spec.ts
+ts-jest[ts-compiler] (WARN) Got a `.js` file to compile while `allowJs` option is not set to `true` (file: /home/semicolon/Drip/truthbounty-api/src/__mocks__/multiformats.js). To fix this:
+  - if you want TypeScript to process JS files, set `allowJs` to `true` in your TypeScript config (usually tsconfig.json)
+  - if you do not want TypeScript to process your `.js` files, in your Jest config change the `transform` key which value is `ts-jest` so that it does not match `.js` files anymore
+[31m[Nest] 6736  - [39m04/08/2026, 07:11:33 [31m  ERROR[39m [38;5;3m[EvidenceIntegrityMiddleware] [39m[31mEvidence integrity check threw an error. CID: bafybeiabc123[39m
+Error: Unexpected failure
+    at Object.<anonymous> (/home/semicolon/Drip/truthbounty-api/src/common/middleware/evidence-integrity.middleware.spec.ts:79:26)
+    at Promise.then.completed (/home/semicolon/Drip/truthbounty-api/node_modules/jest-circus/build/utils.js:298:28)
+    at new Promise (<anonymous>)
+    at callAsyncCircusFn (/home/semicolon/Drip/truthbounty-api/node_modules/jest-circus/build/utils.js:231:10)
+    at _callCircusTest (/home/semicolon/Drip/truthbounty-api/node_modules/jest-circus/build/run.js:316:40)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at _runTest (/home/semicolon/Drip/truthbounty-api/node_modules/jest-circus/build/run.js:252:3)
+    at _runTestsForDescribeBlock (/home/semicolon/Drip/truthbounty-api/node_modules/jest-circus/build/run.js:126:9)
+    at _runTestsForDescribeBlock (/home/semicolon/Drip/truthbounty-api/node_modules/jest-circus/build/run.js:121:9)
+    at run (/home/semicolon/Drip/truthbounty-api/node_modules/jest-circus/build/run.js:71:3)
+    at runAndTransformResultsToJestFormat (/home/semicolon/Drip/truthbounty-api/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapterInit.js:122:21)
+    at jestAdapter (/home/semicolon/Drip/truthbounty-api/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapter.js:79:19)
+    at runTestInternal (/home/semicolon/Drip/truthbounty-api/node_modules/jest-runner/build/runTest.js:367:16)
+    at runTest (/home/semicolon/Drip/truthbounty-api/node_modules/jest-runner/build/runTest.js:444:34)
+    at Object.worker (/home/semicolon/Drip/truthbounty-api/node_modules/jest-runner/build/testWorker.js:106:12)
+PASS src/common/middleware/evidence-integrity.middleware.spec.ts
+PASS src/indexer/event-indexer.service.spec.ts
+[33m[Nest] 6736  - [39m04/08/2026, 07:11:33 [33m   WARN[39m [38;5;3m[EvidenceIntegrityMiddleware] [39m[33mEvidence hash mismatch detected. CID: bafybeiabc123[39m
+[33m[Nest] 6736  - [39m04/08/2026, 07:11:33 [33m   WARN[39m [38;5;3m[EvidenceIntegrityMiddleware] [39m[33mEvidence hash mismatch detected. CID: bafybeiabc123[39m
+PASS src/app.controller.spec.ts
+FAIL src/theme.service.spec.ts
+  ● Console
+
+    console.log
+      Theme saved for user user-123: light
+
+      at ThemeService.saveUserThemeToStorage (theme.service.ts:106:15)
+
+  ● ThemeService › getResolvedTheme › should return set theme when not system
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "dark"
+    Received: "light"
+
+      64 |       service.setTheme('dark');
+      65 |       const resolved = service.getResolvedTheme();
+    > 66 |       expect(resolved).toBe('dark');
+         |                        ^
+      67 |     });
+      68 |   });
+      69 |
+
+      at Object.<anonymous> (theme.service.spec.ts:66:24)
+
+  ● ThemeService › toggleTheme › should toggle from light to dark
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "dark"
+    Received: "light"
+
+      72 |       service.setTheme('light');
+      73 |       const result = service.toggleTheme();
+    > 74 |       expect(result.theme).toBe('dark');
+         |                            ^
+      75 |     });
+      76 |
+      77 |     it('should toggle from dark to light', () => {
+
+      at Object.<anonymous> (theme.service.spec.ts:74:28)
+
+PASS src/entities/user.entity.spec.ts
+PASS src/notifications/notifications.service.spec.ts
+PASS src/notifications/notifications.processor.spec.ts
+PASS src/ipfs/ipfs.service.gateway.spec.ts
+PASS src/aggregation/aggregation.spec.ts
+PASS src/blockchain/utils/sequential-queue.spec.ts
+PASS src/audit/services/audit-retention.service.spec.ts
+[32m[Nest] 6729  - [39m04/08/2026, 07:11:36 [32m    LOG[39m [38;5;3m[AuditRetentionService] [39m[32mAudit retention job removed 8 records older than 30 days[39m
+[32m[Nest] 6729  - [39m04/08/2026, 07:11:36 [32m    LOG[39m [38;5;3m[AuditRetentionService] [39m[32mAudit retention job removed 0 records older than 365 days[39m
+PASS src/notifications/notifications.controller.spec.ts
+PASS src/dockerfile.spec.ts
+PASS src/dispute/dispute.controller.spec.ts
+FAIL src/claims/claim-resolution.service.spec.ts
+  ● Test suite failed to run
+
+    [96msrc/claims/claim-resolution.service.spec.ts[0m:[93m13[0m:[93m19[0m - [91merror[0m[90m TS2554: [0mExpected 3 arguments, but got 2.
+
+    [7m13[0m   const service = new ClaimResolutionService(claimRepoStub as any, claimsCacheStub as any);
+    [7m  [0m [91m                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+      [96msrc/claims/claim-resolution.service.ts[0m:[93m58[0m:[93m5[0m
+        [7m58[0m     private readonly dataSource: DataSource,
+        [7m  [0m [96m    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+        An argument for 'dataSource' was not provided.
+
+PASS src/bootstrap.spec.ts
+PASS src/main.spec.ts
+PASS src/logger/logger.module.spec.ts
+FAIL src/modules/leaderboard/leaderboard.refresh.job.spec.ts
+  ● Test suite failed to run
+
+    Cannot find module 'src/generated/client/client' from 'modules/leaderboard/leaderboard.refresh.job.ts'
+
+    Require stack:
+      modules/leaderboard/leaderboard.refresh.job.ts
+      modules/leaderboard/leaderboard.refresh.job.spec.ts
+
+      3 | import { LeaderboardService } from './leaderboard.service';
+      4 | import { LEADERBOARD_REFRESH_CRON } from './leaderboard.constants';
+    > 5 | import { PrismaClient } from 'src/generated/client/client';
+        | ^
+      6 |
+      7 | @Injectable()
+      8 | export class LeaderboardRefreshJob {
+
+      at Resolver._throwModNotFoundError (../node_modules/jest-resolve/build/resolver.js:427:11)
+      at Object.<anonymous> (modules/leaderboard/leaderboard.refresh.job.ts:5:1)
+      at Object.<anonymous> (modules/leaderboard/leaderboard.refresh.job.spec.ts:1:1)
+
+PASS src/common/utils/bigint-serialization.util.spec.ts
+FAIL src/ipfs/ipfs.service.spec.ts
+  ● Test suite failed to run
+
+    TypeError: Cannot read properties of undefined (reading 'join')
+
+      4 |
+      5 | describe('LocalFsIpfsProvider', () => {
+    > 6 |   const tmpDir = path.join(process.cwd(), 'tmp-ipfs-test');
+        |                       ^
+      7 |   let provider: LocalFsIpfsProvider;
+      8 |
+      9 |   beforeAll(async () => {
+
+      at ipfs/ipfs.service.spec.ts:6:23
+      at Object.<anonymous> (ipfs/ipfs.service.spec.ts:5:1)
+
+FAIL src/metrics/tests/metrics.service.spec.ts
+  ● Test suite failed to run
+
+    TypeError: Cannot read properties of undefined (reading 'Counter')
+
+       6 |
+       7 |   constructor() {
+    >  8 |     this.requestCounter = new client.Counter({
+         |                                      ^
+       9 |       name: "http_requests_total",
+      10 |       help: "Total number of HTTP requests",
+      11 |       labelNames: ["method", "route", "status"],
+
+      at new MetricsService (metrics/metrics.service.ts:8:38)
+      at metrics/tests/metrics.service.spec.ts:4:19
+      at Object.<anonymous> (metrics/tests/metrics.service.spec.ts:3:1)
+
+PASS src/rewards/rewards.service.spec.ts
+FAIL src/dispute/dispute.service.spec.ts
+  ● Test suite failed to run
+
+    Your test suite must contain at least one test.
+
+      at onResult (../node_modules/@jest/core/build/TestScheduler.js:133:18)
+      at ../node_modules/@jest/core/build/TestScheduler.js:254:19
+      at ../node_modules/emittery/index.js:363:13
+          at Array.map (<anonymous>)
+      at Emittery.emit (../node_modules/emittery/index.js:361:23)
+
+PASS src/rewards/rewards.controller.spec.ts
+
+Summary of all failing tests
+FAIL claims/claims.service.spec.ts
+  ● Test suite failed to run
+
+    [96msrc/claims/claims.service.spec.ts[0m:[93m291[0m:[93m55[0m - [91merror[0m[90m TS2345: [0mArgument of type '{ resolvedVerdict: true; confidenceScore: number; id: string; title: string; content: string; source: string | null; metadata: Record<string, any> | null; finalized: boolean; createdAt: Date; resolvedAt: Date | null; evidences: Evidence[]; }' is not assignable to parameter of type '(DeepPartial<Claim> & Claim) | Promise<DeepPartial<Claim> & Claim>'.
+      Type '{ resolvedVerdict: true; confidenceScore: number; id: string; title: string; content: string; source: string | null; metadata: Record<string, any> | null; finalized: boolean; createdAt: Date; resolvedAt: Date | null; evidences: Evidence[]; }' is not assignable to type '{ id?: string | undefined; title?: string | undefined; content?: string | undefined; source?: DeepPartial<string | null> | undefined; metadata?: DeepPartial<Record<string, any> | null> | undefined; ... 7 more ...; transitionTo?: DeepPartial<...> | undefined; } & Claim'.
+        Type '{ resolvedVerdict: true; confidenceScore: number; id: string; title: string; content: string; source: string | null; metadata: Record<string, any> | null; finalized: boolean; createdAt: Date; resolvedAt: Date | null; evidences: Evidence[]; }' is missing the following properties from type 'Claim': getCurrentState, transitionTo
+
+    [7m291[0m       jest.spyOn(claimRepo, 'save').mockResolvedValue({ ...claim, resolvedVerdict: verdict, confidenceScore });
+    [7m   [0m [91m                                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+    [96msrc/claims/claims.service.spec.ts[0m:[93m310[0m:[93m55[0m - [91merror[0m[90m TS2345: [0mArgument of type '{ resolvedVerdict: false; confidenceScore: number; id: string; title: string; content: string; source: string | null; metadata: Record<string, any> | null; finalized: boolean; createdAt: Date; resolvedAt: Date | null; evidences: Evidence[]; }' is not assignable to parameter of type '(DeepPartial<Claim> & Claim) | Promise<DeepPartial<Claim> & Claim>'.
+      Type '{ resolvedVerdict: false; confidenceScore: number; id: string; title: string; content: string; source: string | null; metadata: Record<string, any> | null; finalized: boolean; createdAt: Date; resolvedAt: Date | null; evidences: Evidence[]; }' is not assignable to type '{ id?: string | undefined; title?: string | undefined; content?: string | undefined; source?: DeepPartial<string | null> | undefined; metadata?: DeepPartial<Record<string, any> | null> | undefined; ... 7 more ...; transitionTo?: DeepPartial<...> | undefined; } & Claim'.
+        Type '{ resolvedVerdict: false; confidenceScore: number; id: string; title: string; content: string; source: string | null; metadata: Record<string, any> | null; finalized: boolean; createdAt: Date; resolvedAt: Date | null; evidences: Evidence[]; }' is missing the following properties from type 'Claim': getCurrentState, transitionTo
+
+    [7m310[0m       jest.spyOn(claimRepo, 'save').mockResolvedValue({ ...claim, resolvedVerdict: verdict, confidenceScore });
+    [7m   [0m [91m                                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+    [96msrc/claims/claims.service.spec.ts[0m:[93m332[0m:[93m55[0m - [91merror[0m[90m TS2345: [0mArgument of type '{ resolvedVerdict: true; confidenceScore: number; id: string; title: string; content: string; source: string | null; metadata: Record<string, any> | null; finalized: boolean; createdAt: Date; resolvedAt: Date | null; evidences: Evidence[]; }' is not assignable to parameter of type '(DeepPartial<Claim> & Claim) | Promise<DeepPartial<Claim> & Claim>'.
+      Type '{ resolvedVerdict: true; confidenceScore: number; id: string; title: string; content: string; source: string | null; metadata: Record<string, any> | null; finalized: boolean; createdAt: Date; resolvedAt: Date | null; evidences: Evidence[]; }' is not assignable to type '{ id?: string | undefined; title?: string | undefined; content?: string | undefined; source?: DeepPartial<string | null> | undefined; metadata?: DeepPartial<Record<string, any> | null> | undefined; ... 7 more ...; transitionTo?: DeepPartial<...> | undefined; } & Claim'.
+        Type '{ resolvedVerdict: true; confidenceScore: number; id: string; title: string; content: string; source: string | null; metadata: Record<string, any> | null; finalized: boolean; createdAt: Date; resolvedAt: Date | null; evidences: Evidence[]; }' is missing the following properties from type 'Claim': getCurrentState, transitionTo
+
+    [7m332[0m       jest.spyOn(claimRepo, 'save').mockResolvedValue({ ...claim, resolvedVerdict: verdict, confidenceScore });
+    [7m   [0m [91m                                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+    [96msrc/claims/claims.service.spec.ts[0m:[93m347[0m:[93m55[0m - [91merror[0m[90m TS2345: [0mArgument of type '{ finalized: true; id: string; title: string; content: string; source: string | null; metadata: Record<string, any> | null; resolvedVerdict: boolean | null; confidenceScore: number | null; createdAt: Date; resolvedAt: Date | null; evidences: Evidence[]; }' is not assignable to parameter of type '(DeepPartial<Claim> & Claim) | Promise<DeepPartial<Claim> & Claim>'.
+      Type '{ finalized: true; id: string; title: string; content: string; source: string | null; metadata: Record<string, any> | null; resolvedVerdict: boolean | null; confidenceScore: number | null; createdAt: Date; resolvedAt: Date | null; evidences: Evidence[]; }' is not assignable to type '{ id?: string | undefined; title?: string | undefined; content?: string | undefined; source?: DeepPartial<string | null> | undefined; metadata?: DeepPartial<Record<string, any> | null> | undefined; ... 7 more ...; transitionTo?: DeepPartial<...> | undefined; } & Claim'.
+        Type '{ finalized: true; id: string; title: string; content: string; source: string | null; metadata: Record<string, any> | null; resolvedVerdict: boolean | null; confidenceScore: number | null; createdAt: Date; resolvedAt: Date | null; evidences: Evidence[]; }' is missing the following properties from type 'Claim': getCurrentState, transitionTo
+
+    [7m347[0m       jest.spyOn(claimRepo, 'save').mockResolvedValue({ ...claim, finalized: true });
+    [7m   [0m [91m                                                      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+FAIL claims/evidence.service.spec.ts
+  ● Test suite failed to run
+
+    [96msrc/claims/evidence.service.spec.ts[0m:[93m84[0m:[93m5[0m - [91merror[0m[90m TS2322: [0mType 'Repository<Evidence>' is not assignable to type 'Mocked<Repository<Evidence>>'.
+      Type 'Repository<Evidence>' is not assignable to type '{ readonly target: EntityTarget<Evidence>; readonly manager: EntityManager; readonly queryRunner?: QueryRunner | undefined; ... 43 more ...; extend: MockInstance<...>; }'.
+        Types of property 'createQueryBuilder' are incompatible.
+          Type '(alias?: string | undefined, queryRunner?: QueryRunner | undefined) => SelectQueryBuilder<Evidence>' is not assignable to type 'MockInstance<SelectQueryBuilder<Evidence>, [alias?: string | undefined, queryRunner?: QueryRunner | undefined], unknown>'.
+
+    [7m84[0m     evidenceRepo = module.get<Repository<Evidence>>(getRepositoryToken(Evidence));
+    [7m  [0m [91m    ~~~~~~~~~~~~[0m
+    [96msrc/claims/evidence.service.spec.ts[0m:[93m86[0m:[93m5[0m - [91merror[0m[90m TS2322: [0mType 'AuditTrailService' is not assignable to type '{ log: Mock<any, any, any>; }'.
+      Types of property 'log' are incompatible.
+        Type '(input: AuditLogInput) => Promise<void>' is missing the following properties from type 'Mock<any, any, any>': getMockName, mock, mockClear, mockReset, and 13 more.
+
+    [7m86[0m     auditTrailService = module.get<AuditTrailService>(AuditTrailService);
+    [7m  [0m [91m    ~~~~~~~~~~~~~~~~~[0m
+    [96msrc/claims/evidence.service.spec.ts[0m:[93m384[0m:[93m1[0m - [91merror[0m[90m TS1005: [0m'}' expected.
+
+    [7m384[0m 
+    [7m   [0m [91m[0m
+
+      [96msrc/claims/evidence.service.spec.ts[0m:[93m10[0m:[93m35[0m
+        [7m10[0m describe('EvidenceService', () => {
+        [7m  [0m [96m                                  ~[0m
+        The parser expected to find a '}' to match the '{' token here.
+
+FAIL identity/identity.service.spec.ts
+  ● Test suite failed to run
+
+    [96msrc/identity/identity.service.spec.ts[0m:[93m312[0m:[93m71[0m - [91merror[0m[90m TS2554: [0mExpected 2 arguments, but got 3.
+
+    [7m312[0m       const result = await service.unlinkWallet(mockUser.id, '0x123', 'ETH');
+    [7m   [0m [91m                                                                      ~~~~~[0m
+    [96msrc/identity/identity.service.spec.ts[0m:[93m345[0m:[93m52[0m - [91merror[0m[90m TS2554: [0mExpected 2 arguments, but got 3.
+
+    [7m345[0m         service.unlinkWallet(mockUser.id, '0x123', 'ETH'),
+    [7m   [0m [91m                                                   ~~~~~[0m
+    [96msrc/identity/identity.service.spec.ts[0m:[93m360[0m:[93m52[0m - [91merror[0m[90m TS2554: [0mExpected 2 arguments, but got 3.
+
+    [7m360[0m         service.unlinkWallet(mockUser.id, '0x123', 'ETH'),
+    [7m   [0m [91m                                                   ~~~~~[0m
+
+FAIL jobs/jobs.service.spec.ts
+  ● Test suite failed to run
+
+    [96msrc/jobs/jobs.service.spec.ts[0m:[93m138[0m:[93m87[0m - [91merror[0m[90m TS2345: [0mArgument of type 'undefined' is not assignable to parameter of type 'BatchResult | Promise<BatchResult>'.
+
+    [7m138[0m       const computeScoresSpy = jest.spyOn(service, 'computeScores').mockResolvedValue(undefined);
+    [7m   [0m [91m                                                                                      ~~~~~~~~~[0m
+    [96msrc/jobs/jobs.service.spec.ts[0m:[93m153[0m:[93m95[0m - [91merror[0m[90m TS2345: [0mArgument of type 'undefined' is not assignable to parameter of type 'BatchResult | Promise<BatchResult>'.
+
+    [7m153[0m       const computeReputationSpy = jest.spyOn(service, 'computeReputation').mockResolvedValue(undefined);
+    [7m   [0m [91m                                                                                              ~~~~~~~~~[0m
+
+FAIL ./theme.service.spec.ts
+  ● ThemeService › getResolvedTheme › should return set theme when not system
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "dark"
+    Received: "light"
+
+      64 |       service.setTheme('dark');
+      65 |       const resolved = service.getResolvedTheme();
+    > 66 |       expect(resolved).toBe('dark');
+         |                        ^
+      67 |     });
+      68 |   });
+      69 |
+
+      at Object.<anonymous> (theme.service.spec.ts:66:24)
+
+  ● ThemeService › toggleTheme › should toggle from light to dark
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: "dark"
+    Received: "light"
+
+      72 |       service.setTheme('light');
+      73 |       const result = service.toggleTheme();
+    > 74 |       expect(result.theme).toBe('dark');
+         |                            ^
+      75 |     });
+      76 |
+      77 |     it('should toggle from dark to light', () => {
+
+      at Object.<anonymous> (theme.service.spec.ts:74:28)
+
+FAIL claims/claim-resolution.service.spec.ts
+  ● Test suite failed to run
+
+    [96msrc/claims/claim-resolution.service.spec.ts[0m:[93m13[0m:[93m19[0m - [91merror[0m[90m TS2554: [0mExpected 3 arguments, but got 2.
+
+    [7m13[0m   const service = new ClaimResolutionService(claimRepoStub as any, claimsCacheStub as any);
+    [7m  [0m [91m                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+      [96msrc/claims/claim-resolution.service.ts[0m:[93m58[0m:[93m5[0m
+        [7m58[0m     private readonly dataSource: DataSource,
+        [7m  [0m [96m    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+        An argument for 'dataSource' was not provided.
+
+FAIL modules/leaderboard/leaderboard.refresh.job.spec.ts
+  ● Test suite failed to run
+
+    Cannot find module 'src/generated/client/client' from 'modules/leaderboard/leaderboard.refresh.job.ts'
+
+    Require stack:
+      modules/leaderboard/leaderboard.refresh.job.ts
+      modules/leaderboard/leaderboard.refresh.job.spec.ts
+
+      3 | import { LeaderboardService } from './leaderboard.service';
+      4 | import { LEADERBOARD_REFRESH_CRON } from './leaderboard.constants';
+    > 5 | import { PrismaClient } from 'src/generated/client/client';
+        | ^
+      6 |
+      7 | @Injectable()
+      8 | export class LeaderboardRefreshJob {
+
+      at Resolver._throwModNotFoundError (../node_modules/jest-resolve/build/resolver.js:427:11)
+      at Object.<anonymous> (modules/leaderboard/leaderboard.refresh.job.ts:5:1)
+      at Object.<anonymous> (modules/leaderboard/leaderboard.refresh.job.spec.ts:1:1)
+
+FAIL ipfs/ipfs.service.spec.ts
+  ● Test suite failed to run
+
+    TypeError: Cannot read properties of undefined (reading 'join')
+
+      4 |
+      5 | describe('LocalFsIpfsProvider', () => {
+    > 6 |   const tmpDir = path.join(process.cwd(), 'tmp-ipfs-test');
+        |                       ^
+      7 |   let provider: LocalFsIpfsProvider;
+      8 |
+      9 |   beforeAll(async () => {
+
+      at ipfs/ipfs.service.spec.ts:6:23
+      at Object.<anonymous> (ipfs/ipfs.service.spec.ts:5:1)
+
+FAIL metrics/tests/metrics.service.spec.ts
+  ● Test suite failed to run
+
+    TypeError: Cannot read properties of undefined (reading 'Counter')
+
+       6 |
+       7 |   constructor() {
+    >  8 |     this.requestCounter = new client.Counter({
+         |                                      ^
+       9 |       name: "http_requests_total",
+      10 |       help: "Total number of HTTP requests",
+      11 |       labelNames: ["method", "route", "status"],
+
+      at new MetricsService (metrics/metrics.service.ts:8:38)
+      at metrics/tests/metrics.service.spec.ts:4:19
+      at Object.<anonymous> (metrics/tests/metrics.service.spec.ts:3:1)
+
+FAIL dispute/dispute.service.spec.ts
+  ● Test suite failed to run
+
+    Your test suite must contain at least one test.
+
+      at onResult (../node_modules/@jest/core/build/TestScheduler.js:133:18)
+      at ../node_modules/@jest/core/build/TestScheduler.js:254:19
+      at ../node_modules/emittery/index.js:363:13
+          at Array.map (<anonymous>)
+      at Emittery.emit (../node_modules/emittery/index.js:361:23)
+
+
+Test Suites: 10 failed, 33 passed, 43 total
+Tests:       2 failed, 262 passed, 264 total
+Snapshots:   0 total
+Time:        49.356 s
+Ran all test suites.

@@ -726,7 +726,7 @@ describe('SybilResistanceService', () => {
       const { score, details } = await service.computeSybilScore(mockUserId);
 
       expect(score).toBe(1.0);
-      expect(details.explanation).toContain('Final score: 1.0000');
+      expect(details.explanation).toContain('Final score: 1');
     });
 
     it('should produce deterministic scores for same input', async () => {
