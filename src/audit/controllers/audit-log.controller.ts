@@ -4,6 +4,7 @@ import {
   Query,
   Param,
   Post,
+  Patch,
   Res,
   Headers,
 } from '@nestjs/common';
@@ -376,6 +377,67 @@ export class AuditController {
     return {
       success: true,
       data: { userId, incidents, hasIncidents: incidents.length > 0 },
+      timestamp: new Date().toISOString(),
+      requestId,
+    };
+  }
+
+  @Get('retention')
+  @ApiOperation({ summary: 'Get audit retention status' })
+  async getRetentionStatus(
+    @Headers('x-request-id') requestId?: string,
+  ): Promise<AuditResponse<any>> {
+    const status = await this.auditTrailService.getRetentionStatus();
+    return {
+      success: true,
+      data: status,
+      timestamp: new Date().toISOString(),
+      requestId,
+    };
+  }
+
+  @Post('legal-hold/:entityType/:entityId')
+  @ApiOperation({ summary: 'Place a legal hold on all audit logs for an entity' })
+  async placeLegalHold(
+    @Param('entityType') entityType: AuditEntityType,
+    @Param('entityId') entityId: string,
+    @Headers('x-request-id') requestId?: string,
+  ): Promise<AuditResponse<any>> {
+    const affected = await this.auditTrailService.placeLegalHold(entityType, entityId);
+    return {
+      success: true,
+      data: { entityType, entityId, affected },
+      timestamp: new Date().toISOString(),
+      requestId,
+    };
+  }
+
+  @Patch('legal-hold/:entityType/:entityId/remove')
+  @ApiOperation({ summary: 'Remove legal hold from audit logs for an entity' })
+  async removeLegalHold(
+    @Param('entityType') entityType: AuditEntityType,
+    @Param('entityId') entityId: string,
+    @Headers('x-request-id') requestId?: string,
+  ): Promise<AuditResponse<any>> {
+    const affected = await this.auditTrailService.removeLegalHold(entityType, entityId);
+    return {
+      success: true,
+      data: { entityType, entityId, affected },
+      timestamp: new Date().toISOString(),
+      requestId,
+    };
+  }
+
+  @Get('integrity/:id')
+  @ApiOperation({ summary: 'Verify the integrity hash of an audit log' })
+  async verifyIntegrity(
+    @Param('id') id: string,
+    @Headers('x-request-id') requestId?: string,
+  ): Promise<AuditResponse<any>> {
+    const result = await this.auditTrailService.verifyIntegrity(id);
+    return {
+      success: true,
+      data: result,
       timestamp: new Date().toISOString(),
       requestId,
     };
