@@ -6,6 +6,7 @@ import { HealthService } from './health.service';
 import {
   DependencyHealthResult,
   HealthCheckResult,
+  IndexerHealthResult,
   LivenessResult,
   ReadinessResult,
   StartupResult,
@@ -37,9 +38,10 @@ export class HealthController {
   @ApiOperation({ summary: 'Startup probe' })
   async startup(@Res() res: Response): Promise<void> {
     const result: StartupResult = await this.healthService.getStartup();
-    const statusCode = result.startupComplete && result.ready
-      ? HttpStatus.OK
-      : HttpStatus.SERVICE_UNAVAILABLE;
+    const statusCode =
+      result.startupComplete && result.ready
+        ? HttpStatus.OK
+        : HttpStatus.SERVICE_UNAVAILABLE;
     res.status(statusCode).json(result);
   }
 
@@ -49,13 +51,30 @@ export class HealthController {
     return this.healthService.getDependencyHealth();
   }
 
+  @Get('indexer')
+  @ApiOperation({
+    summary: 'Indexer lag, finality, and projection health report',
+  })
+  async indexer(@Res() res: Response): Promise<void> {
+    const result: IndexerHealthResult =
+      await this.healthService.getIndexerHealth();
+    const statusCode =
+      result.status === 'unhealthy'
+        ? HttpStatus.SERVICE_UNAVAILABLE
+        : result.status === 'degraded'
+          ? HttpStatus.OK
+          : HttpStatus.OK;
+    res.status(statusCode).json(result);
+  }
+
   @Get()
   @ApiOperation({ summary: 'Aggregated health report' })
   async health(@Res() res: Response): Promise<void> {
     const result: HealthCheckResult = await this.healthService.getHealth();
-    const statusCode = result.status === 'unhealthy'
-      ? HttpStatus.SERVICE_UNAVAILABLE
-      : HttpStatus.OK;
+    const statusCode =
+      result.status === 'unhealthy'
+        ? HttpStatus.SERVICE_UNAVAILABLE
+        : HttpStatus.OK;
     res.status(statusCode).json(result);
   }
 }
