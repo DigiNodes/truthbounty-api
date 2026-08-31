@@ -11,6 +11,14 @@
  * expected to be reconciled against the real approved ABI once V2-BE-008
  * lands. Nothing here changes protocol meaning: it only says where to find
  * each field's value in whatever the approved ABI turns out to expose.
+ *
+ * Fields consumed from the free-form `payload` JSON by downstream
+ * projectors (not part of this shared-column mapping, since they aren't
+ * common across event types) carry the same flagged assumption:
+ * VerificationRoundOpened.{roundType, roundNumber, deadline},
+ * PositionCommitted.{stake, reputationInput, effectiveWeight, verdict},
+ * DisputeRaised.{deadline}, DisputeResolved.{outcome}. See
+ * verification-projector.service.ts and disputes-projector.service.ts.
  */
 export interface EventFieldMapping {
   actor?: string;
