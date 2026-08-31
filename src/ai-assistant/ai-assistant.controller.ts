@@ -1,9 +1,10 @@
 import { Controller, Get, Post, Body, Param, Delete, UseGuards, Req } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
-import { AiAssistantService } from './ai-assistant.service';
+import { AiAssistantService } from './services/ai-assistant.service';
 import { CreateConversationDto, SendMessageDto } from './dto/ai-assistant.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { ThrottleByWallet } from '../common/decorators/throttle-by-wallet.decorator';
 
 @ApiTags('AI Assistant')
 @ApiBearerAuth()
@@ -36,6 +37,7 @@ export class AiAssistantController {
   @Post(':id/messages')
   @ApiOperation({ summary: 'Send a message to the AI Assistant' })
   @ApiResponse({ status: 201, description: 'AI Assistant response.' })
+  @ThrottleByWallet('ai')
   async sendMessage(
     @CurrentUser() user: any,
     @Param('id') conversationId: string,

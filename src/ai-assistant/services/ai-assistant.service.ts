@@ -1,8 +1,9 @@
 import { Injectable, NotFoundException, Logger, ForbiddenException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from '../../prisma/prisma.service';
 import { LlmProviderService } from './llm-provider.service';
 import { RagService } from './rag.service';
-import { CreateConversationDto, SendMessageDto } from './dto/ai-assistant.dto';
+import { SafetyGuardrailService } from './safety-guardrail.service';
+import { CreateConversationDto, SendMessageDto } from '../dto/ai-assistant.dto';
 
 @Injectable()
 export class AiAssistantService {
@@ -12,6 +13,7 @@ export class AiAssistantService {
     private prisma: PrismaService,
     private llmProvider: LlmProviderService,
     private ragService: RagService,
+    private safetyGuardrail: SafetyGuardrailService,
   ) {}
 
   async createConversation(userId: string, dto: CreateConversationDto) {
@@ -62,6 +64,9 @@ export class AiAssistantService {
       throw new ForbiddenException('You do not have access to this conversation');
     }
 
+    // 0. Safety Check
+    const safetyCheck = this.safetyGuardrail.checkContent(dto.content);
+
     // 1. Save user message
     const userMessage = await this.prisma.message.create({
       data: {
@@ -71,6 +76,28 @@ export class AiAssistantService {
       },
     });
 
+    if (safetyCheck.flagged) {
+      const assistantMessage = await this.prisma.message.create({
+        data: {
+          conversationId,
+          role: 'assistant',
+          content: 'I cannot answer this request.',
+        },
+      });
+
+      return {
+        message: assistantMessage,
+        metadata: {
+          provider: 'none',
+          latencyMs: 0,
+          tokens: 0,
+          citations: [],
+          flagged: true,
+          flagReason: safetyCheck.reason,
+        }
+      };
+    }
+
     // 2. Retrieve Conversation History
     const history = await this.prisma.message.findMany({
       where: { conversationId },
@@ -79,7 +106,7 @@ export class AiAssistantService {
     });
 
     // 3. RAG Retrieval
-    const { content: context, citations } = await this.ragService.retrieveContext(dto.content);
+    const { context, citations } = await this.ragService.retrieveContext(dto.content);
 
     // 4. Construct Prompt Pipeline
     const systemPrompt = `You are the TruthBounty AI Assistant. You help contributors navigate the protocol.
@@ -91,7 +118,7 @@ ${context}
 
     const messagesToLlm: { role: 'user' | 'assistant' | 'system'; content: string }[] = [
       { role: 'system', content: systemPrompt },
-      ...history.map((msg) => ({
+      ...history.map(msg => ({
         role: msg.role as 'user' | 'assistant' | 'system',
         content: msg.content,
       })),
@@ -101,7 +128,7 @@ ${context}
 
     // 5. Orchestrate LLM request
     const llmResponse = await this.llmProvider.generateResponse(messagesToLlm);
-
+    
     const latencyMs = Date.now() - startTime;
 
     // 6. Save assistant response
@@ -139,8 +166,8 @@ ${context}
         provider: llmResponse.provider,
         latencyMs,
         tokens: llmResponse.usage?.total_tokens || 0,
-        citations,
-      },
+        citations
+      }
     };
   }
 
