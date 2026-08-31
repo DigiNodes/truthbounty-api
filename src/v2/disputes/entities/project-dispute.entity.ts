@@ -6,6 +6,7 @@ import {
   UpdateDateColumn,
   Index,
 } from 'typeorm';
+import { DataState } from '../../common/data-state.enum';
 
 export enum DisputeStatus {
   RAISED = 'raised',
@@ -65,6 +66,9 @@ export class ProjectDispute {
   /** Verbatim final outcome from DisputeResolved, not recomputed by the API. */
   @Column({ type: 'varchar', length: 64, nullable: true })
   resolvedOutcome: string | null;
+
+  @Column({ type: 'varchar', length: 16, default: DataState.OBSERVED })
+  dataState: DataState;
 
   @Column({ type: 'varchar', length: 66 })
   eventTxHash: string;

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { V2EventsModule } from '../events/v2-events.module';
+import { EventCheckpoint } from '../events/entities/event-checkpoint.entity';
 import { ProjectVerificationRound } from './entities/project-verification-round.entity';
 import { ProjectParticipantPosition } from './entities/project-participant-position.entity';
 import { ProjectorCursor } from '../common/entities/projector-cursor.entity';
@@ -16,6 +17,7 @@ import { VerificationController } from './verification.controller';
       ProjectParticipantPosition,
       ProjectorCursor,
       IndexingAnomaly,
+      EventCheckpoint,
     ]),
     V2EventsModule,
   ],

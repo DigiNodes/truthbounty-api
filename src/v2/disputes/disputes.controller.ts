@@ -1,4 +1,4 @@
-import { Controller, Get, Param } from '@nestjs/common';
+import { Controller, Get, Param, Query } from '@nestjs/common';
 import { DisputesQueryService } from './disputes-query.service';
 
 /**
@@ -11,8 +11,12 @@ export class DisputesController {
   constructor(private readonly queryService: DisputesQueryService) {}
 
   @Get()
-  async listForClaim(@Param('claimId') claimId: string) {
-    return this.queryService.listForClaim(claimId);
+  async listForClaim(
+    @Param('claimId') claimId: string,
+    @Query('limit') limit?: string,
+    @Query('cursor') cursor?: string,
+  ) {
+    return this.queryService.listForClaim(claimId, limit ? parseInt(limit, 10) : 20, cursor);
   }
 
   @Get(':originalRoundId')
