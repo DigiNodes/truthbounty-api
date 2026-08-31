@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { BlockchainStateService } from './state.service';
+import { ClaimsCache } from '../cache/claims.cache';
 import { BlockInfo, ReorgEvent, PendingEvent } from './types';
 
 /**
