@@ -22,6 +22,8 @@ export interface ClaimTransitionData {
 @Index(['finalized'])
 @Index(['confidenceScore'])
 @Index(['resolvedVerdict'])
+@Index(['effectiveAt'])
+@Index(['effectiveAt', 'id'])
 export class Claim {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -57,6 +59,12 @@ export class Claim {
 
   @Column({ type: 'timestamp', nullable: true })
   resolvedAt: Date | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  deadline: Date | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  effectiveAt: Date | null;
 
   @OneToMany(() => Evidence, (evidence) => evidence.claim, { cascade: true })
   evidences: Evidence[];

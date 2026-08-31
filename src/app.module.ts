@@ -24,6 +24,7 @@ import { AggregationModule } from './aggregation/aggregation.module';
 import { JobsModule } from './jobs/jobs.module';
 import { CacheModule } from './cache/cache.module';
 import { ClaimsModule } from './claims/claims.module';
+import { ClaimFeedModule } from './claims/v2/claim-feed.module';
 import { AuditModule } from './audit/audit.module';
 import { ThemeModule } from './theme.module';
 import { AuditLoggingInterceptor } from './audit/interceptors/audit-logging.interceptor';
@@ -335,6 +336,7 @@ async function createThrottlerStorage(
     JobsModule,
     CacheModule,
     ClaimsModule,
+    ClaimFeedModule,
     AuditModule,
     ThemeModule,
     MetricsModule,
