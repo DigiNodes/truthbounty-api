@@ -1,39 +1,57 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { RedisService } from '../redis/redis.service';
 import { ConfigService } from '@nestjs/config';
+import { createHash } from 'crypto';
 
 @Injectable()
 export class ClaimsCache {
     private readonly logger = new Logger(ClaimsCache.name);
     private readonly ttl: number;
+    private readonly cacheVersion: string;
+    private readonly indexKey = 'claims:cache:keys'; // Track all cache keys for bulk invalidation
 
     constructor(
         private readonly redisService: RedisService,
         private readonly configService: ConfigService,
     ) {
-        // TTL is configurable via environment variable, defaults to 3600 seconds (1 hour)
-        this.ttl = this.configService.get<number>('CACHE_CLAIMS_TTL', 3600);
+        // TTL is configurable via environment variable, defaults to 300 seconds (5 minutes) - bounded TTL
+        this.ttl = this.configService.get<number>('CACHE_CLAIMS_TTL', 300);
+        // Versioned cache keys - increment this when cache schema changes
+        this.cacheVersion = this.configService.get<string>('CACHE_VERSION', 'v1');
+        this.logger.log(`Claims cache initialized with version ${this.cacheVersion}, TTL ${this.ttl}s`);
     }
 
     /**
-     * Generates a key for a specific claim by its ID
+     * Generates a VERSIONED key for a specific claim by its ID
+     * Versioning ensures cache key uniqueness across schema changes
      */
     private getClaimKey(id: string): string {
-        return `claim:${id}`;
+        return `${this.cacheVersion}:claim:${id}`;
     }
 
     /**
-     * Generates a key for the latest claims list
+     * Generates a VERSIONED key for the latest claims list
      */
     private getLatestClaimsKey(): string {
-        return 'claims:latest';
+        return `${this.cacheVersion}:claims:latest`;
     }
 
     /**
-     * Generates a key for claims associated with a specific user wallet
+     * Generates a VERSIONED key for claims associated with a specific user wallet
      */
     private getUserClaimsKey(wallet: string): string {
-        return `claims:user:${wallet.toLowerCase()}`;
+        return `${this.cacheVersion}:claims:user:${wallet.toLowerCase()}`;
+    }
+
+    /**
+     * Generates a content-addressed key for query results to prevent stale cache
+     * This ensures that the same query parameters always produce the same key
+     * while maintaining versioning boundaries
+     */
+    private getQueryKey(namespace: string, params: Record<string, any>): string {
+        const paramsStr = JSON.stringify(params, Object.keys(params).sort());
+        const hash = createHash('sha256').update(paramsStr).digest('hex').slice(0, 16);
+        return `${this.cacheVersion}:${namespace}:${hash}`;
     }
 
     /**
