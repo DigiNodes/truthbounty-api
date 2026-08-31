@@ -5,6 +5,7 @@ import { ProcessedEvent } from './entities/processed-event.entity';
 import { TokenBalance } from './entities/token-balance.entity';
 import { IndexerCheckpoint } from './entities/indexer-checkpoint.entity';
 import { BlockchainEvent, TransferEventData } from './interfaces/blockchain-event.interface';
+import { ClaimsCache } from '../cache/claims.cache';
 import { SequentialQueue } from './utils/sequential-queue';
 
 @Injectable()
@@ -27,6 +28,7 @@ export class BlockchainIndexerService {
     @InjectRepository(IndexerCheckpoint)
     private checkpointRepo: Repository<IndexerCheckpoint>,
     private dataSource: DataSource,
+    private claimsCache: ClaimsCache,
   ) {}
 
   /**
@@ -80,6 +82,11 @@ export class BlockchainIndexerService {
 
       await queryRunner.commitTransaction();
       this.logger.log(`Processed event: ${eventType} at block ${blockNumber}`);
+      
+      // Invalidate cache after successfully committing a projection change
+      // In a production system, you'd track which claim IDs are affected by this event
+      // For safety, we invalidate all claims cache to ensure no stale data is served
+      await this.claimsCache.invalidateForProjectionUpdate();
     } catch (error) {
       await queryRunner.rollbackTransaction();
       this.logger.error(`Failed to process event: ${error.message}`, error.stack);
@@ -141,6 +148,10 @@ export class BlockchainIndexerService {
       this.logger.log(
         `Rolled back ${orphaned.length} event(s); checkpoint rewound to block ${rewoundTo}`,
       );
+      
+      // Invalidate all cache after rolling back events during a reorg
+      // This is critical to ensure we never serve stale data based on orphaned chain state
+      await this.claimsCache.invalidateAllForReorg();
     } catch (error) {
       await queryRunner.rollbackTransaction();
       this.logger.error(`Failed to roll back from block ${startBlock}: ${error.message}`, error.stack);
