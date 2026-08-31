@@ -1,124 +1,65 @@
-import * as fs from "fs";
-import * as path from "path";
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface BenchmarkResult {
-  query: string;
-  description: string;
-  executionTime: number;
-  rowsReturned: number;
-}
-
-interface BenchmarkFile {
-  timestamp: string;
-  results: BenchmarkResult[];
-  summary: {
-    totalQueries: number;
-    successful: number;
-    totalTime: number;
-    avgTime: number;
-  };
-}
-
-interface QueryDiff {
-  description: string;
-  before: number;
-  after: number;
-  diff: number;
-  percent: number;
-  rowsBefore: number;
-  rowsAfter: number;
-}
-
-interface ComparisonReport {
-  before: BenchmarkFile;
-  after: BenchmarkFile;
-  diffs: QueryDiff[];
-  totalTimeDiff: number;
-  totalTimePercent: number;
-  avgTimeDiff: number;
-  avgTimePercent: number;
-  improvements: QueryDiff[];
-  regressions: QueryDiff[];
-}
-
-// ─── Formatting helpers ───────────────────────────────────────────────────────
-
-const COL = {
-  reset: "\x1b[0m",
-  bold: "\x1b[1m",
-  dim: "\x1b[2m",
-  green: "\x1b[32m",
-  red: "\x1b[31m",
-  yellow: "\x1b[33m",
-  cyan: "\x1b[36m",
-  white: "\x1b[37m",
-  gray: "\x1b[90m",
-};
-
-function c(color: keyof typeof COL, text: string): string {
-  return `${COL[color]}${text}${COL.reset}`;
-}
-
-function bold(text: string): string {
-  return `${COL.bold}${text}${COL.reset}`;
-}
-
-function formatMs(ms: number): string {
-  if (ms >= 1000) return `${(ms / 1000).toFixed(2)}s`;
-  return `${ms.toFixed(2)}ms`;
-}
-
-function formatChange(diff: number, percent: number): string {
-  const sign = diff > 0 ? "+" : "";
-  const pStr = `${sign}${percent.toFixed(1)}%`;
-  const mStr = `${sign}${formatMs(diff)}`;
-
-  if (diff < 0) return c("green", `▼ ${mStr} (${pStr})`);
-  if (diff > 0) return c("red", `▲ ${mStr} (${pStr})`);
-  return c("gray", `─ no change`);
-}
-
-function bar(percent: number, width = 20): string {
-  const improvement = Math.min(Math.abs(percent), 100) / 100;
-  const filled = Math.round(improvement * width);
-  const empty = width - filled;
-  const color: keyof typeof COL = percent < 0 ? "green" : "red";
-  return c(color, "█".repeat(filled)) + c("gray", "░".repeat(empty));
-}
-
-function hr(char = "─", width = 100): string {
-  return c("gray", char.repeat(width));
-}
-
-// ─── Core logic ───────────────────────────────────────────────────────────────
-
-function buildReport(before: BenchmarkFile, after: BenchmarkFile): ComparisonReport {
-  const diffs: QueryDiff[] = [];
-
-  for (const b of before.results) {
-    if (b.executionTime < 0) continue;
-    const a = after.results.find((r) => r.description === b.description);
-    if (!a || a.executionTime < 0) continue;
-
-    const diff = a.executionTime - b.executionTime;
-    const percent = (diff / b.executionTime) * 100;
-    diffs.push({
-      description: b.description,
-      before: b.executionTime,
-      after: a.executionTime,
-      diff,
-      percent,
-      rowsBefore: b.rowsReturned,
-      rowsAfter: a.rowsReturned,
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Evidence } from './entities/evidence.entity';
 import { EvidenceVersion } from './entities/evidence-version.entity';
-import { AuditTrailService } from '../audit/services/audit-trail.service';
-import { AuditActionType, AuditEntityType } from '../audit/entities/audit-log.entity';
+import {
+  AuditTrailService,
+  AuditLogInput,
+} from '../audit/services/audit-trail.service';
+import {
+  AuditActionType,
+  AuditEntityType,
+} from '../audit/entities/audit-log.entity';
+import { IpfsService } from '../ipfs/ipfs.service';
+import {
+  EvidenceListQueryDto,
+  EvidenceVersionQueryDto,
+} from './dto/evidence-query.dto';
+import { CidDigest, extractCidDigest } from './evidence-digest.util';
+
+export interface PaginationMeta {
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export interface Paginated<T> {
+  data: T[];
+  meta: PaginationMeta;
+}
+
+/**
+ * Distinct availability outcome separating missing on-chain registration from
+ * unavailable off-chain content:
+ *
+ * - ONCHAIN_NOT_REGISTERED: the indexer has not projected an on-chain
+ *   registration for this evidence aggregate. This is a registration (state)
+ *   problem, not a content problem.
+ * - OFFCHAIN_UNAVAILABLE: the evidence is registered on-chain but the
+ *   off-chain content (CID / safe gateway) is not currently available.
+ * - AVAILABLE: registered on-chain and off-chain content is addressable via a
+ *   safe gateway.
+ */
+export enum EvidenceAvailability {
+  AVAILABLE = 'AVAILABLE',
+  ONCHAIN_NOT_REGISTERED = 'ONCHAIN_NOT_REGISTERED',
+  OFFCHAIN_UNAVAILABLE = 'OFFCHAIN_UNAVAILABLE',
+}
+
+export interface EvidenceAvailabilityStatus {
+  evidenceId: string;
+  latestVersion: number;
+  availability: EvidenceAvailability;
+  onChainRegistered: boolean;
+  cid?: string;
+  gatewayUrl?: string;
+}
 
 @Injectable()
 export class EvidenceService {
@@ -128,7 +69,10 @@ export class EvidenceService {
     @InjectRepository(EvidenceVersion)
     private readonly evidenceVersionRepository: Repository<EvidenceVersion>,
     private readonly auditTrailService: AuditTrailService,
+    private readonly ipfsService: IpfsService,
   ) {}
+
+  // ─── Write / mutate paths (unchanged behaviour, rebuilt cleanly) ──────────
 
   async createEvidence(
     claimId: string,
@@ -136,7 +80,10 @@ export class EvidenceService {
     userId?: string,
     hash?: string,
   ): Promise<Evidence> {
-    const evidence = this.evidenceRepository.create({ claimId, latestVersion: 1 });
+    const evidence = this.evidenceRepository.create({
+      claimId,
+      latestVersion: 1,
+    });
     const savedEvidence = await this.evidenceRepository.save(evidence);
 
     const version = this.evidenceVersionRepository.create({
@@ -148,7 +95,7 @@ export class EvidenceService {
     });
     await this.evidenceVersionRepository.save(version);
 
-    await this.auditTrailService.log({
+    await this.safeAudit({
       actionType: AuditActionType.EVIDENCE_SUBMITTED,
       entityType: AuditEntityType.EVIDENCE,
       entityId: savedEvidence.id,
@@ -156,47 +103,8 @@ export class EvidenceService {
       description: `Evidence submitted for claim ${claimId} with CID: ${cid}`,
       afterState: { id: savedEvidence.id, claimId, version: 1, cid, hash },
     });
-  }
 
-  const totalTimeDiff = after.summary.totalTime - before.summary.totalTime;
-  const totalTimePercent = (totalTimeDiff / before.summary.totalTime) * 100;
-  const avgTimeDiff = after.summary.avgTime - before.summary.avgTime;
-  const avgTimePercent = (avgTimeDiff / before.summary.avgTime) * 100;
-
-  const improvements = [...diffs].filter((d) => d.percent < 0).sort((a, b) => a.percent - b.percent);
-  const regressions = [...diffs].filter((d) => d.percent > 0).sort((a, b) => b.percent - a.percent);
-
-  return { before, after, diffs, totalTimeDiff, totalTimePercent, avgTimeDiff, avgTimePercent, improvements, regressions };
-}
-
-// ─── Printer ─────────────────────────────────────────────────────────────────
-
-function printReport(report: ComparisonReport): void {
-  const { before, after, diffs, totalTimeDiff, totalTimePercent, avgTimeDiff, avgTimePercent, improvements, regressions } = report;
-
-  // Header
-  console.log("\n" + hr("═"));
-  console.log(bold("  📊  BENCHMARK COMPARISON REPORT"));
-  console.log(hr("═"));
-  console.log(`  ${c("gray", "Before:")} ${before.timestamp}   ${c("gray", "After:")} ${after.timestamp}`);
-
-  // Summary cards
-  console.log("\n" + hr());
-  console.log(bold("  Overall Summary"));
-  console.log(hr());
-
-  const summaryRows: [string, string, string, string][] = [
-    ["Metric", "Before", "After", "Change"],
-    ["Total time", formatMs(before.summary.totalTime), formatMs(after.summary.totalTime), formatChange(totalTimeDiff, totalTimePercent)],
-    ["Avg time", formatMs(before.summary.avgTime), formatMs(after.summary.avgTime), formatChange(avgTimeDiff, avgTimePercent)],
-    ["Queries run", String(before.summary.totalQueries), String(after.summary.totalQueries), "─"],
-    ["Successful", String(before.summary.successful), String(after.summary.successful), "─"],
-  ];
-
-  const colW = [22, 12, 12, 30];
-  for (const [i, row] of summaryRows.entries()) {
-    const line = row.map((cell, ci) => (ci === 3 ? cell : cell.padEnd(colW[ci]))).join("  ");
-    console.log("  " + (i === 0 ? bold(c("cyan", line)) : line));
+    return savedEvidence;
   }
 
   async addEvidenceVersion(
@@ -205,26 +113,14 @@ function printReport(report: ComparisonReport): void {
     userId?: string,
     hash?: string,
   ): Promise<EvidenceVersion> {
-    const evidence = await this.evidenceRepository.findOneBy({ id: evidenceId });
+    const evidence = await this.evidenceRepository.findOneBy({
+      id: evidenceId,
+    });
     if (!evidence) {
       throw new NotFoundException(`Evidence with ID ${evidenceId} not found`);
     }
 
-  const header = [
-    "Query".padEnd(46),
-    "Before".padStart(10),
-    "After".padStart(10),
-    "Rows".padStart(7),
-    "  Change",
-  ].join("  ");
-  console.log("  " + bold(c("cyan", header)));
-  console.log(hr());
-
-  for (const d of diffs) {
-    const rowChange =
-      d.rowsAfter !== d.rowsBefore
-        ? c("yellow", ` (rows: ${d.rowsBefore}→${d.rowsAfter})`)
-        : c("gray", ` (${d.rowsAfter})`);
+    const newVersion = evidence.latestVersion + 1;
     const version = this.evidenceVersionRepository.create({
       evidenceId,
       version: newVersion,
@@ -234,299 +130,280 @@ function printReport(report: ComparisonReport): void {
     });
     const savedVersion = await this.evidenceVersionRepository.save(version);
 
-    await this.auditTrailService.log({
+    evidence.latestVersion = newVersion;
+    await this.evidenceRepository.save(evidence);
+
+    await this.safeAudit({
       actionType: AuditActionType.EVIDENCE_UPDATED,
       entityType: AuditEntityType.EVIDENCE,
       entityId: evidenceId,
       userId,
       description: `Evidence updated to version ${newVersion} with CID: ${cid}`,
-      beforeState,
-      afterState: updatedEvidence,
+      afterState: { id: evidenceId, version: newVersion, cid, hash },
     });
 
-    const line = [
-      d.description.substring(0, 44).padEnd(46),
-      formatMs(d.before).padStart(10),
-      formatMs(d.after).padStart(10),
-      rowChange.padStart(7),
-      "  " + formatChange(d.diff, d.percent),
-    ].join("  ");
-
-    console.log("  " + line);
+    return savedVersion;
   }
 
-  // Improvements
-  if (improvements.length > 0) {
-    console.log("\n" + hr());
-    console.log(bold(`  🚀  Top Improvements  (${improvements.length} queries faster)`));
-    console.log(hr());
-
-    for (const [i, item] of improvements.slice(0, 5).entries()) {
-      const pct = Math.abs(item.percent);
-      console.log(`  ${c("green", `${i + 1}.`)} ${item.description}`);
-      console.log(`     ${bar(item.percent)} ${c("green", `${pct.toFixed(1)}% faster`)}  ${c("gray", `(${formatMs(item.before)} → ${formatMs(item.after)})`)}`);
-    }
-  }
-
-  // Regressions
-  if (regressions.length > 0) {
-    console.log("\n" + hr());
-    console.log(bold(`  ⚠️   Regressions  (${regressions.length} queries slower)`));
-    console.log(hr());
-
-    for (const [i, item] of regressions.slice(0, 5).entries()) {
-      console.log(`  ${c("red", `${i + 1}.`)} ${item.description}`);
-      console.log(`     ${bar(item.percent)} ${c("red", `${item.percent.toFixed(1)}% slower`)}  ${c("gray", `(${formatMs(item.before)} → ${formatMs(item.after)})`)}`);
-    }
-  }
-  /**
-   * Get evidence with all versions
-   */
-  async getEvidence(evidenceId: string, includeHidden: boolean = false): Promise<Evidence | null> {
-    const where: any = { id: evidenceId };
-    if (!includeHidden) {
-      where.isHidden = false;
-    }
+  // ─── Read paths (legacy shape) ────────────────────────────────────────────
 
   async getEvidence(evidenceId: string): Promise<Evidence | null> {
     return this.evidenceRepository.findOne({
-      where,
+      where: { id: evidenceId },
       relations: ['versions'],
       order: { versions: { version: 'ASC' } },
     });
   }
 
-  /**
-   * Get latest version of evidence
-   */
+  async getEvidenceOrFail(evidenceId: string): Promise<Evidence> {
+    const evidence = await this.getEvidence(evidenceId);
+    if (!evidence) {
+      throw new NotFoundException(`Evidence with ID ${evidenceId} not found`);
+    }
+    return evidence;
+  }
+
   async getLatestEvidenceVersion(
     evidenceId: string,
-    includeHidden: boolean = false,
   ): Promise<EvidenceVersion | null> {
-    const where: any = { id: evidenceId };
-    if (!includeHidden) {
-      where.isHidden = false;
-    }
-
-    const evidence = await this.evidenceRepository.findOneBy(where);
-    if (!evidence) {
-      return null;
-    }
-  async getLatestEvidenceVersion(evidenceId: string): Promise<EvidenceVersion | null> {
-    const evidence = await this.evidenceRepository.findOneBy({ id: evidenceId });
+    const evidence = await this.evidenceRepository.findOneBy({
+      id: evidenceId,
+    });
     if (!evidence) return null;
-
-  // Rating
-  console.log("\n" + hr("═"));
-  printRating(avgTimePercent, improvements.length, regressions.length, diffs.length);
-  console.log(hr("═") + "\n");
-}
-
-function printRating(avgPct: number, improved: number, regressed: number, total: number): void {
-  let rating: string;
-  if (avgPct < -50) rating = c("green", "🌟🌟🌟  EXCELLENT — Queries are dramatically faster");
-  else if (avgPct < -25) rating = c("green", "🌟🌟  GREAT — Substantial performance improvement");
-  else if (avgPct < -10) rating = c("green", "🌟  GOOD — Noticeable performance improvement");
-  else if (avgPct < 0) rating = c("green", "✅  IMPROVED — Slight performance improvement");
-  else if (avgPct < 10) rating = c("yellow", "⚠️   NEUTRAL — Minimal performance change");
-  else rating = c("red", "❌  DEGRADED — Performance has decreased");
-
-  const improvedPct = total > 0 ? ((improved / total) * 100).toFixed(0) : "0";
-  const regressedPct = total > 0 ? ((regressed / total) * 100).toFixed(0) : "0";
-
-  console.log(`  ${bold("Rating:")} ${rating}`);
-  console.log(
-    `  ${c("gray", `${improved}/${total} queries improved (${improvedPct}%)`)}` +
-    (regressed > 0 ? `  ${c("gray", `·  ${regressed} regressed (${regressedPct}%)`)}` : "")
-  );
-}
-
-// ─── JSON export ─────────────────────────────────────────────────────────────
-
-function exportReport(report: ComparisonReport, outputPath: string): void {
-  const json = {
-    generatedAt: new Date().toISOString(),
-    before: report.before.timestamp,
-    after: report.after.timestamp,
-    summary: {
-      totalTimeChange: { ms: report.totalTimeDiff, percent: report.totalTimePercent },
-      avgTimeChange: { ms: report.avgTimeDiff, percent: report.avgTimePercent },
-      queriesImproved: report.improvements.length,
-      queriesRegressed: report.regressions.length,
-      queriesUnchanged: report.diffs.length - report.improvements.length - report.regressions.length,
-    },
-    topImprovements: report.improvements.slice(0, 10).map((d) => ({
-      description: d.description,
-      beforeMs: d.before,
-      afterMs: d.after,
-      improvementPercent: Math.abs(d.percent),
-    })),
-    topRegressions: report.regressions.slice(0, 10).map((d) => ({
-      description: d.description,
-      beforeMs: d.before,
-      afterMs: d.after,
-      regressionPercent: d.percent,
-    })),
-    allDiffs: report.diffs,
-  };
-
-  fs.writeFileSync(outputPath, JSON.stringify(json, null, 2));
-  console.log(`\n  ${c("cyan", "📄")} Report exported to ${c("cyan", outputPath)}\n`);
-}
-
-// ─── BenchmarkComparator class ────────────────────────────────────────────────
-
-export class BenchmarkComparator {
-  private readonly resultsDir: string;
-
-  constructor(resultsDir?: string) {
-    this.resultsDir = resultsDir ?? path.join(process.cwd(), "benchmark-results");
+    return this.evidenceVersionRepository.findOneBy({
+      evidenceId,
+      version: evidence.latestVersion,
+    });
   }
-
-  compareFiles(beforeFile: string, afterFile: string, opts: { export?: string } = {}): void {
-    const before = this.loadBenchmark(beforeFile);
-    const after = this.loadBenchmark(afterFile);
-
-    if (!before || !after) {
-      console.error(c("red", "❌  Could not load one or both benchmark files."));
-      process.exit(1);
-    }
-
-    const report = buildReport(before, after);
-    printReport(report);
-
-    if (opts.export) {
-      exportReport(report, opts.export);
-    }
-  }
-
-  private loadBenchmark(filename: string): BenchmarkFile | null {
-    const filePath = path.isAbsolute(filename) ? filename : path.join(this.resultsDir, filename);
-    try {
-      const content = fs.readFileSync(filePath, "utf-8");
-      return JSON.parse(content) as BenchmarkFile;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(c("red", `  Error loading "${filename}": ${msg}`));
-      return null;
-    }
-  }
-
-  listAvailableBenchmarks(): string[] {
-    if (!fs.existsSync(this.resultsDir)) {
-      console.log(c("yellow", "  No benchmark-results directory found."));
-      return [];
-    }
-
-    return fs
-      .readdirSync(this.resultsDir)
-      .filter((f) => f.startsWith("benchmark-") && f.endsWith(".json"))
-      .sort();
-  /**
-   * Get all evidence for a claim
-   */
-  async getEvidenceForClaim(claimId: string, includeHidden: boolean = false): Promise<Evidence[]> {
-    const where: any = { claimId };
-    if (!includeHidden) {
-      where.isHidden = false;
-    }
 
   async getEvidenceForClaim(claimId: string): Promise<Evidence[]> {
     return this.evidenceRepository.find({
-      where,
+      where: { claimId },
       relations: ['versions'],
       order: { createdAt: 'ASC', versions: { version: 'ASC' } },
     });
   }
 
-  /**
-   * Get latest evidence version for a claim (assuming one evidence per claim for simplicity)
-   */
   async getLatestEvidenceForClaim(
     claimId: string,
-    includeHidden: boolean = false,
   ): Promise<EvidenceVersion | null> {
-    const evidences = await this.getEvidenceForClaim(claimId, includeHidden);
-    if (evidences.length === 0) {
-      return null;
-    }
-  async getLatestEvidenceForClaim(claimId: string): Promise<EvidenceVersion | null> {
     const evidences = await this.getEvidenceForClaim(claimId);
     if (evidences.length === 0) return null;
-
     const evidence = evidences[0];
-    return this.evidenceVersionRepository.findOne({
-      where: { evidenceId: evidence.id, version: evidence.latestVersion },
+    return this.evidenceVersionRepository.findOneBy({
+      evidenceId: evidence.id,
+      version: evidence.latestVersion,
     });
   }
-}
 
-// ─── CLI ─────────────────────────────────────────────────────────────────────
+  // ─── V2-BE-025 query surface ──────────────────────────────────────────────
 
-async function main(): Promise<void> {
-  const comparator = new BenchmarkComparator();
-  const args = process.argv.slice(2);
+  /**
+   * List evidence with bounded pagination and deterministic ordering
+   * (created ASC for a stable cursor across pages, keyed by id for ties).
+   */
+  async listEvidence(
+    query: EvidenceListQueryDto,
+  ): Promise<Paginated<Evidence>> {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const skip = (page - 1) * limit;
 
-  // Parse flags
-  const exportFlag = args.indexOf("--export");
-  let exportPath: string | undefined;
-  let positional = args;
+    const where = query.claimId !== undefined ? { claimId: query.claimId } : {};
 
-  if (exportFlag !== -1) {
-    exportPath = args[exportFlag + 1];
-    if (!exportPath) {
-      console.error(c("red", "❌  --export requires a file path argument"));
-      process.exit(1);
-    }
-    positional = args.filter((_, i) => i !== exportFlag && i !== exportFlag + 1);
+    const [rows, total] = await this.evidenceRepository.findAndCount({
+      where,
+      relations: ['versions'],
+      skip,
+      take: limit,
+      order: { createdAt: 'ASC', id: 'ASC' },
+    });
+
+    return {
+      data: rows,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: total === 0 ? 0 : Math.ceil(total / limit),
+      },
+    };
   }
 
-  if (positional.length === 0) {
-    console.log(bold("\n  📁  Available benchmark files:\n"));
-    const files = comparator.listAvailableBenchmarks();
-
-    if (files.length === 0) {
-      console.log(c("yellow", '  No benchmark files found. Run "npm run benchmark:indexes" first.\n'));
-      return;
-    }
-
-    files.forEach((file, i) => {
-      console.log(`  ${c("gray", `${i + 1}.`)} ${file}`);
-  async verifyEvidence(evidenceId: string, userId?: string): Promise<Evidence> {
-    const evidence = await this.evidenceRepository.findOneBy({ id: evidenceId });
+  /**
+   * List the versions of an evidence aggregate with deterministic ordering
+   * (version DESC, newest first).
+   */
+  async listEvidenceVersions(
+    evidenceId: string,
+    query: EvidenceVersionQueryDto,
+  ): Promise<Paginated<EvidenceVersion>> {
+    const evidence = await this.evidenceRepository.findOneBy({
+      id: evidenceId,
+    });
     if (!evidence) {
       throw new NotFoundException(`Evidence with ID ${evidenceId} not found`);
     }
 
-    await this.auditTrailService.log({
-      actionType: AuditActionType.EVIDENCE_VERIFIED,
-      entityType: AuditEntityType.EVIDENCE,
-      entityId: evidenceId,
-      userId,
-      description: 'Evidence verified by user',
-      beforeState: { ...evidence },
-      afterState: evidence,
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const skip = (page - 1) * limit;
+
+    const [rows, total] = await this.evidenceVersionRepository.findAndCount({
+      where: { evidenceId },
+      skip,
+      take: limit,
+      order: { version: 'DESC' },
     });
 
-    console.log(c("gray", "\n  Usage:   npm run benchmark:compare <before> <after> [--export out.json]"));
-    console.log(c("gray", "  Example: npm run benchmark:compare benchmark-2024-01-01.json benchmark-2024-01-02.json\n"));
-    return;
+    return {
+      data: rows,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: total === 0 ? 0 : Math.ceil(total / limit),
+      },
+    };
   }
 
-  if (positional.length !== 2) {
-    console.error(c("red", "❌  Please provide exactly two benchmark files to compare."));
-    console.error(c("gray", "  Usage: npm run benchmark:compare <before-file> <after-file>"));
-    process.exit(1);
+  /**
+   * Resolve a specific version (or the latest) for an evidence aggregate.
+   */
+  private async resolveVersion(
+    evidenceId: string,
+    requestedVersion?: number,
+  ): Promise<EvidenceVersion> {
+    const evidence = await this.evidenceRepository.findOneBy({
+      id: evidenceId,
+    });
+    if (!evidence) {
+      throw new NotFoundException(`Evidence with ID ${evidenceId} not found`);
+    }
+
+    if (requestedVersion === undefined) {
+      const latest = await this.evidenceVersionRepository.findOneBy({
+        evidenceId,
+        version: evidence.latestVersion,
+      });
+      if (!latest) {
+        throw new NotFoundException(
+          `No versions exist for Evidence with ID ${evidenceId}`,
+        );
+      }
+      return latest;
+    }
+
+    const version = await this.evidenceVersionRepository.findOneBy({
+      evidenceId,
+      version: requestedVersion,
+    });
+    if (!version) {
+      throw new NotFoundException(
+        `Evidence ${evidenceId} has no version ${requestedVersion}`,
+      );
+    }
+    return version;
   }
 
-  const [beforeFile, afterFile] = positional;
-  comparator.compareFiles(beforeFile, afterFile, { export: exportPath });
-}
+  /**
+   * Content digest for an evidence version. The CID itself carries the
+   * multihash content digest; this validates the CID is parseable before
+   * exposing it.
+   */
+  async getContentDigest(
+    evidenceId: string,
+    requestedVersion?: number,
+  ): Promise<CidDigest> {
+    const version = await this.resolveVersion(evidenceId, requestedVersion);
+    const digest = extractCidDigest(version.cid);
+    if (!digest) {
+      throw new BadRequestException(
+        `CID stored on Evidence ${evidenceId} version ${version.version} is not a valid CID`,
+      );
+    }
+    return digest;
+  }
 
-if (require.main === module) {
-  main().catch((err) => {
-    console.error(c("red", `❌  Unexpected error: ${err.message}`));
-    process.exit(1);
-  });
-}
+  /**
+   * Safe gateway metadata for an evidence version. The URL is produced by the
+   * IpfsService gateway sanitizer and is undefined when no safe gateway
+   * address is available (e.g. local-only provider or unsafe input).
+   */
+  async getSafeGateway(
+    evidenceId: string,
+    requestedVersion?: number,
+  ): Promise<{ cid: string; gatewayUrl?: string }> {
+    const version = await this.resolveVersion(evidenceId, requestedVersion);
+    const gatewayUrl = this.ipfsService.getGatewayUrl(version.cid);
+    return { cid: version.cid, gatewayUrl };
+  }
+
+  /**
+   * Distinguish missing on-chain registration from unavailable off-chain
+   * content. Registration is event-derived (the indexer projection), while
+   * content availability depends on whether a safe gateway can address the CID.
+   */
+  async getAvailabilityStatus(
+    evidenceId: string,
+  ): Promise<EvidenceAvailabilityStatus> {
+    const evidence = await this.evidenceRepository.findOneBy({
+      id: evidenceId,
+    });
+    if (!evidence) {
+      throw new NotFoundException(`Evidence with ID ${evidenceId} not found`);
+    }
+
+    const latest = await this.evidenceVersionRepository.findOneBy({
+      evidenceId,
+      version: evidence.latestVersion,
+    });
+
+    if (!evidence.onChainRegistered) {
+      return {
+        evidenceId,
+        latestVersion: evidence.latestVersion,
+        availability: EvidenceAvailability.ONCHAIN_NOT_REGISTERED,
+        onChainRegistered: false,
+      };
+    }
+
+    const cid = latest?.cid;
+    if (!cid) {
+      return {
+        evidenceId,
+        latestVersion: evidence.latestVersion,
+        availability: EvidenceAvailability.OFFCHAIN_UNAVAILABLE,
+        onChainRegistered: true,
+      };
+    }
+
+    const gatewayUrl = this.ipfsService.getGatewayUrl(cid);
+    if (!gatewayUrl) {
+      return {
+        evidenceId,
+        latestVersion: evidence.latestVersion,
+        availability: EvidenceAvailability.OFFCHAIN_UNAVAILABLE,
+        onChainRegistered: true,
+        cid,
+      };
+    }
+
+    return {
+      evidenceId,
+      latestVersion: evidence.latestVersion,
+      availability: EvidenceAvailability.AVAILABLE,
+      onChainRegistered: true,
+      cid,
+      gatewayUrl,
+    };
+  }
+
+  private async safeAudit(input: AuditLogInput): Promise<void> {
+    try {
+      await this.auditTrailService.log(input);
+    } catch {
+      // Audit failures must never break the evidence write path.
+    }
+  }
 }
