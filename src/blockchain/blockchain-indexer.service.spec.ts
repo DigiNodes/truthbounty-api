@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository, DataSource, MoreThanOrEqual } from 'typeorm';
 import { BlockchainIndexerService } from './blockchain-indexer.service';
+import { BlockchainStateService } from './state.service';
 import { ProcessedEvent } from './entities/processed-event.entity';
 import { TokenBalance } from './entities/token-balance.entity';
 import { IndexerCheckpoint } from './entities/indexer-checkpoint.entity';
@@ -36,13 +37,26 @@ describe('BlockchainIndexerService', () => {
             createQueryRunner: jest.fn(),
           },
         },
+        {
+          provide: BlockchainStateService,
+          useValue: {
+            setProjectionHead: jest.fn(),
+            recordReplay: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
     service = module.get<BlockchainIndexerService>(BlockchainIndexerService);
-    processedEventRepo = module.get<Repository<ProcessedEvent>>(getRepositoryToken(ProcessedEvent));
-    tokenBalanceRepo = module.get<Repository<TokenBalance>>(getRepositoryToken(TokenBalance));
-    checkpointRepo = module.get<Repository<IndexerCheckpoint>>(getRepositoryToken(IndexerCheckpoint));
+    processedEventRepo = module.get<Repository<ProcessedEvent>>(
+      getRepositoryToken(ProcessedEvent),
+    );
+    tokenBalanceRepo = module.get<Repository<TokenBalance>>(
+      getRepositoryToken(TokenBalance),
+    );
+    checkpointRepo = module.get<Repository<IndexerCheckpoint>>(
+      getRepositoryToken(IndexerCheckpoint),
+    );
     dataSource = module.get<DataSource>(DataSource);
   });
 
@@ -77,15 +91,23 @@ describe('BlockchainIndexerService', () => {
           findOne: jest.fn().mockResolvedValue({ lastBlock: 99 }),
         },
       };
-      jest.spyOn(dataSource, 'createQueryRunner').mockReturnValue(mockQueryRunner as any);
+      jest
+        .spyOn(dataSource, 'createQueryRunner')
+        .mockReturnValue(mockQueryRunner as any);
 
       await service.processEvent(event);
 
       expect(processedEventRepo.findOne).toHaveBeenCalledWith({
         where: { txHash: event.txHash, logIndex: event.logIndex },
       });
-      expect(mockQueryRunner.manager.save).toHaveBeenCalledWith(ProcessedEvent, expect.objectContaining({ txHash: event.txHash }));
-      expect(mockQueryRunner.manager.save).toHaveBeenCalledWith(IndexerCheckpoint, expect.objectContaining({ lastBlock: 100, id: 1 }));
+      expect(mockQueryRunner.manager.save).toHaveBeenCalledWith(
+        ProcessedEvent,
+        expect.objectContaining({ txHash: event.txHash }),
+      );
+      expect(mockQueryRunner.manager.save).toHaveBeenCalledWith(
+        IndexerCheckpoint,
+        expect.objectContaining({ lastBlock: 100, id: 1 }),
+      );
     });
 
     it('should create checkpoint when none exists', async () => {
@@ -113,11 +135,16 @@ describe('BlockchainIndexerService', () => {
           findOne: jest.fn().mockResolvedValue(null),
         },
       };
-      jest.spyOn(dataSource, 'createQueryRunner').mockReturnValue(mockQueryRunner as any);
+      jest
+        .spyOn(dataSource, 'createQueryRunner')
+        .mockReturnValue(mockQueryRunner as any);
 
       await service.processEvent(event);
 
-      expect(mockQueryRunner.manager.save).toHaveBeenCalledWith(IndexerCheckpoint, expect.objectContaining({ lastBlock: 101, id: 1 }));
+      expect(mockQueryRunner.manager.save).toHaveBeenCalledWith(
+        IndexerCheckpoint,
+        expect.objectContaining({ lastBlock: 101, id: 1 }),
+      );
     });
 
     it('should skip duplicate events across block numbers using txHash and logIndex', async () => {
@@ -129,7 +156,9 @@ describe('BlockchainIndexerService', () => {
         data: {},
       };
 
-      jest.spyOn(processedEventRepo, 'findOne').mockResolvedValue({} as ProcessedEvent);
+      jest
+        .spyOn(processedEventRepo, 'findOne')
+        .mockResolvedValue({} as ProcessedEvent);
       const createQueryRunnerSpy = jest.spyOn(dataSource, 'createQueryRunner');
 
       await service.processEvent(event);
@@ -149,7 +178,9 @@ describe('BlockchainIndexerService', () => {
         data: {},
       };
 
-      jest.spyOn(processedEventRepo, 'findOne').mockResolvedValue({} as ProcessedEvent);
+      jest
+        .spyOn(processedEventRepo, 'findOne')
+        .mockResolvedValue({} as ProcessedEvent);
 
       await service.processEvent(event);
 
@@ -158,7 +189,12 @@ describe('BlockchainIndexerService', () => {
     });
 
     it('should allow strongly typed event data using generics', () => {
-      const transferEvent: BlockchainEvent<{ from: string, to: string, amount: string, token: string }> = {
+      const transferEvent: BlockchainEvent<{
+        from: string;
+        to: string;
+        amount: string;
+        token: string;
+      }> = {
         txHash: '0xabc',
         logIndex: 1,
         blockNumber: 101,
@@ -170,7 +206,7 @@ describe('BlockchainIndexerService', () => {
           token: '0xtoken',
         },
       };
-      
+
       expect(transferEvent.data.amount).toBe('500');
     });
   });
@@ -196,7 +232,9 @@ describe('BlockchainIndexerService', () => {
         release: jest.fn(),
         manager,
       };
-      jest.spyOn(dataSource, 'createQueryRunner').mockReturnValue(queryRunner as any);
+      jest
+        .spyOn(dataSource, 'createQueryRunner')
+        .mockReturnValue(queryRunner as any);
 
       await service.replayFromBlock(100);
 

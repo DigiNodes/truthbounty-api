@@ -1,5 +1,11 @@
 export type HealthStatus = 'healthy' | 'degraded' | 'unhealthy';
 
+export interface IndexerHealthResult {
+  status: HealthStatus;
+  timestamp: string;
+  snapshot: import('../blockchain/types').IndexerHealthSnapshot;
+}
+
 export interface DependencyStatus {
   name: string;
   status: HealthStatus;

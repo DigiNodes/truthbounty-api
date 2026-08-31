@@ -8,6 +8,7 @@ import { ReconciliationService } from './reconciliation.service';
 import { EventIndexingService } from './event-indexing.service';
 import { BlockchainController } from './blockchain.controller';
 import { SybilResistanceModule } from '../sybil-resistance/sybil-resistance.module';
+import { StartupValidationService } from './startup-validation.service';
 
 @Module({
   imports: [
@@ -20,6 +21,8 @@ import { SybilResistanceModule } from '../sybil-resistance/sybil-resistance.modu
     ReorgDetectorService,
     ReconciliationService,
     EventIndexingService,
+    WeightedVoteResolutionService,
+    StartupValidationService,
   ],
   controllers: [BlockchainController],
   exports: [

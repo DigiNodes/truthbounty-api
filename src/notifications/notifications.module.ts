@@ -1,9 +1,13 @@
 import { Module } from '@nestjs/common';
-import { BullModule } from '@nestjs/bullmq';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { BullModule } from '@nestjs/bullmq';
+import { BullBoardModule } from '@bull-board/nestjs';
+import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 import { PrismaModule } from '../prisma/prisma.module';
 import { RedisModule } from '../redis/redis.module';
 import { LoggerModule } from '../logger/logger.module';
+import { MetricsModule } from '../metrics/metrics.module';
+import { AuthModule } from '../auth/auth.module';
 import { NotificationsController } from './controllers/notifications.controller';
 import { InternalNotificationController } from './controllers/internal-notification.controller';
 import { NotificationsService } from './services/notifications.service';
@@ -16,22 +20,30 @@ import { NotificationProcessor } from './services/notification.processor';
 import { Notification } from './entities/notification.entity';
 import { NotificationPreference } from './entities/notification-preference.entity';
 import { DeliveryHistory } from './entities/delivery-history.entity';
-import { MetricsModule } from '../metrics/metrics.module';
-import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Notification, NotificationPreference, DeliveryHistory]),
-    BullModule.registerQueue({
-      name: 'notifications',
-      defaultAttempts: 5,
-      defaultBackoff: {
-        type: 'exponential',
-        delay: 1000,
+    TypeOrmModule.forFeature([
+      Notification,
+      NotificationPreference,
+      DeliveryHistory,
+    ]),
+    BullModule.registerQueue(
+      {
+        name: 'notifications',
+        defaultAttempts: 5,
+        defaultBackoff: {
+          type: 'exponential',
+          delay: 1000,
+        },
       },
-    }),
-    BullModule.registerQueue({
-      name: 'dead-letter',
+      {
+        name: 'dead-letter',
+      },
+    ),
+    BullBoardModule.forFeature({
+      name: 'notifications',
+      adapter: BullMQAdapter,
     }),
     PrismaModule,
     RedisModule,
@@ -49,6 +61,10 @@ import { AuthModule } from '../auth/auth.module';
     WebhookService,
     NotificationProcessor,
   ],
-  exports: [NotificationsService],
+  exports: [
+    NotificationsService,
+    NotificationPreferencesService,
+    DeliveryHistoryService,
+  ],
 })
 export class NotificationsModule {}

@@ -31,6 +31,9 @@ import { LoggingInterceptor } from './logger/logging.interceptor';
 import { AuthModule } from './auth/auth.module';
 import { GlobalAuthGuard } from './auth/global-auth.guard';
 import { MetricsModule } from './metrics/metrics.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { Notification } from './notifications/entities/notification.entity';
+import { NotificationPreference } from './notifications/entities/notification-preference.entity';
 import { ReputationModule } from './reputation/reputation.module';
 import { GovernanceModule } from './governance/governance.module';
 import { AiAssistantModule } from './ai-assistant/ai-assistant.module';
@@ -44,6 +47,7 @@ import { ProfilerInterceptor } from './profiler/profiler.interceptor';
 import { HealthModule } from './health/health.module';
 import { FeatureFlagsModule } from './feature-flags/feature-flags.module';
 import { RealtimeModule } from './realtime/realtime.module';
+import { StakingModule } from './staking/staking.module';
 
 // In-memory storage for development (no Redis needed)
 class ThrottlerMemoryStorage {
@@ -340,6 +344,7 @@ async function createThrottlerStorage(
     AuditModule,
     ThemeModule,
     MetricsModule,
+    NotificationsModule,
     ReputationModule,
     GovernanceModule,
     AiAssistantModule,
@@ -352,6 +357,7 @@ async function createThrottlerStorage(
     HealthModule,
     FeatureFlagsModule,
     RealtimeModule,
+    StakingModule,
   ],
   controllers: [AppController],
   providers: [

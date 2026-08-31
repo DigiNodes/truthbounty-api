@@ -337,6 +337,32 @@ describe('Claim Entity', () => {
       expect(claim.resolvedAt).toBeNull();
     });
 
+    it('legacy claim (RESOLVED with null resolvedAt) updates resolvedAt on transition to FINALIZED (BE-219 Audit)', () => {
+      claim.resolvedVerdict = true;
+      claim.confidenceScore = 0.80;
+      claim.finalized = false;
+      claim.resolvedAt = null;
+
+      claim.transitionTo(ClaimState.FINALIZED);
+
+      expect(claim.resolvedAt).not.toBeNull();
+      expect(claim.resolvedAt).toBeInstanceOf(Date);
+      expect(claim.finalized).toBe(true);
+    });
+
+    it('legacy claim (RESOLVED with null resolvedAt) updates resolvedAt on transition to RESOLVED (BE-219 Audit)', () => {
+      claim.resolvedVerdict = true;
+      claim.confidenceScore = 0.80;
+      claim.finalized = false;
+      claim.resolvedAt = null;
+
+      claim.transitionTo(ClaimState.RESOLVED, { confidence: 0.90 });
+
+      expect(claim.resolvedAt).not.toBeNull();
+      expect(claim.resolvedAt).toBeInstanceOf(Date);
+      expect(claim.confidenceScore).toBe(0.90);
+    });
+
     it('PENDING → RESOLVED sets resolvedAt to a Date', () => {
       const before = new Date();
       claim.transitionTo(ClaimState.RESOLVED, { verdict: true, confidence: 0.85 });
@@ -413,6 +439,32 @@ describe('Claim Entity', () => {
     it('an unresolved (PENDING) claim always has a null resolvedAt', () => {
       expect(claim.getCurrentState()).toBe(ClaimState.PENDING);
       expect(claim.resolvedAt).toBeNull();
+    });
+
+    it('legacy claim (RESOLVED with null resolvedAt) updates resolvedAt on transition to FINALIZED (BE-219 Audit)', () => {
+      claim.resolvedVerdict = true;
+      claim.confidenceScore = 0.80;
+      claim.finalized = false;
+      claim.resolvedAt = null;
+
+      claim.transitionTo(ClaimState.FINALIZED);
+
+      expect(claim.resolvedAt).not.toBeNull();
+      expect(claim.resolvedAt).toBeInstanceOf(Date);
+      expect(claim.finalized).toBe(true);
+    });
+
+    it('legacy claim (RESOLVED with null resolvedAt) updates resolvedAt on transition to RESOLVED (BE-219 Audit)', () => {
+      claim.resolvedVerdict = true;
+      claim.confidenceScore = 0.80;
+      claim.finalized = false;
+      claim.resolvedAt = null;
+
+      claim.transitionTo(ClaimState.RESOLVED, { confidence: 0.90 });
+
+      expect(claim.resolvedAt).not.toBeNull();
+      expect(claim.resolvedAt).toBeInstanceOf(Date);
+      expect(claim.confidenceScore).toBe(0.90);
     });
   });
 });

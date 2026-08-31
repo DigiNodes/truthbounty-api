@@ -34,7 +34,26 @@ const mockIpfsService = () => ({
 });
 
 const mockBlockchainStateService = () => ({
-  getChainState: jest.fn(),
+  getChainState: jest.fn().mockResolvedValue({ lastProcessedBlock: 123 }),
+  getIndexerHealth: jest.fn().mockResolvedValue({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    observedHeadBlock: 100,
+    safeBlock: 88,
+    finalizedBlock: 80,
+    projectionHeadBlock: 80,
+    projectionLag: 20,
+    rpcFailureCount: 0,
+    replayCount: 0,
+    deadLetterCount: 0,
+    alertThresholds: {
+      projectionLagBlocks: 150,
+      rpcFailureRateWindow: 300000,
+      maxDeadLetters: 100,
+    },
+    runbookUrl:
+      'https://github.com/DigiNodes/truthbounty-api/blob/main/docs/indexer-runbook.md',
+  }),
 });
 
 describe('HealthService', () => {
@@ -57,7 +76,10 @@ describe('HealthService', () => {
         { provide: JobsService, useFactory: mockJobsService },
         { provide: NotificationService, useFactory: mockNotificationService },
         { provide: IpfsService, useFactory: mockIpfsService },
-        { provide: BlockchainStateService, useFactory: mockBlockchainStateService },
+        {
+          provide: BlockchainStateService,
+          useFactory: mockBlockchainStateService,
+        },
       ],
     }).compile();
 
@@ -68,7 +90,9 @@ describe('HealthService', () => {
     jobsService = module.get<JobsService>(JobsService);
     notificationService = module.get<NotificationService>(NotificationService);
     ipfsService = module.get<IpfsService>(IpfsService);
-    blockchainStateService = module.get<BlockchainStateService>(BlockchainStateService);
+    blockchainStateService = module.get<BlockchainStateService>(
+      BlockchainStateService,
+    );
   });
 
   it('should return alive liveness result', () => {
@@ -143,7 +167,9 @@ describe('HealthService', () => {
         unhealthy: expect.any(Number),
       }),
     );
-    expect(result.dependencies.some((dep) => dep.name === 'database')).toBe(true);
+    expect(result.dependencies.some((dep) => dep.name === 'database')).toBe(
+      true,
+    );
   });
 
   it('should return not ready while shutting down', async () => {
@@ -161,5 +187,23 @@ describe('HealthService', () => {
     const result = await service.getReadiness();
     expect(result.ready).toBe(false);
     expect(result.status).toBe('unhealthy');
+  });
+
+  it('should expose an indexer health report that is sanitized', async () => {
+    const result = await service.getIndexerHealth();
+
+    expect(result.status).toBe('healthy');
+    expect(result.snapshot).toMatchObject({
+      observedHeadBlock: 100,
+      safeBlock: 88,
+      finalizedBlock: 80,
+      projectionLag: 20,
+      replayCount: 0,
+      deadLetterCount: 0,
+    });
+    expect(result.snapshot.alertThresholds.projectionLagBlocks).toBeGreaterThan(
+      0,
+    );
+    expect(result.snapshot.runbookUrl).toBeTruthy();
   });
 });
