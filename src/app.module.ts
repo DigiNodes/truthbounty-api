@@ -37,6 +37,7 @@ import { GovernanceModule } from './governance/governance.module';
 import { AiAssistantModule } from './ai-assistant/ai-assistant.module';
 import { AdminModule } from './admin/admin.module';
 import { V2EventsModule } from './v2/events/v2-events.module';
+import { V2EvidenceModule } from './v2/evidence/v2-evidence.module';
 import { ProfilerModule } from './profiler/profiler.module';
 import { ProfilerInterceptor } from './profiler/profiler.interceptor';
 import { HealthModule } from './health/health.module';
@@ -344,6 +345,7 @@ async function createThrottlerStorage(
     AiAssistantModule,
     AdminModule,
     V2EventsModule,
+    V2EvidenceModule,
     ProfilerModule,
     HealthModule,
     FeatureFlagsModule,

@@ -22,7 +22,10 @@ export interface CursorPage<T> {
 
 /** Encode an order key into an opaque, URL-safe cursor string. */
 export function encodeCursor(key: OrderKey): string {
-  const raw = JSON.stringify([key.blockNumber, key.logIndex, key.id]);
+  // blockNumber may arrive as a JS number under sqlite (used only in tests)
+  // even though the column is declared bigint; normalize to string so the
+  // cursor format is stable regardless of the underlying driver.
+  const raw = JSON.stringify([String(key.blockNumber), key.logIndex, key.id]);
   return Buffer.from(raw, 'utf8').toString('base64url');
 }
 
