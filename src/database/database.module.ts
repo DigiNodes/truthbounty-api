@@ -4,6 +4,7 @@ import { TypeOrmModule, InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { DatabaseService } from './database.service';
 import { TransactionRunner } from './transaction.runner';
+import { TransactionHelper } from './transaction.helper';
 
 /**
  * DatabaseModule — PostgreSQL infrastructure for TruthBounty V2.
@@ -17,13 +18,13 @@ import { TransactionRunner } from './transaction.runner';
  * - Migration execution and rollback
  * - Repository injection pattern
  * - Transaction management via {@link TransactionRunner}
+ * - Transaction helper support via {@link TransactionHelper}
  * - Health reporting via {@link DatabaseService}
  *
- * ## Architecture
- *
- * This module is **global** — every backend service can inject repositories
- * and the transaction runner without importing DatabaseModule explicitly.
- * The TypeORM DataSource is the single source of database connectivity.
+ * This module is **global** — every backend service can inject repositories,
+ * DatabaseService, TransactionRunner, and TransactionHelper without importing
+ * DatabaseModule explicitly. The TypeORM DataSource is the single source of
+ * database connectivity.
  *
  * ## Environment variables
  *
@@ -109,8 +110,8 @@ import { TransactionRunner } from './transaction.runner';
       },
     }),
   ],
-  providers: [DatabaseService, TransactionRunner],
-  exports: [DatabaseService, TransactionRunner, TypeOrmModule],
+  providers: [DatabaseService, TransactionRunner, TransactionHelper],
+  exports: [DatabaseService, TransactionRunner, TransactionHelper, TypeOrmModule],
 })
 export class DatabaseModule implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(DatabaseModule.name);

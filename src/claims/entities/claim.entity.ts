@@ -132,7 +132,11 @@ export class Claim {
           if (data?.confidence !== undefined) {
             this.confidenceScore = data.confidence;
           }
-          // resolvedAt is already set; do not overwrite it
+          // resolvedAt is already set; do not overwrite it unless null (legacy data)
+          // BE-219 Audit Fix: Ensure legacy claims get a timestamp
+          if (this.resolvedAt === null || this.resolvedAt === undefined) {
+            this.resolvedAt = new Date();
+          }
         }
         break;
 
@@ -161,7 +165,11 @@ export class Claim {
             this.confidenceScore = data.confidence;
           }
           this.finalized = true;
-          // resolvedAt was already set when transitioning to RESOLVED; do not overwrite it
+          // resolvedAt was already set when transitioning to RESOLVED; do not overwrite it unless null (legacy data)
+          // BE-219 Audit Fix: Ensure legacy claims get a timestamp
+          if (this.resolvedAt === null || this.resolvedAt === undefined) {
+            this.resolvedAt = new Date();
+          }
         }
         break;
 

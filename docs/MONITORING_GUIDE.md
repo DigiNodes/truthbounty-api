@@ -37,3 +37,25 @@ The `/profiler/metrics` endpoint provides JSON latency percentiles which can be 
 - **Target p99 API Latency**: `< 500ms`
 - **Max Slow Query Threshold**: `100ms`
 - **Max Profiling Overhead**: `< 1ms`
+
+---
+
+## Indexer Health & Projection Metrics (V2-BE-032)
+
+The API exposes indexer lag, finality, and projection health signals for the
+Optimism/EVM V2 pipeline, backed by the live `BlockchainStateService`:
+
+- `indexer_observed_head` — highest block observed from the RPC provider.
+- `indexer_safe_block` — safe cursor (reorg-unlikely).
+- `indexer_finalized_block` — finalized cursor (finality boundary).
+- `indexer_projection_head` — highest block projections have advanced to.
+- `indexer_projection_lag_blocks` — projection lag (`observedHead - finalized`).
+- `indexer_rpc_failures_total` — cumulative RPC failures.
+- `indexer_replay_count_total` — cumulative event replays after reorg/retry.
+- `indexer_dead_letters_total` — cumulative dead-lettered events.
+
+Sanitized JSON is available at `GET /health/indexer` with `healthy | degraded |
+unhealthy` status. Alert thresholds and remediation steps are documented in
+[docs/indexer-runbook.md](indexer-runbook.md). Exposed values never include
+credentials, user data, or live RPC endpoints.
+

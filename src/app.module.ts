@@ -33,14 +33,23 @@ import { LoggingInterceptor } from './logger/logging.interceptor';
 import { AuthModule } from './auth/auth.module';
 import { GlobalAuthGuard } from './auth/global-auth.guard';
 import { MetricsModule } from './metrics/metrics.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { Notification } from './notifications/entities/notification.entity';
+import { NotificationPreference } from './notifications/entities/notification-preference.entity';
 import { ReputationModule } from './reputation/reputation.module';
 import { GovernanceModule } from './governance/governance.module';
 import { AiAssistantModule } from './ai-assistant/ai-assistant.module';
 import { AdminModule } from './admin/admin.module';
+import { V2EventsModule } from './v2/events/v2-events.module';
+import { V2EvidenceModule } from './v2/evidence/v2-evidence.module';
+import { V2VerificationModule } from './v2/verification/v2-verification.module';
+import { V2DisputesModule } from './v2/disputes/v2-disputes.module';
 import { ProfilerModule } from './profiler/profiler.module';
 import { ProfilerInterceptor } from './profiler/profiler.interceptor';
 import { HealthModule } from './health/health.module';
 import { FeatureFlagsModule } from './feature-flags/feature-flags.module';
+import { RealtimeModule } from './realtime/realtime.module';
+import { StakingModule } from './staking/staking.module';
 
 // In-memory storage for development (no Redis needed)
 class ThrottlerMemoryStorage {
@@ -314,13 +323,20 @@ async function createThrottlerStorage(
     AuditModule,
     ThemeModule,
     MetricsModule,
+    NotificationsModule,
     ReputationModule,
     GovernanceModule,
     AiAssistantModule,
     AdminModule,
+    V2EventsModule,
+    V2EvidenceModule,
+    V2VerificationModule,
+    V2DisputesModule,
     ProfilerModule,
     HealthModule,
     FeatureFlagsModule,
+    RealtimeModule,
+    StakingModule,
   ],
   controllers: [AppController],
   providers: [

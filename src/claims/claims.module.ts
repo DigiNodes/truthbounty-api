@@ -13,18 +13,47 @@ import { CacheModule } from '../cache/cache.module';
 import { EvidenceIntegrityMiddleware } from '../common/middleware/evidence-integrity.middleware';
 import { EvidenceFlagService } from './evidence-flag.service';
 import { EvidenceController } from './evidence.controller';
+import { ClaimLifecycleEvent } from './entities/claim-lifecycle-event.entity';
+import { ClaimReadModel } from './entities/claim-read-model.entity';
+import { ClaimProjectorService } from './claim-projector.service';
+import { ClaimLifecycleController } from './claim-lifecycle.controller';
+import { IpfsModule } from '../ipfs/ipfs.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Claim, Evidence, EvidenceVersion, EvidenceFlag, Stake]),
+    TypeOrmModule.forFeature([
+      Claim,
+      Evidence,
+      EvidenceVersion,
+      EvidenceFlag,
+      Stake,
+      ClaimLifecycleEvent,
+      ClaimReadModel,
+    ]),
     CacheModule,
+    IpfsModule,
   ],
-  controllers: [ClaimsController, EvidenceController],
-  providers: [ClaimsService, ClaimResolutionService, EvidenceService, EvidenceFlagService],
+  controllers: [ClaimsController, EvidenceController, ClaimLifecycleController],
+  providers: [
+    ClaimsService,
+    ClaimResolutionService,
+    EvidenceService,
+    EvidenceFlagService,
+    ClaimProjectorService,
+  ],
+  exports: [
+    ClaimResolutionService,
+    ClaimsService,
+    EvidenceService,
+    ClaimProjectorService,
+  ],
+  ],
   exports: [ClaimResolutionService, ClaimsService, EvidenceService],
 })
 export class ClaimsModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer.apply(EvidenceIntegrityMiddleware).forRoutes('claims/upload-evidence');
+    consumer
+      .apply(EvidenceIntegrityMiddleware)
+      .forRoutes('claims/upload-evidence');
   }
 }

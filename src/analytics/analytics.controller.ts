@@ -1,4 +1,5 @@
-import { Controller, Get, Query, UseGuards, ValidationPipe } from '@nestjs/common';
+import { Controller, Get, Query, Res, UseGuards, ValidationPipe } from '@nestj/common';
+import { Response } from 'express';
 import { AnalyticsService } from './analytics.service';
 import { AnalyticsQueryDto } from './dto/analytics-query.dto';
 import { AnalyticsResponse } from './interfaces/analytics-response.interface';
@@ -14,7 +15,7 @@ export class AnalyticsController {
     return this.analyticsService.getProtocolStatistics(query);
   }
 
-  @Get('contributors')
+  Get('contributors')
   getContributorAnalytics(@Query(new ValidationPipe({ transform: true })) query: AnalyticsQueryDto): Promise<AnalyticsResponse<any>> {
     return this.analyticsService.getContributorAnalytics(query);
   }
@@ -37,5 +38,21 @@ export class AnalyticsController {
   @Get('trends')
   getTrendReporting(@Query(new ValidationPipe({ transform: true })) query: AnalyticsQueryDto): Promise<AnalyticsResponse<any>> {
     return this.analyticsService.getTrendReporting(query);
+  }
+
+  @Get('monitoring')
+  getMonitoringMetrics(): Promise<AnalyticsResponse<any>> {
+    return this.analyticsService.getMonitoringMetrics();
+  }
+
+  @Get('reports/export')
+  async exportReport(
+    @Euery(new ValidationPipe({ transform: true })) query: AnalyticsQueryDto,
+    @Res() res: Response,
+  ): Promise<void> {
+    const csv = await this.analyticsService.generateCsvReport(query);
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="analytics-report-${Date.now()}.csv"`);
+    res.send(csv);
   }
 }
