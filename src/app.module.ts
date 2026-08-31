@@ -13,7 +13,6 @@ import blockchainConfig from './config/blockchain.config';
 import sybilConfig from './config/sybil.config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BlockchainModule } from './blockchain/blockchain.module';
-import { DisputeModule } from './dispute/dispute.module';
 import { IdentityModule } from './identity/identity.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
@@ -330,7 +329,6 @@ async function createThrottlerStorage(
     LoggerModule,
     AuthModule,
     BlockchainModule,
-    DisputeModule,
     IdentityModule,
     PrismaModule,
     RewardsModule,

@@ -7,7 +7,6 @@ import { EvidenceFlag } from './entities/evidence-flag.entity';
 import { Stake } from '../staking/entities/stake.entity';
 import { ClaimsService } from './claims.service';
 import { ClaimsController } from './claims.controller';
-import { ClaimResolutionService } from './claim-resolution.service';
 import { EvidenceService } from './evidence.service';
 import { CacheModule } from '../cache/cache.module';
 import { EvidenceIntegrityMiddleware } from '../common/middleware/evidence-integrity.middleware';
@@ -30,11 +29,10 @@ import { IpfsModule } from '../ipfs/ipfs.module';
   controllers: [ClaimsController, EvidenceController],
   providers: [
     ClaimsService,
-    ClaimResolutionService,
     EvidenceService,
     EvidenceFlagService,
   ],
-  exports: [ClaimResolutionService, ClaimsService, EvidenceService],
+  exports: [ClaimsService, EvidenceService],
 })
 export class ClaimsModule {
   configure(consumer: MiddlewareConsumer) {
