@@ -41,6 +41,7 @@ import { ProfilerInterceptor } from './profiler/profiler.interceptor';
 import { HealthModule } from './health/health.module';
 import { FeatureFlagsModule } from './feature-flags/feature-flags.module';
 import { RealtimeModule } from './realtime/realtime.module';
+import { StakingModule } from './staking/staking.module';
 
 // In-memory storage for development (no Redis needed)
 class ThrottlerMemoryStorage {
@@ -346,6 +347,7 @@ async function createThrottlerStorage(
     HealthModule,
     FeatureFlagsModule,
     RealtimeModule,
+    StakingModule,
   ],
   controllers: [AppController],
   providers: [
