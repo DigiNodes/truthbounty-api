@@ -6,6 +6,7 @@ import {
   Index,
   Unique,
 } from 'typeorm';
+import { DataState } from '../../common/data-state.enum';
 
 /**
  * One participant's committed position in a verification round.
@@ -50,6 +51,9 @@ export class ProjectParticipantPosition {
 
   @Column({ type: 'bigint' })
   blockNumber: string;
+
+  @Column({ type: 'varchar', length: 16, default: DataState.OBSERVED })
+  dataState: DataState;
 
   @CreateDateColumn()
   createdAt: Date;

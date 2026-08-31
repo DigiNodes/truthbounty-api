@@ -7,6 +7,7 @@ import {
   Index,
   Unique,
 } from 'typeorm';
+import { DataState } from '../../common/data-state.enum';
 
 export enum RoundType {
   FIRST = 'first',
@@ -52,6 +53,24 @@ export class ProjectVerificationRound {
 
   @Column({ type: 'bigint' })
   openedAtBlock: string;
+
+  @Column({ type: 'varchar', length: 16, default: DataState.OBSERVED })
+  dataState: DataState;
+
+  /** Aggregate weights for this round, stored verbatim from contract events */
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  totalStake: string | null;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  totalEffectiveWeight: string | null;
+
+  /** Snapshot of round state at closure, stored verbatim from contract */
+  @Column({ type: 'json', nullable: true })
+  roundSnapshot: Record<string, unknown> | null;
+
+  /** Appeal deadline if this is an appeal round */
+  @Column({ type: 'Date', nullable: true })
+  appealDeadline: Date | null;
 
   @Column({ type: 'varchar', length: 66 })
   eventTxHash: string;

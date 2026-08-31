@@ -1,4 +1,4 @@
-import { Controller, Get, Param } from '@nestjs/common';
+import { Controller, Get, Param, Query, ParseUUIDPipe } from '@nestjs/common';
 import { VerificationQueryService } from './verification-query.service';
 
 /**
@@ -11,8 +11,12 @@ export class VerificationController {
   constructor(private readonly queryService: VerificationQueryService) {}
 
   @Get('claims/:claimId/verification-rounds')
-  async listRounds(@Param('claimId') claimId: string) {
-    return this.queryService.listRounds(claimId);
+  async listRounds(
+    @Param('claimId') claimId: string,
+    @Query('limit') limit?: string,
+    @Query('cursor') cursor?: string,
+  ) {
+    return this.queryService.listRounds(claimId, limit ? parseInt(limit, 10) : 20, cursor);
   }
 
   @Get('verification-rounds/:roundId')
@@ -21,7 +25,11 @@ export class VerificationController {
   }
 
   @Get('verification-rounds/:roundId/positions')
-  async listPositions(@Param('roundId') roundId: string) {
-    return this.queryService.listPositions(roundId);
+  async listPositions(
+    @Param('roundId') roundId: string,
+    @Query('limit') limit?: string,
+    @Query('cursor') cursor?: string,
+  ) {
+    return this.queryService.listPositions(roundId, limit ? parseInt(limit, 10) : 20, cursor);
   }
 }

@@ -6,7 +6,6 @@ import { BlockchainStateService } from './state.service';
 import { ReorgDetectorService } from './reorg-detector.service';
 import { ReconciliationService } from './reconciliation.service';
 import { EventIndexingService } from './event-indexing.service';
-import { WeightedVoteResolutionService } from './weighted-vote-resolution.service';
 import { BlockchainController } from './blockchain.controller';
 import { SybilResistanceModule } from '../sybil-resistance/sybil-resistance.module';
 import { StartupValidationService } from './startup-validation.service';
@@ -32,7 +31,6 @@ import { StartupValidationService } from './startup-validation.service';
     ReorgDetectorService,
     ReconciliationService,
     EventIndexingService,
-    WeightedVoteResolutionService,
   ],
 })
 export class BlockchainModule {}

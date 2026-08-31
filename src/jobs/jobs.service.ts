@@ -158,20 +158,12 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
   @Cron('0 */1 * * *')
   async runHourlyMaintenance(): Promise<void> {
     this.logger.log('Hourly maintenance cron triggered');
-    await this.enqueue(
-      JobName.COMPUTE_SCORES,
-      {},
-      { priority: JobPriority.NORMAL },
-    );
-    await this.enqueue(
-      JobName.COMPUTE_REPUTATION,
-      {},
-      { priority: JobPriority.NORMAL },
-    );
+    // Only run cleanup jobs - compute scores/reputation removed in V2
+    // (no backend-authoritative claim finalization allowed)
     await this.enqueue(
       JobName.CLEANUP_SYBIL_HISTORY,
       {},
-      { priority: JobPriority.LOW },
+      { priority: JobPriority.NORMAL },
     );
   }
 
@@ -244,14 +236,6 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
     return results.filter((m): m is QueueMetrics => m !== null);
   }
 
-  async runComputeScores(): Promise<BatchResult> {
-    return this.computeScores();
-  }
-
-  async runComputeReputation(): Promise<BatchResult> {
-    return this.computeReputation();
-  }
-
   async cleanupSybilHistory(): Promise<number> {
     this.logger.debug('cleanupSybilHistory: starting');
     const count = await this.sybilResistanceService.cleanupScoreHistory();
@@ -259,238 +243,14 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
     return count;
   }
 
-  private async computeScores(): Promise<BatchResult> {
-    this.logger.debug('computeScores: starting');
-    const result: BatchResult = { processed: 0, updated: 0, errors: 0 };
-
-    const claims = await this.claimRepo.find({
-      where: { finalized: false },
-      take: SCORE_BATCH_SIZE,
-    });
-
-    if (claims.length === 0) {
-      this.logger.debug('computeScores: no unfinalized claims found');
-      return result;
-    }
-
-    const claimIds = claims.map((c) => c.id);
-    const allStakes = await this.stakeRepo.find({
-      where: { claimId: In(claimIds) },
-    });
-
-    const stakesByClaimId = groupBy(allStakes, (s) => s.claimId);
-
-    const walletAddresses = [...new Set(allStakes.map((s) => s.walletAddress))];
-    const wallets = walletAddresses.length
-      ? await this.walletRepo.find({ where: { address: In(walletAddresses) } })
-      : [];
-
-    const walletByAddress = indexBy(wallets, (w) => w.address);
-
-    const userIds = [...new Set(wallets.map((w) => w.userId).filter(Boolean))];
-    const users = userIds.length
-      ? await this.userRepo.find({ where: { id: In(userIds) } })
-      : [];
-
-    const userById = indexBy(users, (u) => u.id);
-
-    for (const claim of claims) {
-      result.processed++;
-      try {
-        const stakes = stakesByClaimId.get(claim.id) ?? [];
-
-        if (stakes.length === 0) {
-          this.logger.debug(
-            `Claim ${claim.id}: no stakes — marking inconclusive`,
-          );
-          claim.confidenceScore = 0;
-          await this.claimRepo.save(claim);
-          result.updated++;
-          continue;
-        }
-
-        const verifications = this.buildVerifications(
-          claim.id,
-          stakes,
-          walletByAddress,
-          userById,
-        );
-
-        const agg = this.aggregationService.aggregate(claim.id, verifications);
-        const wasFinalized = claim.finalized;
-
-        claim.confidenceScore = agg.confidence / CONFIDENCE_SCALE;
-
-        if (agg.confidence > FINALIZATION_THRESHOLD) {
-          claim.transitionTo(ClaimState.FINALIZED, {
-            verdict: agg.status === ClaimStatus.VERIFIED_TRUE,
-            confidence: claim.confidenceScore,
-          });
-        }
-
-        await this.claimRepo.save(claim);
-        await this.claimsCache.invalidateClaim(claim.id);
-        result.updated++;
-
-        this.logger.log(
-          `Claim ${claim.id}: confidence=${claim.confidenceScore.toFixed(4)}` +
-            (claim.finalized && !wasFinalized
-              ? `, finalized → verdict=${claim.resolvedVerdict}`
-              : ''),
-        );
-      } catch (err) {
-        result.errors++;
-        this.logger.error(
-          `computeScores: error on claim ${claim.id}`,
-          err instanceof Error ? err.stack : String(err),
-        );
-      }
-    }
-
-    this.logger.debug(
-      `computeScores: finished — processed=${result.processed} updated=${result.updated} errors=${result.errors}`,
-    );
-    return result;
-  }
-
-
-  private async computeReputation(): Promise<BatchResult> {
-    this.logger.debug('computeReputation: starting');
-    const result: BatchResult = { processed: 0, updated: 0, errors: 0 };
-
-    const users = await this.userRepo.find({ take: REPUTATION_BATCH_SIZE });
-    if (users.length === 0) {
-      this.logger.debug('computeReputation: no users found');
-      return result;
-    }
-
-    const userIds = users.map((u) => u.id);
-
-    const wallets = await this.walletRepo.find({
-      where: { userId: In(userIds) },
-    });
-
-    const walletsByUserId = groupBy(wallets, (w) => w.userId);
-    const allAddresses = wallets.map((w) => w.address);
-
-    if (allAddresses.length === 0) {
-      this.logger.debug('computeReputation: no wallets found for batch');
-      return result;
-    }
-
-    const allStakes = await this.stakeRepo
-      .createQueryBuilder('s')
-      .where('s.walletAddress IN (:...addrs)', { addrs: allAddresses })
-      .getMany();
-
-    const stakesByWalletAddress = groupBy(allStakes, (s) => s.walletAddress);
-
-    const stakedClaimIds = [...new Set(allStakes.map((s) => s.claimId))];
-    const finalizedClaims =
-      stakedClaimIds.length > 0
-        ? await this.claimRepo.find({
-            where: {
-              id: In(stakedClaimIds),
-              finalized: true,
-              resolvedVerdict: Not(IsNull()),
-            },
-          })
-        : [];
-
-    const claimById = indexBy(finalizedClaims, (c) => c.id);
-
-    for (const user of users) {
-      result.processed++;
-      try {
-        const userWallets = walletsByUserId.get(user.id) ?? [];
-        if (userWallets.length === 0) continue;
-
-        let claimsVotedOn = 0;
-        let claimsCorrect = 0;
-
-        for (const wallet of userWallets) {
-          const stakes = stakesByWalletAddress.get(wallet.address) ?? [];
-          for (const stake of stakes) {
-            const claim = claimById.get(stake.claimId);
-            if (!claim) continue;
-
-            claimsVotedOn++;
-            if (
-              this.deriveVotedTrue(stake) === Boolean(claim.resolvedVerdict)
-            ) {
-              claimsCorrect++;
-            }
-          }
-        }
-
-        if (claimsVotedOn === 0) continue;
-
-        const newReputation = Math.round((claimsCorrect / claimsVotedOn) * 100);
-
-        if (user.reputation !== newReputation) {
-          user.reputation = newReputation;
-          await this.userRepo.save(user);
-          result.updated++;
-          this.logger.log(
-            `User ${user.id}: reputation ${user.reputation} → ${newReputation}`,
-          );
-        }
-      } catch (err) {
-        result.errors++;
-        this.logger.error(
-          `computeReputation: error on user ${user.id}`,
-          err instanceof Error ? err.stack : String(err),
-        );
-      }
-    }
-
-    this.logger.debug(
-      `computeReputation: finished — processed=${result.processed} updated=${result.updated} errors=${result.errors}`,
-    );
-    return result;
-  }
+  // V2 Architecture: computeScores and computeReputation methods removed
+  // These methods previously contained backend-authoritative logic that
+  // automatically finalized claims based on backend calculations.
+  // In V2, all claim state transitions must come from on-chain events
+  // projected by the V2 projectors, not from backend calculations.
 
   private getQueue(name: QueueName): Queue | undefined {
     return this.queues.get(name);
-  }
-
-  private buildVerifications(
-    claimId: string,
-    stakes: Stake[],
-    walletByAddress: Map<string, Wallet>,
-    userById: Map<string, User>,
-  ): AggregationVerification[] {
-    return stakes.map((stake) => {
-      const wallet = walletByAddress.get(stake.walletAddress);
-      const user = wallet ? userById.get(wallet.userId) : null;
-
-      const rawAmount = (stake as unknown as { amount?: string | number })
-        .amount;
-      const stakeAmount =
-        typeof rawAmount === 'string'
-          ? parseFloat(rawAmount)
-          : Number(rawAmount ?? 0);
-
-      const reputationWeight = user
-        ? Math.max(0, Math.min(1, (user.reputation ?? 0) / 100))
-        : 0;
-
-      return {
-        id: stake.id,
-        claimId,
-        userId: user?.id ?? '',
-        verdict: VerificationVerdict.TRUE,
-        stakeAmount,
-        reputationWeight,
-        createdAt:
-          (stake as unknown as { updatedAt?: Date }).updatedAt ?? new Date(),
-      };
-    });
-  }
-
-  private deriveVotedTrue(_stake: Stake): boolean {
-    void _stake;
-    return true;
   }
 }
 
