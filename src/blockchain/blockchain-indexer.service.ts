@@ -1,10 +1,19 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, EntityManager, MoreThanOrEqual } from 'typeorm';
+import {
+  Repository,
+  DataSource,
+  EntityManager,
+  MoreThanOrEqual,
+} from 'typeorm';
 import { ProcessedEvent } from './entities/processed-event.entity';
 import { TokenBalance } from './entities/token-balance.entity';
 import { IndexerCheckpoint } from './entities/indexer-checkpoint.entity';
-import { BlockchainEvent, TransferEventData } from './interfaces/blockchain-event.interface';
+import {
+  BlockchainEvent,
+  TransferEventData,
+} from './interfaces/blockchain-event.interface';
+import { BlockchainStateService } from './state.service';
 import { SequentialQueue } from './utils/sequential-queue';
 
 @Injectable()
@@ -27,6 +36,7 @@ export class BlockchainIndexerService {
     @InjectRepository(IndexerCheckpoint)
     private checkpointRepo: Repository<IndexerCheckpoint>,
     private dataSource: DataSource,
+    private stateService: BlockchainStateService,
   ) {}
 
   /**
@@ -70,7 +80,10 @@ export class BlockchainIndexerService {
 
       // Apply the state mutation for this event type.
       if (eventType === 'Transfer') {
-        await this.applyTransfer(queryRunner.manager, data as TransferEventData);
+        await this.applyTransfer(
+          queryRunner.manager,
+          data as TransferEventData,
+        );
       }
 
       // Advance the checkpoint inside the SAME transaction so the event, the
@@ -82,7 +95,10 @@ export class BlockchainIndexerService {
       this.logger.log(`Processed event: ${eventType} at block ${blockNumber}`);
     } catch (error) {
       await queryRunner.rollbackTransaction();
-      this.logger.error(`Failed to process event: ${error.message}`, error.stack);
+      this.logger.error(
+        `Failed to process event: ${error.message}`,
+        error.stack,
+      );
       throw error;
     } finally {
       await queryRunner.release();
@@ -141,30 +157,65 @@ export class BlockchainIndexerService {
       this.logger.log(
         `Rolled back ${orphaned.length} event(s); checkpoint rewound to block ${rewoundTo}`,
       );
+      await this.stateService.recordReplay(orphaned.length);
     } catch (error) {
       await queryRunner.rollbackTransaction();
-      this.logger.error(`Failed to roll back from block ${startBlock}: ${error.message}`, error.stack);
+      this.logger.error(
+        `Failed to roll back from block ${startBlock}: ${error.message}`,
+        error.stack,
+      );
       throw error;
     } finally {
       await queryRunner.release();
     }
   }
 
-  private async applyTransfer(manager: EntityManager, data: TransferEventData): Promise<void> {
+  private async applyTransfer(
+    manager: EntityManager,
+    data: TransferEventData,
+  ): Promise<void> {
     const { from, to, amount, token } = data;
-    await manager.decrement(TokenBalance, { address: from, tokenAddress: token }, 'balance', amount);
-    await manager.increment(TokenBalance, { address: to, tokenAddress: token }, 'balance', amount);
+    await manager.decrement(
+      TokenBalance,
+      { address: from, tokenAddress: token },
+      'balance',
+      amount,
+    );
+    await manager.increment(
+      TokenBalance,
+      { address: to, tokenAddress: token },
+      'balance',
+      amount,
+    );
   }
 
   /** Inverse of {@link applyTransfer}, used when unwinding an orphaned block. */
-  private async reverseTransfer(manager: EntityManager, data: TransferEventData): Promise<void> {
+  private async reverseTransfer(
+    manager: EntityManager,
+    data: TransferEventData,
+  ): Promise<void> {
     const { from, to, amount, token } = data;
-    await manager.increment(TokenBalance, { address: from, tokenAddress: token }, 'balance', amount);
-    await manager.decrement(TokenBalance, { address: to, tokenAddress: token }, 'balance', amount);
+    await manager.increment(
+      TokenBalance,
+      { address: from, tokenAddress: token },
+      'balance',
+      amount,
+    );
+    await manager.decrement(
+      TokenBalance,
+      { address: to, tokenAddress: token },
+      'balance',
+      amount,
+    );
   }
 
-  private async saveCheckpoint(manager: EntityManager, blockNumber: number): Promise<void> {
-    const checkpoint = await manager.findOne(IndexerCheckpoint, { where: { id: 1 } });
+  private async saveCheckpoint(
+    manager: EntityManager,
+    blockNumber: number,
+  ): Promise<void> {
+    const checkpoint = await manager.findOne(IndexerCheckpoint, {
+      where: { id: 1 },
+    });
     const currentLastBlock = checkpoint ? checkpoint.lastBlock : 0;
     const nextLastBlock = Math.max(currentLastBlock || 0, blockNumber);
 
@@ -173,6 +224,9 @@ export class BlockchainIndexerService {
       lastBlock: nextLastBlock,
       updatedAt: new Date(),
     });
+
+    // Advance the projection head so lag/finality metrics stay current.
+    await this.stateService.setProjectionHead(nextLastBlock);
   }
 
   async getLastProcessedBlock(): Promise<number | null> {

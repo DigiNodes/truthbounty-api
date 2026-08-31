@@ -301,7 +301,10 @@ describe('BlockchainStateService', () => {
 
     describe('correctness under normal load', () => {
       it('should not evict blocks when under the limit', async () => {
-        await service.updateChainState({ lastProcessedBlock: 10, confirmedDepth: 12 });
+        await service.updateChainState({
+          lastProcessedBlock: 10,
+          confirmedDepth: 12,
+        });
 
         for (let i = 1; i <= 3; i++) {
           await service.saveBlock(makeBlock(i));
@@ -323,7 +326,10 @@ describe('BlockchainStateService', () => {
       });
 
       it('should preserve canonical queries after eviction', async () => {
-        await service.updateChainState({ lastProcessedBlock: 50, confirmedDepth: 12 });
+        await service.updateChainState({
+          lastProcessedBlock: 50,
+          confirmedDepth: 12,
+        });
 
         for (let i = 45; i <= 50; i++) {
           await service.saveBlock(makeBlock(i));
@@ -449,6 +455,124 @@ describe('BlockchainStateService', () => {
       }
 
       await svc.clearAllState();
+    });
+  });
+
+  describe('indexer health metrics', () => {
+    beforeEach(async () => {
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [BlockchainStateService],
+      }).compile();
+
+      service = module.get<BlockchainStateService>(BlockchainStateService);
+      await service.clearAllState();
+    });
+
+    afterEach(async () => {
+      await service.clearAllState();
+    });
+
+    it('should track observed head, safe and finalized cursors', async () => {
+      await service.setObservedHead(100);
+      await service.setSafeBlock(88);
+      await service.setFinalizedBlock(80);
+
+      const state = await service.getChainState();
+      expect(state.observedHeadBlock).toBe(100);
+      expect(state.safeBlock).toBe(88);
+      expect(state.finalizedBlock).toBe(80);
+    });
+
+    it('should compute projection lag from observed head minus finalized cursor', async () => {
+      await service.setObservedHead(100);
+      await service.setFinalizedBlock(80);
+
+      expect(service.getProjectionLag()).toBe(20);
+    });
+
+    it('should not return negative projection lag', async () => {
+      await service.setObservedHead(10);
+      await service.setFinalizedBlock(50);
+
+      expect(service.getProjectionLag()).toBe(0);
+    });
+
+    it('should track monotonic replay and dead-letter counters', async () => {
+      await service.recordReplay(3);
+      await service.recordReplay();
+      await service.recordDeadLetter(2);
+
+      const state = await service.getChainState();
+      expect(state.replayCount).toBe(4);
+      expect(state.deadLetterCount).toBe(2);
+    });
+
+    it('should track RPC failures and a monotonic total', async () => {
+      await service.recordRpcFailure(new Error('timeout'));
+      await service.recordRpcFailure('429 too many requests');
+
+      const state = await service.getChainState();
+      expect(state.rpcFailureCount).toBe(2);
+      expect(state.rpcFailureCount).toBe(2);
+      expect(state.lastRpcErrorAt).toBeTruthy();
+      expect(service.getRpcFailuresInWindow()).toBeGreaterThanOrEqual(2);
+    });
+
+    it('should report healthy when behind thresholds', async () => {
+      await service.setObservedHead(100);
+      await service.setFinalizedBlock(95);
+
+      const health = await service.getIndexerHealth();
+      expect(health.status).toBe('healthy');
+      expect(health.projectionLag).toBe(5);
+      expect(health.alertThresholds.projectionLagBlocks).toBe(150);
+      expect(health.runbookUrl).toBeTruthy();
+    });
+
+    it('should report degraded when projection lag exceeds threshold', async () => {
+      await service.setObservedHead(500);
+      await service.setFinalizedBlock(200);
+
+      const health = await service.getIndexerHealth();
+      expect(health.status).toBe('degraded');
+      expect(health.projectionLag).toBeGreaterThan(
+        health.alertThresholds.projectionLagBlocks,
+      );
+    });
+
+    it('should report degraded when dead letters exceed threshold', async () => {
+      await service.setObservedHead(100);
+      await service.setFinalizedBlock(95);
+      await service.recordDeadLetter(200);
+
+      const health = await service.getIndexerHealth();
+      expect(health.status).toBe('degraded');
+    });
+
+    it('should not leak credentials or live RPC endpoints in the snapshot', async () => {
+      await service.setObservedHead(100);
+      await service.setFinalizedBlock(95);
+      await service.recordRpcFailure(new Error('timeout'));
+
+      const health = await service.getIndexerHealth();
+      const serialized = JSON.stringify(health);
+      // The runbook link is a sanitized public docs URL and is expected; ensure
+      // we never surface credentials, secrets, or the live RPC provider URL.
+      expect(serialized).not.toContain('password');
+      expect(serialized).not.toContain('secret');
+      expect(serialized).not.toContain('apiKey');
+      expect(serialized).not.toContain('rpcUrl');
+      expect(serialized).not.toContain('mainnet.optimism.io');
+    });
+
+    it('should clear health counters on reset', async () => {
+      await service.setObservedHead(100);
+      await service.recordRpcFailure(new Error('x'));
+
+      await service.clearAllState();
+      const health = await service.getIndexerHealth();
+      expect(health.rpcFailureCount).toBe(0);
+      expect(health.observedHeadBlock).toBe(0);
     });
   });
 });
