@@ -215,17 +215,30 @@ export class ClaimsCache {
      * Should be called on update/delete
      */
     async invalidateClaim(id: string, userWallet?: string): Promise<void> {
-        const promises = [
-            this.redisService.del(this.getClaimKey(id)),
-            this.redisService.del(this.getLatestClaimsKey()),
+        const keysToDelete = [
+            this.getClaimKey(id),
+            this.getLatestClaimsKey(),
         ];
 
         if (userWallet) {
-            promises.push(this.redisService.del(this.getUserClaimsKey(userWallet)));
+            keysToDelete.push(this.getUserClaimsKey(userWallet));
+        }
+
+        // Delete the keys from Redis
+        const promises = keysToDelete.map(key => this.redisService.del(key));
+        
+        // Also remove them from our tracking index
+        const client = this.redisService.getClient();
+        if (client) {
+            try {
+                await client.srem(this.indexKey, ...keysToDelete);
+            } catch (e) {
+                this.logger.warn(`Failed to remove keys from index: ${(e as Error).message}`);
+            }
         }
 
         await Promise.all(promises);
-        this.logger.debug(`Invalidated cache for claim:${id} and related lists`);
+        this.logger.debug(`Invalidated cache for claim:${id} and related lists, deleted ${keysToDelete.length} keys`);
     }
 
     /**
