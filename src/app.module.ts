@@ -12,6 +12,7 @@ import { RewardsModule } from './rewards/rewards.module';
 import blockchainConfig from './config/blockchain.config';
 import sybilConfig from './config/sybil.config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { DatabaseModule } from './database/database.module';
 import { BlockchainModule } from './blockchain/blockchain.module';
 import { IdentityModule } from './identity/identity.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -266,38 +267,14 @@ async function createThrottlerStorage(
       envFilePath: ['.env.local', '.env'],
     }),
     ScheduleModule.forRoot(),
-    TypeOrmModule.forRootAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (configService: ConfigService) => ({
-        type: 'postgres',
-        host: configService.get<string>('DB_HOST', 'localhost'),
-        port: configService.get<number>('DB_PORT', 5432),
-        username: configService.get<string>('DB_USERNAME', 'postgres'),
-        password: configService.get<string>('DB_PASSWORD', 'postgres'),
-        database: configService.get<string>('DB_NAME', 'truthbounty'),
-        entities: [__dirname + '/**/*.entity{.ts,.js}'],
-        // Migrations are the source of truth. Never auto-sync schema.
-        synchronize: false,
-        logging: configService.get<string>('DATABASE_LOGGING') === 'true',
-        // Connection pooling for high-concurrency production workloads
-        extra: {
-          max: configService.get<number>('DB_POOL_MAX', 20),
-          idleTimeoutMillis: configService.get<number>('DB_POOL_IDLE_TIMEOUT', 30000),
-          connectionTimeoutMillis: configService.get<number>('DB_POOL_ACQUIRE_TIMEOUT', 10000),
-          maxRetries: configService.get<number>('DB_POOL_RETRIES', 3),
-          retryDelay: configService.get<number>('DB_POOL_RETRY_DELAY', 1000),
-        },
-        // SSL support for production
-        ssl:
-          configService.get<string>('DATABASE_SSL') === 'true'
-            ? {
-                rejectUnauthorized:
-                  configService.get<string>('DATABASE_SSL_REJECT_UNAUTHORIZED') !== 'false',
-              }
-            : false,
-      }),
-    }),
+    // PostgreSQL Database Infrastructure (Issue #269)
+    // DatabaseModule provides:
+    // - PostgreSQL connectivity with connection pooling
+    // - Transaction management via TransactionRunner
+    // - Health reporting via DatabaseService
+    // - Repository base class for all domain repositories
+    // Falls back to SQLite when DATABASE_URL is not set (development).
+    DatabaseModule,
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
