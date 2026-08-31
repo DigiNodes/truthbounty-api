@@ -140,6 +140,22 @@ model Message {
   @@index([conversationId])
 }
 
+model ContextDocument {
+  id        String   @id @default(uuid())
+  title     String
+  category  String
+  content   String
+  tags      String   // Stored as JSON string
+  sourceUrl String?
+  isActive  Boolean  @default(true)
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([category])
+  @@index([isActive])
+}
+
 model AiUsageMetric {
   id              String   @id @default(uuid())
   userId          String?

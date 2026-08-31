@@ -2,7 +2,7 @@ import { Logger } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { ethers, EventLog } from 'ethers';
 import { IndexedEvent, IndexingState } from '../entities';
-import { EventIndexerConfig } from '../config';
+import { EventIndexerConfig, EventConfig } from '../config';
 import { serializeBigInts } from '../common/utils/bigint-serialization.util';
 import { withRpcBackoff } from '../blockchain/utils/rpc-backoff.util';
 
@@ -104,10 +104,13 @@ export class EventIndexerService {
    */
   private async indexContract(contractAddress: string, currentBlockNumber: number): Promise<void> {
     try {
-      for (const eventConfig of this.config.contracts.find(
+      const contract = this.config.contracts.find(
         (c) => c.address.toLowerCase() === contractAddress.toLowerCase(),
-      )?.events || []) {
-        await this.indexEventType(contractAddress, eventConfig, currentBlockNumber);
+      );
+      if (contract) {
+        for (const eventConfig of contract.events) {
+          await this.indexEventType(contractAddress, eventConfig, currentBlockNumber);
+        }
       }
     } catch (error) {
       this.logger.error(`Failed to index contract ${contractAddress}:`, error);
@@ -119,7 +122,7 @@ export class EventIndexerService {
    */
   private async indexEventType(
     contractAddress: string,
-    eventConfig: any,
+    eventConfig: EventConfig,
     currentBlockNumber: number,
   ): Promise<void> {
     const state = await this.stateRepository.findOne({
@@ -225,7 +228,7 @@ export class EventIndexerService {
    */
   private async processEvent(
     contractAddress: string,
-    eventConfig: any,
+    eventConfig: EventConfig,
     log: EventLog,
     blockNumber: number,
   ): Promise<void> {

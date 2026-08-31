@@ -1,8 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { AiAssistantService } from './ai-assistant.service';
-import { PrismaService } from '../prisma/prisma.service';
+import { PrismaService } from '../../prisma/prisma.service';
 import { LlmProviderService } from './llm-provider.service';
 import { RagService } from './rag.service';
+import { SafetyGuardrailService } from './safety-guardrail.service';
 
 describe('AiAssistantService', () => {
   let service: AiAssistantService;
@@ -36,7 +37,11 @@ describe('AiAssistantService', () => {
     };
 
     const mockRagService = {
-      retrieveContext: jest.fn().mockResolvedValue('mock context'),
+      retrieveContext: jest.fn().mockResolvedValue({ context: 'mock context', citations: [] }),
+    };
+
+    const mockSafetyGuardrail = {
+      checkContent: jest.fn().mockReturnValue({ flagged: false }),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -45,6 +50,7 @@ describe('AiAssistantService', () => {
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: LlmProviderService, useValue: mockLlmProvider },
         { provide: RagService, useValue: mockRagService },
+        { provide: SafetyGuardrailService, useValue: mockSafetyGuardrail },
       ],
     }).compile();
 
