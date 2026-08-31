@@ -17,6 +17,7 @@ import { ClaimLifecycleEvent } from './entities/claim-lifecycle-event.entity';
 import { ClaimReadModel } from './entities/claim-read-model.entity';
 import { ClaimProjectorService } from './claim-projector.service';
 import { ClaimLifecycleController } from './claim-lifecycle.controller';
+import { IpfsModule } from '../ipfs/ipfs.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { ClaimLifecycleController } from './claim-lifecycle.controller';
       ClaimReadModel,
     ]),
     CacheModule,
+    IpfsModule,
   ],
   controllers: [ClaimsController, EvidenceController, ClaimLifecycleController],
   providers: [
@@ -45,6 +47,8 @@ import { ClaimLifecycleController } from './claim-lifecycle.controller';
     EvidenceService,
     ClaimProjectorService,
   ],
+  ],
+  exports: [ClaimResolutionService, ClaimsService, EvidenceService],
 })
 export class ClaimsModule {
   configure(consumer: MiddlewareConsumer) {

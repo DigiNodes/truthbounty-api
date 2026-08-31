@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository, DataSource, MoreThanOrEqual } from 'typeorm';
 import { BlockchainIndexerService } from './blockchain-indexer.service';
+import { BlockchainStateService } from './state.service';
 import { ProcessedEvent } from './entities/processed-event.entity';
 import { TokenBalance } from './entities/token-balance.entity';
 import { IndexerCheckpoint } from './entities/indexer-checkpoint.entity';
@@ -42,8 +43,23 @@ describe('BlockchainIndexerService - Replay Regression Tests', () => {
         BlockchainIndexerService,
         { provide: getRepositoryToken(ProcessedEvent), useClass: Repository },
         { provide: getRepositoryToken(TokenBalance), useClass: Repository },
-        { provide: getRepositoryToken(IndexerCheckpoint), useClass: Repository },
-        { provide: DataSource, useValue: { createQueryRunner: jest.fn().mockReturnValue(queryRunner) } },
+        {
+          provide: getRepositoryToken(IndexerCheckpoint),
+          useClass: Repository,
+        },
+        {
+          provide: DataSource,
+          useValue: {
+            createQueryRunner: jest.fn().mockReturnValue(queryRunner),
+          },
+        },
+        {
+          provide: BlockchainStateService,
+          useValue: {
+            setProjectionHead: jest.fn(),
+            recordReplay: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
