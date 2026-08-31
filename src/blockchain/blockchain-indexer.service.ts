@@ -5,6 +5,7 @@ import { ProcessedEvent } from './entities/processed-event.entity';
 import { TokenBalance } from './entities/token-balance.entity';
 import { IndexerCheckpoint } from './entities/indexer-checkpoint.entity';
 import { BlockchainEvent, TransferEventData } from './interfaces/blockchain-event.interface';
+import { ClaimsCache } from '../cache/claims.cache';
 import { SequentialQueue } from './utils/sequential-queue';
 
 @Injectable()
