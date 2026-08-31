@@ -17,7 +17,7 @@
  * common across event types) carry the same flagged assumption:
  * VerificationRoundOpened.{roundType, roundNumber, deadline},
  * PositionCommitted.{stake, reputationInput, effectiveWeight, verdict},
- * DisputeRaised.{deadline}, DisputeResolved.{outcome}. See
+ * DisputeRaised.{deadline, appealRoundId}, DisputeResolved.{outcome}. See
  * verification-projector.service.ts and disputes-projector.service.ts.
  */
 export interface EventFieldMapping {

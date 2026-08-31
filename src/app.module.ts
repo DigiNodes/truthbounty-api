@@ -39,6 +39,7 @@ import { AdminModule } from './admin/admin.module';
 import { V2EventsModule } from './v2/events/v2-events.module';
 import { V2EvidenceModule } from './v2/evidence/v2-evidence.module';
 import { V2VerificationModule } from './v2/verification/v2-verification.module';
+import { V2DisputesModule } from './v2/disputes/v2-disputes.module';
 import { ProfilerModule } from './profiler/profiler.module';
 import { ProfilerInterceptor } from './profiler/profiler.interceptor';
 import { HealthModule } from './health/health.module';
@@ -348,6 +349,7 @@ async function createThrottlerStorage(
     V2EventsModule,
     V2EvidenceModule,
     V2VerificationModule,
+    V2DisputesModule,
     ProfilerModule,
     HealthModule,
     FeatureFlagsModule,
