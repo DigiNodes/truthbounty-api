@@ -33,8 +33,9 @@ export class ClaimFactory {
       content: dto.content,
       source: dto.source,
       metadata: dto.metadata,
-      resolvedVerdict: Math.random() > 0.5,
-      confidenceScore: Math.random() * 0.9 + 0.1,
+      resolvedVerdict: null,
+      resolvedAt: null,
+      confidenceScore: null,
       finalized: false,
       createdAt: new Date(),
       resolvedAt: null,
@@ -57,11 +58,13 @@ export class ClaimFactory {
   }
 
   /**
-   * Create a claim with specific verdict and confidence for testing edge cases
+   * Create a claim with specific verdict and confidence for testing edge cases.
+   * Sets resolvedAt atomically with resolvedVerdict (invariant BE-219).
    */
   static createClaimWithVerdict(verdict: boolean, confidence: number): Claim {
     return ClaimFactory.createClaim({
       resolvedVerdict: verdict,
+      resolvedAt: new Date(),
       confidenceScore: confidence,
       finalized: true,
     });
