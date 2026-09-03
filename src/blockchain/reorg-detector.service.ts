@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { BlockchainStateService } from './state.service';
+import { ClaimsCache } from '../cache/claims.cache';
 import { BlockInfo, ReorgEvent, PendingEvent } from './types';
 
 /**
@@ -19,6 +20,7 @@ export class ReorgDetectorService {
   constructor(
     private stateService: BlockchainStateService,
     private configService: ConfigService,
+    private claimsCache: ClaimsCache,
   ) {
     this.confirmationDepth = this.configService.get<number>(
       'BLOCKCHAIN_CONFIRMATION_DEPTH',
@@ -81,6 +83,10 @@ export class ReorgDetectorService {
         `Affected blocks: ${affectedBlockStart}-${affectedBlockEnd}. ` +
         `Orphaned events: ${orphanedEventIds.length}`,
     );
+
+    // Invalidate all cached claims since blockchain state has changed
+    // This maintains the invariant that smart contracts are always the source of truth
+    await this.claimsCache.invalidateBlockRange(affectedBlockStart, affectedBlockEnd);
 
     return reorg;
   }

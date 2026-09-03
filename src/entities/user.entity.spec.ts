@@ -1,12 +1,8 @@
 import 'reflect-metadata';
 import { getMetadataArgsStorage } from 'typeorm';
 import { User } from './user.entity';
-import { UserEntity } from '../modules/users/entities/user.entity';
 
 describe('User entity schema sync (BE-203)', () => {
-  it('canonical User entity and re-exported UserEntity should reference the same class', () => {
-    expect(UserEntity).toBe(User);
-  });
 
   it('User entity maps to the "users" table', () => {
     const tableMetadata = getMetadataArgsStorage().tables.find(

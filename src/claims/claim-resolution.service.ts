@@ -136,6 +136,7 @@ export class ClaimResolutionService {
     const savedClaim = await this.dataSource.transaction(async (manager) => {
       if (confidence) {
         // Use transitionTo helper for validated state transition
+        // transitionTo also sets resolvedAt on first resolution
         claim.transitionTo(ClaimState.FINALIZED, {
           verdict: confidence.verdict === 'true',
           confidence: confidence.score,
@@ -146,9 +147,16 @@ export class ClaimResolutionService {
         claim.resolvedVerdict = null;
         claim.confidenceScore = null;
         claim.finalized = true;
+        // Set resolvedAt for the inconclusive path (only if not already set)
+        if (!claim.resolvedAt) {
+          claim.resolvedAt = resolvedAt;
+        }
       }
 
-      claim.resolvedAt = resolvedAt;
+      // Ensure resolvedAt is always set on any resolved/finalized claim
+      if (!claim.resolvedAt) {
+        claim.resolvedAt = resolvedAt;
+      }
 
       return manager.save(claim);
     });

@@ -3,14 +3,14 @@ import { THROTTLE_TYPE_KEY } from '../guards/wallet-throttler.guard';
 
 /**
  * Decorator to specify the rate limit type for an endpoint.
- * Types: 'claims', 'votes', 'disputes'
+ * Types: 'claims', 'votes', 'disputes', 'auth', 'ai', 'aiStream'
  *
  * @example
  * @ThrottleByWallet('claims')
  * @Post('claims')
  * createClaim() { ... }
  */
-export type ThrottleType = 'claims' | 'votes' | 'disputes' | 'auth';
+export type ThrottleType = 'claims' | 'votes' | 'disputes' | 'auth' | 'ai' | 'aiStream';
 
 export const ThrottleByWallet = (type: ThrottleType) =>
     SetMetadata(THROTTLE_TYPE_KEY, type);

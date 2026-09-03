@@ -54,8 +54,9 @@ export function configureApp(app: INestApplication) {
     .addTag('indexer', 'Event indexer management')
     .addTag('rewards', 'Reward management')
     .addTag('leaderboard', 'User leaderboard rankings')
-    .addTag('audit', 'Audit log retrieval')
+    .addTag('audit', 'Audit logging, search, compliance reporting, and retention management')
     .addTag('health', 'Health check endpoints')
+    .addTag('ai-assistant', 'AI assistant conversations, knowledge-base retrieval, and usage analytics')
     .build();
 
   const document = SwaggerModule.createDocument(app, config);

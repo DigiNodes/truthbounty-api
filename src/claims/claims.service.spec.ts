@@ -283,7 +283,7 @@ describe('ClaimsService', () => {
 
   describe('resolveClaim', () => {
     it('should resolve a claim with verdict and confidence score', async () => {
-      const claim = ClaimFactory.createClaim({ resolvedVerdict: null, resolvedAt: null, confidenceScore: null });
+      const claim = ClaimFactory.createClaim({ resolvedVerdict: null, confidenceScore: null, resolvedAt: null });
       const verdict = true;
       const confidenceScore = 0.85;
       const resolvedAt = new Date();
@@ -347,7 +347,7 @@ describe('ClaimsService', () => {
     });
 
     it('should invalidate claims:latest cache when resolving a claim', async () => {
-      const claim = ClaimFactory.createClaim({ resolvedVerdict: null, resolvedAt: null, confidenceScore: null });
+      const claim = ClaimFactory.createClaim({ resolvedVerdict: null, confidenceScore: null, resolvedAt: null });
       const verdict = false;
       const confidenceScore = 0.65;
 
@@ -368,7 +368,7 @@ describe('ClaimsService', () => {
     });
 
     it('should log audit trail when resolving a claim', async () => {
-      const claim = ClaimFactory.createClaim({ resolvedVerdict: null, resolvedAt: null, confidenceScore: null });
+      const claim = ClaimFactory.createClaim({ resolvedVerdict: null, confidenceScore: null, resolvedAt: null });
       const verdict = true;
       const confidenceScore = 0.75;
       const userId = 'user-123';
@@ -383,24 +383,64 @@ describe('ClaimsService', () => {
       expect(auditTrailService.log).toHaveBeenCalled();
     });
 
-    it('idempotency: resolving an already-resolved claim overwrites resolvedAt with the new timestamp', async () => {
-      // Policy: re-resolving is allowed (no error); resolvedAt is updated to the new call time.
-      // This matches the current codebase behaviour where no duplicate-resolve guard exists.
-      const previousDate = new Date('2026-01-01T00:00:00Z');
-      const claim = ClaimFactory.createClaim({ resolvedVerdict: true, resolvedAt: previousDate, confidenceScore: 0.8 });
+    // ─── BE-219: resolvedAt invariants ────────────────────────────────────
+    it('should set resolvedAt on the claim entity before saving (BE-219)', async () => {
+      const claim = ClaimFactory.createClaim({ resolvedVerdict: null, confidenceScore: null, resolvedAt: null });
+      const before = new Date();
 
       jest.spyOn(service, 'findOne').mockResolvedValue(claim);
-      jest.spyOn(claimRepo, 'save').mockImplementation(async (c: any) => c);
+      // Capture the argument passed to save so we can inspect resolvedAt
+      const saveSpy = jest.spyOn(claimRepo, 'save').mockImplementation(async (entity: any) => entity);
       jest.spyOn(claimsCache, 'invalidateClaim').mockResolvedValue(undefined);
       jest.spyOn(auditTrailService, 'log').mockResolvedValue(undefined);
 
-      const result = await service.resolveClaim(claim.id, false, 0.9);
+      await service.resolveClaim(claim.id, true, 0.85);
+      const after = new Date();
 
-      // resolvedAt should be a new, more recent timestamp
-      expect(result.resolvedAt).not.toBeNull();
-      expect((result.resolvedAt as Date).getTime()).toBeGreaterThanOrEqual(previousDate.getTime());
-      // resolvedVerdict is updated to the new value
-      expect(result.resolvedVerdict).toBe(false);
+      const savedEntity = saveSpy.mock.calls[0][0] as any;
+      expect(savedEntity.resolvedAt).toBeInstanceOf(Date);
+      expect(savedEntity.resolvedAt.getTime()).toBeGreaterThanOrEqual(before.getTime());
+      expect(savedEntity.resolvedAt.getTime()).toBeLessThanOrEqual(after.getTime());
+    });
+
+    it('should not overwrite resolvedAt if claim was already resolved (BE-219)', async () => {
+      const existingResolvedAt = new Date('2024-01-01T00:00:00Z');
+      const claim = ClaimFactory.createClaim({
+        resolvedVerdict: true,
+        confidenceScore: 0.80,
+        resolvedAt: existingResolvedAt,
+      });
+
+      jest.spyOn(service, 'findOne').mockResolvedValue(claim);
+      const saveSpy = jest.spyOn(claimRepo, 'save').mockImplementation(async (entity: any) => entity);
+      jest.spyOn(claimsCache, 'invalidateClaim').mockResolvedValue(undefined);
+      jest.spyOn(auditTrailService, 'log').mockResolvedValue(undefined);
+
+      await service.resolveClaim(claim.id, false, 0.90);
+
+      const savedEntity = saveSpy.mock.calls[0][0] as any;
+      // The original resolvedAt must not be overwritten
+      expect(savedEntity.resolvedAt).toEqual(existingResolvedAt);
+    });
+
+    it('new claim has resolvedAt === null before any resolution (BE-219)', async () => {
+      const createClaimDto = ClaimFactory.createCreateClaimDto();
+      const savedClaim = ClaimFactory.createClaim({
+        ...createClaimDto,
+        resolvedVerdict: null,
+        confidenceScore: null,
+        finalized: false,
+        resolvedAt: null,
+      });
+
+      jest.spyOn(claimRepo, 'create').mockReturnValue(savedClaim);
+      jest.spyOn(claimRepo, 'save').mockResolvedValue(savedClaim);
+      jest.spyOn(claimsCache, 'setClaim').mockResolvedValue(undefined);
+      jest.spyOn(redisService, 'del').mockResolvedValue(true);
+
+      const result = await service.createClaim(createClaimDto);
+
+      expect(result.resolvedAt).toBeNull();
     });
   });
 
@@ -452,6 +492,53 @@ describe('ClaimsService', () => {
       await service.finalizeClaim(claim.id, userId);
 
       expect(auditTrailService.log).toHaveBeenCalled();
+    });
+
+    // ─── BE-219: resolvedAt invariants on finalizeClaim ───────────────────
+    it('should preserve existing resolvedAt when finalizing an already-resolved claim (BE-219)', async () => {
+      const existingResolvedAt = new Date('2024-06-15T12:00:00Z');
+      const claim = ClaimFactory.createClaim({
+        resolvedVerdict: true,
+        confidenceScore: 0.80,
+        finalized: false,
+        resolvedAt: existingResolvedAt,
+      });
+
+      jest.spyOn(service, 'findOne').mockResolvedValue(claim);
+      const saveSpy = jest.spyOn(claimRepo, 'save').mockImplementation(async (entity: any) => entity);
+      jest.spyOn(claimsCache, 'invalidateClaim').mockResolvedValue(undefined);
+      jest.spyOn(auditTrailService, 'log').mockResolvedValue(undefined);
+
+      await service.finalizeClaim(claim.id);
+
+      const savedEntity = saveSpy.mock.calls[0][0] as any;
+      // resolvedAt was already set when the claim was resolved; it must not change
+      expect(savedEntity.resolvedAt).toEqual(existingResolvedAt);
+      expect(savedEntity.finalized).toBe(true);
+    });
+
+    it('should set resolvedAt when directly finalizing a pending claim (PENDING → FINALIZED) (BE-219)', async () => {
+      const claim = ClaimFactory.createClaim({
+        resolvedVerdict: null,
+        confidenceScore: null,
+        finalized: false,
+        resolvedAt: null,
+      });
+      const before = new Date();
+
+      jest.spyOn(service, 'findOne').mockResolvedValue(claim);
+      const saveSpy = jest.spyOn(claimRepo, 'save').mockImplementation(async (entity: any) => entity);
+      jest.spyOn(claimsCache, 'invalidateClaim').mockResolvedValue(undefined);
+      jest.spyOn(auditTrailService, 'log').mockResolvedValue(undefined);
+
+      // finalizeClaim calls transitionTo(FINALIZED) — without data, which throws for PENDING state
+      // This tests the guard: a PENDING → FINALIZED transition requires verdict + confidence
+      await expect(service.finalizeClaim(claim.id)).rejects.toThrow(
+        'PENDING → FINALIZED requires both verdict and confidence data',
+      );
+
+      // save must NOT have been called since the transition failed
+      expect(saveSpy).not.toHaveBeenCalled();
     });
   });
 });

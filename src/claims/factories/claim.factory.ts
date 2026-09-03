@@ -38,6 +38,7 @@ export class ClaimFactory {
       confidenceScore: null,
       finalized: false,
       createdAt: new Date(),
+      resolvedAt: null,
       evidences: [],
       ...overrides,
     } as Claim;

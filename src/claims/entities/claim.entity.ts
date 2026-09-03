@@ -23,6 +23,8 @@ export interface ClaimTransitionData {
 @Index(['confidenceScore'])
 @Index(['resolvedVerdict'])
 @Index(['resolvedAt'])
+@Index(['effectiveAt'])
+@Index(['effectiveAt', 'id'])
 export class Claim {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -65,6 +67,12 @@ export class Claim {
 
   @Column({ type: 'timestamp', nullable: true })
   resolvedAt: Date | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  deadline: Date | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  effectiveAt: Date | null;
 
   @OneToMany(() => Evidence, (evidence) => evidence.claim, { cascade: true })
   evidences: Evidence[];
@@ -128,6 +136,10 @@ export class Claim {
           this.resolvedVerdict = data.verdict;
           this.confidenceScore = data.confidence;
           this.finalized = false;
+          // Set resolvedAt exactly once on first resolution
+          if (this.resolvedAt === null || this.resolvedAt === undefined) {
+            this.resolvedAt = new Date();
+          }
         } else if (currentState === ClaimState.RESOLVED) {
           // RESOLVED → RESOLVED: allow updating verdict/confidence
           if (data?.verdict !== undefined) {
@@ -135,6 +147,11 @@ export class Claim {
           }
           if (data?.confidence !== undefined) {
             this.confidenceScore = data.confidence;
+          }
+          // resolvedAt is already set; do not overwrite it unless null (legacy data)
+          // BE-219 Audit Fix: Ensure legacy claims get a timestamp
+          if (this.resolvedAt === null || this.resolvedAt === undefined) {
+            this.resolvedAt = new Date();
           }
         }
         break;
@@ -150,6 +167,10 @@ export class Claim {
           this.resolvedVerdict = data.verdict;
           this.confidenceScore = data.confidence;
           this.finalized = true;
+          // Set resolvedAt exactly once — first time this claim is resolved
+          if (this.resolvedAt === null || this.resolvedAt === undefined) {
+            this.resolvedAt = new Date();
+          }
         } else if (currentState === ClaimState.RESOLVED) {
           // RESOLVED → FINALIZED: just set finalized flag
           // Optionally update verdict/confidence if provided
@@ -160,6 +181,11 @@ export class Claim {
             this.confidenceScore = data.confidence;
           }
           this.finalized = true;
+          // resolvedAt was already set when transitioning to RESOLVED; do not overwrite it unless null (legacy data)
+          // BE-219 Audit Fix: Ensure legacy claims get a timestamp
+          if (this.resolvedAt === null || this.resolvedAt === undefined) {
+            this.resolvedAt = new Date();
+          }
         }
         break;
 

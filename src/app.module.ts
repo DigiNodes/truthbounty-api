@@ -12,8 +12,8 @@ import { RewardsModule } from './rewards/rewards.module';
 import blockchainConfig from './config/blockchain.config';
 import sybilConfig from './config/sybil.config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { DatabaseModule } from './database/database.module';
 import { BlockchainModule } from './blockchain/blockchain.module';
-import { DisputeModule } from './dispute/dispute.module';
 import { IdentityModule } from './identity/identity.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
@@ -24,6 +24,7 @@ import { AggregationModule } from './aggregation/aggregation.module';
 import { JobsModule } from './jobs/jobs.module';
 import { CacheModule } from './cache/cache.module';
 import { ClaimsModule } from './claims/claims.module';
+import { ClaimFeedModule } from './claims/v2/claim-feed.module';
 import { AuditModule } from './audit/audit.module';
 import { ThemeModule } from './theme.module';
 import { AuditLoggingInterceptor } from './audit/interceptors/audit-logging.interceptor';
@@ -32,6 +33,23 @@ import { LoggingInterceptor } from './logger/logging.interceptor';
 import { AuthModule } from './auth/auth.module';
 import { GlobalAuthGuard } from './auth/global-auth.guard';
 import { MetricsModule } from './metrics/metrics.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { Notification } from './notifications/entities/notification.entity';
+import { NotificationPreference } from './notifications/entities/notification-preference.entity';
+import { ReputationModule } from './reputation/reputation.module';
+import { GovernanceModule } from './governance/governance.module';
+import { AiAssistantModule } from './ai-assistant/ai-assistant.module';
+import { AdminModule } from './admin/admin.module';
+import { V2EventsModule } from './v2/events/v2-events.module';
+import { V2EvidenceModule } from './v2/evidence/v2-evidence.module';
+import { V2VerificationModule } from './v2/verification/v2-verification.module';
+import { V2DisputesModule } from './v2/disputes/v2-disputes.module';
+import { ProfilerModule } from './profiler/profiler.module';
+import { ProfilerInterceptor } from './profiler/profiler.interceptor';
+import { HealthModule } from './health/health.module';
+import { FeatureFlagsModule } from './feature-flags/feature-flags.module';
+import { RealtimeModule } from './realtime/realtime.module';
+import { StakingModule } from './staking/staking.module';
 
 // In-memory storage for development (no Redis needed)
 class ThrottlerMemoryStorage {
@@ -47,7 +65,9 @@ class ThrottlerMemoryStorage {
   private readonly logger = new Logger('ThrottlerMemoryStorage');
 
   constructor() {
-    this.logger.log('Using in-memory storage for rate limiting (development mode)');
+    this.logger.log(
+      'Using in-memory storage for rate limiting (development mode)',
+    );
   }
 
   async increment(
@@ -56,7 +76,12 @@ class ThrottlerMemoryStorage {
     limit: number,
     blockDuration: number,
     throttlerName: string,
-  ): Promise<{ totalHits: number; timeToExpire: number; isBlocked: boolean; timeToBlockExpire: number }> {
+  ): Promise<{
+    totalHits: number;
+    timeToExpire: number;
+    isBlocked: boolean;
+    timeToBlockExpire: number;
+  }> {
     const now = Date.now();
     const record = this.storage.get(key);
 
@@ -111,7 +136,9 @@ class ThrottlerMemoryStorage {
       totalHits: record.totalHits,
       timeToExpire: Math.max(record.expiresAt - now, 0),
       isBlocked: record.isBlocked,
-      timeToBlockExpire: record.isBlocked ? Math.max(record.blockExpiresAt - now, 0) : 0,
+      timeToBlockExpire: record.isBlocked
+        ? Math.max(record.blockExpiresAt - now, 0)
+        : 0,
     };
   }
 }
@@ -132,7 +159,12 @@ class ThrottlerRedisStorage {
     limit: number,
     blockDuration: number,
     throttlerName: string,
-  ): Promise<{ totalHits: number; timeToExpire: number; isBlocked: boolean; timeToBlockExpire: number }> {
+  ): Promise<{
+    totalHits: number;
+    timeToExpire: number;
+    isBlocked: boolean;
+    timeToBlockExpire: number;
+  }> {
     const blockKey = `${key}:blocked`;
     const [blocked, blockTimeToExpire] = await Promise.all([
       this.redis.exists(blockKey),
@@ -142,7 +174,9 @@ class ThrottlerRedisStorage {
     if (blocked) {
       const timeToExpire = await this.redis.pttl(key);
       return {
-        totalHits: await this.redis.get(key).then((value: string | null) => Number(value) || limit + 1),
+        totalHits: await this.redis
+          .get(key)
+          .then((value: string | null) => Number(value) || limit + 1),
         timeToExpire: timeToExpire > 0 ? timeToExpire : ttl,
         isBlocked: true,
         timeToBlockExpire: blockTimeToExpire > 0 ? blockTimeToExpire : 0,
@@ -183,13 +217,18 @@ class ThrottlerRedisStorage {
 }
 
 // Factory to create appropriate storage based on environment
-async function createThrottlerStorage(configService: ConfigService): Promise<any> {
+async function createThrottlerStorage(
+  configService: ConfigService,
+): Promise<any> {
   const useRedis = configService.get<string>('REDIS_HOST');
 
   if (useRedis) {
     try {
       const Redis = (await import('ioredis')).default;
-      const redisHost = configService.get<string>('throttler.redis.host', 'localhost');
+      const redisHost = configService.get<string>(
+        'throttler.redis.host',
+        'localhost',
+      );
       const redisPort = configService.get<number>('throttler.redis.port', 6379);
 
       const redis = new Redis({
@@ -210,14 +249,15 @@ async function createThrottlerStorage(configService: ConfigService): Promise<any
       return new ThrottlerRedisStorage(redis);
     } catch (error) {
       const logger = new Logger('ThrottlerModule');
-      logger.warn(`Redis connection failed, falling back to memory storage: ${error}`);
+      logger.warn(
+        `Redis connection failed, falling back to memory storage: ${error}`,
+      );
       return new ThrottlerMemoryStorage();
     }
   }
 
   return new ThrottlerMemoryStorage();
 }
-
 
 @Module({
   imports: [
@@ -227,14 +267,14 @@ async function createThrottlerStorage(configService: ConfigService): Promise<any
       envFilePath: ['.env.local', '.env'],
     }),
     ScheduleModule.forRoot(),
-    TypeOrmModule.forRoot({
-      type: 'sqlite',
-      database: 'database.sqlite',
-      entities: [__dirname + '/**/*.entity{.ts,.js}'],
-      // Allow automatic sync in development unless explicitly disabled
-      synchronize: process.env.DATABASE_SYNCHRONIZE === 'true' || process.env.NODE_ENV !== 'production',
-      logging: process.env.DATABASE_LOGGING === 'true',
-    }),
+    // PostgreSQL Database Infrastructure (Issue #269)
+    // DatabaseModule provides:
+    // - PostgreSQL connectivity with connection pooling
+    // - Transaction management via TransactionRunner
+    // - Health reporting via DatabaseService
+    // - Repository base class for all domain repositories
+    // Falls back to SQLite when DATABASE_URL is not set (development).
+    DatabaseModule,
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -271,7 +311,6 @@ async function createThrottlerStorage(configService: ConfigService): Promise<any
     LoggerModule,
     AuthModule,
     BlockchainModule,
-    DisputeModule,
     IdentityModule,
     PrismaModule,
     RewardsModule,
@@ -280,9 +319,24 @@ async function createThrottlerStorage(configService: ConfigService): Promise<any
     JobsModule,
     CacheModule,
     ClaimsModule,
+    ClaimFeedModule,
     AuditModule,
     ThemeModule,
     MetricsModule,
+    NotificationsModule,
+    ReputationModule,
+    GovernanceModule,
+    AiAssistantModule,
+    AdminModule,
+    V2EventsModule,
+    V2EvidenceModule,
+    V2VerificationModule,
+    V2DisputesModule,
+    ProfilerModule,
+    HealthModule,
+    FeatureFlagsModule,
+    RealtimeModule,
+    StakingModule,
   ],
   controllers: [AppController],
   providers: [
@@ -303,7 +357,10 @@ async function createThrottlerStorage(configService: ConfigService): Promise<any
       provide: APP_INTERCEPTOR,
       useClass: LoggingInterceptor,
     },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: ProfilerInterceptor,
+    },
   ],
 })
-export class AppModule { }
-
+export class AppModule {}
