@@ -9,6 +9,10 @@ import { Stake } from '../staking/entities/stake.entity';
 import { AuditTrailService } from '../audit/services/audit-trail.service';
 import { AuditActionType, AuditEntityType } from '../audit/entities/audit-log.entity';
 import { AuditLog } from '../audit/decorators/audit-log.decorator';
+import {
+  assertResolvedAtInvariant,
+  buildResolvedFields,
+} from './claim-resolution.invariant';
 
 
 @Injectable()
@@ -127,7 +131,7 @@ export class ClaimsService {
         userId?: string,
     ): Promise<Claim> {
         const claim = await this.findOne(claimId);
-        if (!claim) throw new Error(`Claim ${claimId} not found`);
+        if (!claim) throw new NotFoundException(`Claim ${claimId} not found`);
 
         const beforeState = { ...claim };
 
@@ -137,6 +141,10 @@ export class ClaimsService {
             verdict,
             confidence: confidenceScore,
         });
+
+        // Guard: reject if the object is somehow in an inconsistent state
+        // before we write (e.g. caller mutated fields directly).
+        assertResolvedAtInvariant(claim);
 
         const updatedClaim = await this.claimRepo.save(claim);
         // Invalidate both the claim-specific cache and the latest claims list cache
