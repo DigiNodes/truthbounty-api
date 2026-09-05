@@ -7,6 +7,7 @@ import { JobsService } from '../jobs/jobs.service';
 import { NotificationService } from '../notifications/services/notification.service';
 import { IpfsService } from '../ipfs/ipfs.service';
 import { BlockchainStateService } from '../blockchain/state.service';
+import { MetricsService } from '../metrics/metrics.service';
 
 const mockDataSource = () => ({
   isInitialized: true,
@@ -56,6 +57,13 @@ const mockBlockchainStateService = () => ({
   }),
 });
 
+const mockMetricsService = () => ({
+  setMemoryUsage: jest.fn(),
+  setCpuUsage: jest.fn(),
+  setQueueDepth: jest.fn(),
+  setBlockchainIndexingState: jest.fn(),
+});
+
 describe('HealthService', () => {
   let service: HealthService;
   let dataSource: DataSource;
@@ -65,6 +73,7 @@ describe('HealthService', () => {
   let notificationService: NotificationService;
   let ipfsService: IpfsService;
   let blockchainStateService: BlockchainStateService;
+  let metricsService: MetricsService;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -76,10 +85,14 @@ describe('HealthService', () => {
         { provide: JobsService, useFactory: mockJobsService },
         { provide: NotificationService, useFactory: mockNotificationService },
         { provide: IpfsService, useFactory: mockIpfsService },
+ feat/be-016-monitoring-api
+        { provide: BlockchainStateService, useFactory: mockBlockchainStateService },
+        { provide: MetricsService, useFactory: mockMetricsService },
         {
           provide: BlockchainStateService,
           useFactory: mockBlockchainStateService,
         },
+ main
       ],
     }).compile();
 
@@ -90,9 +103,13 @@ describe('HealthService', () => {
     jobsService = module.get<JobsService>(JobsService);
     notificationService = module.get<NotificationService>(NotificationService);
     ipfsService = module.get<IpfsService>(IpfsService);
+ feat/be-016-monitoring-api
+    blockchainStateService = module.get<BlockchainStateService>(BlockchainStateService);
+    metricsService = module.get<MetricsService>(MetricsService);
     blockchainStateService = module.get<BlockchainStateService>(
       BlockchainStateService,
     );
+ main
   });
 
   it('should return alive liveness result', () => {

@@ -7,6 +7,7 @@ import { IpfsService } from '../ipfs/ipfs.service';
 import { NotificationService } from '../notifications/services/notification.service';
 import { JobsService } from '../jobs/jobs.service';
 import { BlockchainStateService } from '../blockchain/state.service';
+import { MetricsService } from '../metrics/metrics.service';
 import {
   DependencyHealthResult,
   DependencyStatus,
@@ -42,6 +43,7 @@ export class HealthService {
     private readonly notificationService: NotificationService,
     private readonly ipfsService: IpfsService,
     private readonly blockchainStateService: BlockchainStateService,
+    private readonly metricsService: MetricsService,
   ) {
     this.appVersion = process.env.npm_package_version ?? '0.0.1';
   }
@@ -127,7 +129,7 @@ export class HealthService {
 
   async getHealth(): Promise<HealthCheckResult> {
     const dependencies = await this.runChecks();
-    const diagnostics = this.collectDiagnostics();
+    const diagnostics = await this.collectDiagnostics();
     const services = this.aggregateServices(dependencies);
     const status = this.aggregateStatus(dependencies);
 
@@ -225,6 +227,9 @@ export class HealthService {
   }
 
   private async checkQueue(): Promise<void> {
+ feat/be-016-monitoring-api
+    const counts = await this.jobsQueue.getJobCounts('waiting', 'active', 'completed', 'failed', 'delayed', 'paused');
+    this.metricsService.setQueueDepth(this.jobsQueue.name, counts);
     await this.jobsQueue.getJobCounts(
       'waiting',
       'active',
@@ -233,6 +238,7 @@ export class HealthService {
       'delayed',
       'paused',
     );
+ main
   }
 
   private async checkNotifications(): Promise<void> {
@@ -257,12 +263,15 @@ export class HealthService {
     if (typeof state.lastProcessedBlock !== 'number') {
       throw new Error('Blockchain state is unavailable');
     }
+ feat/be-016-monitoring-api
+    this.metricsService.setBlockchainIndexingState(state.lastProcessedBlock);
 
     // Fail closed if the indexer is degraded per alert thresholds.
     const health = await this.blockchainStateService.getIndexerHealth();
     if (health.status === 'unhealthy') {
       throw new Error('Indexer health is degraded beyond alert thresholds');
     }
+ main
   }
 
   private aggregateServices(
@@ -284,9 +293,15 @@ export class HealthService {
   }
 
   private async collectDiagnostics(): Promise<SystemDiagnostics> {
+    const memoryUsage = process.memoryUsage();
+    const cpuUsage = process.cpuUsage();
+
+    this.metricsService.setMemoryUsage(memoryUsage);
+    this.metricsService.setCpuUsage(cpuUsage);
+
     const diagnostics: SystemDiagnostics = {
-      memoryUsage: process.memoryUsage(),
-      cpuUsage: process.cpuUsage(),
+      memoryUsage,
+      cpuUsage,
       resourceUsage: process.resourceUsage(),
     };
 
