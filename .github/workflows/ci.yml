@@ -10,8 +10,6 @@ on:
 
 permissions:
   contents: read
-  security-events: write
-  pull-requests: write
 
 jobs:
   build-and-test:
@@ -39,17 +37,11 @@ jobs:
             exit 1
           fi
 
-      - name: Run linter
-        run: npm run lint
+      - name: Run linter without modifying the checkout
+        run: npx eslint "{src,apps,libs,test}/**/*.ts"
 
       - name: Run unit and integration tests
         run: npm run test:cov
-
-      - name: Enforce coverage thresholds
-        run: |
-          # Fails if coverage drops below the required minimum configured in jest
-          # Alternatively we can add a simple script to check the output json.
-          echo "Coverage meets requirements."
 
       - name: Run migration tests
         run: |
@@ -59,6 +51,9 @@ jobs:
 
   security-scans:
     name: Security Scans
+    permissions:
+      contents: read
+      security-events: write
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
