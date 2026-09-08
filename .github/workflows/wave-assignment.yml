@@ -1,0 +1,84 @@
+name: Wave issue assignment
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  assignment:
+    if: github.event.issue.pull_request == null && (github.event.comment.body == '/assign' || github.event.comment.body == '/unassign')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Apply assignment policy
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            const issueNumber = context.issue.number;
+            const login = context.payload.comment.user.login;
+            const command = context.payload.comment.body.trim();
+            if (context.payload.comment.user.type === 'Bot') return;
+
+            const { data: issue } = await github.rest.issues.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+            });
+
+            const match = issue.title.match(/^V2-BE-(\d{3})\b/);
+            const taskNumber = match ? Number(match[1]) : 0;
+            const active = issue.labels.some(label => (typeof label === 'string' ? label : label.name) === 'Stellar Wave');
+
+            if (!match || taskNumber < 41 || taskNumber > 90 || !active) {
+              await github.rest.issues.createComment({
+                ...context.repo,
+                issue_number: issueNumber,
+                body: '@' + login + ' this issue is not an active V2 BE-041–090 Wave task.',
+              });
+              return;
+            }
+
+            if (command === '/unassign') {
+              if (!issue.assignees.some(user => user.login === login)) return;
+              await github.rest.issues.removeAssignees({
+                ...context.repo,
+                issue_number: issueNumber,
+                assignees: [login],
+              });
+              return;
+            }
+
+            if (issue.assignees.length > 0) {
+              await github.rest.issues.createComment({
+                ...context.repo,
+                issue_number: issueNumber,
+                body: '@' + login + ' this task is already assigned.',
+              });
+              return;
+            }
+
+            const q = 'repo:' + context.repo.owner + '/' + context.repo.repo +
+              ' is:issue is:open label:"Stellar Wave" assignee:' + login;
+            const { data: assigned } = await github.rest.search.issuesAndPullRequests({ q, per_page: 10 });
+            if (assigned.items.some(item => item.number !== issueNumber)) {
+              await github.rest.issues.createComment({
+                ...context.repo,
+                issue_number: issueNumber,
+                body: '@' + login + ' you already hold an active Wave task in this repository. Complete or release it before taking another.',
+              });
+              return;
+            }
+
+            await github.rest.issues.addAssignees({
+              ...context.repo,
+              issue_number: issueNumber,
+              assignees: [login],
+            });
+            await github.rest.issues.createComment({
+              ...context.repo,
+              issue_number: issueNumber,
+              body: '@' + login + ' assigned. Please open a draft PR within seven days, link this issue, and keep the PR limited to this task.',
+            });
