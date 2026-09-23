@@ -150,8 +150,8 @@ describe('rpc-backoff', () => {
         rateLimitMs: 0,
       });
 
-      await expect(manager.call('getBlockNumber')).rejects.toThrow();
-      await expect(manager.call('getBlockNumber')).rejects.toThrow();
+      await expect(manager.call('getBlockNumber')).resolves.toBe(9);
+      await expect(manager.call('getBlockNumber')).resolves.toBe(9);
       expect(manager.getProviderState('primary')).toMatchObject({ status: 'open' });
     });
 

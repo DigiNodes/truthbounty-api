@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { verifyMessage } from 'ethers';
 import {
@@ -6,7 +6,6 @@ import {
   timingSafeEqualUtf8,
 } from '../../common/utils/timing-safe.util';
 import {
-  SiweMessage,
   ParsedSiweMessage,
   SiweVerifyParams,
   SiweVerifyResult,

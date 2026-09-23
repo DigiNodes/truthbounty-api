@@ -15,7 +15,6 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { NotificationsService } from '../services/notifications.service';
 import { NotificationPreferencesService } from '../services/notification-preferences.service';
 import { ListNotificationsDto, UpdatePreferencesDto } from '../dto';
-import { Notification } from '../entities/notification.entity';
 
 @Controller('notifications')
 @UseGuards(JwtAuthGuard)

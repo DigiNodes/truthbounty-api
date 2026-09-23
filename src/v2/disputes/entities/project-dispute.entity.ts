@@ -76,6 +76,9 @@ export class ProjectDispute {
   @Column({ type: 'int' })
   eventLogIndex: number;
 
+  @Column({ type: 'bigint' })
+  blockNumber: string;
+
   @CreateDateColumn()
   createdAt: Date;
 

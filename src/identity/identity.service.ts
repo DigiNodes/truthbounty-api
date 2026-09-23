@@ -8,7 +8,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { LinkWalletDto } from './dto/link-wallet.dto';
 import { verifyMessage, getAddress } from 'ethers';
-import { Prisma, User, Wallet } from '@prisma/client';
+import { Prisma, User, Wallet } from '../generated/client/client';
 import { AuditTrailService } from '../audit/services/audit-trail.service';
 import { AuditActionType, AuditEntityType } from '../audit/entities/audit-log.entity';
 import {
@@ -150,7 +150,7 @@ export class IdentityService {
     await this.findUserOrThrow(userId);
     return this.prisma.wallet.findMany({
       where: { userId, ...(chain ? { chain } : {}) },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { linkedAt: 'asc' },
     });
   }
 

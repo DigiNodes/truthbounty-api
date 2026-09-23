@@ -7,6 +7,7 @@ export enum ClaimStatus {
   VERIFIED_TRUE = 'VERIFIED_TRUE',
   VERIFIED_FALSE = 'VERIFIED_FALSE',
   INCÓLUSIVE= 'INCONCLUSIVE',
+  INCONCLUSIVE = 'INCONCLUSIVE',
 }
 
 export interface Verification {

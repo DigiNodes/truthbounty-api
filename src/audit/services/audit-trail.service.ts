@@ -1,6 +1,6 @@
 import { Injectable, Logger, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, Like, In, Not, IsNull } from 'typeorm';
+import { Repository, Not, IsNull } from 'typeorm';
 import { REQUEST } from '@nestjs/core';
 import { Request } from 'express';
 import {
@@ -13,7 +13,6 @@ import {
 import { maskIp } from '../utils/ip-masking';
 import { AuditQueueService } from './audit-queue.service';
 import { randomUUID } from 'crypto';
-import { AuditPaginatedResponse } from '../interfaces/audit-response.interface';
 import { generateAuditHash, verifyAuditIntegrity } from '../utils/integrity';
 
 export interface AuditLogInput {

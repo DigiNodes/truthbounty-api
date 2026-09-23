@@ -1,5 +1,4 @@
 import { ServiceAuthGuard } from './service-auth.guard';
-import { ConfigService } from '@nestjs/config';
 import { UnauthorizedException, ExecutionContext } from '@nestjs/common';
 
 describe('ServiceAuthGuard', () => {

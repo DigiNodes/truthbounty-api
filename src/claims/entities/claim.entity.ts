@@ -66,9 +66,6 @@ export class Claim {
   createdAt: Date;
 
   @Column({ type: 'timestamp', nullable: true })
-  resolvedAt: Date | null;
-
-  @Column({ type: 'timestamp', nullable: true })
   deadline: Date | null;
 
   @Column({ type: 'timestamp', nullable: true })

@@ -47,7 +47,7 @@ export class ContractArtifactsLoader implements OnModuleInit {
 
                 // Verify cryptographic checksum of ABI
                 const computedChecksum = crypto
-                    .createSHA256()
+                    .createHash('sha256')
                     .update(JSON.stringify(contract.abi))
                     .digest('hex');
 

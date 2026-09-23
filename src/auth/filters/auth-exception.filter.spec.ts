@@ -4,7 +4,6 @@ import {
 } from './auth-exception.filter';
 import {
   HttpException,
-  HttpStatus,
   UnauthorizedException,
   BadRequestException,
   ForbiddenException,
@@ -104,10 +103,14 @@ describe('AuthExceptionFilter', () => {
 
       const response = host.switchToHttp().getResponse();
       const json = response.status().json;
+      // issue-416: only 401s collapse to the generic message; other statuses
+      // (e.g. 403) preserve their message.
+      const expectedMessage =
+        exception.getStatus() === 401 ? 'Invalid credentials' : exception.message;
       expect(json).toHaveBeenCalledWith(
         expect.objectContaining({
           code: expectedCode,
-          message: 'Invalid credentials',
+          message: expectedMessage,
           statusCode: exception.getStatus(),
           timestamp: expect.any(String),
           path: '/auth/login',

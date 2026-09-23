@@ -138,6 +138,59 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Add one or more members to a Redis set
+   */
+  async sAdd(key: string, ...members: string[]): Promise<boolean> {
+    if (!this.client || !this.isConnected) {
+      this.logger.debug(`Redis unavailable, skipping SADD for key: ${key}`);
+      return false;
+    }
+
+    try {
+      await this.client.sadd(key, ...members);
+      return true;
+    } catch (error) {
+      this.logger.error(`Redis SADD error for key ${key}: ${(error as Error).message}`);
+      return false;
+    }
+  }
+
+  /**
+   * Remove one or more members from a Redis set
+   */
+  async sRemove(key: string, ...members: string[]): Promise<boolean> {
+    if (!this.client || !this.isConnected) {
+      this.logger.debug(`Redis unavailable, skipping SREM for key: ${key}`);
+      return false;
+    }
+
+    try {
+      await this.client.srem(key, ...members);
+      return true;
+    } catch (error) {
+      this.logger.error(`Redis SREM error for key ${key}: ${(error as Error).message}`);
+      return false;
+    }
+  }
+
+  /**
+   * Get all members of a Redis set (empty array when unavailable)
+   */
+  async sMembers(key: string): Promise<string[]> {
+    if (!this.client || !this.isConnected) {
+      this.logger.debug(`Redis unavailable, skipping SMEMBERS for key: ${key}`);
+      return [];
+    }
+
+    try {
+      return await this.client.smembers(key);
+    } catch (error) {
+      this.logger.error(`Redis SMEMBERS error for key ${key}: ${(error as Error).message}`);
+      return [];
+    }
+  }
+
+  /**
    * Return remaining TTL in seconds for a key (-1 = no TTL, -2 = missing, null = unavailable)
    */
   async ttl(key: string): Promise<number | null> {

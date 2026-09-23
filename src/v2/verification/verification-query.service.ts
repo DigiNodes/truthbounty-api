@@ -28,6 +28,7 @@ export class VerificationQueryService {
   private async calculateDataState(blockNumber: string): Promise<DataState> {
     // Get the latest checkpoint (assuming single chain for simplicity)
     const checkpoint = await this.checkpointRepo.findOne({
+      where: {},
       order: { updatedAt: 'DESC' },
     });
 

@@ -1,12 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
-import * as request from 'supertest';
+import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { ethers } from 'ethers';
 
 describe('Authentication Gateway E2E (auth.e2e-spec.ts)', () => {
   let app: INestApplication;
-  let testWallet: ethers.Wallet;
+  let testWallet: ethers.HDNodeWallet;
 
   beforeAll(async () => {
     testWallet = ethers.Wallet.createRandom();

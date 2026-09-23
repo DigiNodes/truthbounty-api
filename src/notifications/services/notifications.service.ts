@@ -1,7 +1,7 @@
 import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { InjectQueue } from '@nestjs/bullmq';
-import { Repository, Between, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
+import { Repository } from 'typeorm';
 import { Queue } from 'bullmq';
 import { Notification } from '../entities/notification.entity';
 import { NotificationPreference } from '../entities/notification-preference.entity';
@@ -149,7 +149,7 @@ export class NotificationsService {
   private shouldSendNotification(preferences: any, event: NotificationEvent): boolean {
     const category = this.mapEventTypeToCategory(event.eventType);
     
-    if (!preferences.settings.categories[category]) {
+    if (!preferences.settings?.categories?.[category]) {
       return false;
     }
     
@@ -190,7 +190,7 @@ export class NotificationsService {
     return categoryMap[eventType] || NotificationCategory.SYSTEM_UPDATE;
   }
 
-  private createNotificationFromEvent(event: NotificationEvent, recipientId: string): Partial<Notification> {
+  private createNotificationFromEvent(event: NotificationEvent, recipientId: string): Partial<Notification> & { priority?: NotificationPriority; sourceEvent?: NotificationEvent } {
     const category = this.mapEventTypeToCategory(event.eventType);
     const { title, message, priority = NotificationPriority.MEDIUM } = this.extractNotificationContent(event);
     
@@ -198,7 +198,7 @@ export class NotificationsService {
       userId: recipientId,
       title,
       message,
-      category,
+      category: category as unknown as Notification['category'],
       priority,
       metadata: event.payload,
       sourceEvent: event,
@@ -262,7 +262,7 @@ export class NotificationsService {
   }
 
   private async queueNotificationForDelivery(notification: Notification, preferences: NotificationPreference) {
-    const enabledChannels = preferences.settings.enabledChannels;
+    const enabledChannels = preferences.settings?.enabledChannels ?? [];
     
     for (const channel of enabledChannels) {
       await this.deliveryHistoryService.createDeliveryRecord(notification.id, channel);
@@ -275,7 +275,7 @@ export class NotificationsService {
           userId: notification.userId,
         },
         {
-          priority: this.getJobPriority(notification.priority),
+          priority: this.getJobPriority((notification as unknown as { priority?: NotificationPriority }).priority ?? NotificationPriority.MEDIUM),
           attempts: 5,
           backoff: {
             type: 'exponential',

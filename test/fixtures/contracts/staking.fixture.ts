@@ -1,4 +1,3 @@
-import { Wallet } from 'ethers';
 import { Stake } from '../../../src/staking/entities/stake.entity';
 import { StakeEvent } from '../../../src/staking/entities/stake-event.entity';
 import { StakingEventType } from '../../../src/staking/types/staking-event.type';
@@ -71,7 +70,7 @@ export function createMockStake(overrides: Partial<MockStakeData> = {}): Stake {
     createdAt: new Date(),
     updatedAt: new Date(),
     stakeEvents: [],
-  } as Stake;
+  } as unknown as Stake;
 }
 
 /**
@@ -79,11 +78,11 @@ export function createMockStake(overrides: Partial<MockStakeData> = {}): Stake {
  */
 export function createMockStakeEvent(
   stake: Stake,
-  eventType: StakingEventType = StakingEventType.STAKED,
+  eventType: StakingEventType = ('STAKED' as unknown as StakingEventType),
   overrides: Partial<MockStakeEventData> = {}
 ): StakeEvent {
   const defaultData: MockStakeEventData = {
-    stakeId: stake.id,
+    stakeId: (stake as any).id,
     eventType,
     amount: '1000000000000000000', // 1 ETH in wei
     timestamp: new Date(),
@@ -102,7 +101,7 @@ export function createMockStakeEvent(
     transactionHash: eventData.transactionHash,
     blockNumber: eventData.blockNumber,
     createdAt: new Date(),
-  } as StakeEvent;
+  } as unknown as StakeEvent;
 }
 
 /**
@@ -122,18 +121,18 @@ export function createMockStakes(count: number = 5, userId?: string): Stake[] {
  * Create mock staking contract event log
  */
 export function createMockStakingEventLog(
-  eventType: StakingEventType,
+  eventType: StakingEventType | string,
   walletAddress: string,
   amount: string,
   totalStaked: string = '0',
   blockNumber: number = 1
 ) {
   const contractAddress = getContractAddress('STAKING');
-  let topics: string[];
-  let data: string;
+  let topics: string[] = [];
+  let data = '';
 
   switch (eventType) {
-    case StakingEventType.STAKED:
+    case 'STAKED':
       topics = [
         STAKING_EVENT_SIGNATURES.STAKED,
         '0x' + walletAddress.padStart(64, '0'),
@@ -143,7 +142,7 @@ export function createMockStakingEventLog(
         BigInt(totalStaked).toString(16).padStart(64, '0');
       break;
       
-    case StakingEventType.UNSTAKED:
+    case 'UNSTAKED':
       topics = [
         STAKING_EVENT_SIGNATURES.UNSTAKED,
         '0x' + walletAddress.padStart(64, '0'),
@@ -153,7 +152,7 @@ export function createMockStakingEventLog(
         BigInt(totalStaked).toString(16).padStart(64, '0');
       break;
       
-    case StakingEventType.SLASHED:
+    case 'SLASHED':
       topics = [
         STAKING_EVENT_SIGNATURES.SLASHED,
         '0x' + walletAddress.padStart(64, '0'),
@@ -163,7 +162,7 @@ export function createMockStakingEventLog(
         BigInt(totalStaked).toString(16).padStart(64, '0');
       break;
       
-    case StakingEventType.REWARDS_CLAIMED:
+    case 'REWARDS_CLAIMED':
       topics = [
         STAKING_EVENT_SIGNATURES.REWARDS_CLAIMED,
         '0x' + walletAddress.padStart(64, '0'),
@@ -179,7 +178,7 @@ export function createMockStakingEventLog(
  * Create mock staking transaction receipt with events
  */
 export function createMockStakingTransactionReceipt(
-  eventType: StakingEventType,
+  eventType: StakingEventType | string,
   walletAddress: string,
   amount: string,
   txHash: string,

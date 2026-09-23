@@ -1,6 +1,4 @@
 import { TokenService } from './token.service';
-import { JwtService } from '@nestjs/jwt';
-import { ConfigService } from '@nestjs/config';
 
 // Mock crypto to avoid real randomness in tests (for deterministic output)
 jest.mock('crypto', () => {

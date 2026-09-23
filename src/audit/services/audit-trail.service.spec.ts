@@ -6,7 +6,6 @@ import { AuditLog, AuditActionType, AuditEntityType, AuditSeverity, AuditCategor
 import { Repository } from 'typeorm';
 import { REQUEST } from '@nestjs/core';
 import { AuditQueueService } from './audit-queue.service';
-import { maskIp } from '../utils/ip-masking';
 
 interface MockRequestType {
   headers: Record<string, string>;

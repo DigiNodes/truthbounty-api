@@ -1,9 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { PrismaModule } from '../../src/prisma/prisma.module';
-import { createMockStake, createMockStakes } from '../fixtures/contracts/staking.fixture';
-import { createMockReward, createMockRewards } from '../fixtures/contracts/rewards.fixture';
-import { createMockDispute, createMockDisputes } from '../fixtures/contracts/dispute.fixture';
+import { createMockStakes } from '../fixtures/contracts/staking.fixture';
+import { createMockRewards } from '../fixtures/contracts/rewards.fixture';
+import { createMockDisputes } from '../fixtures/contracts/dispute.fixture';
 import { Stake } from '../../src/staking/entities/stake.entity';
 import { Reward } from '../../src/rewards/entities/reward.entity';
 import { Dispute } from '../../src/dispute/entities/dispute.entity';
@@ -68,15 +68,15 @@ export async function seedTestData(
   // Insert into database
   const createdStakes = await Promise.all(
     mockStakes.map(stake => 
-      prisma.stake.create({
+      (prisma as any).stake.create({
         data: {
-          userId: stake.userId,
+          userId: (stake as any).userId,
           walletAddress: stake.walletAddress,
           amount: stake.amount,
-          stakedAt: stake.stakedAt,
-          unstakedAt: stake.unstakedAt,
-          isActive: stake.isActive,
-          totalRewards: stake.totalRewards,
+          stakedAt: (stake as any).stakedAt,
+          unstakedAt: (stake as any).unstakedAt,
+          isActive: (stake as any).isActive,
+          totalRewards: (stake as any).totalRewards,
         },
       })
     )
@@ -84,16 +84,16 @@ export async function seedTestData(
 
   const createdRewards = await Promise.all(
     mockRewards.map(reward => 
-      prisma.reward.create({
+      (prisma as any).reward.create({
         data: {
-          title: reward.title,
-          description: reward.description,
-          totalAmount: reward.totalAmount,
-          tokenAddress: reward.tokenAddress,
-          creatorAddress: reward.creatorAddress,
-          createdAt: reward.createdAt,
-          expiresAt: reward.expiresAt,
-          isActive: reward.isActive,
+          title: (reward as any).title,
+          description: (reward as any).description,
+          totalAmount: (reward as any).totalAmount,
+          tokenAddress: (reward as any).tokenAddress,
+          creatorAddress: (reward as any).creatorAddress,
+          createdAt: (reward as any).createdAt,
+          expiresAt: (reward as any).expiresAt,
+          isActive: (reward as any).isActive,
         },
       })
     )
@@ -101,21 +101,21 @@ export async function seedTestData(
 
   const createdDisputes = await Promise.all(
     mockDisputes.map(dispute => 
-      prisma.dispute.create({
+      (prisma as any).dispute.create({
         data: {
           claimId: dispute.claimId,
-          creatorAddress: dispute.creatorAddress,
-          evidenceCID: dispute.evidenceCID,
-          description: dispute.description,
+          creatorAddress: (dispute as any).creatorAddress,
+          evidenceCID: (dispute as any).evidenceCID,
+          description: (dispute as any).description,
           createdAt: dispute.createdAt,
-          expiresAt: dispute.expiresAt,
-          totalVotesFor: dispute.totalVotesFor,
-          totalVotesAgainst: dispute.totalVotesAgainst,
-          totalStakeFor: dispute.totalStakeFor,
-          totalStakeAgainst: dispute.totalStakeAgainst,
+          expiresAt: (dispute as any).expiresAt,
+          totalVotesFor: (dispute as any).totalVotesFor,
+          totalVotesAgainst: (dispute as any).totalVotesAgainst,
+          totalStakeFor: (dispute as any).totalStakeFor,
+          totalStakeAgainst: (dispute as any).totalStakeAgainst,
           outcome: dispute.outcome,
           resolvedAt: dispute.resolvedAt,
-          resolutionBlock: dispute.resolutionBlock,
+          resolutionBlock: (dispute as any).resolutionBlock,
         },
       })
     )

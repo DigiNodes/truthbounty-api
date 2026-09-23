@@ -1,3 +1,5 @@
+import { applyConfidenceFloor, normalizeConfidence } from '../src/utils/confidence';
+
 describe(
   'aggregation confidence floor',
   () => {

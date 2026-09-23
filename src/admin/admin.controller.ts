@@ -6,7 +6,7 @@ import { RolesGuard } from './guards/roles.guard';
 import { Roles } from './decorators/roles.decorator';
 import { CurrentAdmin } from './decorators/current-admin.decorator';
 import { Admin, AdminRole } from './entities/admin.entity';
-import { CreateAdminDto, UpdateAdminRoleDto, UpdateAdminStatusDto, AdminLoginDto, AdminResponseDto } from './dto/admin.dto';
+import { CreateAdminDto, UpdateAdminRoleDto, UpdateAdminStatusDto, AdminLoginDto } from './dto/admin.dto';
 
 @ApiTags('admin')
 @ApiBearerAuth()

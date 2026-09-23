@@ -99,7 +99,8 @@ describe('ClaimsCache', () => {
       expect(redisService.del).toHaveBeenCalledTimes(3);
       expect(redisService.del).toHaveBeenCalledWith('v1:claim:123');
       expect(redisService.del).toHaveBeenCalledWith('v1:claims:latest');
-      expect(redisService.del).toHaveBeenCalledWith('v1:claims:user:0x1234567890123456789012345678901234567890');
+      // Key uses the wallet as passed (lowercased) — matches the input above.
+      expect(redisService.del).toHaveBeenCalledWith('v1:claims:user:0x1234567890');
       expect(mockSrem).toHaveBeenCalled();
     });
   });

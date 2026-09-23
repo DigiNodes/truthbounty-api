@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
-import * as request from 'supertest';
+import request from 'supertest';
 import { AppModule } from '../src/app.module';
 
 describe('Identity Security (e2e)', () => {
@@ -46,6 +46,6 @@ describe('Identity Security (e2e)', () => {
     await request(app.getHttpServer())
       .post(`/identity/users/${userId}/verify-worldcoin`)
       .set('Authorization', `Bearer ${userToken}`)
-      .expect(201 || 200);
+      .expect(201);
   });
 });

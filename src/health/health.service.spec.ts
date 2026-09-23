@@ -85,14 +85,12 @@ describe('HealthService', () => {
         { provide: JobsService, useFactory: mockJobsService },
         { provide: NotificationService, useFactory: mockNotificationService },
         { provide: IpfsService, useFactory: mockIpfsService },
- feat/be-016-monitoring-api
         { provide: BlockchainStateService, useFactory: mockBlockchainStateService },
         { provide: MetricsService, useFactory: mockMetricsService },
         {
           provide: BlockchainStateService,
           useFactory: mockBlockchainStateService,
         },
- main
       ],
     }).compile();
 
@@ -103,13 +101,11 @@ describe('HealthService', () => {
     jobsService = module.get<JobsService>(JobsService);
     notificationService = module.get<NotificationService>(NotificationService);
     ipfsService = module.get<IpfsService>(IpfsService);
- feat/be-016-monitoring-api
     blockchainStateService = module.get<BlockchainStateService>(BlockchainStateService);
     metricsService = module.get<MetricsService>(MetricsService);
     blockchainStateService = module.get<BlockchainStateService>(
       BlockchainStateService,
     );
- main
   });
 
   it('should return alive liveness result', () => {
@@ -127,11 +123,15 @@ describe('HealthService', () => {
       completed: 0,
       failed: 0,
     });
+    // The service runs 6 checks (database, redis, queue, notifications,
+    // ipfs, blockchain) — all non-critical ones must also resolve healthy.
+    (notificationService.getMetrics as jest.Mock).mockResolvedValue({ queueDepth: 0 });
+    (ipfsService.uploadBuffer as jest.Mock).mockResolvedValue({ cid: 'QmTest' });
 
     const result = await service.getReadiness();
     expect(result.ready).toBe(true);
     expect(result.status).toBe('healthy');
-    expect(result.dependencies).toHaveLength(3);
+    expect(result.dependencies).toHaveLength(6);
   });
 
   it('should report unhealthy when database is down', async () => {

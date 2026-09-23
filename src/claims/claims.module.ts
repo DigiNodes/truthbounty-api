@@ -39,13 +39,6 @@ import { IpfsModule } from '../ipfs/ipfs.module';
     EvidenceFlagService,
     ClaimProjectorService,
   ],
-  exports: [
-    ClaimResolutionService,
-    ClaimsService,
-    EvidenceService,
-    ClaimProjectorService,
-  ],
-  ],
   exports: [ClaimsService, EvidenceService],
 })
 export class ClaimsModule {

@@ -186,7 +186,10 @@ export class ProfilerService implements OnModuleInit, OnModuleDestroy {
     if (!trace) return null;
 
     const endTimeMs = Date.now();
-    const durationMs = endTimeMs - trace.startTimeMs;
+    const durationMs =
+      typeof metadata?.durationMs === 'number'
+        ? metadata.durationMs
+        : endTimeMs - trace.startTimeMs;
 
     trace.endTimeMs = endTimeMs;
     trace.durationMs = durationMs;

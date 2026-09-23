@@ -3,7 +3,6 @@
 // this process share the same interpretation (avoids local offset drift).
 process.env.TZ = 'UTC';
 import { DataSource, Repository } from 'typeorm';
-import { SqliteDriver } from 'typeorm/driver/sqlite/SqliteDriver';
 import { ClaimFeedService } from './claim-feed.service';
 import { Claim } from '../entities/claim.entity';
 import { Evidence } from '../entities/evidence.entity';
@@ -12,15 +11,6 @@ import { IndexedEvent } from '../../entities/indexed-event.entity';
 import { Stake } from '../../staking/entities/stake.entity';
 import { ClaimsCache } from '../../cache/claims.cache';
 
-class TimestampAwareSqliteDriver extends SqliteDriver {
-  constructor(connection: DataSource) {
-    super(connection);
-    if (!this.supportedDataTypes.includes('timestamp')) {
-      this.supportedDataTypes.push('timestamp');
-    }
-  }
-}
-
 const buildTestDataSource = (): DataSource => {
   const dataSource = new DataSource({
     type: 'sqlite',
@@ -28,9 +18,15 @@ const buildTestDataSource = (): DataSource => {
     entities: [Claim, Evidence, EvidenceVersion, IndexedEvent, Stake],
     synchronize: true,
   });
-  dataSource.driver = new TimestampAwareSqliteDriver(
-    dataSource as unknown as DataSource,
-  );
+  // The production `Claim` entity uses the postgres `timestamp` column type
+  // for deadline/effectiveAt. SQLite's driver does not list `timestamp` as
+  // supported, so register it here (SQLite itself accepts the type name).
+  // The driver instance already exists pre-initialize via DriverFactory.
+  const supported = (dataSource.driver as any)
+    .supportedDataTypes as string[];
+  if (!supported.includes('timestamp')) {
+    supported.push('timestamp');
+  }
   return dataSource;
 };
 

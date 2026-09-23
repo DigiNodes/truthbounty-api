@@ -8,11 +8,15 @@ import { WebSocketService } from './websocket.service';
 import { EmailService } from './email.service';
 import { WebhookService } from './webhook.service';
 import { DeliveryHistoryService } from './delivery-history.service';
-import { 
-  DeliveryChannel, 
+import {
+  DeliveryChannel,
   DeliveryStatus,
-  NotificationDeliveryJob 
 } from '../interfaces/notification.types';
+
+export interface NotificationDeliveryJob {
+  notificationId: string;
+  channel: DeliveryChannel;
+}
 
 @Processor('notifications', {
   concurrency: 10,

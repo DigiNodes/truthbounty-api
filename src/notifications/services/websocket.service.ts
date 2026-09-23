@@ -25,7 +25,7 @@ export class WebSocketService implements OnModuleInit {
     });
     
     this.setupConnectionHandlers();
-    const port = process.env.WEBSOCKET_PORT || 3001;
+    const port = Number(process.env.WEBSOCKET_PORT || 3001);
     this.server.listen(port);
     
     this.logger.log(`WebSocket server initialized on port ${port}`);
@@ -62,7 +62,7 @@ export class WebSocketService implements OnModuleInit {
     if (!this.userSockets.has(userId)) {
       this.userSockets.set(userId, new Set());
     }
-    this.userSockets.get(userId).add(socketId);
+    this.userSockets.get(userId)?.add(socketId);
     
     await this.redisService.sAdd(`active_sockets:${userId}`, socketId);
   }

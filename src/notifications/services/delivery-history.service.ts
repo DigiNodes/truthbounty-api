@@ -32,7 +32,7 @@ export class DeliveryHistoryService {
     recordId: string, 
     status: DeliveryStatus, 
     error?: string
-  ): Promise<DeliveryHistory> {
+  ): Promise<DeliveryHistory | null> {
     const record = await this.deliveryHistoryRepository.findOne({
       where: { id: recordId },
     });
@@ -55,7 +55,7 @@ export class DeliveryHistoryService {
     return this.deliveryHistoryRepository.save(record);
   }
 
-  async incrementRetryAttempts(recordId: string): Promise<DeliveryHistory> {
+  async incrementRetryAttempts(recordId: string): Promise<DeliveryHistory | null> {
     const record = await this.deliveryHistoryRepository.findOne({
       where: { id: recordId },
     });

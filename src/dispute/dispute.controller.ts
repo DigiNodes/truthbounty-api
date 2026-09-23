@@ -15,7 +15,6 @@ import { ResolveDisputeDto } from './dto/resolve-dispute.dto';
 import {
   DisputeStatus,
   DisputeTrigger,
-  DisputeOutcome,
 } from './entities/dispute.entity';
 
 @ApiTags('disputes')

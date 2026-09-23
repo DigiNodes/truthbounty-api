@@ -3,7 +3,7 @@ import { Reflector } from '@nestjs/core';
 import { lastValueFrom, Observable, of, throwError } from 'rxjs';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { RealtimeStreamController } from './realtime-stream.controller';
-import { RealtimeService, RealtimeBackpressureError } from './realtime.service';
+import { RealtimeBackpressureError } from './realtime.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ProjectionEventType, RealtimeEnvelopeType } from './realtime.enums';
 

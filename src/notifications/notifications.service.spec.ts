@@ -6,7 +6,6 @@ import { Notification } from './entities/notification.entity';
 import { NotificationPreference } from './entities/notification-preference.entity';
 import { NotificationStatus } from './enums/notification-status.enum';
 import { NotificationCategory } from './enums/notification-category.enum';
-import { NotificationChannel } from './enums/notification-channel.enum';
 
 describe('NotificationsService', () => {
   let service: NotificationsService;

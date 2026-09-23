@@ -1,9 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { getQueueToken } from '@nestjs/bullmq';
-import { NotFoundException, ConflictException } from '@nestjs/common';
-import { Repository, DataSource } from 'typeorm';
-import { Admin, AdminRole } from '../../entities/admin.entity';
+import { NotFoundException } from '@nestjs/common';
+import { DataSource } from 'typeorm';
+import { Admin } from '../../entities/admin.entity';
 import { AuditLog } from '../../../audit/entities/audit-log.entity';
 import { ProtocolAdminService } from '../protocol-admin.service';
 import { AuditTrailService } from '../../../audit/services/audit-trail.service';

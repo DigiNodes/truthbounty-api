@@ -1,4 +1,4 @@
-import { AdminGuard, ADMIN_ONLY_KEY } from './admin.guard';
+import { AdminGuard } from './admin.guard';
 import { Reflector } from '@nestjs/core';
 import { ForbiddenException, ExecutionContext } from '@nestjs/common';
 

@@ -1,8 +1,5 @@
- feat/be-016-monitoring-api
-import { Counter, Histogram, Gauge, register } from "prom-client";
+import { Counter, Histogram, Gauge, register } from 'prom-client';
 import { Injectable } from "@nestjs/common";
-import { Counter, Histogram, register } from 'prom-client';
- main
 
 @Injectable()
 export class MetricsService {
@@ -31,6 +28,7 @@ export class MetricsService {
   // check call.
   private readonly blockchainLagGauge: Gauge<string>;
   private readonly blockchainLastIndexedBlockGauge: Gauge<string>;
+  private readonly genericCounters = new Map<string, Counter<string>>();
 
   constructor() {
     this.requestCounter = new Counter({
@@ -89,6 +87,22 @@ export class MetricsService {
     this.latencyHistogram.observe({ method, route, status }, duration);
     this.totalLatencyMs += duration * 1000;
     this.latencySamples += 1;
+  }
+
+  /**
+   * Increments a named generic counter, creating it on first use.
+   * Mirrors requestCounter usage for ad-hoc counters (e.g. notifications).
+   */
+  incrementCounter(name: string, value = 1): void {
+    let counter = this.genericCounters.get(name);
+    if (!counter) {
+      counter = new Counter({
+        name,
+        help: `Generic counter: ${name}`,
+      });
+      this.genericCounters.set(name, counter);
+    }
+    counter.inc(value);
   }
 
   /**

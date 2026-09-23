@@ -80,12 +80,12 @@ export type PrismaVersion = {
 }
 
 /**
- * Prisma Client JS version: 7.4.1
- * Query Engine version: 55ae170b1ced7fc6ed07a15f110549408c501bb3
+ * Prisma Client JS version: 7.10.0
+ * Query Engine version: 0edf323efd1d98336f3f0a68684b56f689b900d3
  */
 export const prismaVersion: PrismaVersion = {
-  client: "7.4.1",
-  engine: "55ae170b1ced7fc6ed07a15f110549408c501bb3"
+  client: "7.10.0",
+  engine: "0edf323efd1d98336f3f0a68684b56f689b900d3"
 }
 
 /**
@@ -156,6 +156,19 @@ export type Subset<T, U> = {
 };
 
 /**
+ * Resolved type of the argument passed to the `PrismaClient` constructor.
+ *
+ * When called without a narrower options type (the common case), this resolves
+ * to `PrismaClientOptions` directly, which produces a clear TypeScript error
+ * message (`not assignable to parameter of type 'PrismaClientOptions'`) when
+ * the argument is missing or incomplete. When the user supplies a narrower
+ * options type (e.g. via a literal), it falls back to `Subset` to keep
+ * filtering out unknown properties.
+ */
+export type PrismaClientConstructorArgs<Options extends PrismaClientOptions> =
+  [PrismaClientOptions] extends [Options] ? PrismaClientOptions : Subset<Options, PrismaClientOptions>;
+
+/**
  * SelectSubset
  * @desc From `T` pick properties that exist in `U`. Simple version of Intersection.
  * Additionally, it validates, if both select and include are present. If the case, it errors.
@@ -187,7 +200,7 @@ type Without<T, U> = { [P in Exclude<keyof T, keyof U>]?: never };
 export type XOR<T, U> =
   T extends object ?
   U extends object ?
-    (Without<T, U> & U) | (Without<U, T> & T)
+    ((Without<T, U> & U) | (Without<U, T> & T)) & object
   : U : T
 
 
@@ -391,7 +404,12 @@ export const ModelName = {
   WorldIdVerification: 'WorldIdVerification',
   Conversation: 'Conversation',
   Message: 'Message',
-  AiUsageMetric: 'AiUsageMetric'
+  ContextDocument: 'ContextDocument',
+  AiUsageMetric: 'AiUsageMetric',
+  AnalyticsEvent: 'AnalyticsEvent',
+  MetricAggregate: 'MetricAggregate',
+  ReportJob: 'ReportJob',
+  MonitoringMetric: 'MonitoringMetric'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -407,7 +425,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "user" | "wallet" | "sybilScore" | "sybilExplanation" | "worldIdVerification" | "conversation" | "message" | "aiUsageMetric"
+    modelProps: "user" | "wallet" | "sybilScore" | "sybilExplanation" | "worldIdVerification" | "conversation" | "message" | "contextDocument" | "aiUsageMetric" | "analyticsEvent" | "metricAggregate" | "reportJob" | "monitoringMetric"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -929,6 +947,80 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
+    ContextDocument: {
+      payload: Prisma.$ContextDocumentPayload<ExtArgs>
+      fields: Prisma.ContextDocumentFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.ContextDocumentFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ContextDocumentPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.ContextDocumentFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ContextDocumentPayload>
+        }
+        findFirst: {
+          args: Prisma.ContextDocumentFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ContextDocumentPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.ContextDocumentFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ContextDocumentPayload>
+        }
+        findMany: {
+          args: Prisma.ContextDocumentFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ContextDocumentPayload>[]
+        }
+        create: {
+          args: Prisma.ContextDocumentCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ContextDocumentPayload>
+        }
+        createMany: {
+          args: Prisma.ContextDocumentCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.ContextDocumentCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ContextDocumentPayload>[]
+        }
+        delete: {
+          args: Prisma.ContextDocumentDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ContextDocumentPayload>
+        }
+        update: {
+          args: Prisma.ContextDocumentUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ContextDocumentPayload>
+        }
+        deleteMany: {
+          args: Prisma.ContextDocumentDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.ContextDocumentUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.ContextDocumentUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ContextDocumentPayload>[]
+        }
+        upsert: {
+          args: Prisma.ContextDocumentUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ContextDocumentPayload>
+        }
+        aggregate: {
+          args: Prisma.ContextDocumentAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateContextDocument>
+        }
+        groupBy: {
+          args: Prisma.ContextDocumentGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.ContextDocumentGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.ContextDocumentCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.ContextDocumentCountAggregateOutputType> | number
+        }
+      }
+    }
     AiUsageMetric: {
       payload: Prisma.$AiUsageMetricPayload<ExtArgs>
       fields: Prisma.AiUsageMetricFieldRefs
@@ -1000,6 +1092,302 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         count: {
           args: Prisma.AiUsageMetricCountArgs<ExtArgs>
           result: runtime.Types.Utils.Optional<Prisma.AiUsageMetricCountAggregateOutputType> | number
+        }
+      }
+    }
+    AnalyticsEvent: {
+      payload: Prisma.$AnalyticsEventPayload<ExtArgs>
+      fields: Prisma.AnalyticsEventFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.AnalyticsEventFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AnalyticsEventPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.AnalyticsEventFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AnalyticsEventPayload>
+        }
+        findFirst: {
+          args: Prisma.AnalyticsEventFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AnalyticsEventPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.AnalyticsEventFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AnalyticsEventPayload>
+        }
+        findMany: {
+          args: Prisma.AnalyticsEventFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AnalyticsEventPayload>[]
+        }
+        create: {
+          args: Prisma.AnalyticsEventCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AnalyticsEventPayload>
+        }
+        createMany: {
+          args: Prisma.AnalyticsEventCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.AnalyticsEventCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AnalyticsEventPayload>[]
+        }
+        delete: {
+          args: Prisma.AnalyticsEventDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AnalyticsEventPayload>
+        }
+        update: {
+          args: Prisma.AnalyticsEventUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AnalyticsEventPayload>
+        }
+        deleteMany: {
+          args: Prisma.AnalyticsEventDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.AnalyticsEventUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.AnalyticsEventUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AnalyticsEventPayload>[]
+        }
+        upsert: {
+          args: Prisma.AnalyticsEventUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AnalyticsEventPayload>
+        }
+        aggregate: {
+          args: Prisma.AnalyticsEventAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateAnalyticsEvent>
+        }
+        groupBy: {
+          args: Prisma.AnalyticsEventGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AnalyticsEventGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.AnalyticsEventCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AnalyticsEventCountAggregateOutputType> | number
+        }
+      }
+    }
+    MetricAggregate: {
+      payload: Prisma.$MetricAggregatePayload<ExtArgs>
+      fields: Prisma.MetricAggregateFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.MetricAggregateFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MetricAggregatePayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.MetricAggregateFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MetricAggregatePayload>
+        }
+        findFirst: {
+          args: Prisma.MetricAggregateFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MetricAggregatePayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.MetricAggregateFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MetricAggregatePayload>
+        }
+        findMany: {
+          args: Prisma.MetricAggregateFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MetricAggregatePayload>[]
+        }
+        create: {
+          args: Prisma.MetricAggregateCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MetricAggregatePayload>
+        }
+        createMany: {
+          args: Prisma.MetricAggregateCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.MetricAggregateCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MetricAggregatePayload>[]
+        }
+        delete: {
+          args: Prisma.MetricAggregateDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MetricAggregatePayload>
+        }
+        update: {
+          args: Prisma.MetricAggregateUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MetricAggregatePayload>
+        }
+        deleteMany: {
+          args: Prisma.MetricAggregateDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.MetricAggregateUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.MetricAggregateUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MetricAggregatePayload>[]
+        }
+        upsert: {
+          args: Prisma.MetricAggregateUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MetricAggregatePayload>
+        }
+        aggregate: {
+          args: Prisma.MetricAggregateAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateMetricAggregate>
+        }
+        groupBy: {
+          args: Prisma.MetricAggregateGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.MetricAggregateGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.MetricAggregateCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.MetricAggregateCountAggregateOutputType> | number
+        }
+      }
+    }
+    ReportJob: {
+      payload: Prisma.$ReportJobPayload<ExtArgs>
+      fields: Prisma.ReportJobFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.ReportJobFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReportJobPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.ReportJobFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReportJobPayload>
+        }
+        findFirst: {
+          args: Prisma.ReportJobFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReportJobPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.ReportJobFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReportJobPayload>
+        }
+        findMany: {
+          args: Prisma.ReportJobFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReportJobPayload>[]
+        }
+        create: {
+          args: Prisma.ReportJobCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReportJobPayload>
+        }
+        createMany: {
+          args: Prisma.ReportJobCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.ReportJobCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReportJobPayload>[]
+        }
+        delete: {
+          args: Prisma.ReportJobDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReportJobPayload>
+        }
+        update: {
+          args: Prisma.ReportJobUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReportJobPayload>
+        }
+        deleteMany: {
+          args: Prisma.ReportJobDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.ReportJobUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.ReportJobUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReportJobPayload>[]
+        }
+        upsert: {
+          args: Prisma.ReportJobUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ReportJobPayload>
+        }
+        aggregate: {
+          args: Prisma.ReportJobAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateReportJob>
+        }
+        groupBy: {
+          args: Prisma.ReportJobGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.ReportJobGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.ReportJobCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.ReportJobCountAggregateOutputType> | number
+        }
+      }
+    }
+    MonitoringMetric: {
+      payload: Prisma.$MonitoringMetricPayload<ExtArgs>
+      fields: Prisma.MonitoringMetricFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.MonitoringMetricFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MonitoringMetricPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.MonitoringMetricFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MonitoringMetricPayload>
+        }
+        findFirst: {
+          args: Prisma.MonitoringMetricFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MonitoringMetricPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.MonitoringMetricFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MonitoringMetricPayload>
+        }
+        findMany: {
+          args: Prisma.MonitoringMetricFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MonitoringMetricPayload>[]
+        }
+        create: {
+          args: Prisma.MonitoringMetricCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MonitoringMetricPayload>
+        }
+        createMany: {
+          args: Prisma.MonitoringMetricCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.MonitoringMetricCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MonitoringMetricPayload>[]
+        }
+        delete: {
+          args: Prisma.MonitoringMetricDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MonitoringMetricPayload>
+        }
+        update: {
+          args: Prisma.MonitoringMetricUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MonitoringMetricPayload>
+        }
+        deleteMany: {
+          args: Prisma.MonitoringMetricDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.MonitoringMetricUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.MonitoringMetricUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MonitoringMetricPayload>[]
+        }
+        upsert: {
+          args: Prisma.MonitoringMetricUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MonitoringMetricPayload>
+        }
+        aggregate: {
+          args: Prisma.MonitoringMetricAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateMonitoringMetric>
+        }
+        groupBy: {
+          args: Prisma.MonitoringMetricGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.MonitoringMetricGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.MonitoringMetricCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.MonitoringMetricCountAggregateOutputType> | number
         }
       }
     }
@@ -1127,6 +1515,22 @@ export const MessageScalarFieldEnum = {
 export type MessageScalarFieldEnum = (typeof MessageScalarFieldEnum)[keyof typeof MessageScalarFieldEnum]
 
 
+export const ContextDocumentScalarFieldEnum = {
+  id: 'id',
+  title: 'title',
+  category: 'category',
+  content: 'content',
+  tags: 'tags',
+  sourceUrl: 'sourceUrl',
+  isActive: 'isActive',
+  createdBy: 'createdBy',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type ContextDocumentScalarFieldEnum = (typeof ContextDocumentScalarFieldEnum)[keyof typeof ContextDocumentScalarFieldEnum]
+
+
 export const AiUsageMetricScalarFieldEnum = {
   id: 'id',
   userId: 'userId',
@@ -1140,6 +1544,64 @@ export const AiUsageMetricScalarFieldEnum = {
 } as const
 
 export type AiUsageMetricScalarFieldEnum = (typeof AiUsageMetricScalarFieldEnum)[keyof typeof AiUsageMetricScalarFieldEnum]
+
+
+export const AnalyticsEventScalarFieldEnum = {
+  id: 'id',
+  eventType: 'eventType',
+  entityType: 'entityType',
+  entityId: 'entityId',
+  userId: 'userId',
+  data: 'data',
+  occurredAt: 'occurredAt',
+  createdAt: 'createdAt'
+} as const
+
+export type AnalyticsEventScalarFieldEnum = (typeof AnalyticsEventScalarFieldEnum)[keyof typeof AnalyticsEventScalarFieldEnum]
+
+
+export const MetricAggregateScalarFieldEnum = {
+  id: 'id',
+  metricKey: 'metricKey',
+  period: 'period',
+  bucketStart: 'bucketStart',
+  filters: 'filters',
+  value: 'value',
+  updatedAt: 'updatedAt'
+} as const
+
+export type MetricAggregateScalarFieldEnum = (typeof MetricAggregateScalarFieldEnum)[keyof typeof MetricAggregateScalarFieldEnum]
+
+
+export const ReportJobScalarFieldEnum = {
+  id: 'id',
+  name: 'name',
+  reportType: 'reportType',
+  filters: 'filters',
+  format: 'format',
+  status: 'status',
+  progress: 'progress',
+  fileUrl: 'fileUrl',
+  error: 'error',
+  createdAt: 'createdAt',
+  startedAt: 'startedAt',
+  completedAt: 'completedAt',
+  scheduledFor: 'scheduledFor',
+  createdByUserId: 'createdByUserId'
+} as const
+
+export type ReportJobScalarFieldEnum = (typeof ReportJobScalarFieldEnum)[keyof typeof ReportJobScalarFieldEnum]
+
+
+export const MonitoringMetricScalarFieldEnum = {
+  id: 'id',
+  name: 'name',
+  value: 'value',
+  labels: 'labels',
+  recordedAt: 'recordedAt'
+} as const
+
+export type MonitoringMetricScalarFieldEnum = (typeof MonitoringMetricScalarFieldEnum)[keyof typeof MonitoringMetricScalarFieldEnum]
 
 
 export const SortOrder = {
@@ -1254,19 +1716,10 @@ export type BatchPayload = {
 export const defineExtension = runtime.Extensions.defineExtension as unknown as runtime.Types.Extensions.ExtendsHook<"define", TypeMapCb, runtime.Types.Extensions.DefaultArgs>
 export type DefaultPrismaClient = PrismaClient
 export type ErrorFormat = 'pretty' | 'colorless' | 'minimal'
-export type PrismaClientOptions = ({
-  /**
-   * Instance of a Driver Adapter, e.g., like one provided by `@prisma/adapter-pg`.
-   */
-  adapter: runtime.SqlDriverAdapterFactory
-  accelerateUrl?: never
-} | {
-  /**
-   * Prisma Accelerate URL allowing the client to connect through Accelerate instead of a direct database.
-   */
-  accelerateUrl: string
-  adapter?: never
-}) & {
+/**
+ * Options common to all variants of `PrismaClientOptions`, regardless of whether you connect to your database through a driver adapter or through Prisma Accelerate.
+ */
+export interface PrismaClientBaseOptions {
   /**
    * @default "colorless"
    */
@@ -1337,7 +1790,72 @@ export type PrismaClientOptions = ({
    * ```
    */
   comments?: runtime.SqlCommenterPlugin[]
+  /**
+   * Optional maximum size for the query plan cache. If not provided, a default size will be used.
+   * A value of `0` can be used to disable the cache entirely. A higher cache size can improve
+   * performance for applications that execute a large number of unique queries, while a smaller
+   * cache size can reduce memory usage.
+   * 
+   * @example
+   * ```
+   * const prisma = new PrismaClient({
+   *   adapter,
+   *   queryPlanCacheMaxSize: 100,
+   * })
+   * ```
+   */
+  queryPlanCacheMaxSize?: number
 }
+
+/**
+ * `PrismaClient` options for connecting to your database through Prisma Accelerate instead of a driver adapter.
+ * 
+ * Learn more: https://pris.ly/d/accelerate
+ */
+export interface PrismaClientOptionsWithAccelerateUrl extends PrismaClientBaseOptions {
+  /**
+   * The Prisma Accelerate connection URL. Use this option to connect to your database through Prisma Accelerate instead of using a driver adapter to connect directly.
+   * 
+   * Learn more: https://pris.ly/d/accelerate
+   */
+  accelerateUrl: string
+  adapter?: never
+}
+
+/**
+ * `PrismaClient` options for connecting to your database through a driver adapter. This is the common case in Prisma 7.
+ * 
+ * Learn more: https://pris.ly/d/driver-adapters
+ */
+export interface PrismaClientOptionsWithAdapter extends PrismaClientBaseOptions {
+  /**
+   * A driver adapter that PrismaClient uses to connect to your database, such as the ones provided by `@prisma/adapter-pg`, `@prisma/adapter-libsql`, `@prisma/adapter-planetscale`, etc.
+   * 
+   * A driver adapter is **required** unless you connect to your database through Prisma Accelerate (in which case use `accelerateUrl` instead).
+   * 
+   * Learn more: https://pris.ly/d/driver-adapters
+   * 
+   * @example
+   * ```ts
+   * import { PrismaPg } from '@prisma/adapter-pg'
+   * import { PrismaClient } from './generated/prisma/client'
+   * 
+   * const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL })
+   * const prisma = new PrismaClient({ adapter })
+   * ```
+   */
+  adapter: runtime.SqlDriverAdapterFactory
+  accelerateUrl?: never
+}
+
+/**
+ * Options passed to the `PrismaClient` constructor.
+ * 
+ * A driver adapter (or, alternatively, a Prisma Accelerate URL) is **required**. See {@link PrismaClientOptionsWithAdapter} and {@link PrismaClientOptionsWithAccelerateUrl} for the two variants. All other properties live in {@link PrismaClientBaseOptions} and are optional.
+ * 
+ * Learn more about driver adapters: https://pris.ly/d/driver-adapters
+ */
+export type PrismaClientOptions = PrismaClientOptionsWithAccelerateUrl | PrismaClientOptionsWithAdapter
 export type GlobalOmitConfig = {
   user?: Prisma.UserOmit
   wallet?: Prisma.WalletOmit
@@ -1346,7 +1864,12 @@ export type GlobalOmitConfig = {
   worldIdVerification?: Prisma.WorldIdVerificationOmit
   conversation?: Prisma.ConversationOmit
   message?: Prisma.MessageOmit
+  contextDocument?: Prisma.ContextDocumentOmit
   aiUsageMetric?: Prisma.AiUsageMetricOmit
+  analyticsEvent?: Prisma.AnalyticsEventOmit
+  metricAggregate?: Prisma.MetricAggregateOmit
+  reportJob?: Prisma.ReportJobOmit
+  monitoringMetric?: Prisma.MonitoringMetricOmit
 }
 
 /* Types for Logging */

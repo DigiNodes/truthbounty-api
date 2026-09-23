@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
+import { ApiTags } from '@nestjs/swagger';
 import { IdentityService } from './identity.service';
 import { LinkWalletDto } from './dto/link-wallet.dto';
 import { SybilResistanceService } from '../sybil-resistance/sybil-resistance.service';

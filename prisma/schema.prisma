@@ -28,10 +28,10 @@ enum UserRole {
 model User {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
-  updatedAt DateTime @updated
+  updatedAt DateTime @updatedAt
 
   // Primary wallet address — canonical identifier for the user
-  walletAddress String @unique
+  walletAddress String? @unique
 
   reputation Int @default(0)
 
@@ -64,7 +64,7 @@ model Wallet {
 model SybilScore {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
-  updatedAt DateTime @updated
+  updatedAt DateTime @updatedAt
 
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -121,7 +121,7 @@ model Conversation {
   id        String   @id @default(uuid())
   title     String?
   createdAt  DateTime @default(now())
-  updatedAt DateTime @updated
+  updatedAt DateTime @updatedAt
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   messages  Message[]
@@ -195,7 +195,7 @@ model MetricAggregate {
   bucketStart DateTime
   filters    String @default("{}") // Canonical JSON string representing dimensions e.g. chain, role
   value       Float @default(0)
-  updatedAt  DateTime @updated
+  updatedAt  DateTime @updatedAt
 
   @@index([metricKey, period, bucketStart])
   @@unique([metricKey, period, bucketStart, filters])

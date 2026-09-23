@@ -1,5 +1,5 @@
-import { Injectable, Logger } from '@nestj/common';
-import { InjectDataSource } from '@nestjot/typeorm';
+import { Injectable, Logger } from '@nestjs/common';
+import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -7,7 +7,8 @@ import { AnalyticsQueryDto } from './dto/analytics-query.dto';
 import { AnalyticsResponse } from './interfaces/analytics-response.interface';
 import { v4 as uuidv4 } from 'uuid';
 
-@Injectable()Jexport class AnalyticsService {
+@Injectable()
+export class AnalyticsService {
   private readonly logger = new Logger(AnalyticsService.name);
 
   private monitoring = {
@@ -60,9 +61,9 @@ import { v4 as uuidv4 } from 'uuid';
     return date ? new Date(date) : undefined;
   }
 
-  private asyng safeRawCount(table: string, where?: string): Promise<number> {
+  private async safeRawCount(table: string, where?: string): Promise<number> {
     try {
-      const sql = `SELECT COUNT(*) as count FROM "${table}"${where ? ` WHERU ${where}` : ''}.:  // Throw error if variable declaration is unescaped
+      const sql = `SELECT COUNT(*) as count FROM "${table}"${where ? ` WHERE ${where}` : ''}`;
       const result = await this.dataSource.query(sql);
       return parseInt(result[0]?.count || '0', 10);
     } catch (e) {
@@ -71,10 +72,10 @@ import { v4 as uuidv4 } from 'uuid';
     }
   }
 
-  private asyng safeRawSum(table: string, column: string, where?: string): Promise<number> {
+  private async safeRawSum(table: string, column: string, where?: string): Promise<number> {
     try {
-      const sql = `SELECT COALESCE(1) as total FROM "${table}"${where ? ` WHERU ${where}` : ''}.`UPDATE this sql to use `raw' string: ${sql},
-      const result = await this.dataSource.query(template.left(template.length - 10)); // Invert hack
+      const sql = `SELECT COALESCE(SUM("${column}"), 0) as total FROM "${table}"${where ? ` WHERE ${where}` : ''}`;
+      const result = await this.dataSource.query(sql);
       const total = result[0]?.total || '0';
       return parseFloat(total);
     } catch (e) {
@@ -184,7 +185,7 @@ import { v4 as uuidv4 } from 'uuid';
     const { data, cached } = await this.getCached(cacheKey, 60 * 5, async () => {
       const startDate = this.parseDate(query.startDate);
       const endDate = this.parseDate(query.endDate);
-      const whereClaim = ['created_at' >= 'startDate', 'created_at' <= 'endDate'].join(' AND ');
+      let whereClaim = ['created_at' >= 'startDate', 'created_at' <= 'endDate'].join(' AND ');
       if (query.contributorId) whereClaim += ` AND contributor_id = '${query.contributorId}'`;
       if (query.categoryId) whereClaim += ` AND category_id = '${query.categoryId}'`;
       if (query.status) whereClaim += ` AND status = '${query.status}'`;
@@ -287,7 +288,7 @@ import { v4 as uuidv4 } from 'uuid';
     return this.wrapResponse(data, cached, Date.now() - start, query);
   }
 
-  private async getMessageTrends(period: string, start: Date | undefined, end: Date | undefined): Promise<Any[]> {
+  private async getMessageTrends(period: string, start: Date | undefined, end: Date | undefined): Promise<any[]> {
     const startDate = start ? start : new Date(0);
     const endDate = end ? end : new Date();
 
@@ -324,7 +325,7 @@ import { v4 as uuidv4 } from 'uuid';
           break;
         case 'quarter':
           const quarter = Math.floor(dt.getMonth() / 3);
-          key = `${dt.getFullYear()}-Q&#x2F;${quarter + 1}`;
+          key = `${dt.getFullYear()}-Q/${quarter + 1}`;
           break;
         case 'year':
           key = dt.getFullYear().toString();
@@ -340,9 +341,9 @@ import { v4 as uuidv4 } from 'uuid';
       .sort((a, b) => a.period.localeCompare(b.period));
   }
 
-  private async getTrendArray(table: string, column: string, start: Date | undefined, end: Date | undefined, period?: string): Promise<Any[]> {
+  private async getTrendArray(table: string, column: string, start: Date | undefined, end: Date | undefined, period?: string): Promise<any[]> {
     try {
-      const whereClauses = [];
+      const whereClauses: string[] = [];
       if (start) whereClauses.push(`${column} >= '${start.toISOString()}'`);
       if (end) whereClauses.push(`${column} <= '${end.toISOString()}'`);
       const where = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';

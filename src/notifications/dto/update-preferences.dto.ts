@@ -1,4 +1,4 @@
-import { IsOptional, IsBoolean, IsArray, IsEnum, ValidateNested } from 'class-validator';
+import { IsOptional, IsBoolean, IsArray, IsEnum, IsString, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { DeliveryChannel, NotificationCategory } from '../interfaces/notification.types';
 
