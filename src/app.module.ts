@@ -1,5 +1,6 @@
 import { Module, Logger } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { EnvironmentValidationService } from './config/environment-validation.service';
 import { BullModule } from '@nestjs/bullmq';
 import { BullBoardModule } from '@bull-board/nestjs';
 import { ExpressAdapter } from '@bull-board/express';
@@ -341,6 +342,7 @@ async function createThrottlerStorage(
   controllers: [AppController],
   providers: [
     AppService,
+    EnvironmentValidationService,
     {
       provide: APP_GUARD,
       useClass: GlobalAuthGuard,
