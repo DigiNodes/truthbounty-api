@@ -11,6 +11,8 @@ import { AppService } from './app.service';
 import { RewardsModule } from './rewards/rewards.module';
 import blockchainConfig from './config/blockchain.config';
 import sybilConfig from './config/sybil.config';
+import finalityPolicyConfig from './config/finality-policy.config';
+import { FinalityPolicyModule } from './config/finality-policy.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { DatabaseModule } from './database/database.module';
 import { BlockchainModule } from './blockchain/blockchain.module';
@@ -263,9 +265,10 @@ async function createThrottlerStorage(
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [blockchainConfig, throttlerConfig, sybilConfig],
+      load: [blockchainConfig, throttlerConfig, sybilConfig, finalityPolicyConfig],
       envFilePath: ['.env.local', '.env'],
     }),
+    FinalityPolicyModule,
     ScheduleModule.forRoot(),
     // PostgreSQL Database Infrastructure (Issue #269)
     // DatabaseModule provides:
