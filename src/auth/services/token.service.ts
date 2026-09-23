@@ -3,6 +3,10 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { RedisService } from '../../redis/redis.service';
 import { randomBytes, createHash } from 'crypto';
+import {
+  AUTH_GENERIC_FAILURE_MESSAGE,
+  timingSafeEqualHex,
+} from '../../common/utils/timing-safe.util';
 
 /**
  * Token pair returned after successful authentication.
@@ -142,7 +146,8 @@ export class TokenService {
   ): Promise<TokenPair> {
     const parts = refreshTokenRaw.split('.');
     if (parts.length !== 2) {
-      throw new UnauthorizedException('Malformed refresh token');
+      this.logger.warn('Refresh failed [malformed]');
+      throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
     }
 
     const [refreshJti, tokenValue] = parts;
@@ -153,28 +158,37 @@ export class TokenService {
       `${this.BLACKLIST_PREFIX}${refreshJti}`,
     );
     if (isBlacklisted) {
-      throw new UnauthorizedException('Refresh token has been revoked');
+      this.logger.warn('Refresh failed [revoked]');
+      throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
     }
 
     // Retrieve stored refresh data
     const raw = await this.redisService.get(refreshKey);
     if (!raw) {
-      throw new UnauthorizedException('Refresh token not found or expired');
+      this.logger.warn('Refresh failed [not-found]');
+      // Dummy compare so miss timing resembles hit timing.
+      timingSafeEqualHex(
+        this.hashToken(tokenValue),
+        this.hashToken('dummy-refresh-token-value'),
+      );
+      throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
     }
 
     let storedData: any;
     try {
       storedData = JSON.parse(raw);
     } catch {
-      throw new UnauthorizedException('Invalid refresh token data');
+      this.logger.warn('Refresh failed [corrupt-data]');
+      throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
     }
 
-    // Verify token hash
+    // Verify token hash with timing-safe comparison (hex digests).
     const tokenHash = this.hashToken(tokenValue);
-    if (tokenHash !== storedData.tokenHash) {
-      // Potential token theft — revoke all user's refresh tokens
+    if (!timingSafeEqualHex(tokenHash, storedData.tokenHash)) {
+      // Potential token theft — revoke all user's refresh tokens (fail closed).
+      this.logger.warn('Refresh failed [mismatch] — revoking all sessions');
       await this.revokeAllUserTokens(storedData.address);
-      throw new UnauthorizedException('Refresh token mismatch — all sessions revoked');
+      throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
     }
 
     // Invalidate the old refresh token (rotation)

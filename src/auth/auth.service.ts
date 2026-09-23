@@ -1,13 +1,17 @@
-import { Injectable, BadRequestException, UnauthorizedException, InternalServerErrorException, Logger } from '@nestjs/common';
+import { Injectable, UnauthorizedException, InternalServerErrorException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { verifyMessage } from 'ethers';
-import { timingSafeEqual } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
 import { RedisService } from '../redis/redis.service';
 import { SiweService } from './services/siwe.service';
 import { TokenService, TokenPair } from './services/token.service';
+import {
+  AUTH_GENERIC_FAILURE_MESSAGE,
+  constantTimeAddressEqual,
+  timingSafeEqualUtf8,
+} from '../common/utils/timing-safe.util';
 
 interface ChallengeRecord {
   nonce: string;
@@ -82,25 +86,38 @@ export class AuthService {
    */
   async login(loginDto: LoginDto): Promise<{ accessToken: string; refreshToken: string; expiresIn: number; user: any }> {
     const { address, signature, message } = loginDto;
+    const normalizedAddress = address.toLowerCase();
+    const key = `auth:nonce:${normalizedAddress}`;
 
-    // 1. Verify the signature
+    // 1. Verify the signature — all failures collapse to a constant-shape
+    // 401 so callers cannot distinguish bad signature / address mismatch /
+    // missing challenge / expired challenge / invalid nonce via status,
+    // message, code, or timing. Distinct reasons are logged server-side only.
     let recoveredAddress: string;
     try {
       recoveredAddress = verifyMessage(message, signature);
     } catch (error) {
-      throw new BadRequestException('Invalid signature format');
+      this.logger.warn(`Login failed [signature-parse] for ${normalizedAddress}`);
+      // Dummy timing-safe work to normalize the failure path.
+      timingSafeEqualUtf8(message, message);
+      throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
     }
 
-    // 2. Check if recovered address matches the claimed address
-    if (recoveredAddress.toLowerCase() !== address.toLowerCase()) {
-      throw new UnauthorizedException('Signature verification failed. Address mismatch.');
+    // 2. Check if recovered address matches the claimed address (timing-safe).
+    if (!constantTimeAddressEqual(recoveredAddress, address)) {
+      this.logger.warn(`Login failed [address-mismatch] for ${normalizedAddress}`);
+      timingSafeEqualUtf8(message, message);
+      throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
     }
 
-    // 3. Verify the message contains a valid, non-expired nonce
-    const key = `auth:nonce:${address.toLowerCase()}`;
+    // 3. Verify the message contains a valid, non-expired nonce.
+    // Fetch the challenge record regardless of the address-match outcome shape
+    // above so hit-vs-miss timing is bounded by the same Redis + compare work.
     const raw = await this.redisService.get(key);
     if (!raw) {
-      throw new UnauthorizedException('No challenge found or challenge expired. Please request a challenge first.');
+      this.logger.warn(`Login failed [challenge-not-found] for ${normalizedAddress}`);
+      timingSafeEqualUtf8(message, message);
+      throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
     }
 
     let record: ChallengeRecord;
@@ -109,7 +126,9 @@ export class AuthService {
     } catch {
       // Stored value is not a valid record — treat as expired/invalid
       await this.redisService.del(key).catch(() => null);
-      throw new UnauthorizedException('No challenge found or challenge expired. Please request a challenge first.');
+      this.logger.warn(`Login failed [challenge-corrupt] for ${normalizedAddress}`);
+      timingSafeEqualUtf8(message, message);
+      throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
     }
 
     // App-layer TTL check: enforce expiry independently of Redis to prevent
@@ -118,14 +137,17 @@ export class AuthService {
     const elapsedSeconds = (Date.now() - record.issuedAt) / 1000;
     if (elapsedSeconds >= this.NONCE_TTL_SECONDS) {
       await this.redisService.del(key).catch(() => null);
-      throw new UnauthorizedException('Challenge expired. Please request a new challenge.');
+      this.logger.warn(`Login failed [challenge-expired] for ${normalizedAddress}`);
+      timingSafeEqualUtf8(message, message);
+      throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
     }
 
     const expectedMessage = `Sign in to TruthBounty: ${record.nonce}`;
 
     // Compare the full challenge message in constant time to avoid timing attacks.
-    if (!this.constantTimeEquals(message, expectedMessage)) {
-      throw new UnauthorizedException('Invalid nonce in message.');
+    if (!timingSafeEqualUtf8(message, expectedMessage)) {
+      this.logger.warn(`Login failed [nonce-mismatch] for ${normalizedAddress}`);
+      throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
     }
 
     // Delete used nonce (prevent replay attacks)
@@ -185,7 +207,7 @@ export class AuthService {
    */
   async logout(payload: any): Promise<void> {
     if (!payload || !payload.address) {
-      throw new BadRequestException('Invalid token payload');
+      throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
     }
     await this.tokenService.logout(payload);
   }
@@ -255,15 +277,10 @@ export class AuthService {
 
   /**
    * Constant-time string comparison for challenge messages.
+   * Delegates to the shared timing-safe helper (dummy compare on length
+   * mismatch so length is not leaked via early return).
    */
   private constantTimeEquals(a: string, b: string): boolean {
-    const aBuffer = Buffer.from(a, 'utf8');
-    const bBuffer = Buffer.from(b, 'utf8');
-
-    if (aBuffer.length !== bBuffer.length) {
-      return false;
-    }
-
-    return timingSafeEqual(aBuffer, bBuffer);
+    return timingSafeEqualUtf8(a, b);
   }
 }

@@ -38,9 +38,9 @@ export class AuthController {
   @Post('login')
   @Public()
   @ThrottleByWallet('auth')
-  @ApiOperation({ summary: 'Login with wallet signature (supports SIWE and legacy formats)' })
+  @ApiOperation({ summary: 'Login with wallet signature (supports SIWE and legacy formats). All failures return constant-shape 401 Invalid credentials.' })
   @ApiResponse({ status: 201, description: 'Login successful — returns access + refresh tokens' })
-  @ApiResponse({ status: 401, description: 'Invalid signature, expired challenge, or address mismatch' })
+  @ApiResponse({ status: 401, description: 'Invalid credentials (bad signature, unknown/expired challenge, or invalid nonce — intentionally indistinguishable)' })
   @ApiResponse({ status: 400, description: 'Malformed request' })
   async login(@Body() loginDto: LoginDto) {
     return this.authService.login(loginDto);
@@ -52,9 +52,9 @@ export class AuthController {
   @Public()
   @ThrottleByWallet('auth')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Refresh an expired access token using a valid refresh token' })
+  @ApiOperation({ summary: 'Refresh an expired access token using a valid refresh token (constant-shape 401 on any failure; theft triggers fail-closed revocation)' })
   @ApiResponse({ status: 200, description: 'New access + refresh tokens issued (rotation)' })
-  @ApiResponse({ status: 401, description: 'Invalid, expired, or revoked refresh token' })
+  @ApiResponse({ status: 401, description: 'Invalid credentials (invalid, expired, or revoked refresh token — intentionally indistinguishable)' })
   async refresh(@Body() dto: RefreshDto) {
     return this.authService.refresh(dto.refreshToken);
   }

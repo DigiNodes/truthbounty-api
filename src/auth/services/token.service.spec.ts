@@ -128,9 +128,10 @@ describe('TokenService', () => {
     });
 
     it('should reject a malformed refresh token', async () => {
+      // issue-416: constant-shape generic 401 (was 'Malformed refresh token').
       await expect(
         service.refreshAccessToken('bad-format'),
-      ).rejects.toThrow('Malformed refresh token');
+      ).rejects.toThrow('Invalid credentials');
     });
 
     it('should reject a blacklisted refresh token', async () => {
@@ -138,7 +139,7 @@ describe('TokenService', () => {
 
       await expect(
         service.refreshAccessToken('abc.def'),
-      ).rejects.toThrow('Refresh token has been revoked');
+      ).rejects.toThrow('Invalid credentials');
     });
 
     it('should reject an expired/missing refresh token', async () => {
@@ -147,7 +148,7 @@ describe('TokenService', () => {
 
       await expect(
         service.refreshAccessToken('abc.def'),
-      ).rejects.toThrow('Refresh token not found or expired');
+      ).rejects.toThrow('Invalid credentials');
     });
 
     it('should revoke all tokens on hash mismatch (potential theft)', async () => {
@@ -164,9 +165,20 @@ describe('TokenService', () => {
           userId: 'user-1',
         }));
 
+      // issue-416: external shape is generic, but fail-closed revocation remains.
       await expect(
         service.refreshAccessToken(`${refreshJti}.${tokenValue}`),
-      ).rejects.toThrow('Refresh token mismatch');
+      ).rejects.toThrow('Invalid credentials');
+    });
+
+    it('returns constant-shape 401 across refresh failure modes (no enumeration)', async () => {
+      for (const raw of ['no-dot', 'a.b.c', 'jti.']) {
+        await expect(service.refreshAccessToken(raw)).rejects.toThrow('Invalid credentials');
+        jest.clearAllMocks();
+        redisService.get.mockResolvedValue(null);
+        redisService.set.mockResolvedValue(true);
+        redisService.del.mockResolvedValue(true);
+      }
     });
   });
 

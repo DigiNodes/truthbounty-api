@@ -2,6 +2,11 @@
 import { Injectable, UnauthorizedException, BadRequestException, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { verifyMessage } from 'ethers';
+import {
+  AUTH_GENERIC_FAILURE_MESSAGE,
+  constantTimeAddressEqual,
+  timingSafeEqualUtf8,
+} from '../common/utils/timing-safe.util';
 
 @Injectable()
 export class WalletLinkageService {
@@ -13,14 +18,18 @@ export class WalletLinkageService {
         const normalizedWallet = walletAddress.toLowerCase();
 
         // 1. Cryptographically verify fresh signature proves ownership of the wallet
+        // (timing-safe, constant-shape: no short-circuit !== oracle, no distinct messages).
         try {
             const recoveredAddress = verifyMessage(challengeMessage, signature);
-            if (recoveredAddress.toLowerCase() !== normalizedWallet) {
-                throw new UnauthorizedException('Signature does not match wallet address.');
+            if (!constantTimeAddressEqual(recoveredAddress, normalizedWallet)) {
+                this.logger.warn('Wallet linking failed [address-mismatch]');
+                throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
             }
         } catch (error) {
-            this.logger.warn(`Wallet linking signature verification failed: ${error.message}`);
-            throw new UnauthorizedException('Invalid cryptographic signature for wallet linkage.');
+            if (error instanceof UnauthorizedException) throw error;
+            this.logger.warn(`Wallet linking signature verification failed`);
+            timingSafeEqualUtf8(challengeMessage, challengeMessage);
+            throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
         }
 
         const queryRunner = this.dataSource.createQueryRunner();
@@ -35,7 +44,8 @@ export class WalletLinkageService {
             );
 
             if (existing && existing.length > 0) {
-                throw new BadRequestException('Wallet is already linked to an active user account.');
+                // Redacted constant-shape: do not disclose linkage state details.
+                throw new BadRequestException(AUTH_GENERIC_FAILURE_MESSAGE);
             }
 
             // 3. Persist canonical linkage record with verification timestamp
@@ -66,11 +76,14 @@ export class WalletLinkageService {
 
         try {
             const recoveredAddress = verifyMessage(challengeMessage, signature);
-            if (recoveredAddress.toLowerCase() !== normalizedWallet) {
-                throw new UnauthorizedException('Signature does not match wallet address for unlinking.');
+            if (!constantTimeAddressEqual(recoveredAddress, normalizedWallet)) {
+                this.logger.warn('Wallet unlinking failed [address-mismatch]');
+                throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
             }
         } catch (error) {
-            throw new UnauthorizedException('Invalid cryptographic signature for wallet unlinking.');
+            if (error instanceof UnauthorizedException) throw error;
+            timingSafeEqualUtf8(challengeMessage, challengeMessage);
+            throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
         }
 
         const queryRunner = this.dataSource.createQueryRunner();
@@ -84,7 +97,7 @@ export class WalletLinkageService {
             );
 
             if (!record || record.length === 0) {
-                throw new BadRequestException('Active wallet linkage not found for user.');
+                throw new BadRequestException(AUTH_GENERIC_FAILURE_MESSAGE);
             }
 
             // Atomically set unlinked timestamp

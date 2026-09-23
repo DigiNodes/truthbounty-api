@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { IdentityService } from './identity.service';
 import { LinkWalletDto } from './dto/link-wallet.dto';
 import { SybilResistanceService } from '../sybil-resistance/sybil-resistance.service';
+import { ThrottleByWallet } from '../common/decorators/throttle-by-wallet.decorator';
 
 @ApiTags('identity')
 @Controller('identity')
@@ -23,11 +24,13 @@ export class IdentityController {
   }
 
   @Post('users/:id/wallets')
+  @ThrottleByWallet('auth')
   linkWallet(@Param('id') userId: string, @Body() dto: LinkWalletDto) {
     return this.identityService.linkWallet(userId, dto);
   }
 
   @Delete('users/:id/wallets/:chain/:address')
+  @ThrottleByWallet('auth')
   unlinkWallet(
     @Param('id') userId: string,
     @Param('chain') chain: string,

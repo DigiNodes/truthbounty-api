@@ -2,6 +2,10 @@
 import { Injectable, UnauthorizedException, BadRequestException, Logger } from '@nestjs/common';
 import { SiweMessage } from 'siwe';
 import { DataSource } from 'typeorm';
+import {
+  AUTH_GENERIC_FAILURE_MESSAGE,
+  timingSafeEqualUtf8,
+} from '../common/utils/timing-safe.util';
 
 @Injectable()
 export class SiweVerificationService {
@@ -21,18 +25,22 @@ export class SiweVerificationService {
             throw new BadRequestException('Malformed EIP-4361 message structure.');
         }
 
-        // 1. Verify Domain & Chain ID constraints
-        if (siweMessage.domain !== this.expectedDomain) {
-            throw new UnauthorizedException(`Invalid domain: expected ${this.expectedDomain}, got ${siweMessage.domain}`);
+        // 1. Verify Domain & Chain ID constraints (timing-safe, redacted,
+        // constant-shape: distinct values never echoed, same 401 message).
+        if (!timingSafeEqualUtf8(siweMessage.domain, this.expectedDomain)) {
+            this.logger.warn('SIWE verification failed [domain]');
+            throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
         }
 
         if (siweMessage.chainId !== this.expectedChainId) {
-            throw new UnauthorizedException(`Invalid chain ID: expected Optimism chain ID ${this.expectedChainId}, got ${siweMessage.chainId}`);
+            this.logger.warn('SIWE verification failed [chain-id]');
+            throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
         }
 
-        // 2. Verify Nonce against v2_auth_nonces table (Replay prevention)
-        if (siweMessage.nonce !== clientNonce) {
-            throw new UnauthorizedException('Nonce mismatch between payload and request context.');
+        // 2. Verify Nonce against v2_auth_nonces table (timing-safe, Replay prevention)
+        if (!timingSafeEqualUtf8(siweMessage.nonce, clientNonce)) {
+            this.logger.warn('SIWE verification failed [nonce-mismatch]');
+            throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
         }
 
         const nonceRecord = await this.dataSource.query(
@@ -41,18 +49,21 @@ export class SiweVerificationService {
         );
 
         if (!nonceRecord || nonceRecord.length === 0) {
-            throw new UnauthorizedException('Nonce is invalid, expired, or has already been used (replay attack prevented).');
+            this.logger.warn('SIWE verification failed [nonce-invalid]');
+            timingSafeEqualUtf8(clientNonce, clientNonce);
+            throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
         }
 
         // 3. Verify cryptographic signature & expiration/issued-at
         try {
             const verificationResult = await siweMessage.verify({ signature });
             if (!verificationResult.success) {
-                throw new UnauthorizedException('Cryptographic EIP-4361 signature verification failed.');
+                this.logger.warn('SIWE verification failed [signature-verify]');
+                throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
             }
         } catch (error) {
             this.logger.error(`Signature verification error: ${error.message}`);
-            throw new UnauthorizedException('Invalid signature or expired EIP-4361 message.');
+            throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
         }
 
         // 4. Mark nonce as used to prevent replay

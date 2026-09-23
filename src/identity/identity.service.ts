@@ -4,7 +4,6 @@ import {
   ConflictException,
   NotFoundException,
   Logger,
-  ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { LinkWalletDto } from './dto/link-wallet.dto';
@@ -12,6 +11,10 @@ import { verifyMessage, getAddress } from 'ethers';
 import { Prisma, User, Wallet } from '@prisma/client';
 import { AuditTrailService } from '../audit/services/audit-trail.service';
 import { AuditActionType, AuditEntityType } from '../audit/entities/audit-log.entity';
+import {
+  constantTimeAddressEqual,
+  timingSafeEqualUtf8,
+} from '../common/utils/timing-safe.util';
 
 export type UserWithWallets = User & { wallets: Wallet[] };
 
@@ -50,7 +53,9 @@ export class IdentityService {
       where: { id },
       include: { wallets: true },
     });
-    if (!user) throw new NotFoundException(`User ${id} not found`);
+    // Redacted: never echo the requested id back (enumeration-safe,
+    // constant-shape with other lookup failures).
+    if (!user) throw new NotFoundException('User not found');
     return user;
   }
 
@@ -63,19 +68,25 @@ export class IdentityService {
       const existingWallet = await tx.wallet.findFirst({ where: { address: normalizedAddress } });
 
       if (existingWallet) {
-        if (existingWallet.userId !== userId) {
-          throw new ConflictException(
-            `Address ${normalizedAddress} is already linked to another account`,
-          );
+        if (!constantTimeAddressEqual(existingWallet.userId, userId)) {
+          // Redacted: do not disclose the address or the owning account.
+          // Same exception type preserved (Conflict) for REST semantics,
+          // but message is constant-shape.
+          this.logger.warn('Wallet link failed [already-linked]');
+          // Dummy compare to normalize timing between hit/miss branches.
+          timingSafeEqualUtf8(existingWallet.chain, chain);
+          throw new ConflictException('Wallet linkage failed');
         }
-        if (existingWallet.chain === chain) {
-          this.logger.debug(`Wallet ${normalizedAddress}/${chain} already linked to user ${userId} — no-op`);
+        if (timingSafeEqualUtf8(existingWallet.chain, chain)) {
+          this.logger.debug(`Wallet link no-op — already linked`);
           return { wallet: existingWallet, alreadyLinked: true };
         }
       }
 
       const user = await tx.user.findUnique({ where: { id: userId } });
-      if (!user) throw new NotFoundException(`User ${userId} not found`);
+      // Redacted: same generic message as already-linked so callers cannot
+      // distinguish "user missing" from "wallet taken" via message content.
+      if (!user) throw new NotFoundException('Wallet linkage failed');
 
       const wallet = await tx.wallet.create({
         data: { address: normalizedAddress, chain, userId },
@@ -92,11 +103,12 @@ export class IdentityService {
       where: { address_chain: { address: normalizedAddress, chain } },
     });
 
-    if (!wallet) {
-      throw new NotFoundException(`Wallet ${normalizedAddress} on chain ${chain} not found`);
-    }
-    if (wallet.userId !== userId) {
-      throw new ForbiddenException(`Wallet ${normalizedAddress} does not belong to user ${userId}`);
+    // Constant-shape: not-found and not-owned collapse to the same
+    // NotFound + generic message so ownership cannot be enumerated.
+    // Timing-safe user comparison (no short-circuit !== oracle).
+    if (!wallet || !constantTimeAddressEqual(wallet.userId, userId)) {
+      this.logger.warn('Wallet unlink failed [not-found-or-forbidden]');
+      throw new NotFoundException('Wallet unlink failed');
     }
 
     if (MIN_WALLETS > 0) {
@@ -146,7 +158,8 @@ export class IdentityService {
     try {
       return getAddress(address);
     } catch {
-      throw new BadRequestException(`Invalid EVM address: "${address}"`);
+      // Redacted: do not echo attacker-supplied input.
+      throw new BadRequestException('Invalid EVM address');
     }
   }
 
@@ -155,19 +168,22 @@ export class IdentityService {
     try {
       recovered = verifyMessage(message, signature);
     } catch {
-      throw new BadRequestException('Signature could not be parsed — ensure it is a valid EIP-191 hex signature');
+      // Constant-shape with address-mismatch below; logged server-side only.
+      this.logger.warn('Wallet signature parse failed');
+      timingSafeEqualUtf8(message, message);
+      throw new BadRequestException('Invalid credentials');
     }
 
-    if (recovered.toLowerCase() !== expectedAddress.toLowerCase()) {
-      throw new BadRequestException(
-        `Signature verification failed: recovered ${recovered}, expected ${expectedAddress}`,
-      );
+    if (!constantTimeAddressEqual(recovered, expectedAddress)) {
+      // Redacted: never echo recovered/expected addresses (previously leaked both).
+      this.logger.warn('Wallet signature verification failed');
+      throw new BadRequestException('Invalid credentials');
     }
   }
 
   private async findUserOrThrow(userId: string): Promise<User> {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new NotFoundException(`User ${userId} not found`);
+    if (!user) throw new NotFoundException('User not found');
     return user;
   }
 
