@@ -1,8 +1,5 @@
- feat/be-016-monitoring-api
-import { Counter, Histogram, Gauge, register } from "prom-client";
-import { Injectable } from "@nestjs/common";
-import { Counter, Histogram, register } from 'prom-client';
- main
+import { Counter, Histogram, Gauge, register } from 'prom-client';
+import { Injectable } from '@nestjs/common';
 
 @Injectable()
 export class MetricsService {
