@@ -216,4 +216,65 @@ describe('VerificationProjectorService (integration)', () => {
       .find();
     expect(rounds).toHaveLength(1);
   });
+
+  it('advances the cursor atomically with the projection: a failed event does not move the checkpoint', async () => {
+    // Two canonical events: the first applies cleanly, the second fails with
+    // an unrecoverable error. Because the cursor/checkpoint commitment and
+    // the projection share one transaction, the failed event must NOT advance
+    // the cursor, so a later run retries exactly the failed event.
+    await seedEvent({
+      eventName: 'VerificationRoundOpened',
+      txHash: '0x' + '01'.repeat(32),
+      blockNumber: '100',
+      roundId: firstRoundId,
+      payload: { roundType: 'first', roundNumber: '1' },
+    });
+    await seedEvent({
+      eventName: 'PositionCommitted',
+      txHash: '0x' + '03'.repeat(32),
+      blockNumber: '110',
+      roundId: firstRoundId,
+      actor: '0x' + '22'.repeat(20),
+      payload: { stake: '100', verdict: 'support' },
+    });
+
+    // Force the second event to fail with an unrecoverable error (not a
+    // handled unique-violation duplicate) while the first applies normally.
+    const realApply = (projector as any).applyEvent.bind(projector);
+    let applyCalls = 0;
+    const applySpy = jest
+      .spyOn(projector as any, 'applyEvent')
+      .mockImplementation(async (manager: any, event: any) => {
+        applyCalls += 1;
+        if (applyCalls === 2) {
+          throw new Error('simulated projection failure');
+        }
+        return realApply(manager, event);
+      });
+
+    await expect(projector.processNewEvents()).rejects.toThrow(
+      'simulated projection failure',
+    );
+    applySpy.mockRestore();
+
+    // The first event's transaction committed (projection + cursor), so the
+    // round is present and the cursor sits exactly at the first event.
+    const rounds = await dataSource
+      .getRepository(ProjectVerificationRound)
+      .find();
+    expect(rounds).toHaveLength(1);
+
+    const cursor = await dataSource
+      .getRepository(ProjectorCursor)
+      .findOne({ where: { projectorName: 'v2-verification' } });
+    expect(cursor!.lastBlockNumber).toBe('100');
+
+    // Retrying resumes from the checkpoint and processes only the failed one.
+    const retry = await projector.processNewEvents();
+    expect(retry.processed).toBe(1);
+    expect(retry.applied).toBe(1);
+
+    const positions = await queryService.listPositions(firstRoundId);
+    expect(positions).toHaveLength(1);
+  });
 });

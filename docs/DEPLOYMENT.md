@@ -54,6 +54,31 @@ For fresh deployments or rebuilds, trigger the indexer to sync from the authorit
 npm run indexer:bootstrap -- --start-block <BLOCK_NUMBER>
 ```
 
+### 5. Staging Deployment Smoke Tests (V2-BE-146)
+Immediately after staging is deployed, run the smoke suite against the live
+instance. It probes `/health/live`, `/health/ready`, `/health/startup`,
+`/health`, `/health/dependencies`, and `/health/indexer`, validating both HTTP
+status codes and the payload contract the deployment must honour. It fails
+closed: timeouts, malformed payloads, unhealthy status, or a missing version
+all fail the suite.
+
+```bash
+# Locally, against any deployed instance:
+STAGING_BASE_URL=https://staging.example.com npm run smoke:staging
+
+# With a custom per-probe timeout:
+STAGING_BASE_URL=https://staging.example.com SMOKE_TIMEOUT_MS=5000 npm run smoke:staging
+```
+
+- The suite is also run by the `Staging Deployment Smoke Tests` workflow
+  (`.github/workflows/staging-smoke.yml`) either on a schedule or manually.
+- The staging URL is read from the `staging_base_url` repository secret; it is
+  never committed and never required to build or test locally.
+- A failing probe is an observable, actionable failure. Do not ship a staging
+  environment whose smoke suite does not pass.
+
+See `STAGING_SMOKE_TESTS.md` for the endpoint-by-endpoint contract.
+
 ## Rollback Procedures
 
 If a deployment fails or introduces regressions:
