@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import { CanonicalEventQueryService } from '../events/canonical-event-query.service';
 import { CanonicalEvent } from '../events/entities/canonical-event.entity';
 import {
@@ -50,6 +50,12 @@ function readDate(payload: Record<string, unknown>, key: string): Date | null {
  * Projects verification rounds and participant positions from canonical
  * events.
  *
+ * ATOMIC PROJECTION BOUNDARY (V2-BE-047): each canonical chain event and its
+ * cursor/checkpoint are committed in a single database transaction. A crash,
+ * reorg, or duplicate delivery can never advance the cursor without its
+ * projection (or persist a projection without the checkpoint) — the two move
+ * or roll back together.
+ *
  * ASSUMPTION FLAGGED FOR REVIEW: since V2-BE-008's approved ABI has not
  * landed, the payload keys this projector reads (roundType, roundNumber,
  * deadline, stake, reputationInput, effectiveWeight, verdict) are not yet
@@ -88,36 +94,43 @@ export class VerificationProjectorService {
 
     for (const event of events) {
       summary.processed += 1;
-      const outcome = await this.applyEvent(event);
+      // The event projection and the cursor/checkpoint advance share one
+      // transaction: either both become durable or neither does.
+      const outcome = await this.dataSource.transaction(async (manager) => {
+        const applied = await this.applyEvent(manager, event);
+        await manager.getRepository(ProjectorCursor).upsert(
+          {
+            projectorName: PROJECTOR_NAME,
+            lastBlockNumber: event.blockNumber,
+            lastLogIndex: event.logIndex,
+          },
+          ['projectorName'],
+        );
+        return applied;
+      });
+
       if (outcome === 'applied') summary.applied += 1;
       if (outcome === 'anomaly') summary.anomalies += 1;
-
-      await cursorRepo.upsert(
-        {
-          projectorName: PROJECTOR_NAME,
-          lastBlockNumber: event.blockNumber,
-          lastLogIndex: event.logIndex,
-        },
-        ['projectorName'],
-      );
     }
 
     return summary;
   }
 
   private async applyEvent(
+    manager: EntityManager,
     event: CanonicalEvent,
   ): Promise<'applied' | 'anomaly' | 'duplicate'> {
     if (event.eventName === 'VerificationRoundOpened') {
-      return this.applyRoundOpened(event);
+      return this.applyRoundOpened(manager, event);
     }
     if (event.eventName === 'PositionCommitted') {
-      return this.applyPositionCommitted(event);
+      return this.applyPositionCommitted(manager, event);
     }
     return 'duplicate';
   }
 
   private async applyRoundOpened(
+    manager: EntityManager,
     event: CanonicalEvent,
   ): Promise<'applied' | 'duplicate'> {
     if (!event.claimId || !event.roundId) {
@@ -133,7 +146,7 @@ export class VerificationProjectorService {
     const roundNumberRaw = readString(event.payload, 'roundNumber');
     const roundNumber = roundNumberRaw ? Number(roundNumberRaw) : 1;
 
-    const roundRepo = this.dataSource.getRepository(ProjectVerificationRound);
+    const roundRepo = manager.getRepository(ProjectVerificationRound);
     try {
       await roundRepo.insert({
         roundId: event.roundId,
@@ -154,6 +167,7 @@ export class VerificationProjectorService {
   }
 
   private async applyPositionCommitted(
+    manager: EntityManager,
     event: CanonicalEvent,
   ): Promise<'applied' | 'anomaly' | 'duplicate'> {
     if (!event.roundId || !event.actor) {
@@ -163,7 +177,7 @@ export class VerificationProjectorService {
       return 'duplicate';
     }
 
-    const roundRepo = this.dataSource.getRepository(ProjectVerificationRound);
+    const roundRepo = manager.getRepository(ProjectVerificationRound);
     const round = await roundRepo.findOne({
       where: { roundId: event.roundId },
     });
@@ -173,6 +187,7 @@ export class VerificationProjectorService {
       // That's a real signal of an event-order inconsistency, not something
       // to silently drop or guess at.
       await this.recordAnomaly(
+        manager,
         IndexingAnomalyKind.OUT_OF_ORDER,
         event.roundId,
         event,
@@ -181,9 +196,7 @@ export class VerificationProjectorService {
       return 'anomaly';
     }
 
-    const positionRepo = this.dataSource.getRepository(
-      ProjectParticipantPosition,
-    );
+    const positionRepo = manager.getRepository(ProjectParticipantPosition);
     try {
       await positionRepo.insert({
         roundId: event.roundId,
@@ -209,6 +222,7 @@ export class VerificationProjectorService {
       if (existing) return 'duplicate';
 
       await this.recordAnomaly(
+        manager,
         IndexingAnomalyKind.DUPLICATE_EVENT,
         event.roundId,
         event,
@@ -219,6 +233,7 @@ export class VerificationProjectorService {
   }
 
   private async recordAnomaly(
+    manager: EntityManager,
     kind: IndexingAnomalyKind,
     aggregateId: string,
     event: CanonicalEvent,
@@ -226,7 +241,7 @@ export class VerificationProjectorService {
   ): Promise<void> {
     this.logger.warn(`${kind}: ${detail}`);
     try {
-      await this.dataSource.getRepository(IndexingAnomaly).insert({
+      await manager.getRepository(IndexingAnomaly).insert({
         sourceModule: PROJECTOR_NAME,
         kind,
         aggregateId,

@@ -38,10 +38,20 @@ export interface ParsedSiweMessage extends SiweMessage {
 export interface SiweVerifyParams {
   message: string;
   signature: string;
-  /** Expected domain to validate against */
+  /** Expected domain to validate against (strict when allowlist is empty) */
   expectedDomain?: string;
-  /** Expected origin/URI to validate against */
+  /** Require the message URI origin to match this exact origin */
   expectedOrigin?: string;
+  /** Require the message chain ID to match (EIP-155, e.g. 10 for Optimism) */
+  expectedChainId?: number;
+  /** Expected statement the user must have signed (when the API enforces one) */
+  expectedStatement?: string;
+  /** Allowlisted origins. Non-empty ⇒ the message URI origin must be a member. */
+  allowedOrigins?: string[];
+  /** Allowlisted domains. Non-empty ⇒ the message domain must be a member. */
+  allowedDomains?: string[];
+  /** Supported EIP-155 chain IDs. Non-empty ⇒ the message chain must be a member. */
+  supportedChainIds?: number[];
 }
 
 export interface SiweVerifyResult {

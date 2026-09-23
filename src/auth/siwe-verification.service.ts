@@ -1,67 +1,81 @@
 // src/auth/siwe-verification.service.ts
 import { Injectable, UnauthorizedException, BadRequestException, Logger } from '@nestjs/common';
-import { SiweMessage } from 'siwe';
 import { DataSource } from 'typeorm';
+import { SiweService } from './services/siwe.service';
+import { SiweVerifyResult } from './types/siwe.types';
 
+/**
+ * Strict SIWE (EIP-4361) verification for the V2 authentication path.
+ *
+ * Delegates EIP-4361 parsing, signature recovery, and the full set of
+ * domain / origin / chain / statement / nonce / time / resource checks to
+ * the canonical {@link SiweService}, then enforces single-use replay
+ * protection against the persisted `v2_auth_nonces` table. The validation
+ * is fail-closed: every uncertainty rejects the signature.
+ */
 @Injectable()
 export class SiweVerificationService {
     private readonly logger = new Logger(SiweVerificationService.name);
-    private readonly expectedChainId = 10; // Optimism Mainnet (or configure via ConfigService)
+    private readonly expectedChainId = 10; // Optimism Mainnet
     private readonly expectedDomain = process.env.SIWE_DOMAIN || 'truthbounty.app';
+    private readonly allowedOrigins = (process.env.SIWE_ALLOWED_ORIGINS || '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
 
-    constructor(private readonly dataSource: DataSource) {}
+    constructor(
+        private readonly dataSource: DataSource,
+        private readonly siweService: SiweService,
+    ) {}
 
     async verifySiweMessage(messageStr: string, signature: string, clientNonce: string): Promise<string> {
-        let siweMessage: SiweMessage;
-        
+        // 1. Strict EIP-4361 verification (signature + domain/origin/chain/statement/nonce/time/resources).
+        let result: SiweVerifyResult;
         try {
-            siweMessage = new SiweMessage(messageStr);
+            result = await this.siweService.verifySiwe({
+                message: messageStr,
+                signature,
+                expectedChainId: this.expectedChainId,
+                expectedDomain: this.expectedDomain,
+                allowedOrigins: this.allowedOrigins,
+            });
         } catch (error) {
-            this.logger.warn(`Malformed SIWE message parsing failed: ${error.message}`);
+            const message = error instanceof Error ? error.message : String(error);
+            this.logger.warn(`SIWE verification failed: ${message}`);
             throw new BadRequestException('Malformed EIP-4361 message structure.');
         }
 
-        // 1. Verify Domain & Chain ID constraints
-        if (siweMessage.domain !== this.expectedDomain) {
-            throw new UnauthorizedException(`Invalid domain: expected ${this.expectedDomain}, got ${siweMessage.domain}`);
+        if (!result.success || !result.data) {
+            this.logger.warn(`SIWE verification rejected: ${result.error}`);
+            throw new UnauthorizedException(
+                `SIWE verification failed (${result.error ?? 'UNKNOWN'}).`,
+            );
         }
 
-        if (siweMessage.chainId !== this.expectedChainId) {
-            throw new UnauthorizedException(`Invalid chain ID: expected Optimism chain ID ${this.expectedChainId}, got ${siweMessage.chainId}`);
-        }
+        const parsed = result.data;
 
-        // 2. Verify Nonce against v2_auth_nonces table (Replay prevention)
-        if (siweMessage.nonce !== clientNonce) {
+        // 2. Verify nonce matches the request-context nonce (replay binding).
+        if (parsed.nonce !== clientNonce) {
             throw new UnauthorizedException('Nonce mismatch between payload and request context.');
         }
 
-        const nonceRecord = await this.dataSource.query(
+        // 3. Verify nonce against v2_auth_nonces table (single-use replay prevention).
+        const nonceRecord: unknown[] = await this.dataSource.query(
             `SELECT * FROM "v2_auth_nonces" WHERE "wallet_address" = $1 AND "nonce" = $2 AND "used" = FALSE AND "expires_at" > NOW()`,
-            [siweMessage.address.toLowerCase(), clientNonce]
+            [parsed.address.toLowerCase(), clientNonce]
         );
 
         if (!nonceRecord || nonceRecord.length === 0) {
             throw new UnauthorizedException('Nonce is invalid, expired, or has already been used (replay attack prevented).');
         }
 
-        // 3. Verify cryptographic signature & expiration/issued-at
-        try {
-            const verificationResult = await siweMessage.verify({ signature });
-            if (!verificationResult.success) {
-                throw new UnauthorizedException('Cryptographic EIP-4361 signature verification failed.');
-            }
-        } catch (error) {
-            this.logger.error(`Signature verification error: ${error.message}`);
-            throw new UnauthorizedException('Invalid signature or expired EIP-4361 message.');
-        }
-
-        // 4. Mark nonce as used to prevent replay
+        // 4. Atomically mark the nonce as used to prevent replay.
         await this.dataSource.query(
             `UPDATE "v2_auth_nonces" SET "used" = TRUE WHERE "wallet_address" = $1 AND "nonce" = $2`,
-            [siweMessage.address.toLowerCase(), clientNonce]
+            [parsed.address.toLowerCase(), clientNonce]
         );
 
-        this.logger.log(`SIWE verification successful for address: ${siweMessage.address}`);
-        return siweMessage.address.toLowerCase();
+        this.logger.log(`SIWE verification successful for address: ${parsed.address}`);
+        return parsed.address.toLowerCase();
     }
 }

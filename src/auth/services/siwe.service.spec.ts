@@ -1,5 +1,6 @@
 import { SiweService } from './siwe.service';
 import { ConfigService } from '@nestjs/config';
+import { Wallet, hashMessage } from 'ethers';
 
 describe('SiweService', () => {
   let service: SiweService;
@@ -10,6 +11,157 @@ describe('SiweService', () => {
       get: jest.fn((key: string, defaultValue: string) => defaultValue),
     };
     service = new SiweService(configService);
+  });
+
+  // ── Strict EIP-4361 validation (V2-BE-063) ─────────────────────────────
+
+  // One deterministic fixture wallet both writes its address into the message
+  // and signs it, so every test exercises the real signature-recovery path
+  // while keeping the recovered address in lockstep with the message.
+  const fixtureWallet = Wallet.createRandom();
+
+  // Build and sign a well-formed SIWE message; each override mutates a single
+  // field so tests can target exactly one constraint.
+  function signedSiweMessage(
+    overrides: Partial<Record<string, string | number>> = {},
+  ): { message: string; signature: string; address: string } {
+    const message = [
+      `${overrides.domain ?? 'app.truthbounty.com'} wants you to sign in with your Ethereum account:`,
+      fixtureWallet.address,
+      '',
+      overrides.statement ?? 'Sign in to TruthBounty V2 to verify wallet ownership.',
+      '',
+      `URI: ${overrides.uri ?? 'https://app.truthbounty.com'}`,
+      `Version: ${overrides.version ?? '1'}`,
+      `Chain ID: ${overrides.chainId ?? 10}`,
+      `Nonce: ${overrides.nonce ?? 'abc123def456ghi789'}`,
+      `Issued At: ${overrides.issuedAt ?? new Date().toISOString()}`,
+    ].join('\n');
+
+    if (overrides.expirationTime !== undefined) {
+      // Rebuild with the expiration line appended so the signed bytes match.
+      const expired = [
+        ...message.split('\n'),
+        `Expiration Time: ${overrides.expirationTime}`,
+      ].join('\n');
+      const signature = fixtureWallet.signingKey.sign(hashMessage(expired)).serialized;
+      return { message: expired, signature, address: fixtureWallet.address };
+    }
+
+    const signature = fixtureWallet.signingKey.sign(hashMessage(message)).serialized;
+    return { message, signature, address: fixtureWallet.address };
+  }
+
+  describe('verifySiwe (strict constraints)', () => {
+    it('rejects an unsupported SIWE version', async () => {
+      const { message, signature } = signedSiweMessage({ version: '2' });
+      const result = await service.verifySiwe({ message, signature });
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('UNSUPPORTED_VERSION');
+    });
+
+    it('rejects a domain that is not on the allowlist', async () => {
+      const { message, signature } = signedSiweMessage({ domain: 'evil.example.com' });
+      const result = await service.verifySiwe({
+        message,
+        signature,
+        expectedDomain: 'app.truthbounty.com',
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('DOMAIN_MISMATCH');
+    });
+
+    it('rejects an origin that is not on the allowlist', async () => {
+      const { message, signature } = signedSiweMessage({ uri: 'https://evil.example.com' });
+      const result = await service.verifySiwe({
+        message,
+        signature,
+        expectedOrigin: 'https://app.truthbounty.com',
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('ORIGIN_MISMATCH');
+    });
+
+    it('rejects an unsupported chain ID', async () => {
+      const { message, signature } = signedSiweMessage({ chainId: 99 });
+      const result = await service.verifySiwe({
+        message,
+        signature,
+        supportedChainIds: [10],
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('CHAIN_NOT_SUPPORTED');
+    });
+
+    it('rejects a statement that does not match the expected statement', async () => {
+      const { message, signature } = signedSiweMessage({
+        statement: 'Sign in to a different product.',
+      });
+      const result = await service.verifySiwe({
+        message,
+        signature,
+        expectedStatement: 'Sign in to TruthBounty V2 to verify wallet ownership.',
+      });
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('STATEMENT_MISMATCH');
+    });
+
+    it('rejects a short or non-alphanumeric nonce', async () => {
+      const { message, signature } = signedSiweMessage({ nonce: 'short!' });
+      const result = await service.verifySiwe({ message, signature });
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INVALID_NONCE');
+    });
+
+    it('rejects an expired SIWE message', async () => {
+      const { message, signature } = signedSiweMessage({
+        expirationTime: '2020-01-02T00:00:00.000Z',
+      });
+      const result = await service.verifySiwe({ message, signature });
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('MESSAGE_EXPIRED');
+    });
+
+    it('rejects a stale SIWE message outside the nonce TTL', async () => {
+      const { message, signature } = signedSiweMessage({
+        issuedAt: '2020-01-01T00:00:00.000Z',
+      });
+      const result = await service.verifySiwe({ message, signature });
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('MESSAGE_STALE');
+    });
+
+    it('rejects a signature that does not match the embedded address', async () => {
+      const { message } = signedSiweMessage();
+      // Re-sign with a foreign wallet so the recovered address is different.
+      const foreign = Wallet.createRandom();
+      const signature = foreign.signingKey.sign(hashMessage(message)).serialized;
+      const result = await service.verifySiwe({ message, signature });
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('ADDRESS_MISMATCH');
+    });
+
+    it('rejects a malformed signature', async () => {
+      const { message } = signedSiweMessage();
+      const result = await service.verifySiwe({ message, signature: 'not-a-signature' });
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('INVALID_SIGNATURE');
+    });
+
+    it('accepts a fully valid signed message', async () => {
+      const { message, signature } = signedSiweMessage();
+      const result = await service.verifySiwe({
+        message,
+        signature,
+        expectedDomain: 'app.truthbounty.com',
+        expectedOrigin: 'https://app.truthbounty.com',
+        expectedChainId: 10,
+        expectedStatement: 'Sign in to TruthBounty V2 to verify wallet ownership.',
+        supportedChainIds: [10],
+      });
+      expect(result.success).toBe(true);
+      expect(result.address).toBe(fixtureWallet.address.toLowerCase());
+    });
   });
 
   // ── buildSiweMessage ─────────────────────────────────────────────────────
