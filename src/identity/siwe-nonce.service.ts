@@ -45,7 +45,11 @@ export class SiweNonceService {
    * Issue a fresh nonce bound to the given address, domain, and chainId.
    * The nonce is a cryptographically random 32-byte hex string.
    */
-  async issue(address: string, domain: string, chainId: number): Promise<string> {
+  async issue(
+    address: string,
+    domain: string,
+    chainId: number,
+  ): Promise<string> {
     this.assertValidAddress(address);
     this.assertValidDomain(domain);
     this.assertValidChainId(chainId);
@@ -62,7 +66,9 @@ export class SiweNonceService {
       expiresAt,
     });
     await this.repo.save(record);
-    this.logger.debug(`Issued nonce for ${address} domain=${domain} chainId=${chainId}`);
+    this.logger.debug(
+      `Issued nonce for ${address} domain=${domain} chainId=${chainId}`,
+    );
     return nonce;
   }
 
@@ -101,7 +107,9 @@ export class SiweNonceService {
     // Consume atomically
     record.isConsumed = true;
     await this.repo.save(record);
-    this.logger.log(`Nonce consumed for ${address} domain=${domain} chainId=${chainId}`);
+    this.logger.log(
+      `Nonce consumed for ${address} domain=${domain} chainId=${chainId}`,
+    );
   }
 
   /** Prune expired and consumed nonces; intended for a scheduled cleanup job. */

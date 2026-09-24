@@ -19,14 +19,27 @@ function makeRecord(overrides: Partial<SiweNonce> = {}): SiweNonce {
     expiresAt: new Date(Date.now() + 60_000),
     issuedAt: new Date(),
     ...overrides,
-  } as SiweNonce;
+  };
 }
 
-function mockRepo(overrides: Partial<any> = {}) {
+interface MockRepo {
+  findOne: jest.Mock;
+  create: jest.Mock;
+  save: jest.Mock;
+  delete: jest.Mock;
+}
+
+function mockRepo(overrides: Partial<MockRepo> = {}): MockRepo {
   return {
     findOne: jest.fn().mockResolvedValue(null),
-    create: jest.fn().mockImplementation((d) => d),
-    save: jest.fn().mockImplementation((d) => Promise.resolve(d)),
+    create: jest
+      .fn()
+      .mockImplementation((input: Record<string, unknown>) => input),
+    save: jest
+      .fn()
+      .mockImplementation((input: Record<string, unknown>) =>
+        Promise.resolve(input),
+      ),
     delete: jest.fn().mockResolvedValue({ affected: 3 }),
     ...overrides,
   };
@@ -54,15 +67,21 @@ describe('SiweNonceService', () => {
     });
 
     it('rejects an invalid address', async () => {
-      await expect(service.issue('bad', DOMAIN, CHAIN)).rejects.toThrow(BadRequestException);
+      await expect(service.issue('bad', DOMAIN, CHAIN)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('rejects an empty domain', async () => {
-      await expect(service.issue(ADDR, '', CHAIN)).rejects.toThrow(BadRequestException);
+      await expect(service.issue(ADDR, '', CHAIN)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('rejects chainId = 0', async () => {
-      await expect(service.issue(ADDR, DOMAIN, 0)).rejects.toThrow(BadRequestException);
+      await expect(service.issue(ADDR, DOMAIN, 0)).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 
@@ -70,50 +89,89 @@ describe('SiweNonceService', () => {
     it('succeeds with valid bound nonce', async () => {
       repo.findOne.mockResolvedValue(makeRecord({ nonce: 'valid-nonce' }));
       await expect(
-        service.verifyAndConsume({ nonce: 'valid-nonce', address: ADDR, domain: DOMAIN, chainId: CHAIN }),
+        service.verifyAndConsume({
+          nonce: 'valid-nonce',
+          address: ADDR,
+          domain: DOMAIN,
+          chainId: CHAIN,
+        }),
       ).resolves.toBeUndefined();
-      expect(repo.save).toHaveBeenCalledWith(expect.objectContaining({ isConsumed: true }));
+      expect(repo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ isConsumed: true }),
+      );
     });
 
     it('rejects unknown nonce', async () => {
       repo.findOne.mockResolvedValue(null);
       await expect(
-        service.verifyAndConsume({ nonce: 'unknown', address: ADDR, domain: DOMAIN, chainId: CHAIN }),
+        service.verifyAndConsume({
+          nonce: 'unknown',
+          address: ADDR,
+          domain: DOMAIN,
+          chainId: CHAIN,
+        }),
       ).rejects.toThrow(UnauthorizedException);
     });
 
     it('rejects already-consumed nonce', async () => {
       repo.findOne.mockResolvedValue(makeRecord({ isConsumed: true }));
       await expect(
-        service.verifyAndConsume({ nonce: 'used', address: ADDR, domain: DOMAIN, chainId: CHAIN }),
+        service.verifyAndConsume({
+          nonce: 'used',
+          address: ADDR,
+          domain: DOMAIN,
+          chainId: CHAIN,
+        }),
       ).rejects.toThrow(UnauthorizedException);
     });
 
     it('rejects expired nonce', async () => {
-      repo.findOne.mockResolvedValue(makeRecord({ expiresAt: new Date(Date.now() - 1000) }));
+      repo.findOne.mockResolvedValue(
+        makeRecord({ expiresAt: new Date(Date.now() - 1000) }),
+      );
       await expect(
-        service.verifyAndConsume({ nonce: 'expired', address: ADDR, domain: DOMAIN, chainId: CHAIN }),
+        service.verifyAndConsume({
+          nonce: 'expired',
+          address: ADDR,
+          domain: DOMAIN,
+          chainId: CHAIN,
+        }),
       ).rejects.toThrow(UnauthorizedException);
     });
 
     it('rejects address binding mismatch', async () => {
       repo.findOne.mockResolvedValue(makeRecord());
       await expect(
-        service.verifyAndConsume({ nonce: 'x', address: '0x0000000000000000000000000000000000000001', domain: DOMAIN, chainId: CHAIN }),
+        service.verifyAndConsume({
+          nonce: 'x',
+          address: '0x0000000000000000000000000000000000000001',
+          domain: DOMAIN,
+          chainId: CHAIN,
+        }),
       ).rejects.toThrow(UnauthorizedException);
     });
 
     it('rejects domain binding mismatch', async () => {
       repo.findOne.mockResolvedValue(makeRecord());
       await expect(
-        service.verifyAndConsume({ nonce: 'x', address: ADDR, domain: 'evil.io', chainId: CHAIN }),
+        service.verifyAndConsume({
+          nonce: 'x',
+          address: ADDR,
+          domain: 'evil.io',
+          chainId: CHAIN,
+        }),
       ).rejects.toThrow(UnauthorizedException);
     });
 
     it('rejects chainId binding mismatch', async () => {
       repo.findOne.mockResolvedValue(makeRecord());
       await expect(
-        service.verifyAndConsume({ nonce: 'x', address: ADDR, domain: DOMAIN, chainId: 1 }),
+        service.verifyAndConsume({
+          nonce: 'x',
+          address: ADDR,
+          domain: DOMAIN,
+          chainId: 1,
+        }),
       ).rejects.toThrow(UnauthorizedException);
     });
   });

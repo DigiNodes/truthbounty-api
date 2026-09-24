@@ -49,7 +49,9 @@ export class AbiVersionRegistryService {
     const { contractAddress, chainId, deployedAtBlock, version, abi } = dto;
 
     if (!contractAddress.match(/^0x[0-9a-fA-F]{40}$/)) {
-      throw new BadRequestException('contractAddress must be a valid 0x EVM address');
+      throw new BadRequestException(
+        'contractAddress must be a valid 0x EVM address',
+      );
     }
     if (!Number.isInteger(chainId) || chainId <= 0) {
       throw new BadRequestException('chainId must be a positive integer');

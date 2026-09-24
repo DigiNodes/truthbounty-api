@@ -18,18 +18,40 @@ function makeSession(overrides: Partial<AuthSession> = {}): AuthSession {
     rotatedFromSessionId: null,
     createdAt: new Date(),
     ...overrides,
-  } as AuthSession;
+  };
 }
 
-function mockRepo(overrides: Partial<any> = {}) {
+interface MockRepo {
+  findOne: jest.Mock;
+  find: jest.Mock;
+  create: jest.Mock;
+  save: jest.Mock;
+  delete: jest.Mock;
+}
+
+function mockRepo(overrides: Partial<MockRepo> = {}): MockRepo {
   return {
     findOne: jest.fn().mockResolvedValue(null),
     find: jest.fn().mockResolvedValue([]),
-    create: jest.fn().mockImplementation((d) => d),
-    save: jest.fn().mockImplementation((d) => Promise.resolve({ id: 'new-uuid', ...d })),
+    create: jest
+      .fn()
+      .mockImplementation((input: Record<string, unknown>) => input),
+    save: jest
+      .fn()
+      .mockImplementation((input: Record<string, unknown>) =>
+        Promise.resolve({ id: 'new-uuid', ...input }),
+      ),
     delete: jest.fn().mockResolvedValue({ affected: 5 }),
     ...overrides,
   };
+}
+
+/**
+ * `expect.any(Date)` is typed `any`, which trips the repo's strict
+ * no-unsafe-assignment rule when it is used as an object property value.
+ */
+function anyDate(): Date {
+  return expect.any(Date) as Date;
 }
 
 describe('AuthSessionService', () => {
@@ -61,7 +83,9 @@ describe('AuthSessionService', () => {
     });
 
     it('rejects invalid address', async () => {
-      await expect(service.issue('not-an-addr', CHAIN)).rejects.toThrow(BadRequestException);
+      await expect(service.issue('not-an-addr', CHAIN)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('rejects chainId = 0', async () => {
@@ -78,17 +102,25 @@ describe('AuthSessionService', () => {
 
     it('throws for unknown token', async () => {
       repo.findOne.mockResolvedValue(null);
-      await expect(service.validate('unknown')).rejects.toThrow(UnauthorizedException);
+      await expect(service.validate('unknown')).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
     it('throws for revoked session', async () => {
       repo.findOne.mockResolvedValue(makeSession({ revokedAt: new Date() }));
-      await expect(service.validate('validtoken')).rejects.toThrow(UnauthorizedException);
+      await expect(service.validate('validtoken')).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
     it('throws for expired session', async () => {
-      repo.findOne.mockResolvedValue(makeSession({ expiresAt: new Date(Date.now() - 1000) }));
-      await expect(service.validate('validtoken')).rejects.toThrow(UnauthorizedException);
+      repo.findOne.mockResolvedValue(
+        makeSession({ expiresAt: new Date(Date.now() - 1000) }),
+      );
+      await expect(service.validate('validtoken')).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
   });
 
@@ -97,14 +129,18 @@ describe('AuthSessionService', () => {
       const old = makeSession({ id: 'old-id', sessionToken: 'old-token' });
       repo.findOne.mockResolvedValue(old);
       const newSession = await service.rotate('old-token');
-      expect(repo.save).toHaveBeenCalledWith(expect.objectContaining({ revokedAt: expect.any(Date) }));
+      expect(repo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ revokedAt: anyDate() }),
+      );
       expect(newSession.sessionToken).not.toBe('old-token');
       expect(newSession.rotatedFromSessionId).toBe('old-id');
     });
 
     it('throws if original session is already revoked', async () => {
       repo.findOne.mockResolvedValue(makeSession({ revokedAt: new Date() }));
-      await expect(service.rotate('revoked-token')).rejects.toThrow(UnauthorizedException);
+      await expect(service.rotate('revoked-token')).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
   });
 
@@ -113,29 +149,36 @@ describe('AuthSessionService', () => {
       repo.findOne.mockResolvedValue(makeSession());
       await service.revoke('validtoken');
       expect(repo.save).toHaveBeenCalledWith(
-        expect.objectContaining({ revokedAt: expect.any(Date) }),
+        expect.objectContaining({ revokedAt: anyDate() }),
       );
     });
 
     it('throws if session already revoked', async () => {
       repo.findOne.mockResolvedValue(makeSession({ revokedAt: new Date() }));
-      await expect(service.revoke('validtoken')).rejects.toThrow(UnauthorizedException);
+      await expect(service.revoke('validtoken')).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
     it('throws if session not found', async () => {
       repo.findOne.mockResolvedValue(null);
-      await expect(service.revoke('ghost')).rejects.toThrow(UnauthorizedException);
+      await expect(service.revoke('ghost')).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
   });
 
   describe('revokeAll', () => {
     it('revokes all active sessions for a wallet', async () => {
-      repo.find.mockResolvedValue([makeSession({ id: 's1' }), makeSession({ id: 's2' })]);
+      repo.find.mockResolvedValue([
+        makeSession({ id: 's1' }),
+        makeSession({ id: 's2' }),
+      ]);
       const count = await service.revokeAll(ADDR);
       expect(count).toBe(2);
       expect(repo.save).toHaveBeenCalledWith(
         expect.arrayContaining([
-          expect.objectContaining({ revokedAt: expect.any(Date) }),
+          expect.objectContaining({ revokedAt: anyDate() }),
         ]),
       );
     });
@@ -147,7 +190,9 @@ describe('AuthSessionService', () => {
     });
 
     it('rejects invalid address', async () => {
-      await expect(service.revokeAll('bad')).rejects.toThrow(BadRequestException);
+      await expect(service.revokeAll('bad')).rejects.toThrow(
+        BadRequestException,
+      );
     });
   });
 

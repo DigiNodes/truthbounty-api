@@ -1,19 +1,35 @@
+import { createHash } from 'crypto';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { AbiVersionRegistryService } from './abi-version-registry.service';
 import { AbiVersionRegistry } from './entities/abi-version-registry.entity';
 
-const SAMPLE_ABI = [{ type: 'function', name: 'submit', inputs: [], outputs: [] }];
+const SAMPLE_ABI = [
+  { type: 'function', name: 'submit', inputs: [], outputs: [] },
+];
 const CONTRACT = '0xaAbBcCdDeEfF001122334455667788990011aabb';
 const CHAIN_ID = 10;
 
-function mockRepo(overrides: Partial<any> = {}) {
+interface MockRepo {
+  findOne: jest.Mock;
+  find: jest.Mock;
+  create: jest.Mock;
+  save: jest.Mock;
+}
+
+function mockRepo(overrides: Partial<MockRepo> = {}): MockRepo {
   return {
     findOne: jest.fn().mockResolvedValue(null),
     find: jest.fn().mockResolvedValue([]),
-    create: jest.fn().mockImplementation((d) => d),
-    save: jest.fn().mockImplementation((d) => Promise.resolve({ id: 'uuid-1', ...d })),
+    create: jest
+      .fn()
+      .mockImplementation((input: Record<string, unknown>) => input),
+    save: jest
+      .fn()
+      .mockImplementation((input: Record<string, unknown>) =>
+        Promise.resolve({ id: 'uuid-1', ...input }),
+      ),
     ...overrides,
   };
 }
@@ -54,7 +70,9 @@ describe('AbiVersionRegistryService', () => {
         deployedAtBlock: 1000,
         version: 'v1.0.0',
         abiJson: JSON.stringify(SAMPLE_ABI),
-        abiHash: require('crypto').createHash('sha256').update(JSON.stringify(SAMPLE_ABI)).digest('hex'),
+        abiHash: createHash('sha256')
+          .update(JSON.stringify(SAMPLE_ABI))
+          .digest('hex'),
       };
       repo.findOne.mockResolvedValue(existing);
       const result = await service.register({
@@ -70,19 +88,37 @@ describe('AbiVersionRegistryService', () => {
 
     it('rejects an invalid contract address', async () => {
       await expect(
-        service.register({ contractAddress: 'not-an-address', chainId: CHAIN_ID, deployedAtBlock: 1, version: 'v1', abi: SAMPLE_ABI }),
+        service.register({
+          contractAddress: 'not-an-address',
+          chainId: CHAIN_ID,
+          deployedAtBlock: 1,
+          version: 'v1',
+          abi: SAMPLE_ABI,
+        }),
       ).rejects.toThrow(BadRequestException);
     });
 
     it('rejects an empty ABI array', async () => {
       await expect(
-        service.register({ contractAddress: CONTRACT, chainId: CHAIN_ID, deployedAtBlock: 1, version: 'v1', abi: [] }),
+        service.register({
+          contractAddress: CONTRACT,
+          chainId: CHAIN_ID,
+          deployedAtBlock: 1,
+          version: 'v1',
+          abi: [],
+        }),
       ).rejects.toThrow(BadRequestException);
     });
 
     it('rejects a non-positive chainId', async () => {
       await expect(
-        service.register({ contractAddress: CONTRACT, chainId: 0, deployedAtBlock: 1, version: 'v1', abi: SAMPLE_ABI }),
+        service.register({
+          contractAddress: CONTRACT,
+          chainId: 0,
+          deployedAtBlock: 1,
+          version: 'v1',
+          abi: SAMPLE_ABI,
+        }),
       ).rejects.toThrow(BadRequestException);
     });
   });
@@ -98,7 +134,9 @@ describe('AbiVersionRegistryService', () => {
 
     it('throws NotFoundException when no ABI exists at block', async () => {
       repo.findOne.mockResolvedValue(null);
-      await expect(service.resolveAbi(CONTRACT, CHAIN_ID, 1)).rejects.toThrow(NotFoundException);
+      await expect(service.resolveAbi(CONTRACT, CHAIN_ID, 1)).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 

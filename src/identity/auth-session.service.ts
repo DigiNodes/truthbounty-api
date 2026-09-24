@@ -100,7 +100,9 @@ export class AuthSessionService {
       rotatedFromSessionId: old.id,
     });
     const saved = await this.repo.save(newSession);
-    this.logger.log(`Session rotated for ${old.walletAddress} (old=${old.id} new=${saved.id})`);
+    this.logger.log(
+      `Session rotated for ${old.walletAddress} (old=${old.id} new=${saved.id})`,
+    );
     return saved;
   }
 
@@ -113,7 +115,9 @@ export class AuthSessionService {
     }
     session.revokedAt = new Date();
     await this.repo.save(session);
-    this.logger.log(`Session revoked: ${session.id} for ${session.walletAddress}`);
+    this.logger.log(
+      `Session revoked: ${session.id} for ${session.walletAddress}`,
+    );
   }
 
   /**
