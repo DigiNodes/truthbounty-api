@@ -6,8 +6,11 @@ export default registerAs('blockchain', () => ({
   chainId: parseInt(process.env.CHAIN_ID || '1', 10),
   contractAddress: process.env.REWARD_CONTRACT_ADDRESS,
   startBlock: parseInt(process.env.START_BLOCK || '0', 10),
-  confirmations: parseInt(process.env.REQUIRED_CONFIRMATIONS || '12', 10),
-  // Memory limits for in-memory state service (prevents OOM)
+  confirmations: {
+    safe: parseInt(process.env.CONFIRMATIONS_SAFE || '6', 10),
+    finalized: parseInt(process.env.CONFIRMATIONS_FINALIZED || '12', 10),
+    full: parseInt(process.env.CONFIRMATIONS_FULL || '64', 10),
+  },
   maxBlocksInMemory: parseInt(process.env.BLOCKCHAIN_MAX_BLOCKS || '10000', 10),
   maxEventsInMemory: parseInt(process.env.BLOCKCHAIN_MAX_EVENTS || '50000', 10),
   maxReorgHistoryEntries: parseInt(

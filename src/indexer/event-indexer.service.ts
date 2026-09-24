@@ -102,12 +102,19 @@ export class EventIndexerService {
   /**
    * Index all events for a specific contract
    */
-  private async indexContract(contractAddress: string, currentBlockNumber: number): Promise<void> {
+  private async indexContract(
+    contractAddress: string,
+    currentBlockNumber: number,
+  ): Promise<void> {
     try {
       for (const eventConfig of this.config.contracts.find(
         (c) => c.address.toLowerCase() === contractAddress.toLowerCase(),
       )?.events || []) {
-        await this.indexEventType(contractAddress, eventConfig, currentBlockNumber);
+        await this.indexEventType(
+          contractAddress,
+          eventConfig,
+          currentBlockNumber,
+        );
       }
     } catch (error) {
       this.logger.error(`Failed to index contract ${contractAddress}:`, error);
@@ -131,14 +138,16 @@ export class EventIndexerService {
     });
 
     if (!state) {
-      this.logger.debug(`No state found for ${contractAddress}:${eventConfig.name}`);
+      this.logger.debug(
+        `No state found for ${contractAddress}:${eventConfig.name}`,
+      );
       return;
     }
 
     const startBlock = state.lastProcessedBlockNumber + 1;
     const endBlock = Math.min(
       startBlock + this.config.blockRangePerBatch - 1,
-      currentBlockNumber - this.config.confirmationsRequired,
+      currentBlockNumber - this.config.confirmations.finalized,
     );
 
     if (startBlock > endBlock) {
@@ -171,7 +180,8 @@ export class EventIndexerService {
       );
     } catch (error) {
       state.status = 'error';
-      state.errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      state.errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
       await this.stateRepository.save(state);
       this.logger.error(
         `Error indexing ${eventConfig.name} from ${contractAddress}:`,
@@ -268,7 +278,7 @@ export class EventIndexerService {
         eventData: serializeBigInts(log) as Record<string, any>,
         parsedData: serializeBigInts(parsed?.args || {}) as Record<string, any>,
         confirmations,
-        isFinalized: confirmations >= this.config.confirmationsRequired,
+        isFinalized: confirmations >= this.config.confirmations.finalized,
         isProcessed: false,
         processingError: null,
         retryAttempts: 0,
@@ -301,8 +311,7 @@ export class EventIndexerService {
       for (const event of finalizedEvents) {
         const confirmations = currentBlockNumber - event.blockNumber;
 
-        // If an event falls below confirmation threshold, it may have been reorged
-        if (confirmations < this.config.confirmationsRequired) {
+        if (confirmations < this.config.confirmations.finalized) {
           this.logger.warn(
             `Potential reorg detected for event ${event.transactionHash}:${event.logIndex}`,
           );
@@ -333,7 +342,9 @@ export class EventIndexerService {
       // Could implement retry logic here
       // For now, just log
       if (failedEvents.length > 0) {
-        this.logger.warn(`${failedEvents.length} events failed after max retries`);
+        this.logger.warn(
+          `${failedEvents.length} events failed after max retries`,
+        );
       }
     } catch (error) {
       this.logger.error('Error retrying failed events:', error);
@@ -372,7 +383,7 @@ export class EventIndexerService {
         lastScannedBlockNumber: contract.startBlock - 1,
         status: 'idle',
         blockRangePerBatch: this.config.blockRangePerBatch,
-        confirmationsRequired: this.config.confirmationsRequired,
+        confirmationsRequired: this.config.confirmations.finalized,
         maxRetryAttempts: this.config.maxRetryAttempts,
       });
 
@@ -406,7 +417,10 @@ export class EventIndexerService {
   /**
    * Backfill events from a specific block
    */
-  async backfillFromBlock(contractAddress: string, blockNumber: number): Promise<void> {
+  async backfillFromBlock(
+    contractAddress: string,
+    blockNumber: number,
+  ): Promise<void> {
     const state = await this.stateRepository.findOne({
       where: {
         chainId: this.config.chainId,
@@ -422,6 +436,8 @@ export class EventIndexerService {
     state.status = 'backfilling';
     await this.stateRepository.save(state);
 
-    this.logger.log(`Backfilling from block ${blockNumber} for ${contractAddress}`);
+    this.logger.log(
+      `Backfilling from block ${blockNumber} for ${contractAddress}`,
+    );
   }
 }

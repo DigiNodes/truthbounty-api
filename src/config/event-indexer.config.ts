@@ -14,10 +14,13 @@ export interface EventIndexerConfig {
   chainId: number;
 
   /**
-   * Block confirmations threshold before marking events as finalized
-   * Protects against chain reorgs
+   * Block confirmation thresholds for safe, finalized, and full states.
    */
-  confirmationsRequired: number;
+  confirmations: {
+    safe: number;
+    finalized: number;
+    full: number;
+  };
 
   /**
    * Number of blocks to fetch per RPC call
