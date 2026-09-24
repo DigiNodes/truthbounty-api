@@ -89,6 +89,10 @@ export class Notification {
   @Column({ type: 'boolean', default: false })
   read: boolean;
 
+  @Column({ type: 'boolean', default: false })
+  @Index()
+  emailed: boolean;
+
   @Column({ type: 'timestamp', nullable: true })
   readAt?: Date;
 
