@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Interface } from 'ethers';
+import * as crypto from 'crypto';
 import { ContractArtifact } from './entities/contract-artifact.entity';
 
 export interface ResolvedArtifact {
@@ -38,6 +39,10 @@ export class ArtifactRegistryService {
     chainId: number,
     contractAddress: string,
   ): Promise<ResolvedArtifact | null> {
+    if (!this.isSupportedChain(chainId) || !this.isEvmAddress(contractAddress)) {
+      return null;
+    }
+
     const key = this.cacheKey(chainId, contractAddress);
     const cached = this.cache.get(key);
     if (cached) return cached;
@@ -51,11 +56,52 @@ export class ArtifactRegistryService {
     });
     if (!row) return null;
 
-    const resolved: ResolvedArtifact = {
-      artifactVersion: row.artifactVersion,
-      iface: new Interface(row.abi as never[]),
-    };
-    this.cache.set(key, resolved);
-    return resolved;
+    if (!row.artifactVersion.trim() || !this.isEvmAddress(row.contractAddress)) {
+      this.logInvalidArtifact(row, 'missing version or invalid address');
+      return null;
+    }
+
+    const checksum = crypto
+      .createHash('sha256')
+      .update(JSON.stringify(row.abi))
+      .digest('hex');
+    if (!/^[a-f0-9]{64}$/.test(row.abiChecksum) || row.abiChecksum !== checksum) {
+      this.logInvalidArtifact(row, 'ABI checksum mismatch');
+      return null;
+    }
+
+    try {
+      const resolved: ResolvedArtifact = {
+        artifactVersion: row.artifactVersion,
+        iface: new Interface(row.abi as never[]),
+      };
+      this.cache.set(key, resolved);
+      return resolved;
+    } catch (error) {
+      this.logInvalidArtifact(
+        row,
+        `ABI is invalid: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return null;
+    }
+  }
+
+  private isSupportedChain(chainId: number): boolean {
+    return chainId === 10 || chainId === 11155420;
+  }
+
+  private isEvmAddress(address: string): boolean {
+    return /^0x[a-fA-F0-9]{40}$/.test(address);
+  }
+
+  private logInvalidArtifact(
+    artifact: ContractArtifact,
+    reason: string,
+  ): void {
+    // Invalid rows are treated as absent by callers; the warning preserves an
+    // actionable signal without allowing unverified ABI data into the index.
+    console.warn(
+      `Rejected contract artifact ${artifact.chainId}:${artifact.contractAddress}: ${reason}`,
+    );
   }
 }

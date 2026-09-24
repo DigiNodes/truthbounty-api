@@ -34,6 +34,10 @@ export class ContractArtifact {
   @Column({ type: 'varchar', length: 64 })
   artifactVersion: string;
 
+  /** SHA-256 of the canonical JSON ABI array supplied by the release artifact. */
+  @Column({ type: 'varchar', length: 64 })
+  abiChecksum: string;
+
   /** Minimal ABI: only the event fragments this pipeline needs to decode. */
   @Column({ type: 'json' })
   abi: unknown[];
