@@ -5,7 +5,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, LessThan } from 'typeorm';
+import { Repository, LessThan, MoreThan } from 'typeorm';
 import { randomBytes } from 'crypto';
 import { SiweNonce } from './entities/siwe-nonce.entity';
 
@@ -31,6 +31,9 @@ export interface SiweVerifyParams {
  *
  * Fails closed: any mismatch results in UnauthorizedException with no
  * partial state committed.
+ *
+ * Consumption is a conditional UPDATE rather than a read-then-write, so two
+ * concurrent verifications of the same nonce cannot both succeed.
  */
 @Injectable()
 export class SiweNonceService {
@@ -83,6 +86,7 @@ export class SiweNonceService {
     this.assertValidDomain(domain);
     this.assertValidChainId(chainId);
 
+    const normalizedAddress = address.toLowerCase();
     const record = await this.repo.findOne({ where: { nonce } });
 
     if (!record) {
@@ -94,7 +98,7 @@ export class SiweNonceService {
     if (record.expiresAt < new Date()) {
       throw new UnauthorizedException('Nonce has expired');
     }
-    if (record.address !== address.toLowerCase()) {
+    if (record.address !== normalizedAddress) {
       throw new UnauthorizedException('Nonce address binding mismatch');
     }
     if (record.domain !== domain) {
@@ -104,9 +108,26 @@ export class SiweNonceService {
       throw new UnauthorizedException('Nonce chainId binding mismatch');
     }
 
-    // Consume atomically
-    record.isConsumed = true;
-    await this.repo.save(record);
+    // The checks above only produce diagnostics. Consumption itself has to be a
+    // conditional UPDATE: two concurrent calls can read the same unused nonce
+    // and pass every check, so the database has to decide. Exactly one row can
+    // match `isConsumed = false`, so the loser gets affected = 0 and fails.
+    const result = await this.repo.update(
+      {
+        nonce,
+        address: normalizedAddress,
+        domain,
+        chainId,
+        isConsumed: false,
+        expiresAt: MoreThan(new Date()),
+      },
+      { isConsumed: true },
+    );
+
+    if (result.affected !== 1) {
+      throw new UnauthorizedException('Nonce has already been used');
+    }
+
     this.logger.log(
       `Nonce consumed for ${address} domain=${domain} chainId=${chainId}`,
     );

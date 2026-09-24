@@ -27,6 +27,9 @@ import { WalletIdentity } from './entities/wallet-identity.entity';
  * would be an explicit, auditable operation, and there isn't one.
  */
 
+/** Largest value a 32-bit `integer` column can store. */
+const MAX_CHAIN_ID = 2147483647;
+
 export interface BindResult {
   identity: WalletIdentity;
   /** True when this wallet was already bound to the same user. */
@@ -82,13 +85,32 @@ export class WalletIdentityService {
       );
       return { identity: saved, alreadyBound: false };
     } catch (error) {
+      if (!this.isUniqueViolation(error)) {
+        throw error;
+      }
+
       // A concurrent bind won the race and the unique index caught ours.
-      if (this.isUniqueViolation(error)) {
+      // Re-read to decide the outcome: if the winner bound this wallet to the
+      // same user then the caller got exactly what it asked for and the call
+      // stays idempotent. Only a different owner is a genuine conflict.
+      const winner = await this.repo.findOne({
+        where: { walletAddress: normalized, chainId },
+      });
+
+      if (winner) {
+        if (winner.userId === userId) {
+          return { identity: winner, alreadyBound: true };
+        }
         throw new ConflictException(
-          `Wallet ${normalized} on chain ${chainId} was bound by a concurrent request`,
+          `Wallet ${normalized} on chain ${chainId} is already bound to another user`,
         );
       }
-      throw error;
+
+      // The competing row disappeared between the failed insert and this read,
+      // so there is nothing to adopt and nothing to report as owned.
+      throw new ConflictException(
+        `Wallet ${normalized} on chain ${chainId} was bound concurrently`,
+      );
     }
   }
 
@@ -193,9 +215,16 @@ export class WalletIdentityService {
     }
   }
 
+  /**
+   * The column is a 32-bit `integer`, so accept only what it can actually
+   * hold. A larger chain id would otherwise pass validation here and then fail
+   * during persistence, which is not a fail-closed outcome at the boundary.
+   */
   private assertValidChainId(chainId: number): void {
-    if (!Number.isInteger(chainId) || chainId <= 0) {
-      throw new BadRequestException('chainId must be a positive integer');
+    if (!Number.isInteger(chainId) || chainId <= 0 || chainId > MAX_CHAIN_ID) {
+      throw new BadRequestException(
+        `chainId must be a positive integer no greater than ${MAX_CHAIN_ID}`,
+      );
     }
   }
 

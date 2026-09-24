@@ -104,10 +104,27 @@ describe('WalletIdentityService', () => {
     });
 
     it('turns a unique-index violation into a conflict', async () => {
+      // First read sees nothing; the racing bind lands, then the re-read after
+      // the failed insert finds another user's binding.
+      repo.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(makeIdentity({ userId: 'someone-else' }));
       repo.save.mockRejectedValue({ driverError: { code: '23505' } });
       await expect(service.bind(USER, ADDR, CHAIN)).rejects.toThrow(
         ConflictException,
       );
+    });
+
+    it('stays idempotent when the racing bind used the same user', async () => {
+      repo.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(makeIdentity());
+      repo.save.mockRejectedValue({ driverError: { code: '23505' } });
+
+      const result = await service.bind(USER, ADDR, CHAIN);
+
+      expect(result.alreadyBound).toBe(true);
+      expect(result.identity.userId).toBe(USER);
     });
 
     it('rethrows a non-unique save failure untouched', async () => {
@@ -127,6 +144,13 @@ describe('WalletIdentityService', () => {
       await expect(service.bind(USER, ADDR, 0)).rejects.toThrow(
         BadRequestException,
       );
+    });
+
+    it('rejects a chainId beyond the 32-bit column range', async () => {
+      await expect(service.bind(USER, ADDR, 2147483648)).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(repo.save).not.toHaveBeenCalled();
     });
 
     it('rejects an empty userId', async () => {

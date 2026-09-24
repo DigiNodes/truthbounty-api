@@ -21,12 +21,12 @@ function makeRecord(overrides: Partial<SiweNonce> = {}): SiweNonce {
     ...overrides,
   };
 }
-
 interface MockRepo {
   findOne: jest.Mock;
   create: jest.Mock;
   save: jest.Mock;
   delete: jest.Mock;
+  update: jest.Mock;
 }
 
 function mockRepo(overrides: Partial<MockRepo> = {}): MockRepo {
@@ -41,6 +41,7 @@ function mockRepo(overrides: Partial<MockRepo> = {}): MockRepo {
         Promise.resolve(input),
       ),
     delete: jest.fn().mockResolvedValue({ affected: 3 }),
+    update: jest.fn().mockResolvedValue({ affected: 1 }),
     ...overrides,
   };
 }
@@ -64,6 +65,22 @@ describe('SiweNonceService', () => {
     it('returns a 64-char hex nonce', async () => {
       const nonce = await service.issue(ADDR, DOMAIN, CHAIN);
       expect(nonce).toMatch(/^[0-9a-f]{64}$/);
+    });
+
+    it('persists the identity the nonce is bound to', async () => {
+      const nonce = await service.issue(ADDR, DOMAIN, CHAIN);
+      // Assert the stored bindings, not just the returned nonce: the nonce is
+      // worthless if it was not bound to this address, domain and chain.
+      expect(repo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          nonce,
+          address: ADDR.toLowerCase(),
+          domain: DOMAIN,
+          chainId: CHAIN,
+          isConsumed: false,
+        }),
+      );
+      expect(repo.save).toHaveBeenCalledTimes(1);
     });
 
     it('rejects an invalid address', async () => {
@@ -96,9 +113,31 @@ describe('SiweNonceService', () => {
           chainId: CHAIN,
         }),
       ).resolves.toBeUndefined();
-      expect(repo.save).toHaveBeenCalledWith(
-        expect.objectContaining({ isConsumed: true }),
+      // Consumption is a conditional UPDATE, not a blind save.
+      expect(repo.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          nonce: 'valid-nonce',
+          address: ADDR.toLowerCase(),
+          domain: DOMAIN,
+          chainId: CHAIN,
+          isConsumed: false,
+        }),
+        { isConsumed: true },
       );
+    });
+
+    it('fails closed when a concurrent call consumed the nonce first', async () => {
+      repo.findOne.mockResolvedValue(makeRecord({ nonce: 'racy' }));
+      // The other caller's UPDATE won, so this one matches no row.
+      repo.update.mockResolvedValue({ affected: 0 });
+      await expect(
+        service.verifyAndConsume({
+          nonce: 'racy',
+          address: ADDR,
+          domain: DOMAIN,
+          chainId: CHAIN,
+        }),
+      ).rejects.toThrow(UnauthorizedException);
     });
 
     it('rejects unknown nonce', async () => {

@@ -11,17 +11,23 @@ import {
  *
  * Rotation: on refresh the old token is revoked and a new session row created.
  * Revocation: setting revokedAt makes the session fail-closed on any future use.
+ *
+ * The bearer token is never stored. Only its SHA-256 digest is, so read access
+ * to this table does not yield credentials that can impersonate a wallet.
  */
 @Entity('auth_sessions')
-@Index(['sessionToken'], { unique: true })
+@Index(['tokenHash'], { unique: true })
 @Index(['walletAddress', 'revokedAt'])
 export class AuthSession {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  /** Opaque session token (64-byte hex). Never re-issued after revocation. */
-  @Column({ type: 'varchar', length: 128 })
-  sessionToken: string;
+  /**
+   * SHA-256 digest of the 64-byte bearer token, hex encoded. Never re-issued
+   * after revocation, and never the token itself.
+   */
+  @Column({ type: 'varchar', length: 64 })
+  tokenHash: string;
 
   /** Wallet address this session was issued for (lowercase). */
   @Column({ type: 'varchar', length: 42 })

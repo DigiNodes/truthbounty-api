@@ -4,9 +4,9 @@ import {
   UnauthorizedException,
   BadRequestException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull, LessThan } from 'typeorm';
-import { randomBytes } from 'crypto';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository, IsNull, LessThan } from 'typeorm';
+import { createHash, randomBytes } from 'crypto';
 import { AuthSession } from './entities/auth-session.entity';
 
 /** Default session lifetime: 24 hours. */
@@ -25,8 +25,16 @@ const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
  * - Revoke all: mass-revokes all active sessions for an address (e.g. on
  *   wallet compromise or forced logout).
  *
- * No secret values are stored. Session tokens are opaque 64-byte hex strings.
+ * Bearer tokens are never persisted: only a SHA-256 digest is stored, so read
+ * access to the table does not hand out usable credentials. The raw token is
+ * returned once, when it is issued.
  */
+export interface IssuedSession {
+  /** The raw bearer token. Returned once; only its digest is persisted. */
+  sessionToken: string;
+  session: AuthSession;
+}
+
 @Injectable()
 export class AuthSessionService {
   private readonly logger = new Logger(AuthSessionService.name);
@@ -34,10 +42,12 @@ export class AuthSessionService {
   constructor(
     @InjectRepository(AuthSession)
     private readonly repo: Repository<AuthSession>,
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
   ) {}
 
   /** Issue a new session for a successfully authenticated wallet. */
-  async issue(walletAddress: string, chainId: number): Promise<AuthSession> {
+  async issue(walletAddress: string, chainId: number): Promise<IssuedSession> {
     this.assertValidAddress(walletAddress);
     this.assertValidChainId(chainId);
 
@@ -45,7 +55,7 @@ export class AuthSessionService {
     const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
 
     const session = this.repo.create({
-      sessionToken,
+      tokenHash: this.hashToken(sessionToken),
       walletAddress: walletAddress.toLowerCase(),
       chainId,
       expiresAt,
@@ -54,7 +64,7 @@ export class AuthSessionService {
     });
     const saved = await this.repo.save(session);
     this.logger.log(`Session issued for ${walletAddress} chainId=${chainId}`);
-    return saved;
+    return { sessionToken, session: saved };
   }
 
   /**
@@ -62,7 +72,11 @@ export class AuthSessionService {
    * Throws UnauthorizedException if the token is unknown, expired, or revoked.
    */
   async validate(sessionToken: string): Promise<AuthSession> {
-    const session = await this.repo.findOne({ where: { sessionToken } });
+    this.assertPresentToken(sessionToken);
+
+    const session = await this.repo.findOne({
+      where: { tokenHash: this.hashToken(sessionToken) },
+    });
 
     if (!session) {
       throw new UnauthorizedException('Invalid session token');
@@ -80,35 +94,52 @@ export class AuthSessionService {
    * Rotate a session: revoke the existing token and issue a fresh one.
    * The new session references the old one via rotatedFromSessionId.
    */
-  async rotate(sessionToken: string): Promise<AuthSession> {
+  async rotate(sessionToken: string): Promise<IssuedSession> {
     const old = await this.validate(sessionToken);
 
-    // Revoke old session
-    old.revokedAt = new Date();
-    await this.repo.save(old);
-
-    // Issue new session
     const newToken = randomBytes(64).toString('hex');
     const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
 
-    const newSession = this.repo.create({
-      sessionToken: newToken,
-      walletAddress: old.walletAddress,
-      chainId: old.chainId,
-      expiresAt,
-      revokedAt: null,
-      rotatedFromSessionId: old.id,
+    // Both writes share one transaction. If the successor cannot be created the
+    // old session must not stay revoked, otherwise the caller is left holding
+    // no usable token and no way to retry with the one they presented. The
+    // revocation is conditional on the row still being active so that two
+    // concurrent rotations of the same token cannot both succeed.
+    const saved = await this.dataSource.transaction(async (manager) => {
+      const repo = manager.getRepository(AuthSession);
+
+      const revoked = await repo.update(
+        { id: old.id, revokedAt: IsNull() },
+        { revokedAt: new Date() },
+      );
+      if (revoked.affected !== 1) {
+        throw new UnauthorizedException('Session has already been rotated');
+      }
+
+      const newSession = repo.create({
+        tokenHash: this.hashToken(newToken),
+        walletAddress: old.walletAddress,
+        chainId: old.chainId,
+        expiresAt,
+        revokedAt: null,
+        rotatedFromSessionId: old.id,
+      });
+      return repo.save(newSession);
     });
-    const saved = await this.repo.save(newSession);
+
     this.logger.log(
       `Session rotated for ${old.walletAddress} (old=${old.id} new=${saved.id})`,
     );
-    return saved;
+    return { sessionToken: newToken, session: saved };
   }
 
   /** Revoke a single active session by token. */
   async revoke(sessionToken: string): Promise<void> {
-    const session = await this.repo.findOne({ where: { sessionToken } });
+    this.assertPresentToken(sessionToken);
+
+    const session = await this.repo.findOne({
+      where: { tokenHash: this.hashToken(sessionToken) },
+    });
     if (!session || session.revokedAt !== null) {
       // Already revoked or unknown — fail-closed, no information leak
       throw new UnauthorizedException('Session not found or already revoked');
@@ -150,6 +181,22 @@ export class AuthSessionService {
       expiresAt: LessThan(new Date()),
     });
     return result.affected ?? 0;
+  }
+
+  /**
+   * TypeORM 0.3 drops `undefined`/`null` predicates instead of erroring, so a
+   * missing token would turn `where: { tokenHash: ... }` into "match any row".
+   * Reject those before they reach the query builder.
+   */
+  private assertPresentToken(sessionToken: string): void {
+    if (typeof sessionToken !== 'string' || sessionToken.length === 0) {
+      throw new UnauthorizedException('Invalid session token');
+    }
+  }
+
+  /** Only the digest of a bearer token is ever stored. */
+  private hashToken(sessionToken: string): string {
+    return createHash('sha256').update(sessionToken).digest('hex');
   }
 
   private assertValidAddress(address: string): void {
