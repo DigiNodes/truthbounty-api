@@ -48,6 +48,16 @@ export class ProjectEvidence {
   @Column({ type: 'int' })
   lastEventLogIndex: number;
 
+  /**
+   * SHA-256 integrity hash of current-state projection fields.
+   * Computed from: evidenceId, claimId, currentVersion, status, contentDigest,
+   * lastEventBlockNumber, lastEventLogIndex.
+   * Excludes: createdAt, updatedAt (backend timestamps), integrityHash itself.
+   * NULL during migration backfill phase; NOT NULL after enforcement.
+   */
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  integrityHash: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

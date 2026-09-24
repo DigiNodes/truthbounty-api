@@ -51,6 +51,24 @@ export class ProjectEvidenceVersion {
   @Column({ type: 'bigint' })
   blockNumber: string;
 
+  /**
+   * SHA-256 integrity hash of version-specific canonical fields.
+   * Computed from: evidenceId, version, contentDigest, safeMetadataUri,
+   * submittedBy, eventTxHash, eventLogIndex, blockNumber, previousVersionHash.
+   * Excludes: id (UUID), createdAt (backend timestamp), integrityHash itself.
+   * NULL during migration backfill phase; NOT NULL after enforcement.
+   */
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  integrityHash: string | null;
+
+  /**
+   * Hash of the previous version, enabling cryptographic chain-of-custody.
+   * NULL for version 1. For version N > 1, contains integrityHash of version N-1.
+   * Enables detection of version history tampering.
+   */
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  previousVersionHash: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 }
