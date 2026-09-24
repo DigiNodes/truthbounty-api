@@ -10,6 +10,7 @@ import {
 } from './entities/event-quarantine.entity';
 import { EventCheckpoint } from './entities/event-checkpoint.entity';
 import { RawLog, IngestOutcome } from './interfaces/canonical-event.interface';
+import { IndexerConfigService } from '../../config/indexer-config.service';
 
 /** Postgres unique_violation error code. */
 const PG_UNIQUE_VIOLATION = '23505';
