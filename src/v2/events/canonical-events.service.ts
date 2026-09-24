@@ -115,26 +115,21 @@ export class CanonicalEventsService {
 
       // Advance the checkpoint atomically with the event write. Monotonic:
       // never move the cursor backward, so out-of-order batches can't regress it.
-      const checkpointRepo = manager.getRepository(EventCheckpoint);
-      const existing = await checkpointRepo.findOne({
-        where: {
+      // Use atomic database operation to prevent read-then-write race conditions
+      const newBlockStr = normalized.event.blockNumber.toString();
+      await manager
+        .createQueryBuilder()
+        .insert()
+        .into(EventCheckpoint)
+        .values({
           chainId: log.chainId,
           contractAddress: normalized.event.contractAddress,
-        },
-      });
-      if (!existing) {
-        await checkpointRepo.insert({
-          chainId: log.chainId,
-          contractAddress: normalized.event.contractAddress,
-          lastSafeBlock: normalized.event.blockNumber.toString(),
-        });
-      } else if (
-        BigInt(existing.lastSafeBlock) < normalized.event.blockNumber
-      ) {
-        await checkpointRepo.update(existing.id, {
-          lastSafeBlock: normalized.event.blockNumber.toString(),
-        });
-      }
+          lastSafeBlock: newBlockStr,
+        })
+        .onConflict(
+          '("chainId", "contractAddress") DO UPDATE SET "lastSafeBlock" = GREATEST("lastSafeBlock", EXCLUDED."lastSafeBlock")'
+        )
+        .execute();
 
       return { status: 'ingested', event: normalized.event } as IngestOutcome;
     });
