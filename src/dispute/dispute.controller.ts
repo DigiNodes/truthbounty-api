@@ -17,6 +17,7 @@ import {
   DisputeTrigger,
   DisputeOutcome,
 } from './entities/dispute.entity';
+import { Idempotent } from '../common/idempotency';
 
 @ApiTags('disputes')
 @Controller('disputes')
@@ -24,6 +25,7 @@ export class DisputeController {
   constructor(private readonly disputeService: DisputeService) {}
 
   @Post()
+  @Idempotent()
   @ApiOperation({ summary: 'Create a new dispute' })
   @ApiResponse({ status: 201, description: 'Dispute created' })
   @ApiResponse({ status: 400, description: 'Bad request' })
