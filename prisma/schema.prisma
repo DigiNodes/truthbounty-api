@@ -28,7 +28,7 @@ enum UserRole {
 model User {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
-  updatedAt DateTime @updated
+  updatedAt DateTime @updatedAt
 
   // Primary wallet address — canonical identifier for the user
   walletAddress String @unique
@@ -64,7 +64,7 @@ model Wallet {
 model SybilScore {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
-  updatedAt DateTime @updated
+  updatedAt DateTime @updatedAt
 
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -121,7 +121,7 @@ model Conversation {
   id        String   @id @default(uuid())
   title     String?
   createdAt  DateTime @default(now())
-  updatedAt DateTime @updated
+  updatedAt DateTime @updatedAt
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   messages  Message[]
@@ -195,7 +195,7 @@ model MetricAggregate {
   bucketStart DateTime
   filters    String @default("{}") // Canonical JSON string representing dimensions e.g. chain, role
   value       Float @default(0)
-  updatedAt  DateTime @updated
+  updatedAt  DateTime @updatedAt
 
   @@index([metricKey, period, bucketStart])
   @@unique([metricKey, period, bucketStart, filters])
@@ -230,4 +230,109 @@ model MonitoringMetric {
   recordedAt   DateTime @default(now())
 
   @@index([name, recordedAt])
+}
+
+// V2 indexing: chain event dedup + reorg-aware block cursor.
+//
+// This is an indexing/read boundary only. The API indexes, validates,
+// caches, and relays user-signed intent — it is never authoritative for
+// protocol settlement, rewards, treasury, or governance, all of which
+// live on-chain. Optimism/EVM semantics only (chainId + 32-byte hashes);
+// no Stellar/Soroban/Freighter concepts belong here.
+
+model ChainEvent {
+  id              String    @id @default(uuid())
+  chainId         Int
+  contractAddress String
+  eventName       String
+
+  // BigInt, never a JS number/float — block numbers can exceed
+  // Number.MAX_SAFE_INTEGER and must sort/compare numerically, not lexically.
+  blockNumber     BigInt
+  blockHash       String
+  txHash          String
+  logIndex        Int
+  blockTimestamp  DateTime?
+
+  payload   Json
+  rawArgs   Json
+  ingestedAt DateTime @default(now())
+
+  // Canonical log identity is (chain, block hash, tx hash, log index) —
+  // deliberately including blockHash alongside chainId/txHash/logIndex.
+  // After a reorg, the same txHash+logIndex can legitimately reappear
+  // under a *different* blockHash once it's re-included in the
+  // replacement chain. Keying only on (chainId, txHash, logIndex) would
+  // make that valid replacement-chain log collide with — and get
+  // silently dropped as a duplicate of — the orphaned original. Keying on
+  // the full 4-tuple lets true duplicates (identical replay of the same
+  // log) be rejected while still accepting the replacement-chain log as
+  // a distinct row.
+  @@unique([chainId, blockHash, txHash, logIndex], name: "chainId_blockHash_txHash_logIndex")
+  @@index([chainId, blockNumber])
+  @@index([eventName, blockNumber])
+  @@index([contractAddress])
+  @@map("v2_chain_events")
+}
+
+enum BlockConfirmation {
+  observed
+  safe
+  finalized
+}
+
+model BlockCursor {
+  id     String @id @default(uuid())
+  chainId Int
+  // Logical ingestion source (e.g. a contract address, or an indexer
+  // name for a multi-contract stream) — a chain can have more than one
+  // independently-advancing cursor.
+  source  String
+
+  // Highest block this cursor has processed, and that block's own hash
+  // (not its parent's) — the pair needed to detect, on the next poll,
+  // whether the chain reorged underneath us. BigInt for correct numeric
+  // ordering/comparison (a decimal string would sort lexically).
+  processedHeight BigInt
+  processedHash   String
+
+  // Finality-lagged cursors used to gate what's safe to read/finalize.
+  safeHeight      BigInt @default(0)
+  safeHash        String @default("")
+  finalizedHeight BigInt @default(0)
+  finalizedHash   String @default("")
+
+  updatedAt DateTime @updatedAt
+
+  ancestry BlockCursorAncestor[]
+
+  @@unique([chainId, source])
+  @@map("v2_block_cursors")
+}
+
+// Rolling window of recently-processed block headers (height, hash,
+// parentHash) per cursor. On a reorg, recovery walks this ancestry
+// newest-to-oldest comparing stored hashes against the RPC's current
+// canonical chain until it finds a matching (height, hash) pair — the
+// common ancestor — then rolls the cursor back to it before re-ingesting
+// forward. Without stored ancestry there is no way to find that ancestor
+// short of re-scanning from genesis.
+model BlockCursorAncestor {
+  id       String      @id @default(uuid())
+  cursorId String
+  cursor   BlockCursor @relation(fields: [cursorId], references: [id], onDelete: Cascade)
+
+  height     BigInt
+  hash       String
+  parentHash String
+
+  // Flipped to false, rather than deleted, when a reorg orphans this
+  // block — keeps the audit trail of what was seen and later replaced.
+  isCanonical  Boolean            @default(true)
+  confirmation BlockConfirmation  @default(observed)
+  recordedAt   DateTime           @default(now())
+
+  @@unique([cursorId, height, hash])
+  @@index([cursorId, height])
+  @@map("v2_block_cursor_ancestors")
 }

@@ -58,7 +58,15 @@ export const ModelName = {
   WorldIdVerification: 'WorldIdVerification',
   Conversation: 'Conversation',
   Message: 'Message',
-  AiUsageMetric: 'AiUsageMetric'
+  ContextDocument: 'ContextDocument',
+  AiUsageMetric: 'AiUsageMetric',
+  AnalyticsEvent: 'AnalyticsEvent',
+  MetricAggregate: 'MetricAggregate',
+  ReportJob: 'ReportJob',
+  MonitoringMetric: 'MonitoringMetric',
+  ChainEvent: 'ChainEvent',
+  BlockCursor: 'BlockCursor',
+  BlockCursorAncestor: 'BlockCursorAncestor'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -162,6 +170,22 @@ export const MessageScalarFieldEnum = {
 export type MessageScalarFieldEnum = (typeof MessageScalarFieldEnum)[keyof typeof MessageScalarFieldEnum]
 
 
+export const ContextDocumentScalarFieldEnum = {
+  id: 'id',
+  title: 'title',
+  category: 'category',
+  content: 'content',
+  tags: 'tags',
+  sourceUrl: 'sourceUrl',
+  isActive: 'isActive',
+  createdBy: 'createdBy',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type ContextDocumentScalarFieldEnum = (typeof ContextDocumentScalarFieldEnum)[keyof typeof ContextDocumentScalarFieldEnum]
+
+
 export const AiUsageMetricScalarFieldEnum = {
   id: 'id',
   userId: 'userId',
@@ -175,6 +199,112 @@ export const AiUsageMetricScalarFieldEnum = {
 } as const
 
 export type AiUsageMetricScalarFieldEnum = (typeof AiUsageMetricScalarFieldEnum)[keyof typeof AiUsageMetricScalarFieldEnum]
+
+
+export const AnalyticsEventScalarFieldEnum = {
+  id: 'id',
+  eventType: 'eventType',
+  entityType: 'entityType',
+  entityId: 'entityId',
+  userId: 'userId',
+  data: 'data',
+  occurredAt: 'occurredAt',
+  createdAt: 'createdAt'
+} as const
+
+export type AnalyticsEventScalarFieldEnum = (typeof AnalyticsEventScalarFieldEnum)[keyof typeof AnalyticsEventScalarFieldEnum]
+
+
+export const MetricAggregateScalarFieldEnum = {
+  id: 'id',
+  metricKey: 'metricKey',
+  period: 'period',
+  bucketStart: 'bucketStart',
+  filters: 'filters',
+  value: 'value',
+  updatedAt: 'updatedAt'
+} as const
+
+export type MetricAggregateScalarFieldEnum = (typeof MetricAggregateScalarFieldEnum)[keyof typeof MetricAggregateScalarFieldEnum]
+
+
+export const ReportJobScalarFieldEnum = {
+  id: 'id',
+  name: 'name',
+  reportType: 'reportType',
+  filters: 'filters',
+  format: 'format',
+  status: 'status',
+  progress: 'progress',
+  fileUrl: 'fileUrl',
+  error: 'error',
+  createdAt: 'createdAt',
+  startedAt: 'startedAt',
+  completedAt: 'completedAt',
+  scheduledFor: 'scheduledFor',
+  createdByUserId: 'createdByUserId'
+} as const
+
+export type ReportJobScalarFieldEnum = (typeof ReportJobScalarFieldEnum)[keyof typeof ReportJobScalarFieldEnum]
+
+
+export const MonitoringMetricScalarFieldEnum = {
+  id: 'id',
+  name: 'name',
+  value: 'value',
+  labels: 'labels',
+  recordedAt: 'recordedAt'
+} as const
+
+export type MonitoringMetricScalarFieldEnum = (typeof MonitoringMetricScalarFieldEnum)[keyof typeof MonitoringMetricScalarFieldEnum]
+
+
+export const ChainEventScalarFieldEnum = {
+  id: 'id',
+  chainId: 'chainId',
+  contractAddress: 'contractAddress',
+  eventName: 'eventName',
+  blockNumber: 'blockNumber',
+  blockHash: 'blockHash',
+  txHash: 'txHash',
+  logIndex: 'logIndex',
+  blockTimestamp: 'blockTimestamp',
+  payload: 'payload',
+  rawArgs: 'rawArgs',
+  ingestedAt: 'ingestedAt'
+} as const
+
+export type ChainEventScalarFieldEnum = (typeof ChainEventScalarFieldEnum)[keyof typeof ChainEventScalarFieldEnum]
+
+
+export const BlockCursorScalarFieldEnum = {
+  id: 'id',
+  chainId: 'chainId',
+  source: 'source',
+  processedHeight: 'processedHeight',
+  processedHash: 'processedHash',
+  safeHeight: 'safeHeight',
+  safeHash: 'safeHash',
+  finalizedHeight: 'finalizedHeight',
+  finalizedHash: 'finalizedHash',
+  updatedAt: 'updatedAt'
+} as const
+
+export type BlockCursorScalarFieldEnum = (typeof BlockCursorScalarFieldEnum)[keyof typeof BlockCursorScalarFieldEnum]
+
+
+export const BlockCursorAncestorScalarFieldEnum = {
+  id: 'id',
+  cursorId: 'cursorId',
+  height: 'height',
+  hash: 'hash',
+  parentHash: 'parentHash',
+  isCanonical: 'isCanonical',
+  confirmation: 'confirmation',
+  recordedAt: 'recordedAt'
+} as const
+
+export type BlockCursorAncestorScalarFieldEnum = (typeof BlockCursorAncestorScalarFieldEnum)[keyof typeof BlockCursorAncestorScalarFieldEnum]
 
 
 export const SortOrder = {
@@ -191,6 +321,13 @@ export const NullableJsonNullValueInput = {
 } as const
 
 export type NullableJsonNullValueInput = (typeof NullableJsonNullValueInput)[keyof typeof NullableJsonNullValueInput]
+
+
+export const JsonNullValueInput = {
+  JsonNull: JsonNull
+} as const
+
+export type JsonNullValueInput = (typeof JsonNullValueInput)[keyof typeof JsonNullValueInput]
 
 
 export const NullsOrder = {
