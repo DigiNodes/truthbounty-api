@@ -1,7 +1,7 @@
 # Event Indexer Architecture
 
 ## High-Level System Diagram
-
+test in webdev
 ```
 ┌────────────────────────────────────────────────────────────────────┐
 │                        TRUTHBOUNTY API                             │
@@ -328,3 +328,39 @@
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## Transactional Outbox Pattern & Idempotent Delivery Architecture (V2-BE-048 & V2-BE-076)
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                       TRANSACTIONAL OUTBOX FLOW                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│ 1. Domain Action (Prisma Transaction)                                       │
+│    └─→ Write Projection Data                                                │
+│    └─→ Write OutboxEvent (status = 'PENDING', idempotencyKey = sha256(...)) │
+│        ↓ (Atomic Commit)                                                    │
+│ 2. OutboxScheduler (Cron Poller every 5s)                                   │
+│    └─→ Claims PENDING OutboxEvents                                          │
+│    └─→ Relays job to BullMQ 'notifications' queue                           │
+│    └─→ Updates OutboxEvent status to 'DISPATCHED'                           │
+│        ↓                                                                    │
+│ 3. NotificationProcessor (Worker)                                           │
+│    └─→ Step 3a: Redis SETNX Guard (key = idempotency:notification:${key})   │
+│        • Lock acquired  → proceed to delivery                               │
+│        • Lock exists    → suppress duplicate execution                      │
+│    └─→ Step 3b: DB Fallback Guard (DeliveryHistory.findByIdempotencyKey)    │
+│        • Status DELIVERED → suppress duplicate                              │
+│    └─→ Step 3c: Deliver via Channel (WebSocket / Email / Webhook / InApp)   │
+│    └─→ Update DeliveryHistory status                                        │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Security & Protocol Constraints
+- **Zero PII & Settlement Data**: `OutboxEvent.payload` contains opaque routing identifiers only (`notificationId`, `channel`, `recipientIds`). No claim body, settlement calculations, private keys, or credentials are path-logged or queued.
+- **Protocol Boundary**: API layer indexes, validates, and relays user-signed intent; it is never authoritative for settlement, rewards, or governance.
+- **EVM Semantics**: Full compatibility with Optimism/EVM chain rules.
+
