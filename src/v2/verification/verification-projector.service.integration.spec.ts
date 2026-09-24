@@ -15,6 +15,12 @@ import {
 } from '../common/entities/indexing-anomaly.entity';
 import { CanonicalEvent } from '../events/entities/canonical-event.entity';
 import { CanonicalEventQueryService } from '../events/canonical-event-query.service';
+import { EventCheckpoint } from '../events/entities/event-checkpoint.entity';
+import { ProjectionEvent } from '../../realtime/entities/projection-event.entity';
+import { RealtimeService } from '../../realtime/realtime.service';
+import { RealtimeBusService } from '../../realtime/realtime-bus.service';
+import { RealtimeConfigService } from '../../realtime/realtime-config.service';
+import { ConfigService } from '@nestjs/config';
 
 describe('VerificationProjectorService (integration)', () => {
   let moduleRef: TestingModule;
@@ -55,6 +61,8 @@ describe('VerificationProjectorService (integration)', () => {
             ProjectParticipantPosition,
             ProjectorCursor,
             IndexingAnomaly,
+            EventCheckpoint,
+            ProjectionEvent,
           ],
           synchronize: true,
         }),
@@ -64,12 +72,21 @@ describe('VerificationProjectorService (integration)', () => {
           ProjectorCursor,
           IndexingAnomaly,
           CanonicalEvent,
+          EventCheckpoint,
+          ProjectionEvent,
         ]),
       ],
       providers: [
         VerificationProjectorService,
         VerificationQueryService,
         CanonicalEventQueryService,
+        RealtimeService,
+        RealtimeBusService,
+        RealtimeConfigService,
+        {
+          provide: ConfigService,
+          useValue: { get: jest.fn(() => undefined) },
+        },
       ],
     }).compile();
 
@@ -100,12 +117,13 @@ describe('VerificationProjectorService (integration)', () => {
 
     await projector.processNewEvents();
 
-    const { first, appeal } = await queryService.listRounds(claimId);
-    expect(first).toHaveLength(1);
-    expect(appeal).toHaveLength(1);
-    expect(first[0].roundId).toBe(firstRoundId);
-    expect(appeal[0].roundId).toBe(appealRoundId);
-    expect(first[0].status).toBe(RoundStatus.OPEN);
+    const { firstInstanceRounds, appealRounds } =
+      await queryService.listRounds(claimId);
+    expect(firstInstanceRounds.items).toHaveLength(1);
+    expect(appealRounds.items).toHaveLength(1);
+    expect(firstInstanceRounds.items[0].roundId).toBe(firstRoundId);
+    expect(appealRounds.items[0].roundId).toBe(appealRoundId);
+    expect(firstInstanceRounds.items[0].status).toBe(RoundStatus.OPEN);
   });
 
   it('projects a participant position with stake/reputation/weight verbatim, never recomputed', async () => {
@@ -133,10 +151,10 @@ describe('VerificationProjectorService (integration)', () => {
     await projector.processNewEvents();
 
     const positions = await queryService.listPositions(firstRoundId);
-    expect(positions).toHaveLength(1);
-    expect(positions[0].stake).toBe('1000000000000000000');
-    expect(positions[0].effectiveWeight).toBe('850');
-    expect(positions[0].position).toBe('support');
+    expect(positions.items).toHaveLength(1);
+    expect(positions.items[0].stake).toBe('1000000000000000000');
+    expect(positions.items[0].effectiveWeight).toBe('850');
+    expect(positions.items[0].position).toBe('support');
   });
 
   it('detects and records a duplicate position for the same participant/round instead of overwriting it', async () => {
@@ -168,8 +186,8 @@ describe('VerificationProjectorService (integration)', () => {
     expect(summary.anomalies).toBe(1);
 
     const positions = await queryService.listPositions(firstRoundId);
-    expect(positions).toHaveLength(1);
-    expect(positions[0].stake).toBe('100'); // first-committed position wins, not overwritten
+    expect(positions.items).toHaveLength(1);
+    expect(positions.items[0].stake).toBe('100'); // first-committed position wins, not overwritten
 
     const anomalies = await dataSource.getRepository(IndexingAnomaly).find();
     expect(anomalies).toHaveLength(1);
@@ -196,6 +214,33 @@ describe('VerificationProjectorService (integration)', () => {
 
     const anomalies = await dataSource.getRepository(IndexingAnomaly).find();
     expect(anomalies[0].kind).toBe(IndexingAnomalyKind.OUT_OF_ORDER);
+  });
+
+  it('records canonical realtime outbox rows for rounds and positions', async () => {
+    await seedEvent({
+      eventName: 'VerificationRoundOpened',
+      txHash: '0x' + '01'.repeat(32),
+      blockNumber: '100',
+      roundId: firstRoundId,
+      payload: { roundType: 'first', roundNumber: '1' },
+    });
+
+    await projector.processNewEvents();
+
+    const outbox = await dataSource.getRepository(ProjectionEvent).find();
+    expect(outbox).toHaveLength(1);
+    expect(outbox[0]).toMatchObject({
+      aggregateType: 'verification.round',
+      aggregateId: firstRoundId,
+      eventType: 'created',
+    });
+    expect(outbox[0].payload).toMatchObject({
+      id: firstRoundId,
+      blockNumber: '100',
+      eventLogIndex: 0,
+      eventTxHash: '0x' + '01'.repeat(32),
+      roundType: 'first',
+    });
   });
 
   it('is replay-safe: reprocessing already-applied events does not duplicate rounds or positions', async () => {

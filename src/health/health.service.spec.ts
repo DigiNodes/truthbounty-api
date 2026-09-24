@@ -9,6 +9,13 @@ import { IpfsService } from '../ipfs/ipfs.service';
 import { BlockchainStateService } from '../blockchain/state.service';
 import { MetricsService } from '../metrics/metrics.service';
 
+// PrismaService pulls in @libsql/client, which ships ESM-only code that Jest
+// cannot parse; it is unused by HealthService, so stub it out of the module
+// graph.
+jest.mock('../prisma/prisma.service', () => ({
+  PrismaService: class PrismaService {},
+}));
+
 const mockDataSource = () => ({
   isInitialized: true,
   query: jest.fn(),
@@ -85,14 +92,11 @@ describe('HealthService', () => {
         { provide: JobsService, useFactory: mockJobsService },
         { provide: NotificationService, useFactory: mockNotificationService },
         { provide: IpfsService, useFactory: mockIpfsService },
- feat/be-016-monitoring-api
-        { provide: BlockchainStateService, useFactory: mockBlockchainStateService },
-        { provide: MetricsService, useFactory: mockMetricsService },
         {
           provide: BlockchainStateService,
           useFactory: mockBlockchainStateService,
         },
- main
+        { provide: MetricsService, useFactory: mockMetricsService },
       ],
     }).compile();
 
@@ -103,14 +107,30 @@ describe('HealthService', () => {
     jobsService = module.get<JobsService>(JobsService);
     notificationService = module.get<NotificationService>(NotificationService);
     ipfsService = module.get<IpfsService>(IpfsService);
- feat/be-016-monitoring-api
-    blockchainStateService = module.get<BlockchainStateService>(BlockchainStateService);
-    metricsService = module.get<MetricsService>(MetricsService);
     blockchainStateService = module.get<BlockchainStateService>(
       BlockchainStateService,
     );
- main
+    metricsService = module.get<MetricsService>(MetricsService);
   });
+
+  function stubAllHealthy(): void {
+    (dataSource.query as jest.Mock).mockResolvedValue([{ 1: 1 }]);
+    (redisService.isHealthy as jest.Mock).mockResolvedValue(true);
+    (queue.getJobCounts as jest.Mock).mockResolvedValue({
+      waiting: 0,
+      active: 0,
+      completed: 0,
+      failed: 0,
+      delayed: 0,
+      paused: 0,
+    });
+    (notificationService.getMetrics as jest.Mock).mockResolvedValue({
+      queueDepth: 0,
+    });
+    (ipfsService.uploadBuffer as jest.Mock).mockResolvedValue({
+      cid: 'QmHealthCheckCid',
+    });
+  }
 
   it('should return alive liveness result', () => {
     const result = service.getLiveness();
@@ -119,60 +139,53 @@ describe('HealthService', () => {
   });
 
   it('should report healthy readiness when all checks pass', async () => {
-    (dataSource.query as jest.Mock).mockResolvedValue([{ 1: 1 }]);
-    (redisService.isHealthy as jest.Mock).mockResolvedValue(true);
-    (queue.getJobCounts as jest.Mock).mockResolvedValue({
-      waiting: 0,
-      active: 0,
-      completed: 0,
-      failed: 0,
-    });
+    stubAllHealthy();
 
     const result = await service.getReadiness();
     expect(result.ready).toBe(true);
     expect(result.status).toBe('healthy');
-    expect(result.dependencies).toHaveLength(3);
+    expect(result.dependencies).toHaveLength(6);
+    expect(result.dependencies.every((d) => d.status === 'healthy')).toBe(true);
   });
 
   it('should report unhealthy when database is down', async () => {
+    stubAllHealthy();
     (dataSource.query as jest.Mock).mockRejectedValue(new Error('DB timeout'));
-    (redisService.isHealthy as jest.Mock).mockResolvedValue(true);
-    (queue.getJobCounts as jest.Mock).mockResolvedValue({
-      waiting: 0,
-      active: 0,
-      completed: 0,
-      failed: 0,
-    });
 
     const result = await service.getReadiness();
     expect(result.ready).toBe(false);
     expect(result.status).toBe('unhealthy');
+    expect(
+      result.dependencies.find((d) => d.name === 'database'),
+    ).toMatchObject({ status: 'unhealthy', failureReason: 'DB timeout' });
   });
 
   it('should report degraded when redis is down but db and queue are up', async () => {
-    (dataSource.query as jest.Mock).mockResolvedValue([{ 1: 1 }]);
+    stubAllHealthy();
     (redisService.isHealthy as jest.Mock).mockResolvedValue(false);
-    (queue.getJobCounts as jest.Mock).mockResolvedValue({
-      waiting: 0,
-      active: 0,
-      completed: 0,
-      failed: 0,
-    });
 
     const result = await service.getReadiness();
     expect(result.ready).toBe(true);
     expect(result.status).toBe('degraded');
   });
 
+  it('should fail closed when a dependency probe exceeds the check timeout', async () => {
+    stubAllHealthy();
+    (service as unknown as { checkTimeoutMs: number }).checkTimeoutMs = 25;
+    (dataSource.query as jest.Mock).mockImplementation(
+      () => new Promise<void>(() => {}),
+    );
+
+    const result = await service.getReadiness();
+    expect(result.ready).toBe(false);
+    expect(result.status).toBe('unhealthy');
+    const database = result.dependencies.find((d) => d.name === 'database');
+    expect(database?.status).toBe('unhealthy');
+    expect(database?.failureReason).toContain('timed out');
+  });
+
   it('should include health metadata and dependency summary', async () => {
-    (dataSource.query as jest.Mock).mockResolvedValue([{ 1: 1 }]);
-    (redisService.isHealthy as jest.Mock).mockResolvedValue(true);
-    (queue.getJobCounts as jest.Mock).mockResolvedValue({
-      waiting: 0,
-      active: 0,
-      completed: 0,
-      failed: 0,
-    });
+    stubAllHealthy();
 
     const result = await service.getHealth();
 
@@ -189,15 +202,25 @@ describe('HealthService', () => {
     );
   });
 
+  it('should run live checks for the dependency report rather than returning stale state', async () => {
+    stubAllHealthy();
+
+    const healthy = await service.getDependencyHealth();
+    expect(healthy.status).toBe('healthy');
+    expect(healthy.dependencies).toHaveLength(6);
+
+    (dataSource.query as jest.Mock).mockRejectedValue(
+      new Error('connection refused'),
+    );
+    const unhealthy = await service.getDependencyHealth();
+    expect(unhealthy.status).toBe('unhealthy');
+    expect(unhealthy.dependencies.find((d) => d.name === 'database')).toMatchObject(
+      { status: 'unhealthy', failureReason: 'connection refused' },
+    );
+  });
+
   it('should return not ready while shutting down', async () => {
-    (dataSource.query as jest.Mock).mockResolvedValue([{ 1: 1 }]);
-    (redisService.isHealthy as jest.Mock).mockResolvedValue(true);
-    (queue.getJobCounts as jest.Mock).mockResolvedValue({
-      waiting: 0,
-      active: 0,
-      completed: 0,
-      failed: 0,
-    });
+    stubAllHealthy();
 
     (service as unknown as { shuttingDown: boolean }).shuttingDown = true;
 

@@ -34,6 +34,9 @@ export class HealthService {
   private appVersion: string;
   private readonly environment = process.env.NODE_ENV ?? 'development';
   private shuttingDown = false;
+  private readonly checkTimeoutMs = Number(
+    process.env.HEALTH_CHECK_TIMEOUT_MS ?? 3000,
+  );
 
   constructor(
     private readonly dataSource: DataSource,
@@ -97,13 +100,13 @@ export class HealthService {
     };
   }
 
-  getDependencyHealth(): DependencyHealthResult {
-    const dependencies = Array.from(this.lastSuccess.keys()).map((name) => ({
-      name,
-      status: 'healthy' as HealthStatus,
-      responseTimeMs: 0,
-      lastSuccessfulCheck: this.lastSuccess.get(name),
-    }));
+  /**
+   * Live dependency health report. Performs fresh checks on every call so the
+   * reported statuses reflect the current state of each dependency rather than
+   * a merged-in stale snapshot.
+   */
+  async getDependencyHealth(): Promise<DependencyHealthResult> {
+    const dependencies = await this.runChecks();
 
     return {
       status: this.aggregateStatus(dependencies),
@@ -188,7 +191,7 @@ export class HealthService {
       configs.map(async (config) => {
         const start = Date.now();
         try {
-          await config.check();
+          await this.withTimeout(config.check(), this.checkTimeoutMs, config.name);
           const now = new Date().toISOString();
           this.lastSuccess.set(config.name, now);
           return {
@@ -227,18 +230,8 @@ export class HealthService {
   }
 
   private async checkQueue(): Promise<void> {
- feat/be-016-monitoring-api
     const counts = await this.jobsQueue.getJobCounts('waiting', 'active', 'completed', 'failed', 'delayed', 'paused');
     this.metricsService.setQueueDepth(this.jobsQueue.name, counts);
-    await this.jobsQueue.getJobCounts(
-      'waiting',
-      'active',
-      'completed',
-      'failed',
-      'delayed',
-      'paused',
-    );
- main
   }
 
   private async checkNotifications(): Promise<void> {
@@ -263,7 +256,6 @@ export class HealthService {
     if (typeof state.lastProcessedBlock !== 'number') {
       throw new Error('Blockchain state is unavailable');
     }
- feat/be-016-monitoring-api
     this.metricsService.setBlockchainIndexingState(state.lastProcessedBlock);
 
     // Fail closed if the indexer is degraded per alert thresholds.
@@ -271,7 +263,37 @@ export class HealthService {
     if (health.status === 'unhealthy') {
       throw new Error('Indexer health is degraded beyond alert thresholds');
     }
- main
+  }
+
+  /**
+   * Bounds a dependency probe with an explicit timeout so a hung dependency
+   * cannot stall readiness/startup probes indefinitely. Chronicles what a
+   * timed-out probe would normally report by racing the probe's promise.
+   */
+  private async withTimeout(
+    probe: Promise<void>,
+    timeoutMs: number,
+    name: string,
+  ): Promise<void> {
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      await Promise.race([
+        probe,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () =>
+              reject(
+                new Error(
+                  `Health check "${name}" timed out after ${timeoutMs}ms`,
+                ),
+              ),
+            timeoutMs,
+          );
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   private aggregateServices(

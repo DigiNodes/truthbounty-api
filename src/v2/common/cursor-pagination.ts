@@ -59,3 +59,36 @@ export function clampPageSize(requested?: number): number {
     return DEFAULT_PAGE_SIZE;
   return Math.min(requested, MAX_PAGE_SIZE);
 }
+
+/**
+ * Turn a "limit + 1" keyset fetch into a stable page.
+ *
+ * Queries MUST fetch one extra row beyond the page size so presence of a
+ * surplus row unambiguously signals "another page exists". Without the probe
+ * row the last real row is indistinguishable from a page boundary, which is
+ * what caused page-size-exact queries to emit a nextCursor pointing at the
+ * last item (or omit it) depending on boundary rounding. ID tiebreaking in
+ * ORDER BY + cursor predicate guarantees a stable total order even when two
+ * rows share the same (blockNumber, logIndex).
+ */
+export function pageResult<T>(
+  rows: T[],
+  pageSize: number,
+  keyOf: (row: T) => { blockNumber: string | number; logIndex: number; id: string },
+): CursorPage<T> {
+  const hasMore = rows.length > pageSize;
+  const items = hasMore ? rows.slice(0, pageSize) : rows;
+  const last = items[items.length - 1];
+
+  return {
+    items,
+    nextCursor:
+      hasMore && last
+        ? encodeCursor({
+            blockNumber: String(keyOf(last).blockNumber),
+            logIndex: keyOf(last).logIndex,
+            id: keyOf(last).id,
+          })
+        : null,
+  };
+}

@@ -7,7 +7,7 @@ import {
   CursorPage,
   clampPageSize,
   decodeCursor,
-  encodeCursor,
+  pageResult,
 } from '../common/cursor-pagination';
 
 @Injectable()
@@ -37,34 +37,28 @@ export class EvidenceQueryService {
       .where('v.evidenceId = :evidenceId', { evidenceId })
       .orderBy('v.blockNumber', 'ASC')
       .addOrderBy('v.eventLogIndex', 'ASC')
+      .addOrderBy('v.id', 'ASC')
       .limit(pageSize + 1);
 
     if (cursor) {
       const key = decodeCursor(cursor);
       qb.andWhere(
-        '(v.blockNumber > :blockNumber OR (v.blockNumber = :blockNumber AND v.eventLogIndex > :logIndex))',
+        '(v.blockNumber > :blockNumber OR ' +
+          '(v.blockNumber = :blockNumber AND v.eventLogIndex > :logIndex) OR ' +
+          '(v.blockNumber = :blockNumber AND v.eventLogIndex = :logIndex AND v.id > :id))',
         {
           blockNumber: key.blockNumber,
           logIndex: key.logIndex,
+          id: key.id,
         },
       );
     }
 
     const rows = await qb.getMany();
-    const hasMore = rows.length > pageSize;
-    const items = hasMore ? rows.slice(0, pageSize) : rows;
-    const last = items[items.length - 1];
-
-    return {
-      items,
-      nextCursor:
-        hasMore && last
-          ? encodeCursor({
-              blockNumber: String(last.blockNumber),
-              logIndex: last.eventLogIndex,
-              id: last.id,
-            })
-          : null,
-    };
+    return pageResult(rows, pageSize, (row) => ({
+      blockNumber: row.blockNumber,
+      logIndex: row.eventLogIndex,
+      id: row.id,
+    }));
   }
 }
