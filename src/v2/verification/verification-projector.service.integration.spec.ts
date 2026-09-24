@@ -1,5 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ConfigService } from '@nestjs/config';
+import { ServiceUnavailableException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { VerificationProjectorService } from './verification-projector.service';
 import { VerificationQueryService } from './verification-query.service';
@@ -15,6 +17,10 @@ import {
 } from '../common/entities/indexing-anomaly.entity';
 import { CanonicalEvent } from '../events/entities/canonical-event.entity';
 import { CanonicalEventQueryService } from '../events/canonical-event-query.service';
+import { EventCheckpoint } from '../events/entities/event-checkpoint.entity';
+import { ContractArtifact } from '../events/entities/contract-artifact.entity';
+import { EventQuarantine } from '../events/entities/event-quarantine.entity';
+import { ProjectionReadinessService } from '../common/projection-readiness/projection-readiness.service';
 
 describe('VerificationProjectorService (integration)', () => {
   let moduleRef: TestingModule;
@@ -55,6 +61,9 @@ describe('VerificationProjectorService (integration)', () => {
             ProjectParticipantPosition,
             ProjectorCursor,
             IndexingAnomaly,
+            EventCheckpoint,
+            ContractArtifact,
+            EventQuarantine,
           ],
           synchronize: true,
         }),
@@ -64,12 +73,17 @@ describe('VerificationProjectorService (integration)', () => {
           ProjectorCursor,
           IndexingAnomaly,
           CanonicalEvent,
+          EventCheckpoint,
+          ContractArtifact,
+          EventQuarantine,
         ]),
       ],
       providers: [
         VerificationProjectorService,
         VerificationQueryService,
         CanonicalEventQueryService,
+        ProjectionReadinessService,
+        { provide: ConfigService, useValue: { get: () => undefined } },
       ],
     }).compile();
 
@@ -100,7 +114,10 @@ describe('VerificationProjectorService (integration)', () => {
 
     await projector.processNewEvents();
 
-    const { first, appeal } = await queryService.listRounds(claimId);
+    const { firstInstanceRounds, appealRounds } =
+      await queryService.listRounds(claimId);
+    const first = firstInstanceRounds.items;
+    const appeal = appealRounds.items;
     expect(first).toHaveLength(1);
     expect(appeal).toHaveLength(1);
     expect(first[0].roundId).toBe(firstRoundId);
@@ -132,11 +149,11 @@ describe('VerificationProjectorService (integration)', () => {
 
     await projector.processNewEvents();
 
-    const positions = await queryService.listPositions(firstRoundId);
-    expect(positions).toHaveLength(1);
-    expect(positions[0].stake).toBe('1000000000000000000');
-    expect(positions[0].effectiveWeight).toBe('850');
-    expect(positions[0].position).toBe('support');
+    const positionPage = await queryService.listPositions(firstRoundId);
+    expect(positionPage.items).toHaveLength(1);
+    expect(positionPage.items[0].stake).toBe('1000000000000000000');
+    expect(positionPage.items[0].effectiveWeight).toBe('850');
+    expect(positionPage.items[0].position).toBe('support');
   });
 
   it('detects and records a duplicate position for the same participant/round instead of overwriting it', async () => {
@@ -167,9 +184,9 @@ describe('VerificationProjectorService (integration)', () => {
     const summary = await projector.processNewEvents();
     expect(summary.anomalies).toBe(1);
 
-    const positions = await queryService.listPositions(firstRoundId);
-    expect(positions).toHaveLength(1);
-    expect(positions[0].stake).toBe('100'); // first-committed position wins, not overwritten
+    const positionPage = await queryService.listPositions(firstRoundId);
+    expect(positionPage.items).toHaveLength(1);
+    expect(positionPage.items[0].stake).toBe('100'); // first-committed position wins, not overwritten
 
     const anomalies = await dataSource.getRepository(IndexingAnomaly).find();
     expect(anomalies).toHaveLength(1);
@@ -215,5 +232,31 @@ describe('VerificationProjectorService (integration)', () => {
       .getRepository(ProjectVerificationRound)
       .find();
     expect(rounds).toHaveLength(1);
+  });
+
+  it('fails closed instead of serving a stale round projection when canonical events are unprojected', async () => {
+    await seedEvent({
+      eventName: 'VerificationRoundOpened',
+      txHash: '0x' + '01'.repeat(32),
+      blockNumber: '100',
+      roundId: firstRoundId,
+      payload: { roundType: 'first', roundNumber: '1' },
+    });
+    await seedEvent({
+      eventName: 'VerificationRoundOpened',
+      txHash: '0x' + '02'.repeat(32),
+      blockNumber: '300',
+      roundId: appealRoundId,
+      payload: { roundType: 'appeal', roundNumber: '1' },
+    });
+
+    await projector.processNewEvents();
+    await dataSource
+      .getRepository(ProjectorCursor)
+      .update({ projectorName: 'v2-verification' }, { lastBlockNumber: '100' });
+
+    await expect(queryService.listRounds(claimId)).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
   });
 });

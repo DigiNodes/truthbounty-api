@@ -69,7 +69,7 @@ export class ProjectVerificationRound {
   roundSnapshot: Record<string, unknown> | null;
 
   /** Appeal deadline if this is an appeal round */
-  @Column({ type: 'Date', nullable: true })
+  @Column({ type: Date, nullable: true })
   appealDeadline: Date | null;
 
   @Column({ type: 'varchar', length: 66 })

@@ -9,6 +9,8 @@ import {
   decodeCursor,
   encodeCursor,
 } from '../common/cursor-pagination';
+import { ProjectionReadinessService } from '../common/projection-readiness/projection-readiness.service';
+import { V2_PROJECTORS } from '../common/projection-readiness/projector-registry';
 
 @Injectable()
 export class EvidenceQueryService {
@@ -17,9 +19,14 @@ export class EvidenceQueryService {
     private readonly evidenceRepo: Repository<ProjectEvidence>,
     @InjectRepository(ProjectEvidenceVersion)
     private readonly versionRepo: Repository<ProjectEvidenceVersion>,
+    private readonly readiness: ProjectionReadinessService,
   ) {}
 
   async getEvidence(claimId: string): Promise<ProjectEvidence> {
+    // Fail closed: evidence state is protocol state, so it is only served
+    // while the projection provably reproduces canonical events.
+    await this.readiness.assertReady(V2_PROJECTORS.EVIDENCE);
+
     const evidence = await this.evidenceRepo.findOne({ where: { claimId } });
     if (!evidence)
       throw new NotFoundException(`No evidence projected for claim ${claimId}`);
@@ -31,6 +38,9 @@ export class EvidenceQueryService {
     cursor?: string,
     limit?: number,
   ): Promise<CursorPage<ProjectEvidenceVersion>> {
+    // Fail closed: see getEvidence.
+    await this.readiness.assertReady(V2_PROJECTORS.EVIDENCE);
+
     const pageSize = clampPageSize(limit);
     const qb = this.versionRepo
       .createQueryBuilder('v')

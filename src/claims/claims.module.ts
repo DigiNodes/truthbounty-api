@@ -40,13 +40,11 @@ import { IpfsModule } from '../ipfs/ipfs.module';
     ClaimProjectorService,
   ],
   exports: [
-    ClaimResolutionService,
     ClaimsService,
     EvidenceService,
+    EvidenceFlagService,
     ClaimProjectorService,
   ],
-  ],
-  exports: [ClaimsService, EvidenceService],
 })
 export class ClaimsModule {
   configure(consumer: MiddlewareConsumer) {

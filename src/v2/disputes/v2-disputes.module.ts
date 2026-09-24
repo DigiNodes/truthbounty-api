@@ -5,6 +5,7 @@ import { EventCheckpoint } from '../events/entities/event-checkpoint.entity';
 import { ProjectDispute } from './entities/project-dispute.entity';
 import { ProjectorCursor } from '../common/entities/projector-cursor.entity';
 import { IndexingAnomaly } from '../common/entities/indexing-anomaly.entity';
+import { ProjectionReadinessModule } from '../common/projection-readiness/projection-readiness.module';
 import { DisputesProjectorService } from './disputes-projector.service';
 import { DisputesQueryService } from './disputes-query.service';
 import { DisputesController } from './disputes.controller';
@@ -18,6 +19,7 @@ import { DisputesController } from './disputes.controller';
       EventCheckpoint,
     ]),
     V2EventsModule,
+    ProjectionReadinessModule,
   ],
   controllers: [DisputesController],
   providers: [DisputesProjectorService, DisputesQueryService],

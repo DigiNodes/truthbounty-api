@@ -67,6 +67,36 @@ safe: it is idempotent (unique index on `(transactionHash, logIndex, eventType)`
 and state mutations and the checkpoint commit atomically in a single transaction.
 Replays are monotonic and observable via `indexer_replay_count_total`.
 
+## Projection readiness gate (V2-BE-100)
+
+The canonical event stream is protocol authority; the V2 read models only
+reproduce it. `GET /v2/projections/readiness` reports, per projector
+(`v2-evidence`, `v2-verification`, `v2-disputes`), whether that reproduction can
+currently be proven, and the V2 read endpoints return `503`
+(`error: "projection_not_ready"`) instead of answering from an unverifiable
+projection.
+
+Triage:
+
+1. Read the `reasons` array in the 503 body (or on the readiness endpoint).
+2. `backlog` / `cursor_missing` — the projector is behind or never ran. Let it
+drain; `pendingEvents` is the exact remainder. Do not edit the cursor.
+3. `quarantine_backlog` — a log from an approved contract could not be decoded.
+   Inspect `v2_event_quarantine` (`reason`, `topic0`, `detail`). Register the
+   corrected artifact and replay; raise
+   `PROJECTION_READINESS_QUARANTINE_MAX_PENDING` only as a deliberate,
+   documented decision.
+4. `cursor_ahead_of_stream` — treat as an integrity incident and rebuild the
+   read model from canonical events (see docs/PROJECTION_READINESS_GATE.md).
+5. `evaluation_error` — a dependency or the configuration is unreadable. Check
+   database connectivity/migrations and that the quarantine allowance is a
+   non-negative integer. Never treat this as ready.
+
+Full design, invariants, and rebuild procedure:
+[docs/PROJECTION_READINESS_GATE.md](PROJECTION_READINESS_GATE.md).
+This is separate from the in-memory `projectionLag` signal above, which reports
+the legacy indexer's own head and is not derived from the canonical stream.
+
 ## Supporting interfaces
 
 - `BlockchainStateService` (`src/blockchain/state.service.ts`) — source of truth for

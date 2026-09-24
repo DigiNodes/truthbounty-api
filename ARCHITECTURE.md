@@ -364,3 +364,40 @@ test in webdev
 - **Protocol Boundary**: API layer indexes, validates, and relays user-signed intent; it is never authoritative for settlement, rewards, or governance.
 - **EVM Semantics**: Full compatibility with Optimism/EVM chain rules.
 
+---
+
+## Projection Readiness Gate (V2-BE-100)
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                     PROJECTION READINESS GATE                                │
+├──────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  Canonical Optimism/EVM events (v2_canonical_events)  ◄── protocol authority │
+│         │                                                                    │
+│         ▼                                                                    │
+│  Projectors (v2-evidence, v2-verification, v2-disputes)                      │
+│    read in (blockNumber, logIndex) order; idempotent; cursor in              │
+│    v2_projector_cursors                                                     │
+│         │                                                                    │
+│         ▼                                                                    │
+│  ProjectionReadinessService.evaluate(projector)   ← reads only, never writes │
+│    I1 total evaluation (any error ⇒ not ready)                                │
+│    I2 registered projector only                                              │
+│    I3 events ⇒ cursor exists                                                 │
+│    I4 cursor neither lags nor leads the canonical stream                     │
+│    I5 no undecodable logs from approved protocol contracts                   │
+│         │                                                                    │
+│         ├── ready     → V2 read endpoints serve the projection               │
+│         └── not ready → 503 projection_not_ready (reasons + evidence)         │
+│                         and GET /v2/projections/readiness reports why         │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+The gate adds an enforcement layer, not a second source of truth: it derives
+every input from existing V2 tables and never mutates protocol-derived state.
+Read paths fail closed rather than answering from a projection the API cannot
+prove still reproduces canonical events. Design, invariants, failure modes and
+recovery: [docs/PROJECTION_READINESS_GATE.md](docs/PROJECTION_READINESS_GATE.md).
+

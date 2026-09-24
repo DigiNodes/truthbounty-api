@@ -9,13 +9,19 @@ import {
 } from './entities/project-evidence.entity';
 import { ProjectEvidenceVersion } from './entities/project-evidence-version.entity';
 import { ProjectorCursor } from '../common/entities/projector-cursor.entity';
+import {
+  PROJECTOR_HANDLED_EVENTS,
+  V2_PROJECTORS,
+  V2ProjectorName,
+} from '../common/projection-readiness/projector-registry';
 
-const PROJECTOR_NAME = 'v2-evidence';
+const PROJECTOR_NAME: V2ProjectorName = V2_PROJECTORS.EVIDENCE;
 const PG_UNIQUE_VIOLATION = '23505';
-const HANDLED_EVENT_NAMES = [
-  'EvidenceRegistered',
-  'EvidenceReplaced',
-  'EvidenceRemoved',
+// Name and handled-event list come from the projector registry so the
+// readiness gate (V2-BE-100) can never disagree with this projector about
+// which canonical events it is responsible for consuming.
+const HANDLED_EVENT_NAMES: string[] = [
+  ...PROJECTOR_HANDLED_EVENTS[PROJECTOR_NAME],
 ];
 
 export interface ProjectorRunSummary {

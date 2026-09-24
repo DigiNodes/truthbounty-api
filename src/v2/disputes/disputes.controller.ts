@@ -16,7 +16,11 @@ export class DisputesController {
     @Query('limit') limit?: string,
     @Query('cursor') cursor?: string,
   ) {
-    return this.queryService.listForClaim(claimId, limit ? parseInt(limit, 10) : 20, cursor);
+    return this.queryService.listForClaim(
+      claimId,
+      limit ? parseInt(limit, 10) : 20,
+      cursor,
+    );
   }
 
   @Get(':originalRoundId')

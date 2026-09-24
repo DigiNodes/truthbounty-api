@@ -1,5 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ConfigService } from '@nestjs/config';
+import { ServiceUnavailableException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { DisputesProjectorService } from './disputes-projector.service';
 import { DisputesQueryService } from './disputes-query.service';
@@ -14,6 +16,10 @@ import {
 } from '../common/entities/indexing-anomaly.entity';
 import { CanonicalEvent } from '../events/entities/canonical-event.entity';
 import { CanonicalEventQueryService } from '../events/canonical-event-query.service';
+import { EventCheckpoint } from '../events/entities/event-checkpoint.entity';
+import { ContractArtifact } from '../events/entities/contract-artifact.entity';
+import { EventQuarantine } from '../events/entities/event-quarantine.entity';
+import { ProjectionReadinessService } from '../common/projection-readiness/projection-readiness.service';
 
 describe('DisputesProjectorService (integration)', () => {
   let moduleRef: TestingModule;
@@ -53,6 +59,9 @@ describe('DisputesProjectorService (integration)', () => {
             ProjectDispute,
             ProjectorCursor,
             IndexingAnomaly,
+            EventCheckpoint,
+            ContractArtifact,
+            EventQuarantine,
           ],
           synchronize: true,
         }),
@@ -61,12 +70,17 @@ describe('DisputesProjectorService (integration)', () => {
           ProjectorCursor,
           IndexingAnomaly,
           CanonicalEvent,
+          EventCheckpoint,
+          ContractArtifact,
+          EventQuarantine,
         ]),
       ],
       providers: [
         DisputesProjectorService,
         DisputesQueryService,
         CanonicalEventQueryService,
+        ProjectionReadinessService,
+        { provide: ConfigService, useValue: { get: () => undefined } },
       ],
     }).compile();
 
@@ -97,6 +111,32 @@ describe('DisputesProjectorService (integration)', () => {
     expect(dispute.claimId).toBe(claimId);
     expect(dispute.originalRoundId).toBe(roundId);
     expect(dispute.challengeBond).toBe('5000');
+    // The projected row keeps its chain-native coordinate so data state and
+    // keyset pagination stay reproducible from canonical events.
+    expect(String(dispute.blockNumber)).toBe('100');
+  });
+
+  it('fails closed instead of serving a stale dispute projection when canonical events are unprojected', async () => {
+    await seedEvent({
+      eventName: 'DisputeRaised',
+      txHash: '0x' + '01'.repeat(32),
+      blockNumber: '100',
+    });
+    await seedEvent({
+      eventName: 'DisputeResolved',
+      txHash: '0x' + '02'.repeat(32),
+      blockNumber: '200',
+      payload: { outcome: 'upheld' },
+    });
+
+    await projector.processNewEvents();
+    await dataSource
+      .getRepository(ProjectorCursor)
+      .update({ projectorName: 'v2-disputes' }, { lastBlockNumber: '100' });
+
+    await expect(
+      queryService.getByOriginalRound(claimId, roundId),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
   });
 
   it('DisputeResolved transitions RAISED -> RESOLVED and stores the verbatim outcome', async () => {

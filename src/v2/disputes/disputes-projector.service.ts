@@ -12,13 +12,19 @@ import {
   IndexingAnomaly,
   IndexingAnomalyKind,
 } from '../common/entities/indexing-anomaly.entity';
+import {
+  PROJECTOR_HANDLED_EVENTS,
+  V2_PROJECTORS,
+  V2ProjectorName,
+} from '../common/projection-readiness/projector-registry';
 
-const PROJECTOR_NAME = 'v2-disputes';
+const PROJECTOR_NAME: V2ProjectorName = V2_PROJECTORS.DISPUTES;
 const PG_UNIQUE_VIOLATION = '23505';
-const HANDLED_EVENT_NAMES = [
-  'DisputeRaised',
-  'DisputeResolved',
-  'DisputeExpired',
+// Name and handled-event list come from the projector registry so the
+// readiness gate (V2-BE-100) can never disagree with this projector about
+// which canonical events it is responsible for consuming.
+const HANDLED_EVENT_NAMES: string[] = [
+  ...PROJECTOR_HANDLED_EVENTS[PROJECTOR_NAME],
 ];
 
 export interface ProjectorRunSummary {
@@ -151,6 +157,7 @@ export class DisputesProjectorService {
         deadline: readDate(event.payload, 'deadline'),
         eventTxHash: event.txHash,
         eventLogIndex: event.logIndex,
+        blockNumber: event.blockNumber,
       });
       return 'applied';
     } catch (err) {
@@ -209,6 +216,7 @@ export class DisputesProjectorService {
     dispute.status = nextStatus;
     dispute.eventTxHash = event.txHash;
     dispute.eventLogIndex = event.logIndex;
+    dispute.blockNumber = event.blockNumber;
     if (nextStatus === DisputeStatus.RESOLVED) {
       dispute.resolvedOutcome = readString(event.payload, 'outcome');
     }

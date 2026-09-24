@@ -76,6 +76,16 @@ export class ProjectDispute {
   @Column({ type: 'int' })
   eventLogIndex: number;
 
+  /**
+   * Block containing the event this row was last derived from. Chain-native
+   * ordering coordinate, so keyset pagination and data-state labelling stay
+   * reproducible from canonical events. Null only for rows projected before
+   * this column existed whose originating block could not be resolved from
+   * the canonical stream; null is reported as OBSERVED, never as finalized.
+   */
+  @Column({ type: 'bigint', nullable: true })
+  blockNumber: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 
