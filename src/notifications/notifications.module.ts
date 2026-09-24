@@ -60,11 +60,13 @@ import { DeliveryHistory } from './entities/delivery-history.entity';
     EmailService,
     WebhookService,
     NotificationProcessor,
+    NotificationGateway,
   ],
   exports: [
     NotificationsService,
     NotificationPreferencesService,
     DeliveryHistoryService,
+    NotificationGateway,
   ],
 })
 export class NotificationsModule {}

@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Repository, Between, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
@@ -8,7 +13,11 @@ import { NotificationPreference } from '../entities/notification-preference.enti
 import { DeliveryHistoryService } from './delivery-history.service';
 import { NotificationPreferencesService } from './notification-preferences.service';
 import { ListNotificationsDto } from '../dto';
-import { NotificationEvent, NotificationCategory, NotificationPriority } from '../interfaces/notification.types';
+import {
+  NotificationEvent,
+  NotificationCategory,
+  NotificationPriority,
+} from '../interfaces/notification.types';
 import { MetricsService } from '../../metrics/metrics.service';
 
 @Injectable()
@@ -26,40 +35,57 @@ export class NotificationsService {
   ) {}
 
   async listNotifications(userId: string, filters: ListNotificationsDto) {
-    const { page = 1, limit = 20, unreadOnly, category, priority, fromDate, toDate } = filters;
-    const queryBuilder = this.notificationRepository.createQueryBuilder('notification');
-    
+    const {
+      page = 1,
+      limit = 20,
+      unreadOnly,
+      category,
+      priority,
+      fromDate,
+      toDate,
+    } = filters;
+    const queryBuilder =
+      this.notificationRepository.createQueryBuilder('notification');
+
     queryBuilder.where('notification.userId = :userId', { userId });
-    
+
     if (unreadOnly) {
       queryBuilder.andWhere('notification.read = false');
     }
-    
+
     if (category) {
       queryBuilder.andWhere('notification.category = :category', { category });
     }
-    
+
     if (priority) {
       queryBuilder.andWhere('notification.priority = :priority', { priority });
     }
-    
+
     if (fromDate && toDate) {
-      queryBuilder.andWhere('notification.createdAt BETWEEN :fromDate AND :toDate', {
+      queryBuilder.andWhere(
+        'notification.createdAt BETWEEN :fromDate AND :toDate',
+        {
+          fromDate: new Date(fromDate),
+          toDate: new Date(toDate),
+        },
+      );
+    } else if (fromDate) {
+      queryBuilder.andWhere('notification.createdAt >= :fromDate', {
         fromDate: new Date(fromDate),
+      });
+    } else if (toDate) {
+      queryBuilder.andWhere('notification.createdAt <= :toDate', {
         toDate: new Date(toDate),
       });
-    } else if (fromDate) {
-      queryBuilder.andWhere('notification.createdAt >= :fromDate', { fromDate: new Date(fromDate) });
-    } else if (toDate) {
-      queryBuilder.andWhere('notification.createdAt <= :toDate', { toDate: new Date(toDate) });
     }
-    
-    queryBuilder.orderBy('notification.createdAt', 'DESC')
+
+    queryBuilder
+      .orderBy('notification.createdAt', 'DESC')
       .skip((page - 1) * limit)
       .take(limit);
-    
+
     const [items, total] = await queryBuilder.getManyAndCount();
-    
+
     return {
       items,
       total,
@@ -75,6 +101,13 @@ export class NotificationsService {
     });
   }
 
+  async getUnreadNotifications(userId: string): Promise<Notification[]> {
+    return this.notificationRepository.find({
+      where: { userId, read: false, emailed: false },
+      order: { createdAt: 'ASC' },
+    });
+  }
+
   async getDeliveryHistory(userId: string, filters: ListNotificationsDto) {
     return this.deliveryHistoryService.getUserDeliveryHistory(userId, filters);
   }
@@ -83,15 +116,17 @@ export class NotificationsService {
     const notification = await this.notificationRepository.findOne({
       where: { id: notificationId, userId },
     });
-    
+
     if (!notification) {
       throw new NotFoundException('Notification not found');
     }
-    
+
     if (notification.userId !== userId) {
-      throw new ForbiddenException('You do not have access to this notification');
+      throw new ForbiddenException(
+        'You do not have access to this notification',
+      );
     }
-    
+
     notification.read = true;
     notification.readAt = new Date();
     await this.notificationRepository.save(notification);
@@ -100,75 +135,112 @@ export class NotificationsService {
   async markAllAsRead(userId: string): Promise<void> {
     await this.notificationRepository.update(
       { userId, read: false },
-      { read: true, readAt: new Date() }
+      { read: true, readAt: new Date() },
     );
   }
 
-  async deleteNotification(userId: string, notificationId: string): Promise<void> {
+  async deleteNotification(
+    userId: string,
+    notificationId: string,
+  ): Promise<void> {
     const notification = await this.notificationRepository.findOne({
       where: { id: notificationId, userId },
     });
-    
+
     if (!notification) {
       throw new NotFoundException('Notification not found');
     }
-    
+
     if (notification.userId !== userId) {
-      throw new ForbiddenException('You do not have access to this notification');
+      throw new ForbiddenException(
+        'You do not have access to this notification',
+      );
     }
-    
+
     await this.notificationRepository.remove(notification);
   }
 
   async processIncomingEvent(event: NotificationEvent): Promise<void> {
-    this.logger.log(`Processing incoming event: ${event.eventType} from ${event.source}`);
-    
+    this.logger.log(
+      `Processing incoming event: ${event.eventType} from ${event.source}`,
+    );
+
     for (const recipientId of event.recipientIds) {
       try {
-        const preferences = await this.preferencesService.getUserPreferences(recipientId);
-        
+        const preferences =
+          await this.preferencesService.getUserPreferences(recipientId);
+
         if (!this.shouldSendNotification(preferences, event)) {
-          this.logger.debug(`User ${recipientId} has disabled notifications for ${event.eventType}`);
+          this.logger.debug(
+            `User ${recipientId} has disabled notifications for ${event.eventType}`,
+          );
           continue;
         }
-        
-        const notification = this.createNotificationFromEvent(event, recipientId);
-        const savedNotification = await this.notificationRepository.save(notification);
-        
+
+        const notification = this.createNotificationFromEvent(
+          event,
+          recipientId,
+        );
+        const savedNotification =
+          await this.notificationRepository.save(notification);
+
         await this.queueNotificationForDelivery(savedNotification, preferences);
-        
+
         this.metricsService.incrementCounter('notifications_created_total', 1);
-        this.logger.debug(`Notification created for user ${recipientId}: ${savedNotification.id}`);
+        this.logger.debug(
+          `Notification created for user ${recipientId}: ${savedNotification.id}`,
+        );
       } catch (error) {
-        this.logger.error(`Failed to process notification for user ${recipientId}`, error);
-        this.metricsService.incrementCounter('notifications_failed_to_create_total', 1);
+        this.logger.error(
+          `Failed to process notification for user ${recipientId}`,
+          error,
+        );
+        this.metricsService.incrementCounter(
+          'notifications_failed_to_create_total',
+          1,
+        );
       }
     }
   }
 
-  private shouldSendNotification(preferences: any, event: NotificationEvent): boolean {
+  private shouldSendNotification(
+    preferences: any,
+    event: NotificationEvent,
+  ): boolean {
     const category = this.mapEventTypeToCategory(event.eventType);
-    
+
     if (!preferences.settings.categories[category]) {
       return false;
     }
-    
-    if (category === NotificationCategory.GOVERNANCE_PROPOSAL && !preferences.settings.governanceAlerts) {
+
+    if (
+      category === NotificationCategory.GOVERNANCE_PROPOSAL &&
+      !preferences.settings.governanceAlerts
+    ) {
       return false;
     }
-    
-    if (category === NotificationCategory.STAKING_CHANGE && !preferences.settings.stakingAlerts) {
+
+    if (
+      category === NotificationCategory.STAKING_CHANGE &&
+      !preferences.settings.stakingAlerts
+    ) {
       return false;
     }
-    
-    if (category === NotificationCategory.REWARD_DISTRIBUTION && !preferences.settings.rewardNotifications) {
+
+    if (
+      category === NotificationCategory.REWARD_DISTRIBUTION &&
+      !preferences.settings.rewardNotifications
+    ) {
       return false;
     }
-    
-    if (category === NotificationCategory.SECURITY_ALERT && !preferences.settings.securityAlerts) {
+
+    if (
+      category === NotificationCategory.SECURITY_ALERT &&
+      !preferences.settings.securityAlerts
+    ) {
       return false;
     }
-    
+
     return true;
   }
 
@@ -186,14 +258,21 @@ export class NotificationsService {
       'moderation.action': NotificationCategory.MODERATION_ACTION,
       'security.alert': NotificationCategory.SECURITY_ALERT,
     };
-    
+
     return categoryMap[eventType] || NotificationCategory.SYSTEM_UPDATE;
   }
 
-  private createNotificationFromEvent(event: NotificationEvent, recipientId: string): Partial<Notification> {
+  private createNotificationFromEvent(
+    event: NotificationEvent,
+    recipientId: string,
+  ): Partial<Notification> {
     const category = this.mapEventTypeToCategory(event.eventType);
-    const { title, message, priority = NotificationPriority.MEDIUM } = this.extractNotificationContent(event);
-    
+    const {
+      title,
+      message,
+      priority = NotificationPriority.MEDIUM,
+    } = this.extractNotificationContent(event);
+
     return {
       userId: recipientId,
       title,
@@ -208,7 +287,10 @@ export class NotificationsService {
   }
 
   private extractNotificationContent(event: NotificationEvent) {
-    const eventContentMap: Record<string, { title: string; message: string; priority?: NotificationPriority }> = {
+    const eventContentMap: Record<
+      string,
+      { title: string; message: string; priority?: NotificationPriority }
+    > = {
       'claim.created': {
         title: 'New Claim Submitted',
         message: `A new claim "${event.payload.title}" has been submitted to the protocol.`,
@@ -255,18 +337,26 @@ export class NotificationsService {
       },
     };
 
-    return eventContentMap[event.eventType] || {
-      title: 'System Update',
-      message: 'An event has occurred in the protocol.',
-    };
+    return (
+      eventContentMap[event.eventType] || {
+        title: 'System Update',
+        message: 'An event has occurred in the protocol.',
+      }
+    );
   }
 
-  private async queueNotificationForDelivery(notification: Notification, preferences: NotificationPreference) {
+  private async queueNotificationForDelivery(
+    notification: Notification,
+    preferences: NotificationPreference,
+  ) {
     const enabledChannels = preferences.settings.enabledChannels;
-    
+
     for (const channel of enabledChannels) {
-      await this.deliveryHistoryService.createDeliveryRecord(notification.id, channel);
-      
+      await this.deliveryHistoryService.createDeliveryRecord(
+        notification.id,
+        channel,
+      );
+
       await this.notificationsQueue.add(
         'deliver-notification',
         {
@@ -281,7 +371,7 @@ export class NotificationsService {
             type: 'exponential',
             delay: 1000,
           },
-        }
+        },
       );
     }
   }
