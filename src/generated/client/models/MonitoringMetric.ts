@@ -189,6 +189,7 @@ export type MonitoringMetricGroupByOutputType = {
 }
 
 type GetMonitoringMetricGroupByPayload<T extends MonitoringMetricGroupByArgs> = Prisma.PrismaPromise<
+export type GetMonitoringMetricGroupByPayload<T extends MonitoringMetricGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<MonitoringMetricGroupByOutputType, T['by']> &
       {
@@ -992,6 +993,11 @@ export type MonitoringMetricFindManyArgs<ExtArgs extends runtime.Types.Extension
    * Skip the first `n` MonitoringMetrics.
    */
   skip?: number
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+   * 
+   * Filter by unique combinations of MonitoringMetrics.
+   */
   distinct?: Prisma.MonitoringMetricScalarFieldEnum | Prisma.MonitoringMetricScalarFieldEnum[]
 }
 

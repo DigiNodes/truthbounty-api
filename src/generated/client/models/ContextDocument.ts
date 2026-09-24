@@ -194,6 +194,7 @@ export type ContextDocumentGroupByOutputType = {
 }
 
 type GetContextDocumentGroupByPayload<T extends ContextDocumentGroupByArgs> = Prisma.PrismaPromise<
+export type GetContextDocumentGroupByPayload<T extends ContextDocumentGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<ContextDocumentGroupByOutputType, T['by']> &
       {
@@ -1094,6 +1095,11 @@ export type ContextDocumentFindManyArgs<ExtArgs extends runtime.Types.Extensions
    * Skip the first `n` ContextDocuments.
    */
   skip?: number
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+   * 
+   * Filter by unique combinations of ContextDocuments.
+   */
   distinct?: Prisma.ContextDocumentScalarFieldEnum | Prisma.ContextDocumentScalarFieldEnum[]
 }
 

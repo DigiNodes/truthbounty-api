@@ -176,6 +176,7 @@ export type AnalyticsEventGroupByOutputType = {
 }
 
 type GetAnalyticsEventGroupByPayload<T extends AnalyticsEventGroupByArgs> = Prisma.PrismaPromise<
+export type GetAnalyticsEventGroupByPayload<T extends AnalyticsEventGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<AnalyticsEventGroupByOutputType, T['by']> &
       {
@@ -1032,6 +1033,11 @@ export type AnalyticsEventFindManyArgs<ExtArgs extends runtime.Types.Extensions.
    * Skip the first `n` AnalyticsEvents.
    */
   skip?: number
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+   * 
+   * Filter by unique combinations of AnalyticsEvents.
+   */
   distinct?: Prisma.AnalyticsEventScalarFieldEnum | Prisma.AnalyticsEventScalarFieldEnum[]
 }
 

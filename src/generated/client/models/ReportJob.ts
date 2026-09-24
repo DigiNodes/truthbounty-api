@@ -252,6 +252,7 @@ export type ReportJobGroupByOutputType = {
 }
 
 type GetReportJobGroupByPayload<T extends ReportJobGroupByArgs> = Prisma.PrismaPromise<
+export type GetReportJobGroupByPayload<T extends ReportJobGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<ReportJobGroupByOutputType, T['by']> &
       {
@@ -1244,6 +1245,11 @@ export type ReportJobFindManyArgs<ExtArgs extends runtime.Types.Extensions.Inter
    * Skip the first `n` ReportJobs.
    */
   skip?: number
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+   * 
+   * Filter by unique combinations of ReportJobs.
+   */
   distinct?: Prisma.ReportJobScalarFieldEnum | Prisma.ReportJobScalarFieldEnum[]
 }
 

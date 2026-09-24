@@ -207,6 +207,7 @@ export type MetricAggregateGroupByOutputType = {
 }
 
 type GetMetricAggregateGroupByPayload<T extends MetricAggregateGroupByArgs> = Prisma.PrismaPromise<
+export type GetMetricAggregateGroupByPayload<T extends MetricAggregateGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<MetricAggregateGroupByOutputType, T['by']> &
       {
@@ -1062,6 +1063,11 @@ export type MetricAggregateFindManyArgs<ExtArgs extends runtime.Types.Extensions
    * Skip the first `n` MetricAggregates.
    */
   skip?: number
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+   * 
+   * Filter by unique combinations of MetricAggregates.
+   */
   distinct?: Prisma.MetricAggregateScalarFieldEnum | Prisma.MetricAggregateScalarFieldEnum[]
 }
 
