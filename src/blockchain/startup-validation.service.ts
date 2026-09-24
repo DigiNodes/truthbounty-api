@@ -146,14 +146,16 @@ export class StartupValidationService {
     contracts: ContractConfig[],
   ): Promise<string[]> {
     const errors: string[] = [];
-    const rpcUrl = this.configService.get<string>(
-      'OPTIMISM_RPC_URL',
-      'https://mainnet.optimism.io',
-    );
-    const expectedChainId = parseInt(
-      this.configService.get<string>('CHAIN_ID', '10'),
-      10,
-    );
+    const rpcUrl = this.configService.get<string>('blockchain.rpcUrl');
+    const expectedChainId =
+      this.configService.get<number>('blockchain.chainId');
+
+    if (!rpcUrl || !expectedChainId) {
+      errors.push(
+        'blockchain.rpcUrl and blockchain.chainId must be configured for RPC validation',
+      );
+      return errors;
+    }
 
     let provider: ethers.JsonRpcProvider;
     try {
@@ -171,7 +173,7 @@ export class StartupValidationService {
 
     for (const contract of contracts) {
       if (!/^0x[a-fA-F0-9]{40}$/.test(contract.address)) {
-        continue; // shape errors already reported by pure validation
+        continue;
       }
       try {
         const code = await provider.getCode(contract.address);
