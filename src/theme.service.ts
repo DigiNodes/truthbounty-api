@@ -18,7 +18,7 @@ export class ThemeService {
 
   /**
    * Get user's theme preference
-   * Priority: User preference > System preference > Default
+   * Priority: User preference > Default
    */
   getTheme(userId?: string): Theme {
     // If user ID provided, get from database (future enhancement)
@@ -26,14 +26,9 @@ export class ThemeService {
       return this.getUserThemeFromStorage(userId);
     }
 
-    // Get from localStorage (client-side)
-    const stored = this.getStoredTheme();
-    if (stored && stored !== 'system') {
-      return stored;
-    }
-
-    // Fallback to system preference
-    return this.getSystemTheme();
+    // For anonymous users, return default theme
+    // Frontend should handle localStorage persistence
+    return this.defaultTheme;
   }
 
   /**
@@ -49,10 +44,8 @@ export class ThemeService {
     if (userId) {
       // Store in database for authenticated users
       this.saveUserThemeToStorage(userId, preference);
-    } else {
-      // Store in localStorage for anonymous users
-      this.saveThemeToStorage(theme);
     }
+    // For anonymous users, frontend should handle localStorage
 
     return preference;
   }
@@ -65,7 +58,9 @@ export class ThemeService {
     const theme = this.getTheme(userId);
 
     if (theme === 'system') {
-      return this.getSystemTheme();
+      // Frontend should handle system preference detection
+      // Return light as default for server-side
+      return 'light';
     }
 
     return theme;
@@ -87,45 +82,6 @@ export class ThemeService {
    */
   resetToSystem(userId?: string): ThemePreference {
     return this.setTheme('system', userId);
-  }
-
-  /**
-   * Get system theme preference
-   * In a real implementation, this would detect from user agent or client hints
-   */
-  private getSystemTheme(): 'light' | 'dark' {
-    // For server-side, we can't detect system preference
-    // This would be handled client-side in a real implementation
-    // Default to light for server context
-    return 'light';
-  }
-
-  /**
-   * Get stored theme from localStorage
-   * Note: This is a server-side simulation - actual localStorage access happens client-side
-   */
-  private getStoredTheme(): Theme | null {
-    try {
-      // In a real implementation, this would be passed from client
-      // For now, return null to simulate no stored preference
-      return null;
-    } catch {
-      return null;
-    }
-  }
-
-  /**
-   * Save theme to localStorage
-   * Note: This is a server-side simulation - actual localStorage happens client-side
-   */
-  private saveThemeToStorage(theme: Theme): void {
-    try {
-      // In a real implementation, this would send to client
-      // For now, just log the operation
-      console.log(`Theme saved to localStorage: ${theme}`);
-    } catch (error) {
-      console.warn('Failed to save theme to localStorage:', error);
-    }
   }
 
   /**

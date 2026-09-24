@@ -1,11 +1,31 @@
-import { computeSHA256 } from "../common/utils/hash.util";
+import { CID } from "multiformats/cid";
+import { sha256 } from "multiformats/hashes/sha2";
 
-export function verifyCIDIntegrity(
+export async function verifyCIDIntegrity(
   fileBuffer: Buffer,
   returnedCid: string
-): boolean {
-  const localHash = computeSHA256(fileBuffer);
+): Promise<boolean> {
+  try {
+    const cid = CID.parse(returnedCid);
 
-  // simple integrity check: CID must contain hash
-  return returnedCid.includes(localHash.slice(0, 16));
+    // Enforce CID v1
+    if (cid.version !== 1) return false;
+
+    // Compute SHA-256 digest of content
+    const hash = await sha256.digest(fileBuffer);
+
+    // Extract digest from CID
+    const cidDigest = cid.multihash.digest;
+
+    // Compare full digest (byte-by-byte)
+    if (cidDigest.length !== hash.digest.length) return false;
+
+    for (let i = 0; i < cidDigest.length; i++) {
+      if (cidDigest[i] !== hash.digest[i]) return false;
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
 }

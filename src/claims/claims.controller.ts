@@ -2,6 +2,7 @@ import { Controller, Get, Param, Query, Post, Body, Put } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { ClaimsService } from './claims.service';
 import { EvidenceService } from './evidence.service';
+import { CreateClaimDto } from './dto/create-claim.dto';
 
 @ApiTags('claims')
 @Controller('claims')
@@ -39,8 +40,9 @@ export class ClaimsController {
     @Post()
     @ApiOperation({ summary: 'Create a new claim' })
     @ApiResponse({ status: 201, description: 'Claim created' })
-    async createOne(@Body() data: any) {
-        return this.claimsService.createClaim(data);
+    @ApiResponse({ status: 400, description: 'Invalid input data' })
+    async createOne(@Body() createClaimDto: CreateClaimDto) {
+        return this.claimsService.createClaim(createClaimDto);
     }
 
     // Evidence endpoints

@@ -1,7 +1,7 @@
-import { Entity, Column, PrimaryGeneratedColumn, Index, Unique } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, Index } from 'typeorm';
 
 @Entity('processed_events')
-@Unique(['txHash', 'logIndex', 'blockNumber'])
+@Index(['txHash', 'logIndex'], { unique: true })
 export class ProcessedEvent {
   @PrimaryGeneratedColumn()
   id: number;
@@ -17,6 +17,14 @@ export class ProcessedEvent {
 
   @Column({ name: 'event_type', length: 100 })
   eventType: string;
+
+  /**
+   * Decoded event payload, retained so a reorg rollback can reverse the exact
+   * state mutation this event applied (e.g. the Transfer amounts). Nullable for
+   * backwards compatibility with rows written before this column existed.
+   */
+  @Column({ name: 'payload', type: 'simple-json', nullable: true })
+  payload: Record<string, any> | null;
 
   @Column({ name: 'processed_at', type: 'datetime', default: () => 'CURRENT_TIMESTAMP' })
   processedAt: Date;

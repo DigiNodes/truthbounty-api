@@ -3,6 +3,8 @@ import { Repository } from 'typeorm';
 import { ethers, EventLog } from 'ethers';
 import { IndexedEvent, IndexingState } from '../entities';
 import { EventIndexerConfig } from '../config';
+import { serializeBigInts } from '../common/utils/bigint-serialization.util';
+import { withRpcBackoff } from '../blockchain/utils/rpc-backoff.util';
 
 /**
  * Core event indexing service
@@ -188,12 +190,24 @@ export class EventIndexerService {
     toBlock: number,
   ): Promise<EventLog[]> {
     try {
-      const logs = await this.provider.getLogs({
-        address: contractAddress,
-        topics: [eventSignature],
-        fromBlock,
-        toBlock,
-      });
+      // Wrap the RPC call so transient throttling (HTTP 429) and server/network
+      // blips are retried with exponential backoff instead of failing the pass.
+      const logs = await withRpcBackoff(
+        () =>
+          this.provider.getLogs({
+            address: contractAddress,
+            topics: [eventSignature],
+            fromBlock,
+            toBlock,
+          }),
+        {
+          onRetry: (error, attempt, delayMs) =>
+            this.logger.warn(
+              `RPC getLogs throttled (blocks ${fromBlock}-${toBlock}), ` +
+                `retry ${attempt} in ${delayMs}ms: ${(error as Error)?.message ?? error}`,
+            ),
+        },
+      );
 
       return logs as EventLog[];
     } catch (error) {
@@ -251,8 +265,8 @@ export class EventIndexerService {
         blockNumber: log.blockNumber,
         logIndex: log.index,
         chainId: this.config.chainId,
-        eventData: log,
-        parsedData: parsed?.args || {},
+        eventData: serializeBigInts(log) as Record<string, any>,
+        parsedData: serializeBigInts(parsed?.args || {}) as Record<string, any>,
         confirmations,
         isFinalized: confirmations >= this.config.confirmationsRequired,
         isProcessed: false,

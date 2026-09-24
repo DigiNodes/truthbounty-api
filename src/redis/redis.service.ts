@@ -120,6 +120,83 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Set a key only if it does not exist (SETNX) with optional TTL
+   * Returns true if key was set (new key), false if key already existed or Redis unavailable.
+   */
+  async setnx(key: string, value: string, ttlSeconds?: number): Promise<boolean> {
+    if (!this.client || !this.isConnected) {
+      this.logger.debug(`Redis unavailable, skipping SETNX for key: ${key}`);
+      return true; // allow execution when Redis is unavailable (fallback to DB)
+    }
+
+    try {
+      let res: 'OK' | null;
+      if (ttlSeconds) {
+        res = await this.client.set(key, value, 'EX', ttlSeconds, 'NX');
+      } else {
+        res = await this.client.set(key, value, 'NX');
+      }
+      return res === 'OK';
+    } catch (error) {
+      this.logger.error(`Redis SETNX error for key ${key}: ${error.message}`);
+      return true; // fallback to DB on error
+    }
+  }
+
+  /**
+   * Add a member to a Redis set (SADD). Returns false when Redis is unavailable.
+   */
+  async sAdd(key: string, member: string): Promise<boolean> {
+    if (!this.client || !this.isConnected) {
+      this.logger.debug(`Redis unavailable, skipping SADD for key: ${key}`);
+      return false;
+    }
+
+    try {
+      await this.client.sadd(key, member);
+      return true;
+    } catch (error) {
+      this.logger.error(`Redis SADD error for key ${key}: ${error.message}`);
+      return false;
+    }
+  }
+
+  /**
+   * Remove a member from a Redis set (SREM). Returns false when Redis is unavailable.
+   */
+  async sRemove(key: string, member: string): Promise<boolean> {
+    if (!this.client || !this.isConnected) {
+      this.logger.debug(`Redis unavailable, skipping SREM for key: ${key}`);
+      return false;
+    }
+
+    try {
+      await this.client.srem(key, member);
+      return true;
+    } catch (error) {
+      this.logger.error(`Redis SREM error for key ${key}: ${error.message}`);
+      return false;
+    }
+  }
+
+  /**
+   * Return all members of a Redis set (SMEMBERS). Empty array when unavailable.
+   */
+  async sMembers(key: string): Promise<string[]> {
+    if (!this.client || !this.isConnected) {
+      this.logger.debug(`Redis unavailable, skipping SMEMBERS for key: ${key}`);
+      return [];
+    }
+
+    try {
+      return await this.client.smembers(key);
+    } catch (error) {
+      this.logger.error(`Redis SMEMBERS error for key ${key}: ${error.message}`);
+      return [];
+    }
+  }
+
+  /**
    * Delete a key from Redis
    */
   async del(key: string): Promise<boolean> {
@@ -138,6 +215,23 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Return remaining TTL in seconds for a key (-1 = no TTL, -2 = missing, null = unavailable)
+   */
+  async ttl(key: string): Promise<number | null> {
+    if (!this.client || !this.isConnected) {
+      this.logger.debug(`Redis unavailable, skipping TTL for key: ${key}`);
+      return null;
+    }
+
+    try {
+      return await this.client.ttl(key);
+    } catch (error) {
+      this.logger.error(`Redis TTL error for key ${key}: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
    * Check if Redis is healthy and connected
    */
   async isHealthy(): Promise<boolean> {
@@ -150,6 +244,25 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       return result === 'PONG';
     } catch (error) {
       this.logger.error(`Redis health check failed: ${error.message}`);
+      return false;
+    }
+  }
+
+  /**
+   * Flush all Redis data (use with extreme caution)
+   */
+  async flushall(): Promise<boolean> {
+    if (!this.client || !this.isConnected) {
+      this.logger.warn('Redis unavailable, skipping FLUSHALL');
+      return false;
+    }
+
+    try {
+      await this.client.flushall();
+      this.logger.warn('Redis flushed all data');
+      return true;
+    } catch (error) {
+      this.logger.error(`Redis FLUSHALL error: ${error.message}`);
       return false;
     }
   }

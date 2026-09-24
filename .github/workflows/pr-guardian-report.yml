@@ -1,0 +1,33 @@
+name: PR Guardian Report
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review, edited]
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  guardian:
+    name: PR policy report
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Validate guardian syntax
+        run: node --check .github/scripts/pr-guardian.mjs
+      - name: Generate PR policy report
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          ISSUE_PREFIX: V2-BE
+        run: node .github/scripts/pr-guardian.mjs
+      - uses: actions/upload-artifact@v7
+        with:
+          name: pr-guardian-report
+          path: reports/
+          retention-days: 30

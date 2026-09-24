@@ -52,6 +52,7 @@ export class WalletThrottlerGuard extends ThrottlerGuard {
         let limit = config?.default?.limit ?? 10;
         let ttl = config?.default?.ttl ?? 60000;
 
+        let blockDuration = ttl;
         if (config && throttleType) {
             const typeConfig = config[throttleType as keyof ThrottlerConfig];
             if (
@@ -61,21 +62,26 @@ export class WalletThrottlerGuard extends ThrottlerGuard {
             ) {
                 limit = typeConfig.limit;
                 ttl = typeConfig.ttl;
+                blockDuration = typeConfig.blockDuration ?? ttl;
             }
         }
 
+        if (config && !throttleType) {
+            blockDuration = config.default.blockDuration ?? ttl;
+        }
+
         const key = `${tracker}:${throttleType || 'default'}`;
-        const { totalHits } = await this.storageService.increment(
+        const { totalHits, isBlocked, timeToBlockExpire } = await this.storageService.increment(
             key,
             ttl,
             limit,
-            ttl,
+            blockDuration,
             'default',
         );
 
-        if (totalHits > limit) {
+        if (isBlocked || totalHits > limit) {
             throw new ThrottlerException(
-                `Rate limit exceeded for wallet: ${tracker}. Try again in ${Math.ceil(ttl / 1000)} seconds.`,
+                `Rate limit exceeded for wallet: ${tracker}. Try again in ${Math.ceil(timeToBlockExpire / 1000)} seconds.`,
             );
         }
 

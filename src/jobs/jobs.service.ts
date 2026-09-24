@@ -1,22 +1,60 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { RedisService } from '../redis/redis.service';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, IsNull, Not, Repository } from 'typeorm';
 import { Stake } from '../staking/entities/stake.entity';
 import { Wallet } from '../entities/wallet.entity';
-import { Claim } from '../claims/entities/claim.entity';
+import { Claim, ClaimState } from '../claims/entities/claim.entity';
 import { User } from '../entities/user.entity';
 import { AggregationService } from '../aggregation/aggregation.service';
+import {
+  ClaimStatus,
+  VerificationVerdict,
+} from '../aggregation/aggregation.types';
 import { ClaimsCache } from '../cache/claims.cache';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Job, JobsOptions, Queue } from 'bullmq';
+import { SybilResistanceService } from '../sybil-resistance/sybil-resistance.service';
+import { Cron } from '@nestjs/schedule';
+import {
+  DEFAULT_RETRY_POLICY,
+  JobName,
+  JobOptions,
+  JobPriority,
+  QueueMetrics,
+  QueueName,
+} from './jobs.types';
 
-/**
- * JobsService
- * - Placeholder for scheduled jobs (scores, reputation)
- * - Awaiting bullmq dependency resolution
- */
+const SCORE_BATCH_SIZE = 50;
+const REPUTATION_BATCH_SIZE = 100;
+const FINALIZATION_THRESHOLD = 50;
+const CONFIDENCE_SCALE = 100;
+
+interface AggregationVerification {
+  id: string;
+  claimId: string;
+  userId: string;
+  verdict: VerificationVerdict;
+  stakeAmount: number;
+  reputationWeight: number;
+  createdAt: Date;
+}
+
+interface BatchResult {
+  processed: number;
+  updated: number;
+  errors: number;
+}
+
 @Injectable()
 export class JobsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(JobsService.name);
+  private readonly queues = new Map<QueueName, Queue>();
 
   constructor(
     private readonly redisService: RedisService,
@@ -29,133 +67,206 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly claimsCache: ClaimsCache,
-    private readonly aggregationService?: AggregationService,
-  ) { }
-
-  async onModuleInit() {
-    this.logger.log('JobsService initialized (bullmq to be integrated)');
+    private readonly aggregationService: AggregationService,
+    private readonly sybilResistanceService: SybilResistanceService,
+    @InjectQueue(QueueName.DEFAULT) private readonly defaultQueue: Queue,
+    @InjectQueue(QueueName.NOTIFICATIONS)
+    private readonly notificationsQueue: Queue,
+    @InjectQueue(QueueName.BLOCKCHAIN) private readonly blockchainQueue: Queue,
+    @InjectQueue(QueueName.ANALYTICS) private readonly analyticsQueue: Queue,
+  ) {
+    this.queues.set(QueueName.DEFAULT, this.defaultQueue);
+    this.queues.set(QueueName.NOTIFICATIONS, this.notificationsQueue);
+    this.queues.set(QueueName.BLOCKCHAIN, this.blockchainQueue);
+    this.queues.set(QueueName.ANALYTICS, this.analyticsQueue);
   }
 
-  async onModuleDestroy() {
-    this.logger.log('JobsService shutdown');
+  async onModuleInit(): Promise<void> {
+    await Promise.resolve();
+    this.logger.log('JobsService initialized with BullMQ queues');
   }
 
-  private async computeScores() {
-    this.logger.debug('computeScores: starting');
+  async onModuleDestroy(): Promise<void> {
+    await Promise.resolve();
+    this.logger.log('JobsService shutting down');
+  }
 
-    // Process claims in small batches
-    const batchSize = 50;
-    const claims = await this.claimRepo.find({ where: { finalized: false }, take: batchSize });
-
-    for (const claim of claims) {
-      try {
-        const stakes = await this.stakeRepo.find({ where: { claimId: claim.id } });
-
-        if (!stakes || stakes.length === 0) {
-          this.logger.debug(`No stakes for claim ${claim.id}, marking inconclusive`);
-          claim.confidenceScore = 0;
-          await this.claimRepo.save(claim);
-          continue;
-        }
-
-        // Build aggregation compatible verifications
-        const verifications = [] as any[];
-
-        for (const s of stakes) {
-          const wallet = await this.walletRepo.findOneBy({ address: s.walletAddress });
-          const user = wallet ? await this.userRepo.findOneBy({ id: wallet.userId }) : null;
-
-          const stakeAmount = typeof (s as any).amount === 'string' ? parseFloat((s as any).amount) : Number((s as any).amount || 0);
-          const reputationWeight = user ? Math.max(0, Math.min(1, (user.reputation || 0) / 100)) : 0;
-
-          verifications.push({
-            id: (s as any).id,
-            claimId: claim.id,
-            userId: user?.id || null,
-            verdict: 'TRUE',
-            stakeAmount,
-            reputationWeight,
-            createdAt: (s as any).updatedAt || new Date(),
-          });
-        }
-
-        const agg = this.aggregationService ?? new AggregationService();
-        const result = agg.aggregate(claim.id, verifications);
-
-        claim.confidenceScore = result.confidence / 100; // store as 0-1 precision field
-
-        // If strong confidence, mark finalized and set resolvedVerdict
-        if (result.confidence > 50) {
-          claim.finalized = true;
-          // Assume result.status is 'VERIFIED_TRUE' or 'VERIFIED_FALSE'
-          // Parse enum name to boolean (VERIFIED_TRUE -> true)
-          if (typeof result.status === 'string') {
-            claim.resolvedVerdict = result.status === 'VERIFIED_TRUE';
-          }
-        }
-
-        await this.claimRepo.save(claim);
-        await this.claimsCache.invalidateClaim(claim.id);
-        this.logger.log(`Updated claim ${claim.id} confidence=${claim.confidenceScore}`);
-      } catch (err) {
-        this.logger.error(`Error processing claim ${claim.id}: ${err?.message || err}`);
-      }
+  async enqueue<T = unknown>(
+    name: JobName,
+    data: T,
+    options: JobOptions = {},
+    queueName: QueueName = QueueName.DEFAULT,
+  ): Promise<Job<T> | null> {
+    const queue = this.getQueue(queueName);
+    if (!queue) {
+      this.logger.error(`Queue ${queueName} not found`);
+      return null;
     }
 
-    this.logger.debug('computeScores: finished');
+    const priority = options.priority ?? JobPriority.NORMAL;
+    const attempts = options.attempts ?? DEFAULT_RETRY_POLICY.attempts;
+    const backoffDelay =
+      options.backoffDelay ?? DEFAULT_RETRY_POLICY.backoff.delay;
+
+    try {
+      const job = await queue.add(name, data, {
+        priority,
+        delay: options.delay,
+        attempts,
+        backoff: {
+          type: 'exponential',
+          delay: backoffDelay,
+        },
+      });
+      this.logger.log(`Enqueued job ${name} (id: ${job.id}) on ${queueName}`);
+      return job as Job<T>;
+    } catch (error) {
+      this.logger.error(
+        `Failed to enqueue job ${name}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return null;
+    }
   }
 
-  private async computeReputation() {
-    this.logger.debug('computeReputation: starting');
+  async scheduleRecurring<T = unknown>(
+    name: JobName,
+    data: T,
+    cron: string,
+    queueName: QueueName = QueueName.DEFAULT,
+  ): Promise<Job<T> | null> {
+    const queue = this.getQueue(queueName);
+    if (!queue) return null;
 
-    // Process users in batches
-    const batchSize = 100;
-    const users = await this.userRepo.find({ take: batchSize });
+    const options: JobsOptions = {
+      repeat: { pattern: cron },
+      attempts: DEFAULT_RETRY_POLICY.attempts,
+      backoff: DEFAULT_RETRY_POLICY.backoff,
+    };
 
-    for (const user of users) {
+    try {
+      const job = await queue.add(name, data, options);
+      this.logger.log(`Scheduled recurring job ${name} with cron ${cron}`);
+      return job as Job<T>;
+    } catch (error) {
+      this.logger.error(
+        `Failed to schedule recurring job ${name}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return null;
+    }
+  }
+
+  @Cron('0 */1 * * *')
+  async runHourlyMaintenance(): Promise<void> {
+    this.logger.log('Hourly maintenance cron triggered');
+    // Only run cleanup jobs - compute scores/reputation removed in V2
+    // (no backend-authoritative claim finalization allowed)
+    await this.enqueue(
+      JobName.CLEANUP_SYBIL_HISTORY,
+      {},
+      { priority: JobPriority.NORMAL },
+    );
+  }
+
+  async retryFailed(queueName: QueueName): Promise<number> {
+    const queue = this.getQueue(queueName);
+    if (!queue) return 0;
+
+    const failed = await queue.getFailed();
+    let retried = 0;
+    for (const job of failed) {
       try {
-        // Find wallets for user
-        const wallets = await this.walletRepo.find({ where: { userId: user.id } });
-        if (!wallets || wallets.length === 0) continue;
-
-        const walletAddresses = wallets.map((w) => w.address);
-
-        // Find stakes by these wallets on claims that are finalized
-        const stakes = await this.stakeRepo
-          .createQueryBuilder('s')
-          .where('s.walletAddress IN (:...addrs)', { addrs: walletAddresses })
-          .getMany();
-
-        if (!stakes || stakes.length === 0) continue;
-
-        let claimsVotedOn = 0;
-        let claimsCorrect = 0;
-
-        for (const s of stakes) {
-          const claim = await this.claimRepo.findOneBy({ id: s.claimId });
-          if (!claim || !claim.finalized || claim.resolvedVerdict === null) continue;
-
-          claimsVotedOn++;
-          // We assume stake implies voting TRUE
-          const votedTrue = true;
-          if (votedTrue === Boolean(claim.resolvedVerdict)) claimsCorrect++;
-        }
-
-        if (claimsVotedOn === 0) continue;
-
-        const accuracy = claimsCorrect / claimsVotedOn;
-        const newReputation = Math.round(accuracy * 100);
-
-        if (user.reputation !== newReputation) {
-          user.reputation = newReputation;
-          await this.userRepo.save(user);
-          this.logger.log(`Updated reputation for user ${user.id}: ${newReputation}`);
-        }
-      } catch (err) {
-        this.logger.error(`Error computing reputation for user ${user.id}: ${err?.message || err}`);
+        await job.retry();
+        retried++;
+      } catch (error) {
+        this.logger.warn(`Failed to retry job ${job.id}: ${error}`);
       }
     }
-
-    this.logger.debug('computeReputation: finished');
+    return retried;
   }
+
+  async cancelJob(queueName: QueueName, jobId: string): Promise<boolean> {
+    const queue = this.getQueue(queueName);
+    if (!queue) return false;
+
+    const job = await queue.getJob(jobId);
+    if (!job) return false;
+
+    await job.remove();
+    return true;
+  }
+
+  async pauseQueue(queueName: QueueName): Promise<void> {
+    const queue = this.getQueue(queueName);
+    if (queue) await queue.pause();
+  }
+
+  async resumeQueue(queueName: QueueName): Promise<void> {
+    const queue = this.getQueue(queueName);
+    if (queue) await queue.resume();
+  }
+
+  async getQueueMetrics(queueName: QueueName): Promise<QueueMetrics | null> {
+    const queue = this.getQueue(queueName);
+    if (!queue) return null;
+
+    const counts = await queue.getJobCounts(
+      'waiting',
+      'active',
+      'completed',
+      'failed',
+      'delayed',
+      'paused',
+    );
+
+    return {
+      name: queueName,
+      waiting: counts.waiting ?? 0,
+      active: counts.active ?? 0,
+      completed: counts.completed ?? 0,
+      failed: counts.failed ?? 0,
+      delayed: counts.delayed ?? 0,
+      paused: Boolean(counts.paused),
+    };
+  }
+
+  async getAllQueueMetrics(): Promise<QueueMetrics[]> {
+    const results = await Promise.all(
+      Array.from(this.queues.keys()).map((name) => this.getQueueMetrics(name)),
+    );
+    return results.filter((m): m is QueueMetrics => m !== null);
+  }
+
+  async cleanupSybilHistory(): Promise<number> {
+    this.logger.debug('cleanupSybilHistory: starting');
+    const count = await this.sybilResistanceService.cleanupScoreHistory();
+    this.logger.debug(`cleanupSybilHistory: deleted ${count} old records`);
+    return count;
+  }
+
+  // V2 Architecture: computeScores and computeReputation methods removed
+  // These methods previously contained backend-authoritative logic that
+  // automatically finalized claims based on backend calculations.
+  // In V2, all claim state transitions must come from on-chain events
+  // projected by the V2 projectors, not from backend calculations.
+
+  private getQueue(name: QueueName): Queue | undefined {
+    return this.queues.get(name);
+  }
+}
+
+function groupBy<T>(items: T[], keyFn: (item: T) => string): Map<string, T[]> {
+  const map = new Map<string, T[]>();
+  for (const item of items) {
+    const key = keyFn(item);
+    const group = map.get(key);
+    if (group) group.push(item);
+    else map.set(key, [item]);
+  }
+  return map;
+}
+
+function indexBy<T>(items: T[], keyFn: (item: T) => string): Map<string, T> {
+  const map = new Map<string, T>();
+  for (const item of items) map.set(keyFn(item), item);
+  return map;
 }

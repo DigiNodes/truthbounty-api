@@ -3,8 +3,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { EventIndexingService } from './event-indexing.service';
 import { ReconciliationService } from './reconciliation.service';
 import { BlockchainStateService } from './state.service';
-import { WeightedVoteResolutionService } from './weighted-vote-resolution.service';
-import { BlockInfo, VerificationVote, ResolutionConfig } from './types';
+import { BlockInfo } from './types';
 
 @ApiTags('blockchain')
 @Controller('api/v1/blockchain')
@@ -13,7 +12,6 @@ export class BlockchainController {
     private eventIndexing: EventIndexingService,
     private reconciliation: ReconciliationService,
     private stateService: BlockchainStateService,
-    private voteResolver: WeightedVoteResolutionService,
   ) {}
 
   /**
@@ -141,60 +139,7 @@ export class BlockchainController {
     return { success: true, message: 'State cleared' };
   }
 
-  /**
-   * Resolve a claim using weighted voting
-   * POST /api/v1/blockchain/votes/resolve
-   */
-  @Post('votes/resolve')
-  async resolveClaim(
-    @Body()
-    payload: {
-      votes: VerificationVote[];
-      config?: Partial<ResolutionConfig>;
-    },
-  ) {
-    try {
-      // Validate input
-      const validationErrors = this.voteResolver.validateVotes(payload.votes);
-      if (validationErrors.length > 0) {
-        return {
-          success: false,
-          error: 'Invalid vote data',
-          details: validationErrors,
-        };
-      }
 
-      const resolution = this.voteResolver.resolveClaim(
-        payload.votes,
-        payload.config,
-      );
-
-      return {
-        success: true,
-        resolution,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error.message,
-      };
-    }
-  }
-
-  /**
-   * Validate vote data
-   * POST /api/v1/blockchain/votes/validate
-   */
-  @Post('votes/validate')
-  async validateVotes(@Body() payload: { votes: VerificationVote[] }) {
-    const errors = this.voteResolver.validateVotes(payload.votes);
-    
-    return {
-      valid: errors.length === 0,
-      errors,
-      voteCount: payload.votes.length,
-    };
-  }
 
   /**
    * Get current resolution configuration

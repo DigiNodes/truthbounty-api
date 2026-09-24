@@ -1,5 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { SybilResistantVotingService } from './sybil-resistant-voting.service';
+
+jest.mock('../prisma/prisma.service', () => {
+  return {
+    PrismaService: jest.fn().mockImplementation(() => ({})),
+  };
+});
+
 import { SybilResistanceService } from './sybil-resistance.service';
 
 describe('SybilResistantVotingService', () => {
@@ -18,6 +25,7 @@ describe('SybilResistantVotingService', () => {
           provide: SybilResistanceService,
           useValue: {
             getLatestSybilScore: jest.fn(),
+            getLatestSybilScores: jest.fn(),
           },
         },
       ],
@@ -107,35 +115,15 @@ describe('SybilResistantVotingService', () => {
 
   describe('calculateSybilWeightedVotes', () => {
     it('should calculate weights for multiple votes', async () => {
-      const mockScores = [
-        {
-          compositeScore: 0.8,
-          worldcoinScore: 1.0,
-          walletAgeScore: 0.8,
-          stakingScore: 0.6,
-          accuracyScore: 0.8,
-        },
-        {
-          compositeScore: 0.5,
-          worldcoinScore: 0.0,
-          walletAgeScore: 0.67,
-          stakingScore: 0.0,
-          accuracyScore: 0.0,
-        },
-        {
-          compositeScore: 1.0,
-          worldcoinScore: 1.0,
-          walletAgeScore: 1.0,
-          stakingScore: 1.0,
-          accuracyScore: 1.0,
-        },
-      ];
+      const scoreMap = new Map([
+        [mockUser1, { compositeScore: 0.8 }],
+        [mockUser2, { compositeScore: 0.5 }],
+        [mockUser3, { compositeScore: 1.0 }],
+      ]);
 
       jest
-        .spyOn(sybilService, 'getLatestSybilScore')
-        .mockResolvedValueOnce(mockScores[0] as any)
-        .mockResolvedValueOnce(mockScores[1] as any)
-        .mockResolvedValueOnce(mockScores[2] as any);
+        .spyOn(sybilService, 'getLatestSybilScores')
+        .mockResolvedValue(scoreMap as any);
 
       const votes = [
         { userId: mockUser1, baseWeight: 100 },
@@ -149,32 +137,24 @@ describe('SybilResistantVotingService', () => {
       expect(results[0].finalWeight).toBe(90); // 0.9 multiplier
       expect(results[1].finalWeight).toBe(75); // 0.75 multiplier
       expect(results[2].finalWeight).toBe(100); // 1.0 multiplier
+      expect(sybilService.getLatestSybilScores).toHaveBeenCalledWith([
+        mockUser1,
+        mockUser2,
+        mockUser3,
+      ]);
     });
   });
 
   describe('getVotingImpactAnalysis', () => {
     it('should show weight reduction impact', async () => {
-      const mockScores = [
-        {
-          compositeScore: 0.8,
-          worldcoinScore: 1.0,
-          walletAgeScore: 0.8,
-          stakingScore: 0.6,
-          accuracyScore: 0.8,
-        },
-        {
-          compositeScore: 0.0,
-          worldcoinScore: 0.0,
-          walletAgeScore: 0.0,
-          stakingScore: 0.0,
-          accuracyScore: 0.0,
-        },
-      ];
+      const scoreMap = new Map([
+        [mockUser1, { compositeScore: 0.8 }],
+        [mockUser2, { compositeScore: 0.0 }],
+      ]);
 
       jest
-        .spyOn(sybilService, 'getLatestSybilScore')
-        .mockResolvedValueOnce(mockScores[0] as any)
-        .mockResolvedValueOnce(mockScores[1] as any);
+        .spyOn(sybilService, 'getLatestSybilScores')
+        .mockResolvedValue(scoreMap as any);
 
       const votes = [
         { userId: mockUser1, verdict: 'TRUE', baseWeight: 100 },
@@ -187,6 +167,10 @@ describe('SybilResistantVotingService', () => {
       expect(result.sybilAdjustedTotalWeight).toBe(140); // 90 + 50
       expect(result.weightReduction).toBe(60);
       expect(result.percentageChange).toBe('30.00%');
+      expect(sybilService.getLatestSybilScores).toHaveBeenCalledWith([
+        mockUser1,
+        mockUser2,
+      ]);
     });
   });
 
@@ -237,38 +221,15 @@ describe('SybilResistantVotingService', () => {
 
   describe('getParticipationEligibility', () => {
     it('should report eligibility statistics', async () => {
-      const mockScores = [
-        {
-          id: 'score-1',
-          compositeScore: 0.7,
-          worldcoinScore: 1.0,
-          walletAgeScore: 0.7,
-          stakingScore: 0.4,
-          accuracyScore: 0.6,
-        },
-        {
-          id: 'score-2',
-          compositeScore: 0.3,
-          worldcoinScore: 0.0,
-          walletAgeScore: 0.4,
-          stakingScore: 0.0,
-          accuracyScore: 0.0,
-        },
-        {
-          id: 'score-3',
-          compositeScore: 0.9,
-          worldcoinScore: 1.0,
-          walletAgeScore: 0.9,
-          stakingScore: 0.8,
-          accuracyScore: 0.9,
-        },
-      ];
+      const scoreMap = new Map([
+        [mockUser1, { compositeScore: 0.7 }],
+        [mockUser2, { compositeScore: 0.3 }],
+        [mockUser3, { compositeScore: 0.9 }],
+      ]);
 
       jest
-        .spyOn(sybilService, 'getLatestSybilScore')
-        .mockResolvedValueOnce(mockScores[0] as any)
-        .mockResolvedValueOnce(mockScores[1] as any)
-        .mockResolvedValueOnce(mockScores[2] as any);
+        .spyOn(sybilService, 'getLatestSybilScores')
+        .mockResolvedValue(scoreMap as any);
 
       const result = await votingService.getParticipationEligibility(
         [mockUser1, mockUser2, mockUser3],
@@ -279,15 +240,25 @@ describe('SybilResistantVotingService', () => {
       expect(result.eligibleUsers).toBe(2); // Users 1 and 3
       expect(result.ineligibleUsers).toBe(1); // User 2
       expect(result.eligibilityRate).toBe('66.67%');
+      expect(sybilService.getLatestSybilScores).toHaveBeenCalledWith([
+        mockUser1,
+        mockUser2,
+        mockUser3,
+      ]);
     });
 
     it('should handle empty user list', async () => {
+      jest
+        .spyOn(sybilService, 'getLatestSybilScores')
+        .mockResolvedValue(new Map() as any);
+
       const result = await votingService.getParticipationEligibility([], 0.5);
 
       expect(result.totalUsers).toBe(0);
       expect(result.eligibleUsers).toBe(0);
       expect(result.ineligibleUsers).toBe(0);
       expect(result.eligibilityRate).toBe('0%');
+      expect(sybilService.getLatestSybilScores).toHaveBeenCalledWith([]);
     });
   });
 

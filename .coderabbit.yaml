@@ -1,0 +1,17 @@
+language: en-US
+reviews:
+  profile: assertive
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: false
+  path_instructions:
+    - path: "src/**"
+      instructions: "Prioritize projection determinism, SIWE/authentication, authorization, finality/reorg safety, PostgreSQL/TypeORM consistency, cache invalidation, secret handling, and the prohibition on backend-authoritative protocol mutation. Do not approve or merge."
+    - path: "migrations/**"
+      instructions: "Prioritize projection determinism, SIWE/authentication, authorization, finality/reorg safety, PostgreSQL/TypeORM consistency, cache invalidation, secret handling, and the prohibition on backend-authoritative protocol mutation. Do not approve or merge."
+    - path: ".github/workflows/**"
+      instructions: "Prioritize projection determinism, SIWE/authentication, authorization, finality/reorg safety, PostgreSQL/TypeORM consistency, cache invalidation, secret handling, and the prohibition on backend-authoritative protocol mutation. Do not approve or merge."
+chat:
+  auto_reply: true

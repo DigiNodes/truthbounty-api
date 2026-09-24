@@ -14,7 +14,8 @@ This document provides comprehensive documentation for reusable components, serv
 8. [Evidence Management](#evidence-service)
 9. [Reorg Detection](#reorg-detector-service)
 10. [Rate Limiting](#wallet-throttler-guard)
-11. [Infrastructure Services](#infrastructure-services)
+11. [Realtime Event Stream](#realtime-event-stream)
+12. [Infrastructure Services](#infrastructure-services)
 
 ---
 
@@ -715,6 +716,61 @@ HTTP 429 Too Many Requests
 - Dispute rate limiting
 - Sybil attack prevention
 - API protection
+
+---
+
+## Realtime Event Stream
+
+**Location:** `src/realtime/`
+
+### Overview
+A projection-backed, Server-Sent Events (SSE) realtime stream. Smart contracts emit facts, the indexer projects them, and this module publishes the normalized projection changes to authenticated subscribers. It is built on a durable Postgres outbox so nothing is ever published before its database transaction commits, with resume cursors, heartbeat, bounded backpressure, and rollback/replacement messages for non-finalized data.
+
+### Architecture
+```
+[projection writer] → outbox row written in the SAME transaction (RealtimeService.emitWithinTransaction)
+        │   (row only becomes visible after COMMIT → "publish after commit" guarantee)
+        ▼
+[projection_events outbox table]   (id = monotonic cursor)
+        │
+[RealtimePublisherService]  polls committed, un-published rows (bounded batch, FOR UPDATE SKIP LOCKED)
+        │                     → broadcasts to RealtimeBusService → marks published (retry/replay)
+        │                     → detects finalized→unfinalized (reorg) → emits ROLLBACK outbox row
+        ▼
+[RealtimeBusService]  in-process bounded-buffer broadcast hub (backpressure)
+        │
+[RealtimeStreamController @Sse('realtime/events')]  ← JwtAuthGuard
+        │   - resume via Last-Event-ID cursor replay
+        │   - heartbeat, bounded backpressure (503 on overflow)
+        ▼
+[client]
+```
+
+### Key Components
+
+#### `RealtimeService`
+- `emitWithinTransaction(manager, change)` — records a projection change inside the caller's database transaction (validated at the boundary). The row surfaces only after commit.
+- `emitRollback(manager, params)` — records a rollback/replacement envelope.
+- `streamFrom(options)` — builds an `Observable<RealtimeEnvelope>` that replays committed rows after `afterId` then subscribes to the live bus, with heartbeat and bounded backpressure.
+
+#### `RealtimePublisherService`
+Polls committed, un-published outbox rows (bounded batch) and broadcasts them to the bus, then marks them published. Failed rows are retried on a later pass (retry/replay). Also detects projections whose source indexed event was un-finalized by the chain indexer (reorg) and records a deduplicated ROLLBACK row.
+
+#### `RealtimeBusService`
+In-process broadcast hub with bounded per-subscriber buffers. A subscriber that cannot keep up (buffer exceeds capacity) is disconnected with a backpressure error.
+
+#### `RealtimeStreamController`
+- `GET /realtime/events` — authenticated SSE stream. Reads `Last-Event-ID` for resume.
+- `POST /realtime/events` — internal, validated endpoint to record a projection change within a committed transaction.
+
+### Security
+- The stream is protected by `JwtAuthGuard` (Bearer JWT); only authenticated clients may subscribe.
+- Untrusted input is validated with class-validator and again at `RealtimeService` (fail closed).
+- Configuration (`RealtimeConfigService`) rejects invalid values by throwing rather than silently downgrading.
+- No backend-authoritative protocol mutation: outcome logic stays in the smart contracts; the API only projects events.
+
+### Configuration (env)
+- `REALTIME_POLL_INTERVAL_MS` (1000), `REALTIME_MAX_PUBLISH_BATCH` (100), `REALTIME_HEARTBEAT_INTERVAL_MS` (15000), `REALTIME_MAX_BACKLOG` (1000), `REALTIME_MAX_REPLAY_ROWS` (5000).
 
 ---
 

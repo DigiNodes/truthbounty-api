@@ -69,29 +69,23 @@ export class SybilResistantVotingService {
     multiplier: number;
     finalWeight: number;
   }>> {
-    const results: Array<{
-      userId: string;
-      baseWeight: number;
-      sybilScore: number;
-      multiplier: number;
-      finalWeight: number;
-    }> = [];
+    const userIds = [...new Set(votes.map((v) => v.userId))];
+    const scores = await this.sybilService.getLatestSybilScores(userIds);
 
-    for (const vote of votes) {
-      const weighted = await this.calculateSybilWeightedVote(
-        vote.userId,
-        vote.baseWeight,
-      );
-      results.push({
-        userId: weighted.userId,
-        baseWeight: weighted.baseWeight,
-        sybilScore: weighted.sybilScore,
-        multiplier: weighted.multiplier,
-        finalWeight: weighted.finalWeight,
-      });
-    }
+    return votes.map((vote) => {
+      const sybilScore = scores.get(vote.userId);
+      const compositeScore = sybilScore?.compositeScore ?? 0;
+      const multiplier = 0.5 + 0.5 * compositeScore;
+      const finalWeight = vote.baseWeight * multiplier;
 
-    return results;
+      return {
+        userId: vote.userId,
+        baseWeight: vote.baseWeight,
+        sybilScore: compositeScore,
+        multiplier,
+        finalWeight,
+      };
+    });
   }
 
   /**
@@ -113,6 +107,9 @@ export class SybilResistantVotingService {
       adjustedWeight: number;
     }>;
   }> {
+    const userIds = [...new Set(votes.map((v) => v.userId))];
+    const scores = await this.sybilService.getLatestSybilScores(userIds);
+
     let originalTotalWeight = 0;
     let sybilAdjustedTotalWeight = 0;
     const details: Array<{
@@ -126,19 +123,19 @@ export class SybilResistantVotingService {
     for (const vote of votes) {
       originalTotalWeight += vote.baseWeight;
 
-      const weighted = await this.calculateSybilWeightedVote(
-        vote.userId,
-        vote.baseWeight,
-      );
+      const sybilScore = scores.get(vote.userId);
+      const compositeScore = sybilScore?.compositeScore ?? 0;
+      const multiplier = 0.5 + 0.5 * compositeScore;
+      const adjustedWeight = vote.baseWeight * multiplier;
 
-      sybilAdjustedTotalWeight += weighted.finalWeight;
+      sybilAdjustedTotalWeight += adjustedWeight;
 
       details.push({
         userId: vote.userId,
         verdict: vote.verdict,
         baseWeight: vote.baseWeight,
-        sybilScore: weighted.sybilScore,
-        adjustedWeight: weighted.finalWeight,
+        sybilScore: compositeScore,
+        adjustedWeight,
       });
     }
 
@@ -195,6 +192,8 @@ export class SybilResistantVotingService {
       eligible: boolean;
     }>;
   }> {
+    const scores = await this.sybilService.getLatestSybilScores(userIds);
+
     const details: Array<{
       userId: string;
       currentScore: number;
@@ -203,14 +202,17 @@ export class SybilResistantVotingService {
     let eligibleCount = 0;
 
     for (const userId of userIds) {
-      const result = await this.meetsMinimumSybilScore(userId, minimumScore);
+      const sybilScore = scores.get(userId);
+      const currentScore = sybilScore?.compositeScore ?? 0;
+      const eligible = currentScore >= minimumScore;
+
       details.push({
-        userId: result.userId,
-        currentScore: result.currentScore,
-        eligible: result.eligible,
+        userId,
+        currentScore,
+        eligible,
       });
 
-      if (result.eligible) {
+      if (eligible) {
         eligibleCount++;
       }
     }

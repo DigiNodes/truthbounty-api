@@ -3,12 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { WorldIdVerification } from './entities/world-id-verification.entity';
-
-// Placeholder for worldcoin verification (package to be installed separately)
-const verifyCloudProof = async (proof: any, action: string, signal?: string): Promise<boolean> => {
-  // TODO: Replace with actual Worldcoin SDK when available
-  return false;
-};
+import { PrismaService } from '../../prisma/prisma.service';
+import { SybilResistanceService } from '../../sybil-resistance/sybil-resistance.service';
 
 export interface VerifyWorldcoinProofDto {
   proof: {
@@ -21,6 +17,10 @@ export interface VerifyWorldcoinProofDto {
   signal?: string;
 }
 
+interface WorldcoinCloudVerifyResponse {
+  success?: boolean;
+}
+
 @Injectable()
 export class WorldcoinService {
   private readonly logger = new Logger(WorldcoinService.name);
@@ -29,6 +29,8 @@ export class WorldcoinService {
     @InjectRepository(WorldIdVerification)
     private readonly worldIdVerificationRepository: Repository<WorldIdVerification>,
     private readonly configService: ConfigService,
+    private readonly prisma: PrismaService,
+    private readonly sybilResistanceService: SybilResistanceService,
   ) {}
 
   async verifyProof(userId: string, verifyDto: VerifyWorldcoinProofDto): Promise<WorldIdVerification> {
@@ -42,16 +44,19 @@ export class WorldcoinService {
     }
 
     // Check if nullifier hash has already been used (prevent duplicate verification)
-    const existingVerification = await this.worldIdVerificationRepository.findOne({
+    const existingVerificationTypeORM = await this.worldIdVerificationRepository.findOne({
+      where: { nullifierHash: proof.nullifier_hash },
+    });
+    const existingVerificationPrisma = await this.prisma.worldIdVerification.findUnique({
       where: { nullifierHash: proof.nullifier_hash },
     });
 
-    if (existingVerification) {
+    if (existingVerificationTypeORM || existingVerificationPrisma) {
       throw new ConflictException('This Worldcoin proof has already been used');
     }
 
-    // Create and save verification record
-    const verification = this.worldIdVerificationRepository.create({
+    // Create and save verification record in both (for compatibility)
+    const verificationTypeORM = this.worldIdVerificationRepository.create({
       userId,
       nullifierHash: proof.nullifier_hash,
       verificationLevel: proof.verification_level,
@@ -60,33 +65,75 @@ export class WorldcoinService {
       merkleRoot: proof.merkle_root,
       proof: proof.proof,
     });
+    const savedVerification = await this.worldIdVerificationRepository.save(verificationTypeORM);
 
-    return await this.worldIdVerificationRepository.save(verification);
+    // Save to Prisma as well
+    await this.prisma.worldIdVerification.create({
+      data: {
+        userId,
+        nullifierHash: proof.nullifier_hash,
+        verificationLevel: proof.verification_level,
+        worldcoinAppId: this.configService.get<string>('WORLDCOIN_APP_ID') || '',
+        worldcoinAction: action,
+        merkleRoot: proof.merkle_root,
+        proof: proof.proof,
+      },
+    });
+
+    // Update user's worldcoinVerified status in Prisma
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { worldcoinVerified: true },
+    });
+
+    // Recalculate sybil score
+    await this.sybilResistanceService.recordSybilScore(userId);
+
+    return savedVerification;
   }
 
   private async verifyWorldcoinProof(
-    proof: any,
+    proof: VerifyWorldcoinProofDto['proof'],
     action: string,
     signal?: string,
   ): Promise<boolean> {
     try {
       const appId = this.configService.get<string>('WORLDCOIN_APP_ID');
       const expectedAction = this.configService.get<string>('WORLDCOIN_ACTION');
+      const verifyBaseUrl =
+        this.configService.get<string>('WORLDCOIN_VERIFY_BASE_URL') ??
+        'https://developer.worldcoin.org/api/v2/verify';
 
       if (!appId || !expectedAction) {
         this.logger.error('Worldcoin configuration missing');
         return false;
       }
 
-      // Placeholder: verify proof using Worldcoin SDK when available
-      // For now, just log and return true if basic validation passes
-      this.logger.debug(`Verifying Worldcoin proof for action: ${expectedAction}`);
-      
-      // TODO: Integrate actual @worldcoin/minikit-js SDK when available
-      // const result = await verifyCloudProof(proof, appId, action, signal);
-      // return result.success;
+      if (action !== expectedAction) {
+        this.logger.warn(`Worldcoin action mismatch: received ${action}, expected ${expectedAction}`);
+        return false;
+      }
 
-      return true;
+      const response = await fetch(`${verifyBaseUrl}/${appId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...proof,
+          action,
+          ...(signal ? { signal } : {}),
+        }),
+      });
+
+      if (!response.ok) {
+        this.logger.warn(`Worldcoin verification request failed with status ${response.status}`);
+        return false;
+      }
+
+      const result = (await response.json()) as WorldcoinCloudVerifyResponse;
+
+      return result.success === true;
     } catch (error) {
       this.logger.error('Error verifying Worldcoin proof:', error);
       return false;
@@ -108,6 +155,10 @@ export class WorldcoinService {
 
   async isUserVerified(userId: string): Promise<boolean> {
     const verification = await this.getVerificationStatus(userId);
-    return verification !== null;
+    const prismaVerification = await this.prisma.worldIdVerification.findFirst({
+      where: { userId },
+      orderBy: { verifiedAt: 'desc' },
+    });
+    return verification !== null || prismaVerification !== null;
   }
 }

@@ -1,0 +1,56 @@
+V2-BE-024 — Implement Claim Feed and Claim Detail Query Endpoints
+Overview
+Implement the V2 backend boundary described below while preserving smart-contract authority and rebuildable event-derived state.
+
+Problem Context
+The existing API mixes legacy authority paths, incomplete raw-event storage, and inconsistent persistence. This clean-slate issue is part of the canonical Optimism/EVM V2 pipeline: contracts emit facts, the indexer projects them, and the API serves those projections. Historical issues do not satisfy this scope.
+
+Technical Scope
+Expose versioned claim feed and detail endpoints backed by projections.
+Return lifecycle state, deadlines, confirmation/finality metadata, and related resource links.
+Implement stable cursor pagination, filters, and not-found/error contracts.
+The contributor must audit overlapping current code first and identify reused, replaced, and deprecated paths in the pull request.
+
+Security and Integrity Requirements
+Smart contracts remain authoritative for claims, verification, settlement, rewards, treasury, and governance.
+Validate untrusted input at every boundary; use least privilege and fail closed on incompatible configuration.
+Do not add secrets, production credentials, dummy production addresses, floating-point token accounting, or Stellar/Freighter runtime dependencies.
+Preserve replay safety, deterministic behavior, privacy, and auditability where applicable.
+Required Tests
+Unit tests for the successful path and every material validation/error branch.
+Integration tests across the nearest database, RPC, contract-artifact, or transport boundary.
+Regression coverage for the legacy defect or unsafe authority path removed by this issue.
+Run the relevant repository test, lint, build, migration, and security checks and report unrelated baseline failures separately.
+Acceptance Criteria
+ Expose versioned claim feed and detail endpoints backed by projections.
+ Return lifecycle state, deadlines, confirmation/finality metadata, and related resource links.
+ Implement stable cursor pagination, filters, and not-found/error contracts.
+ No backend-authoritative protocol mutation is introduced.
+ Tests cover success, failure, retry/replay, and authorization boundaries applicable to the scope.
+ Documentation, schemas, migrations, and generated artifacts affected by the change are current.
+ The pull request maps evidence to every acceptance criterion.
+Deliverables
+Production-quality NestJS/TypeScript code, schema/migration, tests, configuration, or documentation required by the scope.
+A pull-request summary covering architecture, security, migration/rebuild impact, observability, and residual risks.
+Evidence of commands run and their results.
+Dependencies
+V2-BE-012
+V2-BE-022
+Do not assign this issue until its required dependencies are merged or their reviewed interfaces are frozen.
+
+Non-Goals
+Reimplementing protocol outcome logic in the API.
+Creating, modifying, reopening, or relabelling historical GitHub issues.
+Adding Stellar/Soroban/Freighter runtime support.
+Applying the external Stellar Wave label.
+Complexity and Review
+Complexity: medium
+Repository: DigiNodes/truthbounty-api
+Runtime: Optimism/EVM
+Required review: human maintainer review for security-, auth-, indexer-, database-, or protocol-sensitive work
+Candidate state: wave-candidate
+References
+TruthBounty Protocol V2 Specification
+TruthBounty V2 Engineering Blueprint
+ADR-0001 — Canonical V2 Contract Topology
+Drips Stellar Wave Operations

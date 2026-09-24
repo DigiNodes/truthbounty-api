@@ -3,6 +3,7 @@ import { BlockchainStateService } from './state.service';
 import { ReorgDetectorService } from './reorg-detector.service';
 import { ReconciliationService } from './reconciliation.service';
 import { BlockInfo, PendingEvent } from './types';
+import { serializeBigInts } from '../common/utils/bigint-serialization.util';
 
 /**
  * Event indexing service with confirmation strategy
@@ -23,10 +24,15 @@ export class EventIndexingService {
    * Process a new block and its events
    */
   async processBlock(block: BlockInfo, events: any[]): Promise<void> {
-    this.logger.log(`Processing block ${block.number} with ${events.length} events`);
+    this.logger.log(
+      `Processing block ${block.number} with ${events.length} events`,
+    );
 
     const chainState = await this.stateService.getChainState();
     const previousBlockNumber = chainState.lastProcessedBlock;
+
+    // Track the observed head so projection lag / finality metrics stay current.
+    await this.stateService.setObservedHead(block.number);
 
     try {
       // Step 1: Check for reorg
@@ -57,9 +63,8 @@ export class EventIndexingService {
         block.number,
       );
       if (reconciledCount.length > 0) {
-        this.logger.log(
-          `Reconciled ${reconciledCount.length} orphaned events`,
-        );
+        this.logger.log(`Reconciled ${reconciledCount.length} orphaned events`);
+        await this.stateService.recordReplay(reconciledCount.length);
       }
 
       // Step 6: Update chain state
@@ -69,9 +74,18 @@ export class EventIndexingService {
         confirmedDepth: this.reorgDetector.getConfirmationDepth(),
       });
 
+      // Advance the projection head after the block and its events are applied.
+      await this.stateService.setProjectionHead(block.number);
+
       this.logger.log(`Block ${block.number} processed successfully`);
     } catch (error) {
-      this.logger.error(`Error processing block ${block.number}: ${error}`, error);
+      this.stateService.recordRpcFailure(
+        error instanceof Error ? error : new Error(String(error)),
+      );
+      this.logger.error(
+        `Error processing block ${block.number}: ${error}`,
+        error,
+      );
       throw error;
     }
   }
@@ -87,7 +101,7 @@ export class EventIndexingService {
       blockNumber: block.number,
       blockHash: block.hash,
       eventType: event.type || 'unknown',
-      data: event.data || {},
+      data: serializeBigInts(event.data || {}) as Record<string, any>,
       transactionHash: event.transactionHash,
       logIndex: event.logIndex || 0,
       status: 'pending',
@@ -96,15 +110,15 @@ export class EventIndexingService {
     };
 
     await this.stateService.savePendingEvent(pendingEvent);
-    this.logger.debug(
-      `Indexed event: ${eventId} (status: pending)`,
-    );
+    this.logger.debug(`Indexed event: ${eventId} (status: pending)`);
   }
 
   /**
    * Update confirmation counts for all events
    */
-  private async updateEventConfirmations(currentBlockNumber: number): Promise<void> {
+  private async updateEventConfirmations(
+    currentBlockNumber: number,
+  ): Promise<void> {
     const pendingEvents = await this.stateService.getPendingEvents();
 
     for (const event of pendingEvents) {
@@ -180,7 +194,8 @@ export class EventIndexingService {
 
     return {
       lastProcessedBlock: chainState.lastProcessedBlock,
-      totalEvents: pendingEvents.length + orphanedEvents.length + confirmedEvents.length,
+      totalEvents:
+        pendingEvents.length + orphanedEvents.length + confirmedEvents.length,
       confirmedEvents: confirmedEvents.length,
       pendingEvents: pendingEvents.length,
       orphanedEvents: orphanedEvents.length,

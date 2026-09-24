@@ -9,29 +9,14 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { DisputeService } from './dispute.service';
+import { CreateDisputeDto } from './dto/create-dispute.dto';
+import { RejectDisputeDto } from './dto/reject-dispute.dto';
+import { ResolveDisputeDto } from './dto/resolve-dispute.dto';
 import {
   DisputeStatus,
   DisputeTrigger,
   DisputeOutcome,
 } from './entities/dispute.entity';
-
-class CreateDisputeDto {
-  claimId: string;
-  trigger: DisputeTrigger;
-  originalConfidence: number;
-  initiatorId?: string;
-  metadata?: Record<string, any>;
-}
-
-class ResolveDisputeDto {
-  outcome: DisputeOutcome;
-  finalConfidence: number;
-  metadata?: Record<string, any>;
-}
-
-class RejectDisputeDto {
-  reason: string;
-}
 
 @ApiTags('disputes')
 @Controller('disputes')
@@ -43,13 +28,7 @@ export class DisputeController {
   @ApiResponse({ status: 201, description: 'Dispute created' })
   @ApiResponse({ status: 400, description: 'Bad request' })
   async create(@Body() dto: CreateDisputeDto) {
-    return this.disputeService.createDispute(
-      dto.claimId,
-      dto.trigger,
-      dto.originalConfidence,
-      dto.initiatorId,
-      dto.metadata,
-    );
+    return this.disputeService.createDispute(dto);
   }
 
   @Patch(':id/start-review')
@@ -65,12 +44,7 @@ export class DisputeController {
   @ApiResponse({ status: 200, description: 'Dispute resolved' })
   @ApiResponse({ status: 404, description: 'Dispute not found' })
   async resolve(@Param('id') id: string, @Body() dto: ResolveDisputeDto) {
-    return this.disputeService.resolveDispute(
-      id,
-      dto.outcome,
-      dto.finalConfidence,
-      dto.metadata,
-    );
+    return this.disputeService.resolveDispute({ disputeId: id, outcome: dto.outcome, finalConfidence: dto.finalConfidence, metadata: dto.metadata });
   }
 
   @Patch(':id/reject')
@@ -78,7 +52,7 @@ export class DisputeController {
   @ApiResponse({ status: 200, description: 'Dispute rejected' })
   @ApiResponse({ status: 404, description: 'Dispute not found' })
   async reject(@Param('id') id: string, @Body() dto: RejectDisputeDto) {
-    return this.disputeService.rejectDispute(id, dto.reason);
+    return this.disputeService.rejectDispute({ disputeId: id, reason: dto.reason, rejectedBy: dto.rejectedBy });
   }
 
   @Get('claim/:claimId')
@@ -103,6 +77,6 @@ export class DisputeController {
     @Query('status') status?: DisputeStatus,
     @Query('trigger') trigger?: DisputeTrigger,
   ) {
-    return this.disputeService.findAll(status, trigger);
+    return this.disputeService.findAll({ status, trigger });
   }
 }

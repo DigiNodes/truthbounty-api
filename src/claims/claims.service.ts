@@ -1,12 +1,19 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Claim } from './entities/claim.entity';
+import { Claim, ClaimState } from './entities/claim.entity';
+import { CreateClaimDto } from './dto/create-claim.dto';
 import { ClaimsCache } from '../cache/claims.cache';
+import { RedisService } from '../redis/redis.service';
 import { Stake } from '../staking/entities/stake.entity';
 import { AuditTrailService } from '../audit/services/audit-trail.service';
 import { AuditActionType, AuditEntityType } from '../audit/entities/audit-log.entity';
 import { AuditLog } from '../audit/decorators/audit-log.decorator';
+import {
+  assertResolvedAtInvariant,
+  buildResolvedFields,
+} from './claim-resolution.invariant';
+
 
 @Injectable()
 export class ClaimsService {
@@ -18,6 +25,7 @@ export class ClaimsService {
         @InjectRepository(Stake)
         private readonly stakeRepo: Repository<Stake>,
         private readonly claimsCache: ClaimsCache,
+        private readonly redisService: RedisService,
         private readonly auditTrailService: AuditTrailService,
     ) { }
 
@@ -76,30 +84,45 @@ export class ClaimsService {
     }
 
     /**
-     * Create a new claim (Added for Load Testing purposes)
+     * Create a new claim
      */
     @AuditLog({
         actionType: AuditActionType.CLAIM_CREATED,
         entityType: AuditEntityType.CLAIM,
-        descriptionTemplate: 'New claim created',
+        descriptionTemplate: 'New claim created: {{title}}',
         captureAfterState: true,
     })
-    async createClaim(data: any): Promise<Claim> {
+    async createClaim(createClaimDto: CreateClaimDto): Promise<Claim> {
+        if (createClaimDto.title && createClaimDto.title.length > 200) {
+            throw new BadRequestException('Claim title exceeds maximum length of 200 characters');
+        }
+        if (createClaimDto.content && createClaimDto.content.length > 5000) {
+            throw new BadRequestException('Claim content exceeds maximum length of 5000 characters');
+        }
         const claim = this.claimRepo.create({
-            resolvedVerdict: Math.random() > 0.5,
-            confidenceScore: Math.random() * 0.9 + 0.1, // Generate mock score
+            title: createClaimDto.title,
+            content: createClaimDto.content,
+            source: createClaimDto.source ?? null,
+            metadata: createClaimDto.metadata ?? null,
+            resolvedVerdict: null, // Will be computed later
+            confidenceScore: null, // Will be computed later
             finalized: false,
         });
         const savedClaim = await this.claimRepo.save(claim);
 
-        // Using setClaim caching to simulate real world workload
+        // Cache the new claim
         await this.claimsCache.setClaim(savedClaim.id, savedClaim);
 
+        // Invalidate latest claims cache since we added a new claim
+        await this.redisService.del('claims:latest');
+
+        this.logger.log(`Created new claim: ${savedClaim.id} - ${savedClaim.title}`);
         return savedClaim;
     }
 
     /**
      * Resolve a claim (update verdict and confidence)
+     * Uses state machine validation to ensure valid transitions
      */
     async resolveClaim(
         claimId: string,
@@ -108,15 +131,24 @@ export class ClaimsService {
         userId?: string,
     ): Promise<Claim> {
         const claim = await this.findOne(claimId);
-        if (!claim) throw new Error(`Claim ${claimId} not found`);
+        if (!claim) throw new NotFoundException(`Claim ${claimId} not found`);
 
         const beforeState = { ...claim };
 
-        claim.resolvedVerdict = verdict;
-        claim.confidenceScore = confidenceScore;
+        // Use transitionTo helper for validated state transition
+        // transitionTo sets resolvedAt on the claim entity when first resolved
+        claim.transitionTo(ClaimState.RESOLVED, {
+            verdict,
+            confidence: confidenceScore,
+        });
+
+        // Guard: reject if the object is somehow in an inconsistent state
+        // before we write (e.g. caller mutated fields directly).
+        assertResolvedAtInvariant(claim);
 
         const updatedClaim = await this.claimRepo.save(claim);
-        await this.claimsCache.setClaim(claimId, updatedClaim);
+        // Invalidate both the claim-specific cache and the latest claims list cache
+        await this.claimsCache.invalidateClaim(claimId);
 
         // Log the resolution
         await this.auditTrailService.log({
@@ -134,6 +166,7 @@ export class ClaimsService {
 
     /**
      * Finalize a claim
+     * Uses state machine validation to ensure valid transitions
      */
     async finalizeClaim(claimId: string, userId?: string): Promise<Claim> {
         const claim = await this.findOne(claimId);
@@ -141,9 +174,13 @@ export class ClaimsService {
 
         const beforeState = { ...claim };
 
-        claim.finalized = true;
+        // Use transitionTo helper for validated state transition
+        // transitionTo preserves resolvedAt if already set (RESOLVED → FINALIZED path)
+        claim.transitionTo(ClaimState.FINALIZED);
+
         const updatedClaim = await this.claimRepo.save(claim);
-        await this.claimsCache.setClaim(claimId, updatedClaim);
+        // Invalidate both the claim-specific cache and the latest claims list cache
+        await this.claimsCache.invalidateClaim(claimId);
 
         // Log the finalization
         await this.auditTrailService.log({
@@ -159,3 +196,4 @@ export class ClaimsService {
         return updatedClaim;
     }
 }
+
