@@ -34,9 +34,10 @@ export class ProjectionEvent {
   aggregateType: string;
 
   /**
-   * Identifier of the specific aggregate within its type.
+   * Identifier of the specific aggregate within its type. Wide enough for
+   * derived ids like `${claimId}:${roundId}` (133 chars) used by V2 projectors.
    */
-  @Column({ type: 'varchar', length: 128 })
+  @Column({ type: 'varchar', length: 200 })
   aggregateId: string;
 
   /**

@@ -14,6 +14,12 @@ import {
   IndexingAnomaly,
   IndexingAnomalyKind,
 } from '../common/entities/indexing-anomaly.entity';
+import { RealtimeService } from '../../realtime/realtime.service';
+import {
+  canonicalProjectionChange,
+  CanonicalCoordinate,
+} from '../../realtime/projection-payload';
+import { ProjectionEventType } from '../../realtime/realtime.enums';
 
 const PROJECTOR_NAME = 'v2-verification';
 const PG_UNIQUE_VIOLATION = '23505';
@@ -64,6 +70,7 @@ export class VerificationProjectorService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly canonicalEvents: CanonicalEventQueryService,
+    private readonly realtime: RealtimeService,
   ) {}
 
   async processNewEvents(batchSize = 100): Promise<ProjectorRunSummary> {
@@ -134,23 +141,43 @@ export class VerificationProjectorService {
     const roundNumber = roundNumberRaw ? Number(roundNumberRaw) : 1;
 
     const roundRepo = this.dataSource.getRepository(ProjectVerificationRound);
-    try {
-      await roundRepo.insert({
-        roundId: event.roundId,
-        claimId: event.claimId,
-        roundType,
-        roundNumber,
-        deadline: readDate(event.payload, 'deadline'),
-        status: RoundStatus.OPEN,
-        openedAtBlock: event.blockNumber,
-        eventTxHash: event.txHash,
-        eventLogIndex: event.logIndex,
-      });
+    return this.dataSource.transaction(async (manager) => {
+      const repo = manager.getRepository(ProjectVerificationRound);
+      try {
+        await repo.insert({
+          roundId: event.roundId!,
+          claimId: event.claimId!,
+          roundType,
+          roundNumber,
+          deadline: readDate(event.payload, 'deadline'),
+          status: RoundStatus.OPEN,
+          openedAtBlock: event.blockNumber,
+          eventTxHash: event.txHash,
+          eventLogIndex: event.logIndex,
+        });
+      } catch (err) {
+        if (this.isUniqueViolation(err)) return 'duplicate';
+        throw err;
+      }
+
+      await this.realtime.emitWithinTransaction(
+        manager,
+        canonicalProjectionChange({
+          aggregateType: 'verification.round',
+          aggregateId: event.roundId!,
+          eventType: ProjectionEventType.CREATED,
+          coordinate: this.coordinatesFromEvent(event, event.roundId!),
+          fields: {
+            claimId: event.claimId!,
+            roundType,
+            roundNumber,
+            status: RoundStatus.OPEN,
+          },
+          correlationId: event.txHash,
+        }),
+      );
       return 'applied';
-    } catch (err) {
-      if (this.isUniqueViolation(err)) return 'duplicate';
-      throw err;
-    }
+    });
   }
 
   private async applyPositionCommitted(
@@ -165,7 +192,7 @@ export class VerificationProjectorService {
 
     const roundRepo = this.dataSource.getRepository(ProjectVerificationRound);
     const round = await roundRepo.findOne({
-      where: { roundId: event.roundId },
+      where: { roundId: event.roundId! },
     });
     if (!round) {
       // The round this position references hasn't been projected yet, even
@@ -181,41 +208,76 @@ export class VerificationProjectorService {
       return 'anomaly';
     }
 
-    const positionRepo = this.dataSource.getRepository(
-      ProjectParticipantPosition,
-    );
     try {
-      await positionRepo.insert({
-        roundId: event.roundId,
-        participant: event.actor,
-        stake: readString(event.payload, 'stake') ?? '0',
-        reputationInput: readString(event.payload, 'reputationInput'),
-        effectiveWeight: readString(event.payload, 'effectiveWeight'),
-        position: readString(event.payload, 'verdict'),
-        eventTxHash: event.txHash,
-        eventLogIndex: event.logIndex,
-        blockNumber: event.blockNumber,
+      return await this.dataSource.transaction(async (manager) => {
+        const repo = manager.getRepository(ProjectParticipantPosition);
+        try {
+          await repo.insert({
+            roundId: event.roundId!,
+            participant: event.actor!,
+            stake: readString(event.payload, 'stake') ?? '0',
+            reputationInput: readString(event.payload, 'reputationInput'),
+            effectiveWeight: readString(event.payload, 'effectiveWeight'),
+            position: readString(event.payload, 'verdict'),
+            eventTxHash: event.txHash,
+            eventLogIndex: event.logIndex,
+            blockNumber: event.blockNumber,
+          });
+        } catch (err) {
+          if (!this.isUniqueViolation(err)) throw err;
+
+          // Distinguish "we already applied this exact event" (safe replay)
+          // from "a different event tried to commit a second position for the
+          // same participant in the same round" (a genuine protocol-level
+          // duplicate). The check happens inside the transaction so the
+          // insert + outcome are atomic.
+          const existing = await repo.findOne({
+            where: { eventTxHash: event.txHash, eventLogIndex: event.logIndex },
+          });
+          if (existing) return 'duplicate';
+          throw err;
+        }
+
+        await this.realtime.emitWithinTransaction(
+          manager,
+          canonicalProjectionChange({
+            aggregateType: 'verification.position',
+            aggregateId: `${event.roundId!}:${event.actor!}`,
+            eventType: ProjectionEventType.CREATED,
+            coordinate: this.coordinatesFromEvent(event, `${event.roundId!}:${event.actor!}`),
+            fields: {
+              roundId: event.roundId!,
+              participant: event.actor!,
+            },
+            correlationId: event.txHash,
+          }),
+        );
+        return 'applied';
       });
-      return 'applied';
     } catch (err) {
-      if (!this.isUniqueViolation(err)) throw err;
-
-      // Distinguish "we already applied this exact event" (safe replay) from
-      // "a different event tried to commit a second position for the same
-      // participant in the same round" (a genuine protocol-level duplicate).
-      const existing = await positionRepo.findOne({
-        where: { eventTxHash: event.txHash, eventLogIndex: event.logIndex },
-      });
-      if (existing) return 'duplicate';
-
-      await this.recordAnomaly(
-        IndexingAnomalyKind.DUPLICATE_EVENT,
-        event.roundId,
-        event,
-        `Participant ${event.actor} already has a position in round ${event.roundId}`,
-      );
-      return 'anomaly';
+      if (this.isUniqueViolation(err)) {
+        await this.recordAnomaly(
+          IndexingAnomalyKind.DUPLICATE_EVENT,
+          event.roundId,
+          event,
+          `Participant ${event.actor} already has a position in round ${event.roundId}`,
+        );
+        return 'anomaly';
+      }
+      throw err;
     }
+  }
+
+  private coordinatesFromEvent(
+    event: CanonicalEvent,
+    id: string,
+  ): CanonicalCoordinate {
+    return {
+      id,
+      blockNumber: event.blockNumber,
+      eventLogIndex: event.logIndex,
+      eventTxHash: event.txHash,
+    };
   }
 
   private async recordAnomaly(

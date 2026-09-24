@@ -55,16 +55,13 @@ export class Claim {
   @Column({ default: false })
   finalized: boolean;
 
+  @CreateDateColumn()
+  createdAt: Date;
+
   /**
    * Timestamp set atomically when a claim is resolved (resolvedVerdict becomes non-null).
    * Invariant: resolvedAt is non-null if and only if resolvedVerdict is non-null.
    */
-  @Column({ type: 'datetime', nullable: true })
-  resolvedAt: Date | null;
-
-  @CreateDateColumn()
-  createdAt: Date;
-
   @Column({ type: 'timestamp', nullable: true })
   resolvedAt: Date | null;
 

@@ -14,6 +14,12 @@ import {
 } from '../common/entities/indexing-anomaly.entity';
 import { CanonicalEvent } from '../events/entities/canonical-event.entity';
 import { CanonicalEventQueryService } from '../events/canonical-event-query.service';
+import { EventCheckpoint } from '../events/entities/event-checkpoint.entity';
+import { ProjectionEvent } from '../../realtime/entities/projection-event.entity';
+import { RealtimeService } from '../../realtime/realtime.service';
+import { RealtimeBusService } from '../../realtime/realtime-bus.service';
+import { RealtimeConfigService } from '../../realtime/realtime-config.service';
+import { ConfigService } from '@nestjs/config';
 
 describe('DisputesProjectorService (integration)', () => {
   let moduleRef: TestingModule;
@@ -53,6 +59,8 @@ describe('DisputesProjectorService (integration)', () => {
             ProjectDispute,
             ProjectorCursor,
             IndexingAnomaly,
+            EventCheckpoint,
+            ProjectionEvent,
           ],
           synchronize: true,
         }),
@@ -61,12 +69,21 @@ describe('DisputesProjectorService (integration)', () => {
           ProjectorCursor,
           IndexingAnomaly,
           CanonicalEvent,
+          EventCheckpoint,
+          ProjectionEvent,
         ]),
       ],
       providers: [
         DisputesProjectorService,
         DisputesQueryService,
         CanonicalEventQueryService,
+        RealtimeService,
+        RealtimeBusService,
+        RealtimeConfigService,
+        {
+          provide: ConfigService,
+          useValue: { get: jest.fn(() => undefined) },
+        },
       ],
     }).compile();
 
@@ -97,6 +114,34 @@ describe('DisputesProjectorService (integration)', () => {
     expect(dispute.claimId).toBe(claimId);
     expect(dispute.originalRoundId).toBe(roundId);
     expect(dispute.challengeBond).toBe('5000');
+  });
+
+  it('records a canonical realtime outbox row carrying the chain coordinates REST exposes', async () => {
+    await seedEvent({
+      eventName: 'DisputeRaised',
+      txHash: '0x' + '01'.repeat(32),
+      blockNumber: '100',
+    });
+
+    await projector.processNewEvents();
+
+    const outbox = await dataSource.getRepository(ProjectionEvent).find();
+    expect(outbox).toHaveLength(1);
+    expect(outbox[0]).toMatchObject({
+      aggregateType: 'dispute',
+      aggregateId: `${claimId}:${roundId}`,
+      eventType: 'created',
+      correlationId: '0x' + '01'.repeat(32),
+    });
+    expect(outbox[0].payload).toMatchObject({
+      id: `${claimId}:${roundId}`,
+      blockNumber: '100',
+      eventLogIndex: 0,
+      eventTxHash: '0x' + '01'.repeat(32),
+      claimId,
+      originalRoundId: roundId,
+      status: 'raised',
+    });
   });
 
   it('DisputeResolved transitions RAISED -> RESOLVED and stores the verbatim outcome', async () => {

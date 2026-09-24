@@ -12,6 +12,12 @@ import {
   IndexingAnomaly,
   IndexingAnomalyKind,
 } from '../common/entities/indexing-anomaly.entity';
+import { RealtimeService } from '../../realtime/realtime.service';
+import {
+  canonicalProjectionChange,
+  CanonicalCoordinate,
+} from '../../realtime/projection-payload';
+import { ProjectionEventType } from '../../realtime/realtime.enums';
 
 const PROJECTOR_NAME = 'v2-disputes';
 const PG_UNIQUE_VIOLATION = '23505';
@@ -68,6 +74,7 @@ export class DisputesProjectorService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly canonicalEvents: CanonicalEventQueryService,
+    private readonly realtime: RealtimeService,
   ) {}
 
   async processNewEvents(batchSize = 100): Promise<ProjectorRunSummary> {
@@ -137,29 +144,52 @@ export class DisputesProjectorService {
     event: CanonicalEvent,
     disputeId: string,
   ): Promise<'applied' | 'anomaly' | 'duplicate'> {
-    const disputeRepo = this.dataSource.getRepository(ProjectDispute);
-
     try {
-      await disputeRepo.insert({
-        disputeId,
-        claimId: event.claimId!,
-        originalRoundId: event.roundId!,
-        appealRoundId: readString(event.payload, 'appealRoundId'),
-        challengeBond: event.amount,
-        challengeBondAsset: event.asset,
-        status: DisputeStatus.RAISED,
-        deadline: readDate(event.payload, 'deadline'),
-        eventTxHash: event.txHash,
-        eventLogIndex: event.logIndex,
+      return await this.dataSource.transaction(async (manager) => {
+        const repo = manager.getRepository(ProjectDispute);
+        try {
+          await repo.insert({
+            disputeId,
+            claimId: event.claimId!,
+            originalRoundId: event.roundId!,
+            appealRoundId: readString(event.payload, 'appealRoundId'),
+            challengeBond: event.amount,
+            challengeBondAsset: event.asset,
+            status: DisputeStatus.RAISED,
+            deadline: readDate(event.payload, 'deadline'),
+            blockNumber: event.blockNumber,
+            eventTxHash: event.txHash,
+            eventLogIndex: event.logIndex,
+          });
+        } catch (err) {
+          if (!this.isUniqueViolation(err)) throw err;
+
+          const existing = await repo.findOne({
+            where: { eventTxHash: event.txHash, eventLogIndex: event.logIndex },
+          });
+          if (existing) return 'duplicate'; // safe replay of the same event
+          throw err;
+        }
+
+        await this.realtime.emitWithinTransaction(
+          manager,
+          canonicalProjectionChange({
+            aggregateType: 'dispute',
+            aggregateId: disputeId,
+            eventType: ProjectionEventType.CREATED,
+            coordinate: this.coordinatesFromEvent(event, disputeId),
+            fields: {
+              claimId: event.claimId,
+              originalRoundId: event.roundId,
+              status: DisputeStatus.RAISED,
+            },
+            correlationId: event.txHash,
+          }),
+        );
+        return 'applied';
       });
-      return 'applied';
     } catch (err) {
       if (!this.isUniqueViolation(err)) throw err;
-
-      const existing = await disputeRepo.findOne({
-        where: { eventTxHash: event.txHash, eventLogIndex: event.logIndex },
-      });
-      if (existing) return 'duplicate'; // safe replay of the same event
 
       await this.recordAnomaly(
         IndexingAnomalyKind.DUPLICATE_EVENT,
@@ -176,44 +206,76 @@ export class DisputesProjectorService {
     disputeId: string,
     nextStatus: DisputeStatus,
   ): Promise<'applied' | 'anomaly' | 'duplicate'> {
-    const disputeRepo = this.dataSource.getRepository(ProjectDispute);
-    const dispute = await disputeRepo.findOne({ where: { disputeId } });
+    return this.dataSource.transaction(async (manager) => {
+      const repo = manager.getRepository(ProjectDispute);
+      const dispute = await repo.findOne({ where: { disputeId } });
 
-    if (!dispute) {
-      await this.recordAnomaly(
-        IndexingAnomalyKind.INVALID_TRANSITION,
-        disputeId,
-        event,
-        `${event.eventName} for a dispute that was never raised (round ${event.roundId})`,
+      if (!dispute) {
+        await this.recordAnomaly(
+          IndexingAnomalyKind.INVALID_TRANSITION,
+          disputeId,
+          event,
+          `${event.eventName} for a dispute that was never raised (round ${event.roundId})`,
+        );
+        return 'anomaly';
+      }
+
+      if (
+        dispute.eventTxHash === event.txHash &&
+        dispute.eventLogIndex === event.logIndex
+      ) {
+        return 'duplicate';
+      }
+
+      if (dispute.status !== DisputeStatus.RAISED) {
+        await this.recordAnomaly(
+          IndexingAnomalyKind.INVALID_TRANSITION,
+          disputeId,
+          event,
+          `${event.eventName} rejected: dispute ${disputeId} is already ${dispute.status}, not raised`,
+        );
+        return 'anomaly';
+      }
+
+      dispute.status = nextStatus;
+      dispute.eventTxHash = event.txHash;
+      dispute.eventLogIndex = event.logIndex;
+      if (nextStatus === DisputeStatus.RESOLVED) {
+        dispute.resolvedOutcome = readString(event.payload, 'outcome');
+      }
+      await repo.save(dispute);
+
+      await this.realtime.emitWithinTransaction(
+        manager,
+        canonicalProjectionChange({
+          aggregateType: 'dispute',
+          aggregateId: disputeId,
+          eventType: ProjectionEventType.UPDATED,
+          coordinate: this.coordinatesFromEvent(event, disputeId),
+          fields: {
+            claimId: event.claimId,
+            status: dispute.status,
+            ...(dispute.resolvedOutcome
+              ? { resolvedOutcome: dispute.resolvedOutcome }
+              : {}),
+          },
+          correlationId: event.txHash,
+        }),
       );
-      return 'anomaly';
-    }
+      return 'applied';
+    });
+  }
 
-    if (
-      dispute.eventTxHash === event.txHash &&
-      dispute.eventLogIndex === event.logIndex
-    ) {
-      return 'duplicate';
-    }
-
-    if (dispute.status !== DisputeStatus.RAISED) {
-      await this.recordAnomaly(
-        IndexingAnomalyKind.INVALID_TRANSITION,
-        disputeId,
-        event,
-        `${event.eventName} rejected: dispute ${disputeId} is already ${dispute.status}, not raised`,
-      );
-      return 'anomaly';
-    }
-
-    dispute.status = nextStatus;
-    dispute.eventTxHash = event.txHash;
-    dispute.eventLogIndex = event.logIndex;
-    if (nextStatus === DisputeStatus.RESOLVED) {
-      dispute.resolvedOutcome = readString(event.payload, 'outcome');
-    }
-    await disputeRepo.save(dispute);
-    return 'applied';
+  private coordinatesFromEvent(
+    event: CanonicalEvent,
+    id: string,
+  ): CanonicalCoordinate {
+    return {
+      id,
+      blockNumber: event.blockNumber,
+      eventLogIndex: event.logIndex,
+      eventTxHash: event.txHash,
+    };
   }
 
   private async recordAnomaly(

@@ -45,7 +45,7 @@ export class NotificationService {
       read: false,
       createdAt: new Date(),
       updatedAt: new Date(),
-    } as any);
+    } as any) as unknown as Notification;
 
     const savedNotification = await this.notificationRepo.save(notification);
 
@@ -132,7 +132,7 @@ export class NotificationService {
       notificationsEnabled: true,
       createdAt: new Date(),
       updatedAt: new Date(),
-    } as any);
+    } as any) as unknown as UserNotificationPreference;
 
     return this.preferencesRepo.save(preferences);
   }

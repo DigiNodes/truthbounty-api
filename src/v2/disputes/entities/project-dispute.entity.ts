@@ -70,6 +70,9 @@ export class ProjectDispute {
   @Column({ type: 'varchar', length: 16, default: DataState.OBSERVED })
   dataState: DataState;
 
+  @Column({ type: 'bigint' })
+  blockNumber: string;
+
   @Column({ type: 'varchar', length: 66 })
   eventTxHash: string;
 

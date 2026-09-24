@@ -9,6 +9,12 @@ import {
 } from './entities/project-evidence.entity';
 import { ProjectEvidenceVersion } from './entities/project-evidence-version.entity';
 import { ProjectorCursor } from '../common/entities/projector-cursor.entity';
+import { RealtimeService } from '../../realtime/realtime.service';
+import {
+  canonicalProjectionChange,
+  CanonicalCoordinate,
+} from '../../realtime/projection-payload';
+import { ProjectionEventType } from '../../realtime/realtime.enums';
 
 const PROJECTOR_NAME = 'v2-evidence';
 const PG_UNIQUE_VIOLATION = '23505';
@@ -40,6 +46,7 @@ export class EvidenceProjectorService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly canonicalEvents: CanonicalEventQueryService,
+    private readonly realtime: RealtimeService,
   ) {}
 
   /** Process up to `batchSize` new canonical events since the last run. Idempotent. */
@@ -155,6 +162,23 @@ export class EvidenceProjectorService {
           evidence.lastEventLogIndex = event.logIndex;
         }
         await evidenceRepo.save(evidence);
+
+        await this.realtime.emitWithinTransaction(
+          manager,
+          canonicalProjectionChange({
+            aggregateType: 'evidence',
+            aggregateId: evidenceId,
+            eventType: ProjectionEventType.UPDATED,
+            coordinate: this.coordinatesFromEvent(event, evidenceId),
+            fields: {
+              claimId,
+              currentVersion: evidence.currentVersion,
+              status: evidence.status,
+              contentDigest: evidence.contentDigest,
+            },
+            correlationId: event.txHash,
+          }),
+        );
         return 'applied';
       }
 
@@ -172,11 +196,39 @@ export class EvidenceProjectorService {
         evidence.lastEventBlockNumber = event.blockNumber;
         evidence.lastEventLogIndex = event.logIndex;
         await evidenceRepo.save(evidence);
+
+        await this.realtime.emitWithinTransaction(
+          manager,
+          canonicalProjectionChange({
+            aggregateType: 'evidence',
+            aggregateId: evidenceId,
+            eventType: ProjectionEventType.UPDATED,
+            coordinate: this.coordinatesFromEvent(event, evidenceId),
+            fields: {
+              claimId,
+              currentVersion: evidence.currentVersion,
+              status: evidence.status,
+            },
+            correlationId: event.txHash,
+          }),
+        );
         return 'applied';
       }
 
       return 'duplicate';
     });
+  }
+
+  private coordinatesFromEvent(
+    event: CanonicalEvent,
+    id: string,
+  ): CanonicalCoordinate {
+    return {
+      id,
+      blockNumber: event.blockNumber,
+      eventLogIndex: event.logIndex,
+      eventTxHash: event.txHash,
+    };
   }
 
   private isUniqueViolation(err: unknown): boolean {

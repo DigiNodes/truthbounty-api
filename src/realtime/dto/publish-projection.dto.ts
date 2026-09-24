@@ -26,7 +26,7 @@ export class PublishProjectionDto {
   @ApiProperty({ example: 'claim_abc123' })
   @IsString()
   @IsNotEmpty()
-  @MaxLength(128)
+  @MaxLength(200)
   aggregateId: string;
 
   @ApiProperty({ enum: ProjectionEventType })

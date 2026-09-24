@@ -4,7 +4,12 @@ import { Repository } from 'typeorm';
 import { ProjectDispute } from './entities/project-dispute.entity';
 import { EventCheckpoint } from '../events/entities/event-checkpoint.entity';
 import { DataState } from '../common/data-state.enum';
-import { CursorPage, encodeCursor, decodeCursor } from '../common/cursor-pagination';
+import {
+  CursorPage,
+  clampPageSize,
+  decodeCursor,
+  pageResult,
+} from '../common/cursor-pagination';
 
 @Injectable()
 export class DisputesQueryService {
@@ -20,9 +25,11 @@ export class DisputesQueryService {
    */
   private async calculateDataState(blockNumber: string): Promise<DataState> {
     // Get the latest checkpoint (assuming single chain for simplicity)
-    const checkpoint = await this.checkpointRepo.findOne({
+    const checkpoints = await this.checkpointRepo.find({
       order: { updatedAt: 'DESC' },
+      take: 1,
     });
+    const checkpoint = checkpoints[0];
 
     if (!checkpoint) {
       return DataState.OBSERVED;
@@ -48,48 +55,41 @@ export class DisputesQueryService {
     if (!claimId) {
       throw new BadRequestException('claimId is required');
     }
-    if (limit < 1 || limit > 100) {
-      throw new BadRequestException('limit must be between 1 and 100');
-    }
 
+    const pageSize = clampPageSize(limit);
     const decoded = cursor ? decodeCursor(cursor) : null;
-    
+
     const query = this.disputeRepo.createQueryBuilder('dispute')
       .where('dispute.claimId = :claimId', { claimId })
       .orderBy('dispute.blockNumber', 'ASC')
-      .addOrderBy('dispute.eventLogIndex', 'ASC');
-    
+      .addOrderBy('dispute.eventLogIndex', 'ASC')
+      .addOrderBy('dispute.disputeId', 'ASC')
+      .limit(pageSize + 1);
+
     if (decoded) {
       query.andWhere(
         '(dispute.blockNumber > :blockNumber OR ' +
-        '(dispute.blockNumber = :blockNumber AND dispute.eventLogIndex > :logIndex))',
-        { blockNumber: decoded.blockNumber, logIndex: decoded.logIndex }
+        '(dispute.blockNumber = :blockNumber AND dispute.eventLogIndex > :logIndex) OR ' +
+        '(dispute.blockNumber = :blockNumber AND dispute.eventLogIndex = :logIndex AND dispute.disputeId > :id))',
+        { blockNumber: decoded.blockNumber, logIndex: decoded.logIndex, id: decoded.id }
       );
     }
-    
-    const disputes = await query.limit(limit).getMany();
-    
+
+    const rows = await query.getMany();
+
     // Add computed data states
     const disputesWithState = await Promise.all(
-      disputes.map(async (dispute) => ({
+      rows.map(async (dispute) => ({
         ...dispute,
         computedDataState: await this.calculateDataState(dispute.blockNumber),
       }))
     );
-    
-    // Generate next cursor
-    const nextCursor = disputesWithState.length === limit
-      ? encodeCursor({
-          blockNumber: disputesWithState[disputesWithState.length - 1].blockNumber,
-          logIndex: disputesWithState[disputesWithState.length - 1].eventLogIndex,
-          id: disputesWithState[disputesWithState.length - 1].disputeId,
-        })
-      : null;
-    
-    return {
-      items: disputesWithState,
-      nextCursor,
-    };
+
+    return pageResult(disputesWithState, pageSize, (dispute) => ({
+      blockNumber: dispute.blockNumber,
+      logIndex: dispute.eventLogIndex,
+      id: dispute.disputeId,
+    }));
   }
 
   async getByOriginalRound(

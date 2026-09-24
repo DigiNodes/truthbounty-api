@@ -13,7 +13,12 @@ import {
 import { ProjectionEventType, RealtimeEnvelopeType } from './realtime.enums';
 
 const MAX_AGGREGATE_TYPE = 128;
-const MAX_AGGREGATE_ID = 128;
+/**
+ * Derived V2 aggregate ids (e.g. `${claimId}:${roundId}` for disputes) are
+ * 133 characters long, so the cap must cover the widest on-chain id the
+ * projectors derive.
+ */
+const MAX_AGGREGATE_ID = 200;
 const MAX_CORRELATION_ID = 128;
 
 /**

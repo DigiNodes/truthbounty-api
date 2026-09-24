@@ -11,6 +11,11 @@ import { ProjectEvidenceVersion } from './entities/project-evidence-version.enti
 import { ProjectorCursor } from '../common/entities/projector-cursor.entity';
 import { CanonicalEvent } from '../events/entities/canonical-event.entity';
 import { CanonicalEventQueryService } from '../events/canonical-event-query.service';
+import { ProjectionEvent } from '../../realtime/entities/projection-event.entity';
+import { RealtimeService } from '../../realtime/realtime.service';
+import { RealtimeBusService } from '../../realtime/realtime-bus.service';
+import { RealtimeConfigService } from '../../realtime/realtime-config.service';
+import { ConfigService } from '@nestjs/config';
 
 describe('EvidenceProjectorService (integration)', () => {
   let moduleRef: TestingModule;
@@ -49,6 +54,7 @@ describe('EvidenceProjectorService (integration)', () => {
             ProjectEvidence,
             ProjectEvidenceVersion,
             ProjectorCursor,
+            ProjectionEvent,
           ],
           synchronize: true,
         }),
@@ -57,12 +63,20 @@ describe('EvidenceProjectorService (integration)', () => {
           ProjectEvidenceVersion,
           ProjectorCursor,
           CanonicalEvent,
+          ProjectionEvent,
         ]),
       ],
       providers: [
         EvidenceProjectorService,
         EvidenceQueryService,
         CanonicalEventQueryService,
+        RealtimeService,
+        RealtimeBusService,
+        RealtimeConfigService,
+        {
+          provide: ConfigService,
+          useValue: { get: jest.fn(() => undefined) },
+        },
       ],
     }).compile();
 
@@ -169,6 +183,40 @@ describe('EvidenceProjectorService (integration)', () => {
       .getRepository(ProjectEvidenceVersion)
       .find();
     expect(versions).toHaveLength(1);
+  });
+
+  it('records a canonical realtime outbox row in the same transaction as the projection', async () => {
+    await seedEvent({
+      eventName: 'EvidenceRegistered',
+      txHash: '0x' + '04'.repeat(32),
+      blockNumber: '100',
+      logIndex: 0,
+      payload: { digest: '0xdigest-outbox' },
+    });
+
+    await projector.processNewEvents();
+
+    const outbox = await dataSource.getRepository(ProjectionEvent).find();
+    expect(outbox).toHaveLength(1);
+    expect(outbox[0]).toMatchObject({
+      aggregateType: 'evidence',
+      aggregateId: claimId,
+      eventType: 'updated',
+      correlationId: '0x' + '04'.repeat(32),
+    });
+    // The WS payload carries the same row identity REST exposes.
+    expect(outbox[0].payload).toMatchObject({
+      id: claimId,
+      blockNumber: '100',
+      eventLogIndex: 0,
+      eventTxHash: '0x' + '04'.repeat(32),
+      claimId,
+      status: 'active',
+    });
+    // Also verify REST sees the projected evidence
+    const evidence = await queryService.getEvidence(claimId);
+    expect(evidence.status).toBe(EvidenceStatus.ACTIVE);
+    expect(evidence.contentDigest).toBe('0xdigest-outbox');
   });
 
   it('provides deterministic keyset pagination over version history', async () => {
