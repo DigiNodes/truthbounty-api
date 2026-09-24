@@ -92,6 +92,11 @@ describe('ArtifactRegistryService', () => {
     expect(repo.findOne).not.toHaveBeenCalled();
   });
 
+  it('fails closed for an invalid address before querying the registry', async () => {
+    await expect(service.resolve(10, '0xnot-an-address')).resolves.toBeNull();
+    expect(repo.findOne).not.toHaveBeenCalled();
+  });
+
   it('fails closed when the ABI checksum does not match', async () => {
     repo.findOne.mockResolvedValue(artifact({ abiChecksum: '0'.repeat(64) }));
     await expect(service.resolve(10, artifact().contractAddress)).resolves.toBeNull();

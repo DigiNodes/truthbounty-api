@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Interface } from 'ethers';
@@ -19,6 +19,7 @@ export interface ResolvedArtifact {
  */
 @Injectable()
 export class ArtifactRegistryService {
+  private readonly logger = new Logger(ArtifactRegistryService.name);
   private readonly cache = new Map<string, ResolvedArtifact>();
 
   constructor(
@@ -56,7 +57,11 @@ export class ArtifactRegistryService {
     });
     if (!row) return null;
 
-    if (!row.artifactVersion.trim() || !this.isEvmAddress(row.contractAddress)) {
+    if (
+      !row.artifactVersion.trim() ||
+      !this.isEvmAddress(row.contractAddress) ||
+      row.contractAddress !== row.contractAddress.toLowerCase()
+    ) {
       this.logInvalidArtifact(row, 'missing version or invalid address');
       return null;
     }
@@ -100,7 +105,7 @@ export class ArtifactRegistryService {
   ): void {
     // Invalid rows are treated as absent by callers; the warning preserves an
     // actionable signal without allowing unverified ABI data into the index.
-    console.warn(
+    this.logger.warn(
       `Rejected contract artifact ${artifact.chainId}:${artifact.contractAddress}: ${reason}`,
     );
   }
