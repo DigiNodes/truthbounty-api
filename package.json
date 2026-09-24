@@ -25,6 +25,7 @@
     "migration:create": "typeorm-ts-node-commonjs migration:create",
     "migration:run": "typeorm-ts-node-commonjs migration:run -d src/config/data-source.ts",
     "migration:revert": "typeorm-ts-node-commonjs migration:revert -d src/config/data-source.ts",
+    "db:restore:test": "ts-node src/scripts/backup-restore-drill.ts",
     "seed": "ts-node src/scripts/seed.ts",
     "seed:ai": "ts-node src/scripts/seed-ai-knowledge-base.ts",
     "benchmark:indexes": "ts-node scripts/benchmark-indexes.ts",
