@@ -443,6 +443,27 @@ export class AuditController {
     };
   }
 
+  @Get('integrity/chain/verify')
+  @ApiOperation({
+    summary: 'Verify the audit log hash chain is intact (detects tampering, deletion, and reordering)',
+  })
+  async verifyChain(
+    @Query('fromSequence') fromSequence?: string,
+    @Query('toSequence') toSequence?: string,
+    @Headers('x-request-id') requestId?: string,
+  ): Promise<AuditResponse<any>> {
+    const result = await this.auditTrailService.verifyChain({
+      fromSequence: fromSequence ? Number(fromSequence) : undefined,
+      toSequence: toSequence ? Number(toSequence) : undefined,
+    });
+    return {
+      success: true,
+      data: result,
+      timestamp: new Date().toISOString(),
+      requestId,
+    };
+  }
+
   @Get('metrics')
   @ApiOperation({ summary: 'Get audit system metrics' })
   async getMetrics(
