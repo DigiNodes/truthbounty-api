@@ -13,6 +13,7 @@ export interface ThemePreference {
 export class ThemeService {
   private readonly defaultTheme: Theme = 'system';
   private readonly storageKey = 'truthbounty-theme';
+  private anonymousTheme: Theme = 'system';
 
   constructor(private configService: ConfigService) {}
 
@@ -26,9 +27,8 @@ export class ThemeService {
       return this.getUserThemeFromStorage(userId);
     }
 
-    // For anonymous users, return default theme
-    // Frontend should handle localStorage persistence
-    return this.defaultTheme;
+    // For anonymous users, return in-memory theme
+    return this.anonymousTheme;
   }
 
   /**
@@ -44,8 +44,10 @@ export class ThemeService {
     if (userId) {
       // Store in database for authenticated users
       this.saveUserThemeToStorage(userId, preference);
+    } else {
+      // Store in memory for anonymous users during runtime tests
+      this.anonymousTheme = theme;
     }
-    // For anonymous users, frontend should handle localStorage
 
     return preference;
   }

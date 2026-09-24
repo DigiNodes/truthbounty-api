@@ -33,7 +33,7 @@ export class IdentityController {
     @Param('chain') chain: string,
     @Param('address') address: string,
   ) {
-    return this.identityService.unlinkWallet(userId, address, chain);
+    return this.identityService.unlinkWallet(userId, { address, chain });
   }
 
   /**

@@ -81,6 +81,8 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
     this.queues.set(QueueName.ANALYTICS, this.analyticsQueue);
   }
 
+  // ─── Lifecycle ─────────────────────────────────────────────────────────
+
   async onModuleInit(): Promise<void> {
     await Promise.resolve();
     this.logger.log('JobsService initialized with BullMQ queues');
