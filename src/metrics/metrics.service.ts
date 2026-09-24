@@ -1,8 +1,5 @@
- feat/be-016-monitoring-api
 import { Counter, Histogram, Gauge, register } from "prom-client";
 import { Injectable } from "@nestjs/common";
-import { Counter, Histogram, register } from 'prom-client';
- main
 
 @Injectable()
 export class MetricsService {
@@ -31,6 +28,10 @@ export class MetricsService {
   // check call.
   private readonly blockchainLagGauge: Gauge<string>;
   private readonly blockchainLastIndexedBlockGauge: Gauge<string>;
+
+  // Lazily-registered domain counters (outbox, notifications, ...) so that
+  // services can record business events without pre-declaring each metric.
+  private readonly customCounters = new Map<string, Counter<string>>();
 
   constructor() {
     this.requestCounter = new Counter({
@@ -73,6 +74,20 @@ export class MetricsService {
       name: "blockchain_last_indexed_block",
       help: "The most recent block number processed by the indexer",
     });
+  }
+
+  /**
+   * Increment a named domain counter (created lazily on first use).
+   * Used for business-level events such as outbox dispatches and
+   * notification lifecycle transitions.
+   */
+  incrementCounter(name: string, value = 1): void {
+    let counter = this.customCounters.get(name);
+    if (!counter) {
+      counter = new Counter({ name, help: name });
+      this.customCounters.set(name, counter);
+    }
+    counter.inc(value);
   }
 
   incrementRequest(method: string, route: string, status: string) {

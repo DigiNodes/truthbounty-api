@@ -151,7 +151,7 @@ export type SybilExplanationGroupByOutputType = {
   _max: SybilExplanationMaxAggregateOutputType | null
 }
 
-type GetSybilExplanationGroupByPayload<T extends SybilExplanationGroupByArgs> = Prisma.PrismaPromise<
+export type GetSybilExplanationGroupByPayload<T extends SybilExplanationGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<SybilExplanationGroupByOutputType, T['by']> &
       {
@@ -1040,6 +1040,11 @@ export type SybilExplanationFindManyArgs<ExtArgs extends runtime.Types.Extension
    * Skip the first `n` SybilExplanations.
    */
   skip?: number
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+   * 
+   * Filter by unique combinations of SybilExplanations.
+   */
   distinct?: Prisma.SybilExplanationScalarFieldEnum | Prisma.SybilExplanationScalarFieldEnum[]
 }
 
