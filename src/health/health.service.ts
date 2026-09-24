@@ -7,11 +7,13 @@ import { IpfsService } from '../ipfs/ipfs.service';
 import { NotificationService } from '../notifications/services/notification.service';
 import { JobsService } from '../jobs/jobs.service';
 import { BlockchainStateService } from '../blockchain/state.service';
+import { MetricsService } from '../metrics/metrics.service';
 import {
   DependencyHealthResult,
   DependencyStatus,
   HealthCheckResult,
   HealthStatus,
+  IndexerHealthResult,
   LivenessResult,
   ReadinessResult,
   StartupResult,
@@ -41,6 +43,7 @@ export class HealthService {
     private readonly notificationService: NotificationService,
     private readonly ipfsService: IpfsService,
     private readonly blockchainStateService: BlockchainStateService,
+    private readonly metricsService: MetricsService,
   ) {
     this.appVersion = process.env.npm_package_version ?? '0.0.1';
   }
@@ -64,7 +67,9 @@ export class HealthService {
     }
 
     const dependencies = await this.runChecks();
-    const unhealthyCritical = dependencies.some((d) => d.status === 'unhealthy');
+    const unhealthyCritical = dependencies.some(
+      (d) => d.status === 'unhealthy',
+    );
     const status = unhealthyCritical
       ? 'unhealthy'
       : dependencies.some((d) => d.status === 'degraded')
@@ -107,9 +112,24 @@ export class HealthService {
     };
   }
 
+  /**
+   * Sanitized indexer health report. Exposes observed head, safe/finalized
+   * cursors, projection lag, RPC failures, replay count, and dead letters
+   * without leaking credentials, user data, or live RPC URLs.
+   */
+  async getIndexerHealth(): Promise<IndexerHealthResult> {
+    const snapshot = await this.blockchainStateService.getIndexerHealth();
+    const status = snapshot.status as HealthStatus;
+    return {
+      status,
+      timestamp: new Date().toISOString(),
+      snapshot,
+    };
+  }
+
   async getHealth(): Promise<HealthCheckResult> {
     const dependencies = await this.runChecks();
-    const diagnostics = this.collectDiagnostics();
+    const diagnostics = await this.collectDiagnostics();
     const services = this.aggregateServices(dependencies);
     const status = this.aggregateStatus(dependencies);
 
@@ -207,7 +227,18 @@ export class HealthService {
   }
 
   private async checkQueue(): Promise<void> {
-    await this.jobsQueue.getJobCounts('waiting', 'active', 'completed', 'failed', 'delayed', 'paused');
+ feat/be-016-monitoring-api
+    const counts = await this.jobsQueue.getJobCounts('waiting', 'active', 'completed', 'failed', 'delayed', 'paused');
+    this.metricsService.setQueueDepth(this.jobsQueue.name, counts);
+    await this.jobsQueue.getJobCounts(
+      'waiting',
+      'active',
+      'completed',
+      'failed',
+      'delayed',
+      'paused',
+    );
+ main
   }
 
   private async checkNotifications(): Promise<void> {
@@ -218,7 +249,10 @@ export class HealthService {
   }
 
   private async checkIpfs(): Promise<void> {
-    const cid = await this.ipfsService.uploadBuffer(Buffer.from('health-check'), 'health-check.txt');
+    const cid = await this.ipfsService.uploadBuffer(
+      Buffer.from('health-check'),
+      'health-check.txt',
+    );
     if (!cid?.cid) {
       throw new Error('IPFS provider did not return a valid CID');
     }
@@ -229,13 +263,27 @@ export class HealthService {
     if (typeof state.lastProcessedBlock !== 'number') {
       throw new Error('Blockchain state is unavailable');
     }
+ feat/be-016-monitoring-api
+    this.metricsService.setBlockchainIndexingState(state.lastProcessedBlock);
+
+    // Fail closed if the indexer is degraded per alert thresholds.
+    const health = await this.blockchainStateService.getIndexerHealth();
+    if (health.status === 'unhealthy') {
+      throw new Error('Indexer health is degraded beyond alert thresholds');
+    }
+ main
   }
 
-  private aggregateServices(dependencies: DependencyStatus[]): Record<string, HealthStatus> {
-    return dependencies.reduce((acc, dep) => {
-      acc[dep.name] = dep.status;
-      return acc;
-    }, {} as Record<string, HealthStatus>);
+  private aggregateServices(
+    dependencies: DependencyStatus[],
+  ): Record<string, HealthStatus> {
+    return dependencies.reduce(
+      (acc, dep) => {
+        acc[dep.name] = dep.status;
+        return acc;
+      },
+      {} as Record<string, HealthStatus>,
+    );
   }
 
   private aggregateStatus(dependencies: DependencyStatus[]): HealthStatus {
@@ -244,12 +292,60 @@ export class HealthService {
     return 'healthy';
   }
 
-  private collectDiagnostics(): SystemDiagnostics {
-    return {
-      memoryUsage: process.memoryUsage(),
-      cpuUsage: process.cpuUsage(),
+  private async collectDiagnostics(): Promise<SystemDiagnostics> {
+    const memoryUsage = process.memoryUsage();
+    const cpuUsage = process.cpuUsage();
+
+    this.metricsService.setMemoryUsage(memoryUsage);
+    this.metricsService.setCpuUsage(cpuUsage);
+
+    const diagnostics: SystemDiagnostics = {
+      memoryUsage,
+      cpuUsage,
       resourceUsage: process.resourceUsage(),
     };
+
+    // Add database diagnostics
+    try {
+      const start = Date.now();
+      await this.dataSource.query('SELECT 1');
+      const latencyMs = Date.now() - start;
+
+      const appliedMigrations = await this.dataSource.query(
+        'SELECT COUNT(*) as count FROM migrations',
+      );
+      const totalMigrations = this.dataSource.migrations.length;
+      const pool = (this.dataSource.driver as any).master;
+
+      diagnostics.database = {
+        connectivity: true,
+        latencyMs,
+        migrationsApplied: Number(appliedMigrations[0]?.count ?? 0),
+        migrationsPending: Math.max(
+          0,
+          totalMigrations - Number(appliedMigrations[0]?.count ?? 0),
+        ),
+        poolTotal: pool?.totalCount ?? 0,
+        poolIdle: pool?.idleCount ?? 0,
+        poolActive: pool?.totalCount
+          ? pool.totalCount - (pool.idleCount ?? 0)
+          : 0,
+        poolWaiting: pool?.waitingCount ?? 0,
+      };
+    } catch {
+      diagnostics.database = {
+        connectivity: false,
+        latencyMs: 0,
+        migrationsApplied: 0,
+        migrationsPending: 0,
+        poolTotal: 0,
+        poolIdle: 0,
+        poolActive: 0,
+        poolWaiting: 0,
+      };
+    }
+
+    return diagnostics;
   }
 
   private buildSummary(dependencies: DependencyStatus[]): {
@@ -260,7 +356,9 @@ export class HealthService {
   } {
     const healthy = dependencies.filter((d) => d.status === 'healthy').length;
     const degraded = dependencies.filter((d) => d.status === 'degraded').length;
-    const unhealthy = dependencies.filter((d) => d.status === 'unhealthy').length;
+    const unhealthy = dependencies.filter(
+      (d) => d.status === 'unhealthy',
+    ).length;
     return {
       healthy,
       degraded,

@@ -7,22 +7,24 @@ export class RagService {
 
   constructor(private prisma: PrismaService) {}
 
-  async retrieveContext(query: string): Promise<string> {
+  async retrieveContext(query: string): Promise<{ content: string; citations: string[] }> {
     this.logger.debug(`Retrieving context for query: ${query}`);
-    
-    // In a real implementation, this would:
-    // 1. Embed the query
-    // 2. Perform a vector search against pgvector or external vector DB
-    // 3. Fetch verified data from DB (Claims, Governance Proposals, etc.)
-    
-    // For now, returning a mock context string that simulates a RAG retrieval
-    const mockedProtocolData = `
-TruthBounty Protocol Guidelines:
-- A claim can only be verified by users with a reputation score of at least 100.
-- Governance proposals require a quorum of 5% of total circulating tokens.
-- Disputes are resolved by the Supreme Court which consists of 7 randomly selected high-reputation members.
-`;
 
-    return mockedProtocolData;
+    // Simple keyword-based retrieval for SQLite
+    const words = query.split(' ').filter((w) => w.length > 3);
+    const documents = await this.prisma.contextDocument.findMany({
+      where: {
+        isActive: true,
+        OR: words.map((word) => ({
+          content: { contains: word },
+        })),
+      },
+      take: 5,
+    });
+
+    const context = documents.map((d) => `Source (${d.title}): ${d.content}`).join('\n\n');
+    const citations = documents.map((d) => d.title);
+
+    return { content: context || 'No relevant protocol information found.', citations };
   }
 }

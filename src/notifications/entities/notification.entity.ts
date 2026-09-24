@@ -6,6 +6,8 @@ import {
   UpdateDateColumn,
   Index,
 } from 'typeorm';
+import { NotificationCategory } from '../enums/notification-category.enum';
+import { NotificationStatus } from '../enums/notification-status.enum';
 
 export enum NotificationType {
   NEW_CLAIM = 'new_claim',
@@ -42,30 +44,53 @@ export class Notification {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column()
+  @Column({ type: 'varchar' })
   @Index()
-  recipientId: string;
+  userId: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  @Index()
+  recipientId?: string;
 
   @Column({
     type: 'varchar',
     length: 50,
+    nullable: true,
   })
-  type: NotificationType;
+  type?: NotificationType;
 
-  @Column('text')
+  @Column({ type: 'varchar', nullable: true })
+  category?: NotificationCategory;
+
+  @Column({ type: 'varchar', nullable: true })
+  channel?: NotificationChannel;
+
+  @Column({ type: 'varchar' })
   title: string;
 
-  @Column('text')
-  message: string;
+  @Column({ type: 'text', nullable: true })
+  content?: string;
 
-  @Column('jsonb', { nullable: true })
-  metadata: Record<string, any>;
+  @Column({ type: 'text', nullable: true })
+  message?: string;
 
-  @Column({ default: false })
+  @Column({ type: 'jsonb', nullable: true })
+  metadata?: Record<string, any>;
+
+  @Column({ type: 'varchar', default: NotificationStatus.QUEUED })
+  status: NotificationStatus;
+
+  @Column({ type: 'int', default: 0 })
+  retryCount: number;
+
+  @Column({ type: 'varchar', nullable: true })
+  errorMessage?: string;
+
+  @Column({ type: 'boolean', default: false })
   read: boolean;
 
-  @Column({ nullable: true })
-  readAt: Date;
+  @Column({ type: 'timestamp', nullable: true })
+  readAt?: Date;
 
   @CreateDateColumn()
   createdAt: Date;
@@ -99,14 +124,14 @@ export class NotificationDeliveryHistory {
   })
   status: DeliveryStatus;
 
-  @Column({ nullable: true })
-  deliveredAt: Date;
+  @Column({ type: 'timestamp', nullable: true })
+  deliveredAt?: Date;
 
-  @Column({ default: 0 })
+  @Column({ type: 'int', default: 0 })
   retryAttempts: number;
 
-  @Column('text', { nullable: true })
-  failureReason: string;
+  @Column({ type: 'text', nullable: true })
+  failureReason?: string;
 
   @CreateDateColumn()
   createdAt: Date;
@@ -124,39 +149,39 @@ export class UserNotificationPreferences {
   @Column()
   userId: string;
 
-  @Column('jsonb')
-  enabledChannels: Record<NotificationChannel, boolean>;
+  @Column({ type: 'jsonb', nullable: true })
+  enabledChannels?: Record<NotificationChannel, boolean>;
 
-  @Column('jsonb')
-  enabledCategories: Record<NotificationType, boolean>;
+  @Column({ type: 'jsonb', nullable: true })
+  enabledCategories?: Record<NotificationType, boolean>;
 
-  @Column({ default: true })
+  @Column({ type: 'boolean', default: true })
   emailEnabled: boolean;
 
-  @Column({ nullable: true })
-  emailAddress: string;
+  @Column({ type: 'varchar', nullable: true })
+  emailAddress?: string;
 
-  @Column({ default: true })
+  @Column({ type: 'boolean', default: true })
   governanceAlerts: boolean;
 
-  @Column({ default: true })
+  @Column({ type: 'boolean', default: true })
   stakingAlerts: boolean;
 
-  @Column({ default: true })
+  @Column({ type: 'boolean', default: true })
   rewardNotifications: boolean;
 
-  @Column({ default: true })
+  @Column({ type: 'boolean', default: true })
   securityAlerts: boolean;
 
-  @Column('jsonb', { nullable: true })
-  webhookConfig: {
+  @Column({ type: 'jsonb', nullable: true })
+  webhookConfig?: {
     url: string;
     secret: string;
     enabled: boolean;
   };
 
-  @Column('jsonb', { nullable: true })
-  pushSubscription: {
+  @Column({ type: 'jsonb', nullable: true })
+  pushSubscription?: {
     endpoint: string;
     keys: Record<string, string>;
   };

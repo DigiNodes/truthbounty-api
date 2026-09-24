@@ -4,7 +4,7 @@ import { Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AuditLog } from '../entities/audit-log.entity';
-import { AuditLogInput } from '../services/audit-trail.service';
+import { AuditLogInput, AuditTrailService } from '../services/audit-trail.service';
 import { maskIp } from '../utils/ip-masking';
 import { AUDIT_QUEUE_NAME } from '../services/audit-queue.service';
 import { randomUUID } from 'crypto';
@@ -16,6 +16,7 @@ export class AuditLogProcessor extends WorkerHost {
   constructor(
     @InjectRepository(AuditLog)
     private readonly auditLogRepo: Repository<AuditLog>,
+    private readonly auditTrailService: AuditTrailService,
   ) {
     super();
   }
@@ -43,7 +44,8 @@ export class AuditLogProcessor extends WorkerHost {
         userAgent: input.userAgent,
       });
 
-      await this.auditLogRepo.save(auditLog);
+      const saved = await this.auditLogRepo.save(auditLog);
+      await this.auditTrailService.stampIntegrityHash(saved.id);
     } catch (error) {
       this.logger.error(`Failed to process audit job ${job.id}: ${error.message}`);
       throw error;

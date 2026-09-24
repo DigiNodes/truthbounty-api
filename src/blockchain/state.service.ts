@@ -7,6 +7,8 @@ import {
   ChainState,
   BlockInfo,
   StateMemoryStats,
+  IndexerHealthSnapshot,
+  IndexerHealthStatus,
 } from './types';
 
 @Injectable()
@@ -22,29 +24,68 @@ export class BlockchainStateService {
     confirmedDepth: 0,
     pendingEventCount: 0,
     orphanedEventCount: 0,
+    observedHeadBlock: 0,
+    safeBlock: 0,
+    finalizedBlock: 0,
+    projectionHeadBlock: 0,
+    rpcFailureCount: 0,
+    replayCount: 0,
+    deadLetterCount: 0,
+    lastRpcErrorAt: null,
+    projectionLag: 0,
   };
 
   private readonly maxBlocksInMemory: number;
   private readonly maxEventsInMemory: number;
   private readonly maxReorgHistoryEntries: number;
 
-  constructor(
-    @Optional() private configService?: ConfigService,
-  ) {
-    this.maxBlocksInMemory = this.configService?.get<number>(
-      'blockchain.maxBlocksInMemory', 10000,
-    ) ?? 10000;
-    this.maxEventsInMemory = this.configService?.get<number>(
-      'blockchain.maxEventsInMemory', 50000,
-    ) ?? 50000;
-    this.maxReorgHistoryEntries = this.configService?.get<number>(
-      'blockchain.maxReorgHistoryEntries', 1000,
-    ) ?? 1000;
+  // Alert thresholds (configurable, with safe defaults).
+  private readonly projectionLagThresholdBlocks: number;
+  private readonly rpcFailureWindow: number;
+  private readonly rpcFailureLimit: number;
+  private readonly maxDeadLetters: number;
+  private readonly rpcFailureTimestamps: number[] = [];
+  private readonly runbookUrl: string;
+
+  constructor(@Optional() private configService?: ConfigService) {
+    this.maxBlocksInMemory =
+      this.configService?.get<number>('blockchain.maxBlocksInMemory', 10000) ??
+      10000;
+    this.maxEventsInMemory =
+      this.configService?.get<number>('blockchain.maxEventsInMemory', 50000) ??
+      50000;
+    this.maxReorgHistoryEntries =
+      this.configService?.get<number>(
+        'blockchain.maxReorgHistoryEntries',
+        1000,
+      ) ?? 1000;
+
+    this.projectionLagThresholdBlocks =
+      this.configService?.get<number>(
+        'blockchain.projectionLagThresholdBlocks',
+        150,
+      ) ?? 150;
+    this.rpcFailureWindow =
+      this.configService?.get<number>(
+        'blockchain.rpcFailureWindowMs',
+        300000,
+      ) ?? 300000;
+    this.rpcFailureLimit =
+      this.configService?.get<number>('blockchain.rpcFailureLimit', 20) ?? 20;
+    this.maxDeadLetters =
+      this.configService?.get<number>('blockchain.maxDeadLetters', 100) ?? 100;
+    this.runbookUrl =
+      this.configService?.get<string>(
+        'blockchain.indexerRunbookUrl',
+        'https://github.com/DigiNodes/truthbounty-api/blob/main/docs/indexer-runbook.md',
+      ) ??
+      'https://github.com/DigiNodes/truthbounty-api/blob/main/docs/indexer-runbook.md';
 
     this.logger.log(
       `Memory limits — blocks: ${this.maxBlocksInMemory}, ` +
-      `events: ${this.maxEventsInMemory}, ` +
-      `reorg history: ${this.maxReorgHistoryEntries}`,
+        `events: ${this.maxEventsInMemory}, ` +
+        `reorg history: ${this.maxReorgHistoryEntries}, ` +
+        `projection lag threshold: ${this.projectionLagThresholdBlocks} blocks`,
     );
   }
 
@@ -64,7 +105,10 @@ export class BlockchainStateService {
     return blockRecord;
   }
 
-  async getBlock(blockNumber: number, blockHash: string): Promise<BlockRecord | null> {
+  async getBlock(
+    blockNumber: number,
+    blockHash: string,
+  ): Promise<BlockRecord | null> {
     const record = this.blocks.get(`${blockNumber}:${blockHash}`);
     return record || null;
   }
@@ -84,7 +128,9 @@ export class BlockchainStateService {
     return blocks.find((b) => b.isCanonical) || null;
   }
 
-  async getCanonicalBlockByHash(blockHash: string): Promise<BlockRecord | null> {
+  async getCanonicalBlockByHash(
+    blockHash: string,
+  ): Promise<BlockRecord | null> {
     for (const [, block] of this.blocks) {
       if (block.blockHash === blockHash && block.isCanonical) {
         return block;
@@ -188,6 +234,150 @@ export class BlockchainStateService {
     return { ...this.chainState };
   }
 
+  /**
+   * Record the highest block observed from the RPC provider (the observed head).
+   * Updates the derived projection lag against the finalized cursor.
+   */
+  async setObservedHead(blockNumber: number): Promise<void> {
+    this.chainState.observedHeadBlock = blockNumber;
+    this.refreshProjectionLag();
+  }
+
+  /**
+   * Record the chain's safe cursor (reorg-unlikely boundary).
+   */
+  async setSafeBlock(blockNumber: number): Promise<void> {
+    this.chainState.safeBlock = blockNumber;
+  }
+
+  /**
+   * Record the chain's finalized cursor (finality boundary).
+   * Recomputes projection lag against the observed head.
+   */
+  async setFinalizedBlock(blockNumber: number): Promise<void> {
+    this.chainState.finalizedBlock = blockNumber;
+    this.refreshProjectionLag();
+  }
+
+  /**
+   * Record the highest block to which projections (derived, rebuildable state)
+   * have advanced.
+   */
+  async setProjectionHead(blockNumber: number): Promise<void> {
+    this.chainState.projectionHeadBlock = blockNumber;
+  }
+
+  /**
+   * Record a single RPC failure. Failure rate is evaluated over a sliding window
+   * (default 5 minutes). The monotonic counter is preserved for Prometheus.
+   */
+  async recordRpcFailure(error?: Error | string): Promise<void> {
+    const now = Date.now();
+    this.chainState.rpcFailureCount =
+      (this.chainState.rpcFailureCount ?? 0) + 1;
+    this.chainState.lastRpcErrorAt = new Date(now).toISOString();
+    this.rpcFailureTimestamps.push(now);
+
+    // Keep only failures within the sliding window.
+    while (
+      this.rpcFailureTimestamps.length > 0 &&
+      this.rpcFailureTimestamps[0] < now - this.rpcFailureWindow
+    ) {
+      this.rpcFailureTimestamps.shift();
+    }
+
+    const message =
+      error instanceof Error ? error.message : String(error ?? '');
+    this.logger.warn(
+      `RPC failure recorded (total=${this.chainState.rpcFailureCount}, ` +
+        `window=${this.rpcFailureTimestamps.length}${message ? `): ${message}` : ')'}`,
+    );
+  }
+
+  /**
+   * Record an event replay (reprocessed after a reorg or retry).
+   */
+  async recordReplay(count = 1): Promise<void> {
+    this.chainState.replayCount = (this.chainState.replayCount ?? 0) + count;
+  }
+
+  /**
+   * Record a dead-lettered event (one that failed past max retries).
+   */
+  async recordDeadLetter(count = 1): Promise<void> {
+    this.chainState.deadLetterCount =
+      (this.chainState.deadLetterCount ?? 0) + count;
+  }
+
+  /**
+   * Number of RPC failures within the configured sliding window.
+   */
+  getRpcFailuresInWindow(): number {
+    const now = Date.now();
+    return this.rpcFailureTimestamps.filter(
+      (t) => t >= now - this.rpcFailureWindow,
+    ).length;
+  }
+
+  /**
+   * Projection lag in blocks, computed from the finalized cursor to the observed head.
+   * Returns 0 when no head has been observed yet.
+   */
+  getProjectionLag(): number {
+    const lag =
+      (this.chainState.observedHeadBlock ?? 0) -
+      (this.chainState.finalizedBlock ?? 0);
+    return lag > 0 ? lag : 0;
+  }
+
+  /**
+   * Derive the sanitized indexer health snapshot for health/metrics consumers.
+   * Fails closed on incompatible state (missing cursors => unhealthy).
+   */
+  async getIndexerHealth(): Promise<IndexerHealthSnapshot> {
+    const projectionLag = this.getProjectionLag();
+    const rpcFailuresInWindow = this.getRpcFailuresInWindow();
+
+    let status: IndexerHealthStatus = 'healthy';
+    if (
+      projectionLag > this.projectionLagThresholdBlocks ||
+      rpcFailuresInWindow >= this.rpcFailureLimit ||
+      (this.chainState.deadLetterCount ?? 0) > this.maxDeadLetters
+    ) {
+      status = 'degraded';
+    }
+    if (
+      this.chainState.observedHeadBlock == null ||
+      this.chainState.finalizedBlock == null ||
+      this.chainState.rpcFailureCount == null
+    ) {
+      status = 'unhealthy';
+    }
+
+    return {
+      status,
+      timestamp: new Date().toISOString(),
+      observedHeadBlock: this.chainState.observedHeadBlock ?? 0,
+      safeBlock: this.chainState.safeBlock ?? 0,
+      finalizedBlock: this.chainState.finalizedBlock ?? 0,
+      projectionHeadBlock: this.chainState.projectionHeadBlock ?? 0,
+      projectionLag,
+      rpcFailureCount: this.chainState.rpcFailureCount ?? 0,
+      replayCount: this.chainState.replayCount ?? 0,
+      deadLetterCount: this.chainState.deadLetterCount ?? 0,
+      alertThresholds: {
+        projectionLagBlocks: this.projectionLagThresholdBlocks,
+        rpcFailureRateWindow: this.rpcFailureWindow,
+        maxDeadLetters: this.maxDeadLetters,
+      },
+      runbookUrl: this.runbookUrl,
+    };
+  }
+
+  private refreshProjectionLag(): void {
+    this.chainState.projectionLag = this.getProjectionLag();
+  }
+
   async deleteEvents(eventIds: string[]): Promise<void> {
     for (const id of eventIds) {
       const event = this.events.get(id);
@@ -206,12 +396,22 @@ export class BlockchainStateService {
     this.blocks.clear();
     this.events.clear();
     this.reorgHistory = [];
+    this.rpcFailureTimestamps.length = 0;
     this.chainState = {
       lastProcessedBlock: 0,
       lastCanonicalHash: '',
       confirmedDepth: 0,
       pendingEventCount: 0,
       orphanedEventCount: 0,
+      observedHeadBlock: 0,
+      safeBlock: 0,
+      finalizedBlock: 0,
+      projectionHeadBlock: 0,
+      rpcFailureCount: 0,
+      replayCount: 0,
+      deadLetterCount: 0,
+      lastRpcErrorAt: null,
+      projectionLag: 0,
     };
   }
 
@@ -280,7 +480,9 @@ export class BlockchainStateService {
     }
 
     if (toRemove > 0) {
-      this.logger.debug(`Evicted ${toRemove} old confirmed event(s) from memory`);
+      this.logger.debug(
+        `Evicted ${toRemove} old confirmed event(s) from memory`,
+      );
     }
   }
 

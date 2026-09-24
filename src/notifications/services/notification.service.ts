@@ -13,6 +13,7 @@ import {
   DeliveryChannel,
   DeliveryStatus,
   NotificationFrequency,
+  NotificationType,
 } from '../enums/notification-type.enum';
 
 @Injectable()
@@ -199,6 +200,53 @@ export class NotificationService {
       notifications,
       total,
     };
+  }
+
+async getWebhookMetrics(): Promise<{
+    total: number;
+    delivered: number;
+    pending: number;
+    failed: number;
+  }> {
+    const [total, delivered, pending, failed] = await Promise.all([
+      this.deliveryRepo.count({ where: { channel: DeliveryChannel.WEBHOOK } }),
+      this.deliveryRepo.count({ where: { channel: DeliveryChannel.WEBHOOK, status: DeliveryStatus.DELIVERED } }),
+      this.deliveryRepo.count({ where: { channel: DeliveryChannel.WEBHOOK, status: DeliveryStatus.PENDING } }),
+      this.deliveryRepo.count({ where: { channel: DeliveryChannel.WEBHOOK, status: DeliveryStatus.FAILED } }),
+    ]);
+
+    return {
+      total,
+      delivered,
+      pending,
+      failed,
+    };
+  }
+
+  private async resolveChannels(
+    userId: string,
+    type: NotificationType,
+  ): Promise<DeliveryChannel[]> {
+    const preferences = await this.getOrCreatePreferences(userId);
+
+    if (!preferences.notificationsEnabled) {
+      return [];
+    }
+
+    const categories = preferences.subscribedCategories || [];
+    if (categories.length > 0 && !categories.includes(type)) {
+      const unsubscribed = preferences.unsubscribedCategories || [];
+      if (unsubscribed.includes(type)) {
+        return [];
+      }
+    }
+
+    if (preferences.frequency === NotificationFrequency.INSTANT) {
+      const channels = preferences.enabledChannels.map((c) => c as DeliveryChannel);
+      return channels.length > 0 ? channels : [DeliveryChannel.IN_APP];
+    }
+
+    return [];
   }
 
   async getUnreadCount(userId: string): Promise<number> {

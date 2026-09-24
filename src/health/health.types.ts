@@ -1,5 +1,11 @@
 export type HealthStatus = 'healthy' | 'degraded' | 'unhealthy';
 
+export interface IndexerHealthResult {
+  status: HealthStatus;
+  timestamp: string;
+  snapshot: import('../blockchain/types').IndexerHealthSnapshot;
+}
+
 export interface DependencyStatus {
   name: string;
   status: HealthStatus;
@@ -60,4 +66,14 @@ export interface SystemDiagnostics {
   resourceUsage?: NodeJS.ResourceUsage;
   eventLoopDelayMs?: number;
   openFileDescriptors?: number;
+  database?: {
+    connectivity: boolean;
+    latencyMs: number;
+    migrationsApplied: number;
+    migrationsPending: number;
+    poolTotal: number;
+    poolIdle: number;
+    poolActive: number;
+    poolWaiting: number;
+  };
 }

@@ -8,6 +8,13 @@ import {
   Index,
 } from 'typeorm';
 
+export enum UserRole {
+  USER = 'USER',
+  MODERATOR = 'MODERATOR',
+  ADMIN = 'ADMIN',
+  SUPER_ADMIN = 'SUPER_ADMIN',
+}
+
 @Entity('users')
 export class User {
   @PrimaryGeneratedColumn('uuid')
@@ -16,6 +23,12 @@ export class User {
   @Column({ unique: true })
   @Index()
   walletAddress: string;
+
+  @Column({
+    type: 'varchar',
+    default: UserRole.USER,
+  })
+  role: UserRole;
 
   @Column({ type: 'int', default: 0 })
   reputation: number;

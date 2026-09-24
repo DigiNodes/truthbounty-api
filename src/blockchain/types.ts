@@ -49,6 +49,68 @@ export interface ChainState {
   pendingEventCount: number;
   orphanedEventCount: number;
   lastReorgTime?: Date;
+  /**
+   * Highest block number observed from the RPC provider (observed head).
+   */
+  observedHeadBlock?: number;
+  /**
+   * Block number considered safe (reorg-unlikely) by the provider's finality tags.
+   */
+  safeBlock?: number;
+  /**
+   * Block number considered finalized by the provider's finality tags.
+   */
+  finalizedBlock?: number;
+  /**
+   * Highest block number to which projections (derived state) have advanced.
+   */
+  projectionHeadBlock?: number;
+  /**
+   * Cumulative number of RPC failures observed.
+   */
+  rpcFailureCount?: number;
+  /**
+   * Cumulative number of event replays processed (reprocessed after reorg/retry).
+   */
+  replayCount?: number;
+  /**
+   * Cumulative number of dead-lettered events (failed past max retries).
+   */
+  deadLetterCount?: number;
+  /**
+   * ISO timestamp of the last RPC failure (if any).
+   */
+  lastRpcErrorAt?: string | null;
+  /**
+   * Last recorded projection lag (observedHeadBlock - finalizedBlock), >= 0.
+   */
+  projectionLag?: number;
+}
+
+export type IndexerHealthStatus = 'healthy' | 'degraded' | 'unhealthy';
+
+/**
+ * Sanitized snapshot of indexer health.
+ * Exposes only operational numeric values and a generic runbook link —
+ * never credentials, user data, or live RPC URLs.
+ */
+export interface IndexerHealthSnapshot {
+  status: IndexerHealthStatus;
+  timestamp: string;
+  observedHeadBlock: number;
+  safeBlock: number;
+  finalizedBlock: number;
+  projectionHeadBlock: number;
+  projectionLag: number;
+  rpcFailureCount: number;
+  replayCount: number;
+  deadLetterCount: number;
+  alertThresholds: {
+    projectionLagBlocks: number;
+    rpcFailureRateWindow: number;
+    maxDeadLetters: number;
+  };
+  runbookUrl: string;
 }
 
 export interface StateMemoryStats {

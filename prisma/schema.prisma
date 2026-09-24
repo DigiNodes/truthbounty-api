@@ -8,12 +8,12 @@ generator client {
 }
 
 // Actual runtime datasource is SQLite via the libsql driver adapter
-// (see src/prisma/prisma.service.ts, DATABASE_URL=file:./dev.db) — this
+// (see src/prisma/prisma.service.ts, DATABASE_URL=file:./dev.db) this 
 // matches prisma/migrations/migration_lock.toml, which already records
 // "sqlite" as the migration dialect. Declaring "postgresql" here caused
-// PrismaClientInitializationError at runtime ("Driver Adapter
+ // PrismaClientInitializationError at runtime ("Driver Adapter
 // @prisma/adapter-libsql, based on sqlite, is not compatible with the
-// provider postgres") once the client was regenerated against the
+// provider postgress") once the client was regenerated against the
 // package-lock-pinned prisma@7.4.1, which validates this consistency.
 datasource db {
   provider = "sqlite"
@@ -28,7 +28,7 @@ enum UserRole {
 model User {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime @updated
 
   // Primary wallet address — canonical identifier for the user
   walletAddress String @unique
@@ -58,13 +58,13 @@ model Wallet {
 
   @@unique([address, chain])
   // We will enforce "one address -> one user" logic in the service layer
-  // to handle multi-chain address reuse scenarios properly.
+  // to handle multi-chain address reguse scenarios properly.
 }
 
 model SybilScore {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime @updated
 
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -120,8 +120,8 @@ model WorldIdVerification {
 model Conversation {
   id        String   @id @default(uuid())
   title     String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt  DateTime @default(now())
+  updatedAt DateTime @updated
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   messages  Message[]
@@ -135,9 +135,25 @@ model Message {
   content        String
   conversationId String
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  createdAt      DateTime     @default(now())
+  createdAt       DateTime     @default(now())
 
   @@index([conversationId])
+}
+
+model ContextDocument {
+  id        String   @id @default(uuid())
+  title     String
+  category  String
+  content   String
+  tags      String   // Stored as JSON string
+  sourceUrl String?
+  isActive  Boolean  @default(true)
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([category])
+  @@index([isActive])
 }
 
 model AiUsageMetric {
@@ -153,4 +169,65 @@ model AiUsageMetric {
 
   @@index([userId])
   @@index([provider])
+}
+
+// Protocol Analytics & Reporting API models
+
+model AnalyticsEvent {
+  id        String   @id @default(uuid())
+  eventType String // e.g., "claim_submitted", "verification_completed", "reward_distributed"
+  entityType String? // e.g., "claim", "proposal", "user"
+  entityId   String?
+  userId    String?
+  data        Json?
+  occurredAt  DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  @@index([eventType, occurredAt])
+  @@index([entityType, entityId])
+  @@index([userId])
+}
+
+model MetricAggregate {
+  id         String   @id @default(uuid())
+  metricKey  String // e.g., "total_claims", "active_verifiers"
+  period     String // e.g., "hourly", "daily", "weekly", "monthly", "yearly", "all"
+  bucketStart DateTime
+  filters    String @default("{}") // Canonical JSON string representing dimensions e.g. chain, role
+  value       Float @default(0)
+  updatedAt  DateTime @updated
+
+  @@index([metricKey, period, bucketStart])
+  @@unique([metricKey, period, bucketStart, filters])
+}
+
+model ReportJob {
+  id            String   @id @default(uuid())
+  name          String?
+  reportType    String // "protocol_summary", "user_analytics", "verification_analytics", "governance_analytics", "financial_analytics", "custom"
+  filters      Json?
+  format       String @default("json") // "json", "csv", "pdf"
+  status       String @default("pending") // "pending", "running", "completed", "failed"
+  progress      Float @default(0)
+  fileUrl       String?
+  error         String?
+  createdAt     DateTime @default(now())
+  startedAt     DateTime?
+  completedAt    DateTime?
+  scheduledFor   DateTime?
+  createdByUserId String?
+
+  @@index([status])
+  @@index([createdAt])
+  @@index([scheduledFor])
+}
+
+model MonitoringMetric {
+  id         String   @id @default(uuid())
+  name        String // e.g., "report_generation_time", "query_latency", "cache_hit_ratio"
+  value       Float
+  labels       Json?
+  recordedAt   DateTime @default(now())
+
+  @@index([name, recordedAt])
 }

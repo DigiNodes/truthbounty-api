@@ -6,9 +6,12 @@ export enum QueueName {
 }
 
 export enum JobName {
-  COMPUTE_SCORES = 'compute-scores',
-  COMPUTE_REPUTATION = 'compute-reputation',
   CLEANUP_SYBIL_HISTORY = 'cleanup-sybil-history',
+  // V2 Architecture: COMPUTE_SCORES and COMPUTE_REPUTATION jobs removed
+  // These jobs previously contained backend-authoritative logic that
+  // automatically finalized claims based on backend calculations.
+  // In V2, all claim state transitions must come from on-chain events
+  // projected by the V2 projectors, not from backend calculations.
   SEND_NOTIFICATION = 'send-notification',
   INDEX_BLOCKCHAIN_EVENTS = 'index-blockchain-events',
   AGGREGATE_ANALYTICS = 'aggregate-analytics',

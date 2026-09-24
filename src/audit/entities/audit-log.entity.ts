@@ -143,6 +143,8 @@ export enum AuditCategory {
 @Index(['actionType', 'createdAt'])
 @Index(['category', 'createdAt'])
 @Index(['severity', 'createdAt'])
+@Index(['archived'])
+@Index(['integrityHash'])
 export class AuditLog {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -213,4 +215,10 @@ export class AuditLog {
 
   @Column({ type: 'datetime', nullable: true })
   retentionUntil: Date | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  integrityHash: string | null;
+
+  @Column({ default: false })
+  archived: boolean;
 }

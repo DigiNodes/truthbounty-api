@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { BlockchainIndexerService } from './blockchain-indexer.service';
+import { BlockchainStateService } from './state.service';
 import { ProcessedEvent } from './entities/processed-event.entity';
 import { TokenBalance } from './entities/token-balance.entity';
 import { IndexerCheckpoint } from './entities/indexer-checkpoint.entity';
@@ -49,10 +50,26 @@ describe('BlockchainIndexerService - Checkpoint Commit Behavior', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         BlockchainIndexerService,
-        { provide: getRepositoryToken(ProcessedEvent), useValue: processedEventRepo },
-        { provide: getRepositoryToken(TokenBalance), useValue: tokenBalanceRepo },
-        { provide: getRepositoryToken(IndexerCheckpoint), useValue: checkpointRepo },
+        {
+          provide: getRepositoryToken(ProcessedEvent),
+          useValue: processedEventRepo,
+        },
+        {
+          provide: getRepositoryToken(TokenBalance),
+          useValue: tokenBalanceRepo,
+        },
+        {
+          provide: getRepositoryToken(IndexerCheckpoint),
+          useValue: checkpointRepo,
+        },
         { provide: DataSource, useValue: dataSource },
+        {
+          provide: BlockchainStateService,
+          useValue: {
+            setProjectionHead: jest.fn(),
+            recordReplay: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
@@ -60,7 +77,13 @@ describe('BlockchainIndexerService - Checkpoint Commit Behavior', () => {
   });
 
   it('saves the checkpoint inside the transaction when processing succeeds', async () => {
-    const event = { txHash: '0x1', logIndex: 0, blockNumber: 123, eventType: 'Transfer', data: { from: 'a', to: 'b', amount: 1, token: 'T' } } as any;
+    const event = {
+      txHash: '0x1',
+      logIndex: 0,
+      blockNumber: 123,
+      eventType: 'Transfer',
+      data: { from: 'a', to: 'b', amount: 1, token: 'T' },
+    } as any;
 
     const manager = dataSource.createQueryRunner().manager;
 
@@ -94,9 +117,17 @@ describe('BlockchainIndexerService - Checkpoint Commit Behavior', () => {
       release: jest.fn().mockResolvedValue(null),
     };
 
-    (dataSource.createQueryRunner as jest.Mock).mockReturnValueOnce(failingQueryRunner as any);
+    (dataSource.createQueryRunner as jest.Mock).mockReturnValueOnce(
+      failingQueryRunner as any,
+    );
 
-    const event = { txHash: '0x2', logIndex: 0, blockNumber: 200, eventType: 'Transfer', data: { from: 'x', to: 'y', amount: 5, token: 'T' } } as any;
+    const event = {
+      txHash: '0x2',
+      logIndex: 0,
+      blockNumber: 200,
+      eventType: 'Transfer',
+      data: { from: 'x', to: 'y', amount: 5, token: 'T' },
+    } as any;
 
     await expect(service.processEvent(event)).rejects.toThrow('db error');
 

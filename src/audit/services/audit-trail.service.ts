@@ -1,6 +1,6 @@
 import { Injectable, Logger, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, Like, In } from 'typeorm';
+import { Repository, Between, Like, In, Not, IsNull } from 'typeorm';
 import { REQUEST } from '@nestjs/core';
 import { Request } from 'express';
 import {
@@ -14,6 +14,7 @@ import { maskIp } from '../utils/ip-masking';
 import { AuditQueueService } from './audit-queue.service';
 import { randomUUID } from 'crypto';
 import { AuditPaginatedResponse } from '../interfaces/audit-response.interface';
+import { generateAuditHash, verifyAuditIntegrity } from '../utils/integrity';
 
 export interface AuditLogInput {
   actionType: AuditActionType;
@@ -97,7 +98,8 @@ export class AuditTrailService {
         retentionUntil: input.retentionUntil || null,
       });
 
-      await this.auditLogRepo.save(auditLog);
+      const saved = await this.auditLogRepo.save(auditLog);
+      await this.stampIntegrityHash(saved.id);
       this.logger.debug(`Audit logged: ${input.actionType} on ${input.entityType} ${input.entityId}`);
     } catch (error) {
       this.logger.error(`Failed to log audit: ${error.message}`, error.stack);
@@ -129,7 +131,8 @@ export class AuditTrailService {
         }),
       );
 
-      await this.auditLogRepo.save(auditLogs);
+      const saved = await this.auditLogRepo.save(auditLogs);
+      await Promise.all(saved.map((record) => this.stampIntegrityHash(record.id)));
       this.logger.debug(`Batch audit logged: ${auditLogs.length} records`);
     } catch (error) {
       this.logger.error(`Failed to batch log audits: ${error.message}`, error.stack);
@@ -361,6 +364,79 @@ export class AuditTrailService {
       oldestRecord: oldest?.createdAt || null,
       newestRecord: newest?.createdAt || null,
     };
+  }
+
+  async stampIntegrityHash(id: string): Promise<void> {
+    try {
+      const record = await this.auditLogRepo.findOne({ where: { id } });
+      if (!record) return;
+      const { integrityHash: _existing, ...hashable } = record;
+      record.integrityHash = generateAuditHash(hashable as any);
+      await this.auditLogRepo.update(id, { integrityHash: record.integrityHash });
+    } catch (error) {
+      this.logger.error(`Failed to stamp integrity hash: ${error.message}`, error.stack);
+    }
+  }
+
+  async verifyIntegrity(id: string): Promise<{ valid: boolean; id: string; integrityHash?: string; reason?: string }> {
+    const record = await this.auditLogRepo.findOne({ where: { id } });
+    if (!record) {
+      return { valid: false, id, reason: 'not_found' };
+    }
+    if (!record.integrityHash) {
+      return { valid: false, id, reason: 'hash_missing' };
+    }
+    const { integrityHash, ...hashable } = record;
+    const valid = verifyAuditIntegrity({ ...hashable, integrityHash });
+    return valid
+      ? { valid: true, id, integrityHash: record.integrityHash }
+      : { valid: false, id, reason: 'hash_mismatch' };
+  }
+
+  async placeLegalHold(entityType: AuditEntityType, entityId: string): Promise<number> {
+    const retentionUntil = new Date();
+    retentionUntil.setFullYear(retentionUntil.getFullYear() + 100);
+    const result = await this.auditLogRepo
+      .createQueryBuilder()
+      .update(AuditLog)
+      .set({ retentionUntil })
+      .where('entityType = :entityType AND entityId = :entityId', { entityType, entityId })
+      .execute();
+    this.logger.log(`Legal hold placed on ${entityType} ${entityId}`);
+    return result.affected || 0;
+  }
+
+  async removeLegalHold(entityType: AuditEntityType, entityId: string, retentionDays = 365): Promise<number> {
+    const retentionUntil = new Date();
+    retentionUntil.setDate(retentionUntil.getDate() + retentionDays);
+    const result = await this.auditLogRepo
+      .createQueryBuilder()
+      .update(AuditLog)
+      .set({ retentionUntil })
+      .where('entityType = :entityType AND entityId = :entityId', { entityType, entityId })
+      .execute();
+    this.logger.log(`Legal hold removed on ${entityType} ${entityId}`);
+    return result.affected || 0;
+  }
+
+  async getRetentionStatus(): Promise<{
+    totalRecords: number;
+    archivedRecords: number;
+    recordsWithRetention: number;
+    pendingPurge: number;
+  }> {
+    const totalRecords = await this.auditLogRepo.count();
+    const archivedRecords = await this.auditLogRepo.count({ where: { archived: true } });
+    const recordsWithRetention = await this.auditLogRepo.count({
+      where: { retentionUntil: Not(IsNull()) },
+    });
+    const pendingPurge = await this.auditLogRepo
+      .createQueryBuilder('audit')
+      .where('audit.createdAt < :cutoff AND audit.retentionUntil IS NULL', {
+        cutoff: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000),
+      })
+      .getCount();
+    return { totalRecords, archivedRecords, recordsWithRetention, pendingPurge };
   }
 
   getClientIp(): string | undefined {

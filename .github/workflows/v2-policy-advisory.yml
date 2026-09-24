@@ -1,0 +1,43 @@
+name: V2 Policy Advisory
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  architecture-policy:
+    name: Architecture Policy (advisory)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Inspect changed production files
+        shell: bash
+        run: |
+          set -u
+          git diff --name-only "origin/${{ github.base_ref || 'main' }}...HEAD" |
+            grep -E '^(src|migrations)/.*\.(ts|js|sql)$' > /tmp/truthbounty-files || true
+
+          if [[ ! -s /tmp/truthbounty-files ]]; then
+            echo "No changed production API files."
+            exit 0
+          fi
+
+          while IFS= read -r file; do
+            if grep -Ein 'stellar|soroban|freighter' "$file"; then
+              echo "::warning file=$file::Alternate-chain runtime reference detected. TruthBounty V2 is Optimism/EVM-only."
+            fi
+            if grep -Ein '@prisma/client|PrismaClient|from[[:space:]]+["'\'']prisma' "$file"; then
+              echo "::warning file=$file::Prisma reference detected. The canonical API persistence boundary is TypeORM/PostgreSQL."
+            fi
+            if grep -Ein 'JWT_SECRET[[:space:]]*[:=][[:space:]]*["'\''](secret|changeme|test)' "$file"; then
+              echo "::warning file=$file::Placeholder JWT secret pattern detected."
+            fi
+          done < /tmp/truthbounty-files
+
+          echo "Advisory mode: findings do not fail this workflow."

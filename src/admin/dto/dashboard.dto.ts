@@ -17,7 +17,7 @@ export class HealthStatusDto {
   redis: string;
 
   @ApiPropertyOptional()
-  blockchain: string;
+  queues: string;
 }
 
 export class DashboardOverviewDto {
@@ -125,6 +125,196 @@ export class MonitoringMetricsDto {
 
   @ApiProperty()
   timestamp: string;
+}
+
+export class OperationalDashboardDto {
+  @ApiProperty()
+  system: Record<string, any>;
+
+  @ApiProperty()
+  admin: Record<string, any>;
+
+  @ApiProperty()
+  infrastructure: Record<string, any>;
+
+  @ApiProperty()
+  api: Record<string, any>;
+
+  @ApiProperty()
+  notifications: Record<string, any>;
+
+  @ApiProperty()
+  jobs: Record<string, any>;
+
+  @ApiProperty()
+  protocol: Record<string, any>;
+}
+
+export class InfrastructureHealthDto {
+  @ApiProperty()
+  status: string;
+
+  @ApiProperty()
+  timestamp: string;
+
+  @ApiProperty()
+  database: Record<string, any>;
+
+  @ApiProperty()
+  redis: Record<string, any>;
+
+  @ApiProperty()
+  queues: Record<string, any>;
+
+  @ApiProperty()
+  workers: Record<string, any>;
+}
+
+export class QueueMetricsDto {
+  @ApiProperty()
+  status: string;
+
+  @ApiProperty()
+  totalQueues: number;
+
+  @ApiProperty()
+  totalWaiting: number;
+
+  @ApiProperty()
+  totalActive: number;
+
+  @ApiProperty()
+  totalFailed: number;
+
+  @ApiProperty()
+  totalCompleted: number;
+
+  @ApiProperty()
+  totalDelayed: number;
+}
+
+export class WorkerStatusDto {
+  @ApiProperty()
+  status: string;
+
+  @ApiProperty()
+  activeWorkers: number;
+
+  @ApiProperty()
+  totalWorkers: number;
+
+  @ApiProperty()
+  queueDepth: number;
+}
+
+export class ApiMetricsDto {
+  @ApiProperty()
+  totalRequests: number;
+
+  @ApiProperty()
+  errorCount: number;
+
+  @ApiProperty()
+  averageLatencyMs: number;
+
+  @ApiProperty()
+  statusCodes: Record<string, number>;
+
+  @ApiProperty()
+  requestsByRoute: Record<string, number>;
+}
+
+export class CacheStatisticsDto {
+  @ApiProperty()
+  status: string;
+
+  @ApiProperty()
+  connected: boolean;
+
+  @ApiProperty()
+  enabled: boolean;
+
+  @ApiProperty()
+  queueDepth: number;
+}
+
+export class DatabaseMetricsDto {
+  @ApiProperty()
+  status: string;
+
+  @ApiProperty()
+  totalAdmins: number;
+
+  @ApiProperty()
+  totalClaims: number;
+
+  @ApiProperty()
+  totalIncidents: number;
+
+  @ApiProperty()
+  totalReports: number;
+
+  @ApiProperty()
+  timestamp: string;
+}
+
+export class NotificationMetricsDto {
+  @ApiProperty()
+  queued: number;
+
+  @ApiProperty()
+  delivered: number;
+
+  @ApiProperty()
+  failed: number;
+
+  @ApiProperty()
+  queueDepth: number;
+
+  @ApiProperty()
+  webhooks: Record<string, any>;
+}
+
+export class WebhookMetricsDto {
+  @ApiProperty()
+  total: number;
+
+  @ApiProperty()
+  delivered: number;
+
+  @ApiProperty()
+  pending: number;
+
+  @ApiProperty()
+  failed: number;
+}
+
+export class BackgroundJobsDto {
+  @ApiProperty()
+  totalQueues: number;
+
+  @ApiProperty()
+  failedJobs: number;
+
+  @ApiProperty()
+  queues: Record<string, any>[];
+}
+
+export class ProtocolActivityDto {
+  @ApiProperty()
+  totalClaims: number;
+
+  @ApiProperty()
+  activeClaims: number;
+
+  @ApiProperty()
+  finalizedClaims: number;
+
+  @ApiProperty()
+  pendingClaims: number;
+
+  @ApiProperty()
+  resolvedClaims: number;
 }
 
 export class PaginatedResponseDto<T> {

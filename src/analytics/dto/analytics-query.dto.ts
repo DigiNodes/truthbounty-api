@@ -1,13 +1,13 @@
-import { IsOptional, IsString, IsDateString, IsNumber } from 'class-validator';
-import { Transform } from 'class-transformer';
+import { IsOptional, IsString, IsDateString, IsNumber, IsIn} } from 'class-validator';
+import { Transform } from 'class-transform';
 
 export class AnalyticsQueryDto {
   @IsOptional()
-  @IsDateString()
+  @isDateString()
   startDate?: string;
 
   @IsOptional()
-  @IsDateString()
+  @isDateString()
   endDate?: string;
 
   @IsOptional()
@@ -31,8 +31,16 @@ export class AnalyticsQueryDto {
   protocolVersion?: string;
 
   @IsOptional()
+  @IsEnum('daily', 'weekly', 'monthly', 'quarterly', 'yearly')
+  period?: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly';
+
+  @IsOptional()
+  @IsEnum('json', 'csv')
+  format?: 'json' | 'csv';
+
+  @IsOptional()
   @Transform(({ value }) => parseInt(value, 10))
-  @IsNumber()
+  @isNumber()
   page?: number = 1;
 
   @IsOptional()

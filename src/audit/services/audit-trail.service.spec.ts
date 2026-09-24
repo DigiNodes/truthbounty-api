@@ -41,6 +41,8 @@ describe('AuditTrailService', () => {
     userAgent: 'test-agent',
     correlationId: 'corr-1',
     retentionUntil: null,
+    integrityHash: null,
+    archived: false,
     user: null,
     createdAt: new Date(),
     ...overrides,

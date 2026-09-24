@@ -1,5 +1,6 @@
 import { DataSource, Repository } from 'typeorm';
 import { BlockchainIndexerService } from './blockchain-indexer.service';
+import { BlockchainStateService } from './state.service';
 import { ProcessedEvent } from './entities/processed-event.entity';
 import { TokenBalance } from './entities/token-balance.entity';
 import { IndexerCheckpoint } from './entities/indexer-checkpoint.entity';
@@ -23,7 +24,10 @@ describe('BlockchainIndexerService (integration: reorg + idempotency)', () => {
   const ALICE = '0xalice';
   const BOB = '0xbob';
 
-  const transferAt = (blockNumber: number, amount: string): BlockchainEvent => ({
+  const transferAt = (
+    blockNumber: number,
+    amount: string,
+  ): BlockchainEvent => ({
     txHash: `0xtx${blockNumber}`,
     logIndex: 0,
     blockNumber,
@@ -62,6 +66,7 @@ describe('BlockchainIndexerService (integration: reorg + idempotency)', () => {
       tokenBalanceRepo,
       checkpointRepo,
       dataSource,
+      new BlockchainStateService(),
     );
   });
 

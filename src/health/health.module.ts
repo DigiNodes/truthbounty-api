@@ -6,6 +6,7 @@ import { JobsModule } from '../jobs/jobs.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { IpfsModule } from '../ipfs/ipfs.module';
 import { BlockchainModule } from '../blockchain/blockchain.module';
+import { MetricsModule } from '../metrics/metrics.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { BlockchainModule } from '../blockchain/blockchain.module';
     NotificationsModule,
     IpfsModule,
     BlockchainModule,
+    MetricsModule,
   ],
   providers: [HealthService],
   controllers: [HealthController],
