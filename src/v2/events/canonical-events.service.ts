@@ -23,7 +23,13 @@ export class CanonicalEventsService {
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly artifacts: ArtifactRegistryService,
     private readonly decoder: EventDecoderService,
+    private readonly indexerConfig: IndexerConfigService,
   ) {}
+
+  private getFinalizedBlock(currentEventBlock: bigint): bigint {
+    const config = this.indexerConfig.getEventIndexerConfig();
+    return currentEventBlock - BigInt(config.confirmationsRequired);
+  }
 
   /**
    * Ingest one raw log. Idempotent: replaying the same (chainId, txHash,
