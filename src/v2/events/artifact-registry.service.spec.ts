@@ -52,13 +52,13 @@ describe('ArtifactRegistryService', () => {
 
   it('fails closed: returns null when no row exists for the address', async () => {
     repo.findOne.mockResolvedValue(null);
-    const resolved = await service.resolve(10, '0xdoesnotexist');
+    const resolved = await service.resolve(10, '0x' + 'cd'.repeat(20));
     expect(resolved).toBeNull();
   });
 
   it('fails closed: the query never matches an unapproved row', async () => {
     repo.findOne.mockResolvedValue(null);
-    await service.resolve(10, '0xnotyetapproved');
+    await service.resolve(10, '0x' + 'de'.repeat(20));
     // eslint-disable-next-line @typescript-eslint/unbound-method -- jest mock assertion, not a real unbound call
     expect(repo.findOne).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -71,8 +71,8 @@ describe('ArtifactRegistryService', () => {
   it('caches a resolved artifact so repeated lookups do not re-query', async () => {
     repo.findOne.mockResolvedValue(artifact());
 
-    await service.resolve(10, '0xabc');
-    await service.resolve(10, '0xabc');
+    await service.resolve(10, artifact().contractAddress);
+    await service.resolve(10, artifact().contractAddress);
     // eslint-disable-next-line @typescript-eslint/unbound-method -- jest mock assertion, not a real unbound call
     expect(repo.findOne).toHaveBeenCalledTimes(1);
   });
@@ -80,9 +80,9 @@ describe('ArtifactRegistryService', () => {
   it('clearCache forces the next resolve to re-query', async () => {
     repo.findOne.mockResolvedValue(artifact());
 
-    await service.resolve(10, '0xabc');
+    await service.resolve(10, artifact().contractAddress);
     service.clearCache();
-    await service.resolve(10, '0xabc');
+    await service.resolve(10, artifact().contractAddress);
     // eslint-disable-next-line @typescript-eslint/unbound-method -- jest mock assertion, not a real unbound call
     expect(repo.findOne).toHaveBeenCalledTimes(2);
   });

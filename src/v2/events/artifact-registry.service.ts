@@ -76,9 +76,15 @@ export class ArtifactRegistryService {
     }
 
     try {
+      const iface = new Interface(row.abi as never[]);
+      if (iface.fragments.length !== row.abi.length || iface.fragments.length === 0) {
+        this.logInvalidArtifact(row, 'ABI is empty or contains invalid fragments');
+        return null;
+      }
+
       const resolved: ResolvedArtifact = {
         artifactVersion: row.artifactVersion,
-        iface: new Interface(row.abi as never[]),
+        iface,
       };
       this.cache.set(key, resolved);
       return resolved;
