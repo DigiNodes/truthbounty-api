@@ -5,6 +5,7 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   Index,
+  Check,
 } from 'typeorm';
 
 export enum EvidenceStatus {
@@ -23,6 +24,14 @@ export enum EvidenceStatus {
  */
 @Entity('v2_project_evidence')
 @Index(['claimId'])
+@Check('chk_v2_evidence_version_positive', '"currentVersion" > 0')
+@Check('chk_v2_evidence_log_nonneg', '"lastEventLogIndex" >= 0')
+@Check('chk_v2_evidence_block_nonneg', '"lastEventBlockNumber" >= 0')
+@Check('chk_v2_evidence_status', "\"status\" IN ('active','removed')")
+@Check(
+  'chk_v2_evidence_ids_present',
+  'length("evidenceId") > 0 AND length("claimId") > 0 AND length("contentDigest") > 0',
+)
 export class ProjectEvidence {
   /** Deterministic id: derived from the claim + evidence slot the protocol assigns. */
   @PrimaryColumn({ type: 'varchar', length: 128 })

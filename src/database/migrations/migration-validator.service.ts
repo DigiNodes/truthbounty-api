@@ -47,3 +47,4 @@ export class MigrationValidatorService implements OnModuleInit {
         }
     }
 }
+// See migration-safety.ts for forward/backward order proofs (issue #464).

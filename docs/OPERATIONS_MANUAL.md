@@ -168,3 +168,11 @@ Covers:
 - **[Disaster Recovery](./DISASTER_RECOVERY.md)** - Backup and restoration procedures
 - **[Evidence Integrity Runbook](./EVIDENCE_INTEGRITY_RUNBOOK.md)** - Evidence integrity operations
 - **[Indexer Runbook](./indexer-runbook.md)** - Blockchain event indexing operations
+## 5. Handling Replaced Blocks and Removed Logs
+
+The V2 indexer records block hashes and removed logs in PostgreSQL. A block hash mismatch stops the cursor transaction before any projection is written; operators must not manually edit projections or advance the cursor.
+
+1. Confirm the RPC endpoint is serving the configured Optimism chain and finalized/safe data.
+2. Inspect `v2_indexer_blocks` for rows with `status = 'replaced'` and `v2_removed_logs` for the affected transaction and log index.
+3. After the canonical RPC view is healthy, replay from the last known safe block using the indexer backfill operation.
+4. Verify the replacement block hash and projection version advance monotonically before resuming delivery.

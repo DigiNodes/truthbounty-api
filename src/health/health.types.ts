@@ -18,12 +18,22 @@ export interface EvidenceIntegrityHealth {
   lastVerificationRun?: string;
 }
 
+export type FailureReasonCode =
+  | 'TIMEOUT'
+  | 'CONNECTION_ERROR'
+  | 'THRESHOLD_EXCEEDED'
+  | 'UNAVAILABLE'
+  | 'UNKNOWN';
+
 export interface DependencyStatus {
   name: string;
   status: HealthStatus;
+  critical: boolean;
+  /** Wall-clock time the probe actually took, measured against a bounded timeout. */
   responseTimeMs: number;
   lastSuccessfulCheck?: string;
   failureReason?: string;
+  failureReasonCode?: FailureReasonCode;
 }
 
 export interface HealthSummary {
@@ -36,6 +46,7 @@ export interface HealthSummary {
 export interface HealthCheckResult {
   status: HealthStatus;
   timestamp: string;
+  checkedAt: string;
   version: string;
   uptime: number;
   environment: string;
@@ -55,12 +66,15 @@ export interface ReadinessResult {
   status: HealthStatus;
   timestamp: string;
   ready: boolean;
+  /** When the underlying dependency checks were actually measured (may predate `timestamp` if served from cache). */
+  checkedAt: string;
   dependencies: DependencyStatus[];
 }
 
 export interface StartupResult {
   status: HealthStatus;
   timestamp: string;
+  checkedAt: string;
   ready: boolean;
   startupComplete: boolean;
   dependencies: DependencyStatus[];
@@ -69,6 +83,7 @@ export interface StartupResult {
 export interface DependencyHealthResult {
   status: HealthStatus;
   timestamp: string;
+  checkedAt: string;
   dependencies: DependencyStatus[];
 }
 

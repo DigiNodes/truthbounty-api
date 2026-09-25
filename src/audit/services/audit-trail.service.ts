@@ -331,20 +331,81 @@ export class AuditTrailService {
     return this.auditLogRepo.findOne({ where: { eventId }, relations: ['user'] });
   }
 
+  /**
+   * Purges audit logs whose custom retention period has expired or whose age exceeds daysToKeep.
+   * Invariant: Never deletes records under active legal hold (retentionUntil > now).
+   */
   async deleteOldLogs(daysToKeep: number): Promise<number> {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
+    const now = new Date();
 
     const query = this.auditLogRepo
       .createQueryBuilder('audit')
       .delete()
-      .where('audit.createdAt < :cutoff AND audit.retentionUntil IS NULL', {
-        cutoff: cutoffDate,
-      });
+      .where(
+        '((audit.retentionUntil IS NOT NULL AND audit.retentionUntil <= :now) OR (audit.retentionUntil IS NULL AND audit.createdAt < :cutoff))',
+        { now, cutoff: cutoffDate },
+      );
 
     const result = await query.execute();
 
     this.logger.log(`Purged ${result.affected || 0} audit logs older than ${daysToKeep} days`);
+    return result.affected || 0;
+  }
+
+  /**
+   * Privacy Control: Scrubs identifiable IP addresses and User-Agents for logs older
+   * than daysToKeepPii, while retaining the audit event structure for security compliance.
+   */
+  async scrubAgedPii(daysToKeepPii: number): Promise<number> {
+    const piiCutoff = new Date();
+    piiCutoff.setDate(piiCutoff.getDate() - daysToKeepPii);
+    const now = new Date();
+
+    const result = await this.auditLogRepo
+      .createQueryBuilder()
+      .update(AuditLog)
+      .set({
+        ipAddress: '0.0.0.0',
+        userAgent: 'REDACTED_PRIVACY_POLICY',
+      })
+      .where(
+        'createdAt < :piiCutoff AND (retentionUntil IS NULL OR retentionUntil <= :now)',
+        { piiCutoff, now },
+      )
+      .andWhere(
+        "(ipAddress != '0.0.0.0' OR userAgent != 'REDACTED_PRIVACY_POLICY')",
+      )
+      .execute();
+
+    this.logger.log(
+      `Scrubbed PII from ${result.affected || 0} audit logs older than ${daysToKeepPii} days`,
+    );
+    return result.affected || 0;
+  }
+
+  /**
+   * Privacy Control: Anonymizes user-specific telemetry upon right-to-erasure request.
+   * Invariant: Disassociates userId and scrubs PII without corrupting immutable on-chain wallet addresses.
+   */
+  async anonymizeUserTelemetry(userId: string): Promise<number> {
+    if (!userId) return 0;
+
+    const result = await this.auditLogRepo
+      .createQueryBuilder()
+      .update(AuditLog)
+      .set({
+        userId: null,
+        ipAddress: '0.0.0.0',
+        userAgent: 'REDACTED_PRIVACY_REQUEST',
+      })
+      .where('userId = :userId', { userId })
+      .execute();
+
+    this.logger.log(
+      `Anonymized telemetry and disassociated user for ${result.affected || 0} audit logs (userId: ${userId})`,
+    );
     return result.affected || 0;
   }
 
