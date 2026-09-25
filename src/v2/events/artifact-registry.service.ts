@@ -40,18 +40,25 @@ export class ArtifactRegistryService {
     chainId: number,
     contractAddress: string,
   ): Promise<ResolvedArtifact | null> {
-    if (!this.isSupportedChain(chainId) || !this.isEvmAddress(contractAddress)) {
+    if (
+      !Number.isInteger(chainId) ||
+      chainId <= 0 ||
+      typeof contractAddress !== 'string' ||
+      contractAddress.trim() === '' ||
+      !/^0x[a-fA-F0-9]{40}$/.test(contractAddress.trim())
+    ) {
       return null;
     }
 
-    const key = this.cacheKey(chainId, contractAddress);
+    const normalizedAddress = contractAddress.trim().toLowerCase();
+    const key = this.cacheKey(chainId, normalizedAddress);
     const cached = this.cache.get(key);
     if (cached) return cached;
 
     const row = await this.artifacts.findOne({
       where: {
         chainId,
-        contractAddress: contractAddress.toLowerCase(),
+        contractAddress: normalizedAddress,
         isApproved: true,
       },
     });

@@ -56,6 +56,14 @@ describe('ArtifactRegistryService', () => {
     expect(resolved).toBeNull();
   });
 
+  it('fails closed: rejects malformed or empty addresses before querying the store', async () => {
+    repo.findOne.mockResolvedValue({} as ContractArtifact);
+
+    await expect(service.resolve(10, '')).resolves.toBeNull();
+    await expect(service.resolve(10, 'not-a-address')).resolves.toBeNull();
+    expect(repo.findOne).not.toHaveBeenCalled();
+  });
+
   it('fails closed: the query never matches an unapproved row', async () => {
     repo.findOne.mockResolvedValue(null);
     await service.resolve(10, '0x' + 'de'.repeat(20));

@@ -1,5 +1,6 @@
 import { Module, Logger } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { EnvironmentValidationService } from './config/environment-validation.service';
 import { BullModule } from '@nestjs/bullmq';
 import { BullBoardModule } from '@bull-board/nestjs';
 import { ExpressAdapter } from '@bull-board/express';
@@ -11,6 +12,8 @@ import { AppService } from './app.service';
 import { RewardsModule } from './rewards/rewards.module';
 import blockchainConfig from './config/blockchain.config';
 import sybilConfig from './config/sybil.config';
+import finalityPolicyConfig from './config/finality-policy.config';
+import { FinalityPolicyModule } from './config/finality-policy.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { DatabaseModule } from './database/database.module';
 import { BlockchainModule } from './blockchain/blockchain.module';
@@ -44,6 +47,7 @@ import { V2EventsModule } from './v2/events/v2-events.module';
 import { V2EvidenceModule } from './v2/evidence/v2-evidence.module';
 import { V2VerificationModule } from './v2/verification/v2-verification.module';
 import { V2DisputesModule } from './v2/disputes/v2-disputes.module';
+import { V2ProjectionModule } from './v2/projection/v2-projection.module';
 import { ProfilerModule } from './profiler/profiler.module';
 import { ProfilerInterceptor } from './profiler/profiler.interceptor';
 import { HealthModule } from './health/health.module';
@@ -263,9 +267,10 @@ async function createThrottlerStorage(
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [blockchainConfig, throttlerConfig, sybilConfig],
+      load: [blockchainConfig, throttlerConfig, sybilConfig, finalityPolicyConfig],
       envFilePath: ['.env.local', '.env'],
     }),
+    FinalityPolicyModule,
     ScheduleModule.forRoot(),
     // PostgreSQL Database Infrastructure (Issue #269)
     // DatabaseModule provides:
@@ -332,6 +337,7 @@ async function createThrottlerStorage(
     V2EvidenceModule,
     V2VerificationModule,
     V2DisputesModule,
+    V2ProjectionModule,
     ProfilerModule,
     HealthModule,
     FeatureFlagsModule,
@@ -341,6 +347,7 @@ async function createThrottlerStorage(
   controllers: [AppController],
   providers: [
     AppService,
+    EnvironmentValidationService,
     {
       provide: APP_GUARD,
       useClass: GlobalAuthGuard,

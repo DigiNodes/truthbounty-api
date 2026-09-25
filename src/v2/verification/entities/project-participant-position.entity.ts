@@ -5,6 +5,7 @@ import {
   CreateDateColumn,
   Index,
   Unique,
+  Check,
 } from 'typeorm';
 import { DataState } from '../../common/data-state.enum';
 
@@ -16,10 +17,30 @@ import { DataState } from '../../common/data-state.enum';
  * protocol outcome logic in the API is an explicit non-goal of this issue.
  * All three are decimal strings, never floating point.
  */
-@Entity('v2_project_participant_position')
+@Entity('v2_project_participant_position', {
+  foreignKeys: [
+    {
+      columnNames: ['roundId'],
+      referencedTableName: 'v2_project_verification_round',
+      referencedColumnNames: ['roundId'],
+      onDelete: 'CASCADE',
+      onUpdate: 'CASCADE',
+    },
+  ],
+})
 @Unique('uq_v2_position_event', ['eventTxHash', 'eventLogIndex'])
 @Unique('uq_v2_position_participant_round', ['roundId', 'participant'])
 @Index(['roundId'])
+@Check('chk_v2_position_block_nonneg', '"blockNumber" >= 0')
+@Check('chk_v2_position_log_nonneg', '"eventLogIndex" >= 0')
+@Check(
+  'chk_v2_position_data_state',
+  "\"dataState\" IN ('observed','safe','finalized')",
+)
+@Check(
+  'chk_v2_position_ids_present',
+  'length("roundId") > 0 AND length("participant") > 0 AND length("stake") > 0 AND length("eventTxHash") = 66',
+)
 export class ProjectParticipantPosition {
   @PrimaryGeneratedColumn('uuid')
   id: string;
