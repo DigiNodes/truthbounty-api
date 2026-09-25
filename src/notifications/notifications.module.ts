@@ -8,6 +8,7 @@ import { RedisModule } from '../redis/redis.module';
 import { LoggerModule } from '../logger/logger.module';
 import { MetricsModule } from '../metrics/metrics.module';
 import { AuthModule } from '../auth/auth.module';
+import { OutboxModule } from '../outbox/outbox.module';
 import { NotificationsController } from './controllers/notifications.controller';
 import { InternalNotificationController } from './controllers/internal-notification.controller';
 import { NotificationsService } from './services/notifications.service';
@@ -50,6 +51,7 @@ import { DeliveryHistory } from './entities/delivery-history.entity';
     LoggerModule,
     MetricsModule,
     AuthModule,
+    OutboxModule,
   ],
   controllers: [NotificationsController, InternalNotificationController],
   providers: [
