@@ -9,6 +9,7 @@ import { JobsService } from '../jobs/jobs.service';
 import { BlockchainStateService } from '../blockchain/state.service';
 import { MetricsService } from '../metrics/metrics.service';
 import { DatabaseReadinessService } from '../database/database-readiness.service';
+import { classifyFailure, withTimeout } from './utils/bounded-probe.util';
 import {
   DependencyHealthResult,
   DependencyStatus,
@@ -24,8 +25,19 @@ import {
 interface CheckConfig {
   name: string;
   critical: boolean;
+  timeoutMs: number;
   check: () => Promise<void>;
 }
+
+/**
+ * How long a completed dependency-check pass may be reused for. Readiness is
+ * called frequently by orchestrators/load balancers; without a bound here
+ * every public hit would fan out to every subsystem (including a real IPFS
+ * write). The cache is short enough that "ready" can never mask an outage
+ * for longer than this window, and every response reports `checkedAt` so
+ * callers can see they received a cached measurement rather than a live one.
+ */
+const CHECK_CACHE_TTL_MS = 3000;
 
 @Injectable()
 export class HealthService {
@@ -35,6 +47,9 @@ export class HealthService {
   private appVersion: string;
   private readonly environment = process.env.NODE_ENV ?? 'development';
   private shuttingDown = false;
+
+  private cachedChecks: { checkedAt: number; result: DependencyStatus[] } | null = null;
+  private inFlightChecks: Promise<DependencyStatus[]> | null = null;
 
   constructor(
     private readonly dataSource: DataSource,
@@ -51,6 +66,10 @@ export class HealthService {
   }
 
   getLiveness(): LivenessResult {
+    // Liveness must never touch a dependency: it answers "is the process
+    // alive", not "can it serve traffic". Mixing the two makes a slow
+    // downstream dependency trigger process restarts instead of just
+    // pulling the pod out of rotation via readiness.
     return {
       status: 'alive',
       timestamp: new Date().toISOString(),
@@ -63,53 +82,50 @@ export class HealthService {
       return {
         status: 'unhealthy',
         timestamp: new Date().toISOString(),
+        checkedAt: new Date().toISOString(),
         ready: false,
         dependencies: [],
       };
     }
 
-    const dependencies = await this.runChecks();
-    const unhealthyCritical = dependencies.some(
-      (d) => d.status === 'unhealthy',
-    );
-    const status = unhealthyCritical
-      ? 'unhealthy'
-      : dependencies.some((d) => d.status === 'degraded')
-        ? 'degraded'
-        : 'healthy';
+    const { dependencies, checkedAt } = await this.getChecks();
+    const status = this.aggregateStatus(dependencies);
 
     return {
       status,
       timestamp: new Date().toISOString(),
+      checkedAt: new Date(checkedAt).toISOString(),
       ready: status !== 'unhealthy',
       dependencies,
     };
   }
 
   async getStartup(): Promise<StartupResult> {
-    const dependencies = await this.runChecks();
+    const { dependencies, checkedAt } = await this.getChecks();
     const status = this.aggregateStatus(dependencies);
 
     return {
       status,
       timestamp: new Date().toISOString(),
+      checkedAt: new Date(checkedAt).toISOString(),
       ready: status !== 'unhealthy',
       startupComplete: !this.shuttingDown,
       dependencies,
     };
   }
 
-  getDependencyHealth(): DependencyHealthResult {
-    const dependencies = Array.from(this.lastSuccess.keys()).map((name) => ({
-      name,
-      status: 'healthy' as HealthStatus,
-      responseTimeMs: 0,
-      lastSuccessfulCheck: this.lastSuccess.get(name),
-    }));
+  async getDependencyHealth(): Promise<DependencyHealthResult> {
+    // Previously this synthesized results from a name list with a hardcoded
+    // 0ms response time and an unconditional 'healthy' status, regardless of
+    // whether the dependency was actually reachable. That's the exact
+    // fabricated-optimism failure mode this endpoint exists to prevent, so
+    // it now shares the same bounded, cached probe pass as readiness.
+    const { dependencies, checkedAt } = await this.getChecks();
 
     return {
       status: this.aggregateStatus(dependencies),
       timestamp: new Date().toISOString(),
+      checkedAt: new Date(checkedAt).toISOString(),
       dependencies,
     };
   }
@@ -125,7 +141,7 @@ export class HealthService {
   }
 
   async getHealth(): Promise<HealthCheckResult> {
-    const dependencies = await this.runChecks();
+    const { dependencies, checkedAt } = await this.getChecks();
     const diagnostics = await this.collectDiagnostics();
     const services = this.aggregateServices(dependencies);
     const status = this.aggregateStatus(dependencies);
@@ -133,6 +149,7 @@ export class HealthService {
     return {
       status,
       timestamp: new Date().toISOString(),
+      checkedAt: new Date(checkedAt).toISOString(),
       version: this.appVersion,
       environment: this.environment,
       uptime: this.getUptime(),
@@ -147,36 +164,67 @@ export class HealthService {
     this.shuttingDown = true;
   }
 
+  /**
+   * Returns a recent bounded dependency-check pass, reusing an in-flight or
+   * recently-completed pass instead of re-querying every subsystem on every
+   * call. Concurrent callers within the same tick share one in-flight
+   * check (dedupe); callers within `CHECK_CACHE_TTL_MS` of the last
+   * completed pass reuse its result.
+   */
+  private async getChecks(): Promise<{ dependencies: DependencyStatus[]; checkedAt: number }> {
+    const now = Date.now();
+    if (this.cachedChecks && now - this.cachedChecks.checkedAt < CHECK_CACHE_TTL_MS) {
+      return { dependencies: this.cachedChecks.result, checkedAt: this.cachedChecks.checkedAt };
+    }
+
+    if (!this.inFlightChecks) {
+      this.inFlightChecks = this.runChecks().finally(() => {
+        this.inFlightChecks = null;
+      });
+    }
+
+    const dependencies = await this.inFlightChecks;
+    const checkedAt = Date.now();
+    this.cachedChecks = { checkedAt, result: dependencies };
+    return { dependencies, checkedAt };
+  }
+
   private async runChecks(): Promise<DependencyStatus[]> {
     const configs: CheckConfig[] = [
       {
         name: 'database',
         critical: true,
+        timeoutMs: 2000,
         check: () => this.checkDatabase(),
       },
       {
         name: 'redis',
         critical: false,
+        timeoutMs: 1000,
         check: () => this.checkRedis(),
       },
       {
         name: 'queue',
         critical: true,
+        timeoutMs: 2000,
         check: () => this.checkQueue(),
       },
       {
         name: 'notifications',
         critical: false,
+        timeoutMs: 1500,
         check: () => this.checkNotifications(),
       },
       {
         name: 'ipfs',
         critical: false,
+        timeoutMs: 3000,
         check: () => this.checkIpfs(),
       },
       {
         name: 'blockchain',
         critical: true,
+        timeoutMs: 2000,
         check: () => this.checkBlockchain(),
       },
     ];
@@ -185,24 +233,30 @@ export class HealthService {
       configs.map(async (config) => {
         const start = Date.now();
         try {
-          await config.check();
+          await withTimeout(config.name, config.timeoutMs, config.check);
           const now = new Date().toISOString();
           this.lastSuccess.set(config.name, now);
           return {
             name: config.name,
             status: 'healthy' as HealthStatus,
+            critical: config.critical,
             responseTimeMs: Date.now() - start,
             lastSuccessfulCheck: this.lastSuccess.get(config.name),
           };
         } catch (error) {
-          const reason = error instanceof Error ? error.message : String(error);
-          this.logger.warn(`Health check failed for ${config.name}: ${reason}`);
+          const { reason, reasonCode } = classifyFailure(error);
+          this.logger.warn(`Health check failed for ${config.name} [${reasonCode}]: ${reason}`);
           return {
             name: config.name,
+            // Fail closed: any probe that errors or times out is treated as
+            // unhealthy for critical dependencies, degraded otherwise. There
+            // is no "assume healthy" fallback path.
             status: config.critical ? 'unhealthy' : 'degraded',
+            critical: config.critical,
             responseTimeMs: Date.now() - start,
             lastSuccessfulCheck: this.lastSuccess.get(config.name),
             failureReason: reason,
+            failureReasonCode: reasonCode,
           };
         }
       }),
@@ -259,8 +313,14 @@ export class HealthService {
     }
     this.metricsService.setBlockchainIndexingState(state.lastProcessedBlock);
 
+    // Fail closed if the indexer is degraded per alert thresholds
+    // (projection lag, RPC failure rate, dead-letter count) or has never
+    // observed a head/finalized cursor.
     const health = await this.blockchainStateService.getIndexerHealth();
     if (health.status === 'unhealthy') {
+      throw new Error('Indexer health is unavailable: missing head/finality cursors');
+    }
+    if (health.status === 'degraded') {
       throw new Error('Indexer health is degraded beyond alert thresholds');
     }
   }
@@ -298,11 +358,15 @@ export class HealthService {
 
     try {
       const start = Date.now();
-      await this.dataSource.query('SELECT 1');
+      await withTimeout('database-diagnostics', 2000, () =>
+        this.dataSource.query('SELECT 1'),
+      );
       const latencyMs = Date.now() - start;
 
-      const appliedMigrations = await this.dataSource.query(
-        'SELECT COUNT(*) as count FROM migrations',
+      const appliedMigrations = await withTimeout(
+        'database-migrations',
+        2000,
+        () => this.dataSource.query('SELECT COUNT(*) as count FROM migrations'),
       );
       const totalMigrations = this.dataSource.migrations?.length || 0;
       const pool = (this.dataSource.driver as any).master;

@@ -3,12 +3,14 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
 import { BullModule } from '@nestjs/bullmq';
 import { AuditLog } from './entities/audit-log.entity';
+import { Admin } from '../admin/entities/admin.entity';
 import { AuditTrailService } from './services/audit-trail.service';
 import { AuditRetentionService } from './services/audit-retention.service';
 import { AuditQueueService, AUDIT_QUEUE_NAME } from './services/audit-queue.service';
 import { ComplianceService } from './services/compliance.service';
 import { SecurityMonitoringService } from './services/security-monitoring.service';
 import { AuditMetricsService } from './services/audit-metrics.service';
+import { AdminAuditService } from './services/admin-audit.service';
 import { AuditController } from './controllers/audit-log.controller';
 import { AuditLoggingInterceptor } from './interceptors/audit-logging.interceptor';
 import { AuditLogProcessor } from './processors/audit-log.processor';
@@ -16,7 +18,7 @@ import { AuditLogProcessor } from './processors/audit-log.processor';
 @Global()
 @Module({
   imports: [
-    TypeOrmModule.forFeature([AuditLog]),
+    TypeOrmModule.forFeature([AuditLog, Admin]),
     ScheduleModule,
     BullModule.registerQueue({
       name: AUDIT_QUEUE_NAME,
@@ -36,6 +38,7 @@ import { AuditLogProcessor } from './processors/audit-log.processor';
     ComplianceService,
     SecurityMonitoringService,
     AuditMetricsService,
+    AdminAuditService,
     AuditLogProcessor,
   ],
   controllers: [AuditController],
@@ -46,6 +49,7 @@ import { AuditLogProcessor } from './processors/audit-log.processor';
     ComplianceService,
     SecurityMonitoringService,
     AuditMetricsService,
+    AdminAuditService,
   ],
 })
 export class AuditModule {}
