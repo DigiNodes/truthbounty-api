@@ -1,0 +1,142 @@
+name: CodeQL Scheduled Analysis
+
+# ---------------------------------------------------------------------------
+# Issue #497 — "Enforce CodeQL and Static Security Analysis".
+#
+# WHAT THIS CLOSES
+# `.github/workflows/ci.yml` already runs CodeQL, but only on:
+#     push:        branches: [main]
+#     pull_request: branches: [main]
+# That means a CodeQL *query* or *scanner* update published by GitHub after
+# the last PR is never applied to the default branch. A new
+# `js/injection`-style query, or a new taint-mode model for a library this
+# repo uses, silently produces zero alerts until the next unrelated PR lands.
+# For a project that indexes a financial protocol, an unnoticed new finding on
+# the default branch is exactly the failure mode you cannot detect by
+# reviewing PRs.
+#
+# THIS WORKFLOW FILLS THAT GAP. It does not replace or duplicate the ci.yml
+# job; both run, and they upload to the same SARIF stream. ci.yml remains
+# owned by a parallel PR (#497 follow-on) which is responsible for pinning
+# and least-privileging that job — see the "Known gaps" section of
+# docs/STATIC_ANALYSIS.md.
+# ---------------------------------------------------------------------------
+
+on:
+  schedule:
+    # Weekly, Monday 03:17 UTC. Deliberately off the hour: GitHub's shared
+    # scheduler queue is heavily oversubscribed on the hour, and a scheduled
+    # job that lands in that queue can be delayed by 10+ minutes or dropped.
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+    inputs:
+      target_ref:
+        description: 'Branch, tag, or SHA to analyze (defaults to the default branch)'
+        required: false
+        type: string
+
+# Least privilege at the workflow level. `security-events: write` is the only
+# permission CodeQL genuinely needs -- it is what allows the SARIF upload --
+# and `contents: read` is what allows checkout. Nothing here grants write
+# access to the repository, packages, deployments, or issues.
+permissions:
+  contents: read
+  security-events: write
+
+# Never cancel an in-flight analysis. Two overlapping CodeQL runs uploading
+# SARIF for the same ref race, and the loser's alerts can be dropped from the
+# security view. Queueing is the correct behaviour for a scheduled job.
+concurrency:
+  group: codeql-schedule-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  analyze:
+    name: Analyze JavaScript/TypeScript
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    # Restated per-job, because a workflow-level block can be widened by a
+    # future edit and the job is what actually runs.
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Resolve target ref
+        id: target
+        env:
+          # Passed through the environment rather than interpolated directly
+          # into the shell, so a hostile ref string cannot become script.
+          INPUT_TARGET_REF: ${{ inputs.target_ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -eu
+          ref="${INPUT_TARGET_REF:-${DEFAULT_BRANCH:-}}"
+          if [ -z "$ref" ]; then
+            echo "::error::No default branch available in the event payload; re-run with an explicit target_ref."
+            exit 1
+          fi
+          echo "Analyzing ref: $ref"
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.target.outputs.ref }}
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          languages: javascript-typescript
+          config-file: ./.github/codeql/config.yml
+          # JavaScript/TypeScript is analysed from source; there is no
+          # compiler step to trace. `none` avoids invoking `npm ci` +
+          # `npm run build` inside the analysis job, which is both slow and a
+          # second, redundant copy of whatever `build-and-test` in ci.yml
+          # already gates on. It also means an unrelated build failure cannot
+          # mask or fake a static-analysis result.
+          build-mode: 'none'
+          # Analysis starts from a clean slate: a partial previous run's cache
+          # must never be able to suppress an alert.
+          clean: 'true'
+          #
+          # `fail-on-errors` is deliberately left at its default (true). That
+          # flag governs *analysis errors* — a malformed config file, an
+          # extractor crash, an upload failure — and those must fail the run
+          # loudly. A red scheduled job saying "the scanner broke" is a
+          # correct, actionable result. Alert counts are a separate question:
+          # this workflow does not turn new alerts into a build failure,
+          # because alert triage is a review process, not a compile step.
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          category: '/language:javascript-typescript'
+          # Explicit rather than implicit, so that a future bump of the action
+          # cannot quietly flip the default and leave a green run with no
+          # SARIF in the security tab.
+          upload-sarif: 'true'
+          # Block until the results are committed to the security view. Without
+          # this the job can go green before the upload lands, and a
+          # "successful" scan whose alerts never appeared is worse than a
+          # visible failure.
+          wait-for-processing: true
+
+      - name: Summarise run
+        if: always()
+        env:
+          ANALYZED_REF: ${{ steps.target.outputs.ref }}
+        run: |
+          {
+            echo "### CodeQL scheduled analysis"
+            echo
+            echo "- **Ref analyzed:** \`${ANALYZED_REF}\`"
+            echo "- **Suites:** default + \`security-extended\` + \`security-and-quality\`"
+            echo "- **Config:** \`.github/codeql/config.yml\`"
+            echo "- **Trigger:** ${{ github.event_name }}"
+            echo
+            echo "Alert counts and per-alert detail are in the repository's"
+            echo "**Security → Code scanning** tab. Triage and suppression policy:"
+            echo "\`docs/STATIC_ANALYSIS.md\`."
+          } >> "$GITHUB_STEP_SUMMARY"

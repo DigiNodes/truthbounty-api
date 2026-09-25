@@ -1,13 +1,81 @@
-node_modules
-coverage
-dist
-.env
-.DS_Store
+# ---------------------------------------------------------------------------
+# #498 — build-context hygiene.
+#
+# Everything listed here is excluded from the context the Docker daemon
+# receives. This is the control that makes "no secrets in the image" true by
+# construction rather than by review: a file that is not in the context cannot
+# be captured in a layer, and cannot survive in a layer cache either.
+#
+# Only `package*.json`, `package-lock.json`, `nest-cli.json`, `tsconfig*.json`,
+# `prisma/`, and `src/` are actually needed to build. Everything else is
+# dead weight in the context and a liability if it leaks.
+# ---------------------------------------------------------------------------
+
+# --- Version control & CI -------------------------------------------------
+# Git history is large and can contain credentials in past commits.
 .git
 .gitignore
-Dockerfile
-docker-compose.yml
+.gitattributes
+.github
+
+# --- Dependencies & build output -----------------------------------------
+# Never ship a host node_modules or a stale dist into the image: both are
+# rebuilt inside the builder stage against the pinned lockfile.
+node_modules
+dist
+build
+coverage
+.nyc_output
+*.tsbuildinfo
+
+# --- Environment files ----------------------------------------------------
+# A real .env (or any variant) must never reach the daemon, a layer, or a
+# cache entry. `.env.example` is the deliberate exception: it is checked-in
+# documentation of the variable NAMES the image expects, contains no values,
+# and is what an operator copies to .env on first run.
+.env
+.env.*
+!.env.example
+
+# --- Local databases / dev state -----------------------------------------
+# Local SQLite files are developer state, never part of a runtime image.
+database.sqlite
+dev.db
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+prisma/*.db
+
+# --- Tests, fixtures & scratch output -------------------------------------
 test
+coverage-reports
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+run-tests.js
+test-ip-security.js
+commit-fix.sh
+git_automate.py
+*.pid
+pids
+
+# --- Editor / OS cruft ---------------------------------------------------
 .vscode
-npm-debug.log
+.idea
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# --- Docker control files (not needed inside the image) ------------------
+Dockerfile
+.dockerignore
+docker-compose.yml
+docker-compose.*.yml
+
+# --- Documentation --------------------------------------------------------
+# Large, and irrelevant at runtime. The contract-relevant content lives in
+# docs/CONTAINER_IMAGE.md in the repository, not baked into the image.
 *.md
