@@ -100,6 +100,40 @@ Notes:
 - Block heights are strings so values beyond `Number.MAX_SAFE_INTEGER` keep
   full precision; cross-driver (PostgreSQL/SQLite) normalization is applied.
 
+## Protocol projection DB constraints (issue396)
+
+Enforced at the database boundary by migration
+`1769800500000-EnforceProtocolProjectionConstraints` (plus matching
+`@Check`/`@Unique`/FK decorators on the TypeORM entities so
+`synchronize:true` sqlite test DBs enforce the same rules):
+
+- FKs: `v2_project_evidence_version.evidenceId -> v2_project_evidence`,
+  `v2_project_participant_position.roundId -> v2_project_verification_round`
+  (`ON DELETE/UPDATE CASCADE`). `v2_project_dispute.originalRoundId` has no
+  hard FK by design: disputes tolerate out-of-order arrival via the
+  `invalid_transition`/`out_of_order` anomaly path.
+- UNIQUEs: canonical event identity `(chainId,txHash,logIndex)`,
+  per-projector `(eventTxHash,eventLogIndex)`, anomaly dedup
+  `(sourceModule,kind,aggregateId,eventTxHash,eventLogIndex)`.
+- CHECKs: `chainId > 0`, `logIndex >= 0`, `blockNumber >= 0`,
+  `version/roundNumber > 0`, enum allow-lists for
+  `status/dataState/roundType/quarantine reason/anomaly kind`, canonical
+  identifiers (`txHash` length 66, `disputeId LIKE '%:%'`),
+  `lastFinalizedBlock <= lastSafeBlock`.
+- Immutable final state (fail closed, observable): Postgres triggers reject
+  `resolved/expired -> *` dispute mutations, `closed/resolved -> open` round
+  mutations, and any UPDATE/DELETE on append-only
+  `v2_project_evidence_version`. Projectors already record rejected
+  transitions as `v2_indexing_anomalies` instead of mutating; the triggers
+  make illegal states unrepresentable even on direct DB writes.
+- Prisma remains canonical for User/Wallet/Sybil/AI/Analytics. This change
+  adds constraints only — no new TypeORM tables, no dual-persistence drift,
+  no settlement/rewards/treasury authority, no Stellar/Soroban/Freighter deps.
+
+Failures are bounded/redacted: unique/check/FK violations surface as
+duplicate-skips or anomalies with `txPrefix:logIndex` coordinates only (see
+`src/v2/common/projection-constraints.ts`); never raw payloads or secrets.
+
 ## Supporting interfaces
 
 - `BlockchainStateService` (`src/blockchain/state.service.ts`) — source of truth for

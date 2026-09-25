@@ -5,6 +5,7 @@ import {
   CreateDateColumn,
   Index,
   Unique,
+  Check,
 } from 'typeorm';
 
 /**
@@ -21,6 +22,11 @@ import {
 @Entity('v2_contract_artifacts')
 @Unique('uq_v2_contract_artifact_address', ['chainId', 'contractAddress'])
 @Index(['isApproved'])
+@Check('chk_v2_artifact_chain_positive', '"chainId" > 0')
+@Check(
+  'chk_v2_artifact_version_present',
+  'length("artifactVersion") > 0 AND length("contractAddress") > 0',
+)
 export class ContractArtifact {
   @PrimaryGeneratedColumn('uuid')
   id: string;

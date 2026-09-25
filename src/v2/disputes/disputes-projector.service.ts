@@ -155,6 +155,7 @@ export class DisputesProjectorService {
         deadline: readDate(event.payload, 'deadline'),
         eventTxHash: event.txHash,
         eventLogIndex: event.logIndex,
+        blockNumber: event.blockNumber,
       });
       return 'applied';
     } catch (err) {
@@ -213,6 +214,7 @@ export class DisputesProjectorService {
     dispute.status = nextStatus;
     dispute.eventTxHash = event.txHash;
     dispute.eventLogIndex = event.logIndex;
+    dispute.blockNumber = event.blockNumber;
     if (nextStatus === DisputeStatus.RESOLVED) {
       dispute.resolvedOutcome = readString(event.payload, 'outcome');
     }
