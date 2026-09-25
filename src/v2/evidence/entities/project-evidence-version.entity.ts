@@ -29,6 +29,7 @@ import {
 @Unique('uq_v2_evidence_version', ['evidenceId', 'version'])
 @Unique('uq_v2_evidence_version_event', ['eventTxHash', 'eventLogIndex'])
 @Index(['evidenceId'])
+@Check('chk_v2_evidence_version_number_positive', `"version" > 0`)
 @Check('chk_v2_evidence_v_version_positive', '"version" > 0')
 @Check('chk_v2_evidence_v_log_nonneg', '"eventLogIndex" >= 0')
 @Check('chk_v2_evidence_v_block_nonneg', '"blockNumber" >= 0')

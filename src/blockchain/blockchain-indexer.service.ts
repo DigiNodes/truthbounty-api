@@ -10,7 +10,10 @@ import { ProcessedEvent } from './entities/processed-event.entity';
 import { TokenBalance } from './entities/token-balance.entity';
 import { IndexerCheckpoint } from './entities/indexer-checkpoint.entity';
 import { BlockchainStateService } from './state.service';
-import { BlockchainEvent, TransferEventData } from './interfaces/blockchain-event.interface';
+import {
+  BlockchainEvent,
+  TransferEventData,
+} from './interfaces/blockchain-event.interface';
 import { ClaimsCache } from '../cache/claims.cache';
 import { SequentialQueue } from './utils/sequential-queue';
 
@@ -73,16 +76,26 @@ export class BlockchainIndexerService {
         logIndex,
         blockNumber,
         eventType,
-        payload: (data as Record<string, any>) ?? null,
+        payload: data ?? null,
       });
       await queryRunner.manager.save(ProcessedEvent, processedEvent);
 
-      // Apply the state mutation for this event type.
+      // Apply the state mutation for this event type, and track which
+      // claims (if any) it actually affects so cache invalidation below
+      // can be projection-aware instead of a blanket flush on every
+      // event. `undefined` (the SequentialQueue's other event types, once
+      // added, that haven't been taught to report their affected claims
+      // yet) still falls back to the safe "invalidate everything" default
+      // in ClaimsCache.invalidateForProjectionUpdate.
+      let affectedClaimIds: string[] | undefined;
       if (eventType === 'Transfer') {
         await this.applyTransfer(
           queryRunner.manager,
           data as TransferEventData,
         );
+        // A Transfer only mutates TokenBalance rows, which the claims
+        // cache never reflects, so no claim is affected by this event.
+        affectedClaimIds = [];
       }
 
       // Advance the checkpoint inside the SAME transaction so the event, the
@@ -92,11 +105,13 @@ export class BlockchainIndexerService {
 
       await queryRunner.commitTransaction();
       this.logger.log(`Processed event: ${eventType} at block ${blockNumber}`);
-      
-      // Invalidate cache after successfully committing a projection change
-      // In a production system, you'd track which claim IDs are affected by this event
-      // For safety, we invalidate all claims cache to ensure no stale data is served
-      await this.claimsCache.invalidateForProjectionUpdate();
+
+      // Invalidate cache after successfully committing a projection change.
+      // Passing the actual affected claim IDs (an empty array included)
+      // is what makes this projection-aware: a Transfer event no longer
+      // pays for (and risks the thundering-herd effect of) flushing the
+      // entire claims cache on every single indexed event.
+      await this.claimsCache.invalidateForProjectionUpdate(affectedClaimIds);
     } catch (error) {
       await queryRunner.rollbackTransaction();
       this.logger.error(
@@ -162,7 +177,7 @@ export class BlockchainIndexerService {
         `Rolled back ${orphaned.length} event(s); checkpoint rewound to block ${rewoundTo}`,
       );
       await this.stateService.recordReplay(orphaned.length);
-      
+
       // Invalidate all cache after rolling back events during a reorg
       // This is critical to ensure we never serve stale data based on orphaned chain state
       await this.claimsCache.invalidateAllForReorg();

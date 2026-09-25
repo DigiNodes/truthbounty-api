@@ -24,6 +24,8 @@ export enum EvidenceStatus {
  */
 @Entity('v2_project_evidence')
 @Index(['claimId'])
+@Check('chk_v2_evidence_status', `"status" IN ('active', 'removed')`)
+@Check('chk_v2_evidence_version_positive', `"currentVersion" > 0`)
 @Check('chk_v2_evidence_version_positive', '"currentVersion" > 0')
 @Check('chk_v2_evidence_log_nonneg', '"lastEventLogIndex" >= 0')
 @Check('chk_v2_evidence_block_nonneg', '"lastEventBlockNumber" >= 0')

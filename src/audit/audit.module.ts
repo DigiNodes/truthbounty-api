@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
 import { BullModule } from '@nestjs/bullmq';
 import { AuditLog } from './entities/audit-log.entity';
+import { AuditChainState } from './entities/audit-chain-state.entity';
 import { Admin } from '../admin/entities/admin.entity';
 import { AuditTrailService } from './services/audit-trail.service';
 import { AuditRetentionService } from './services/audit-retention.service';
@@ -18,6 +19,7 @@ import { AuditLogProcessor } from './processors/audit-log.processor';
 @Global()
 @Module({
   imports: [
+    TypeOrmModule.forFeature([AuditLog, AuditChainState]),
     TypeOrmModule.forFeature([AuditLog, Admin]),
     ScheduleModule,
     BullModule.registerQueue({

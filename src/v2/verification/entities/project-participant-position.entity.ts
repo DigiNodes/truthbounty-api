@@ -31,6 +31,9 @@ import { DataState } from '../../common/data-state.enum';
 @Unique('uq_v2_position_event', ['eventTxHash', 'eventLogIndex'])
 @Unique('uq_v2_position_participant_round', ['roundId', 'participant'])
 @Index(['roundId'])
+@Check(
+  'chk_v2_position_data_state',
+  `"dataState" IN ('observed', 'safe', 'finalized')`,
 @Check('chk_v2_position_block_nonneg', '"blockNumber" >= 0')
 @Check('chk_v2_position_log_nonneg', '"eventLogIndex" >= 0')
 @Check(
