@@ -5,6 +5,7 @@ import {
   CreateDateColumn,
   Index,
   Unique,
+  Check,
 } from 'typeorm';
 
 export enum QuarantineReason {
@@ -22,6 +23,13 @@ export enum QuarantineReason {
 @Entity('v2_event_quarantine')
 @Unique('uq_v2_quarantine_identity', ['chainId', 'txHash', 'logIndex'])
 @Index(['reason'])
+@Check('chk_v2_quarantine_chain_positive', '"chainId" > 0')
+@Check('chk_v2_quarantine_log_nonneg', '"logIndex" >= 0')
+@Check('chk_v2_quarantine_block_nonneg', '"blockNumber" >= 0')
+@Check(
+  'chk_v2_quarantine_reason',
+  "\"reason\" IN ('unregistered_address','unknown_signature','artifact_drift','decode_error')",
+)
 export class EventQuarantine {
   @PrimaryGeneratedColumn('uuid')
   id: string;

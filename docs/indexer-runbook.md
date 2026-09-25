@@ -25,6 +25,12 @@ All values are exposed via:
 
 - `GET /health/indexer` — sanitized JSON health snapshot (see `IndexerHealthSnapshot`).
 - `GET /metrics` — Prometheus text format (Bearer-token protected via `MetricsAuthGuard`).
+- `GET /v2/projections/freshness` — per-projector freshness and finality
+  metadata (`v2-evidence`, `v2-verification`, `v2-disputes`, plus any extra
+  persisted projector cursors). `GET /v2/projections/freshness/:projectorName`
+  returns a single projector. Public read-only GET surface (no auth required,
+  no mutation handlers); failures are bounded and fail closed (see
+  `ProjectionFreshness` in `src/v2/projection/`).
 
 ## Alert thresholds (defaults)
 
@@ -67,118 +73,66 @@ safe: it is idempotent (unique index on `(transactionHash, logIndex, eventType)`
 and state mutations and the checkpoint commit atomically in a single transaction.
 Replays are monotonic and observable via `indexer_replay_count_total`.
 
-## V2-BE-125 — Adaptive Historical Backfill
+## Projection freshness fields (V2)
 
-This section documents the behaviour changes introduced by V2-BE-125. All changes
-are observable and fail-closed; no protocol state is mutated by the indexer.
+Each entry in `GET /v2/projections/freshness` reports:
 
-### Adaptive range halving (fix 1.1)
+| Field | Meaning |
+| ----- | ------- |
+| `projectorName` | Cursor name, e.g. `v2-evidence`. |
+| `indexedBlock` | Highest canonical-event block applied by the projector (`null` if never ran). |
+| `finalizedHeight` | Highest finalized block known — DB checkpoints primary, indexer snapshot fallback (`null` + `finality-unavailable` when unknown). |
+| `safeHeight` | Highest safe block known, same sourcing as finalized. |
+| `observedHead` | Live observed head from the indexer snapshot (`null` when unavailable). |
+| `headDistance` | `observedHead - indexedBlock` as a bigint-safe string (`null` when either side unknown). |
+| `lastSuccess` | ISO timestamp of the cursor's last advance (`null` if never ran). |
+| `status` | `healthy` / `degraded` / `unhealthy` (unhealthy wins over degraded). |
+| `degradedReason` | Semicolon-joined machine-readable reasons (`cursor-missing`, `finality-unavailable`, `indexer-degraded`, `indexer-unhealthy`, `indexer-health-unavailable`, …) or `null` when healthy. |
+| `dataState` | `observed` / `safe` / `finalized` for the projector's `indexedBlock`. |
 
-When a provider rejects a `getLogs` range as too large (error codes: `-32005`,
-`Log response size exceeded`, `query returned more than`, etc.) the indexer
-automatically halves the requested block range and retries. It keeps halving until
-the request succeeds or the range reaches `MIN_BATCH_SIZE_FLOOR` (default: 1 block).
+Notes:
 
-Each halving step is logged at `WARN` level. The effective batch size is permanently
-reduced for the remainder of the current backfill pass, then reset at the start of
-the next `backfillFromBlock` call.
+- The endpoints are derived read models only: they never settle protocol
+  state, sign transactions, or compute verdicts.
+- `lastFinalizedBlock` in `v2_event_checkpoints` is advanced by ingestion;
+  until a checkpoint row exists, heights fall back to the live snapshot and
+  the report names the gap via `degradedReason` instead of guessing.
+- Block heights are strings so values beyond `Number.MAX_SAFE_INTEGER` keep
+  full precision; cross-driver (PostgreSQL/SQLite) normalization is applied.
 
-**Action required**: if you see repeated halving warnings, lower `BLOCK_RANGE_PER_BATCH`
-to a value the provider accepts without triggering the limit, which avoids the
-overhead of repeated retries.
+## Protocol projection DB constraints (issue396)
 
-### High-throughput adaptive backfill mode (fix 1.2)
+Enforced at the database boundary by migration
+`1769800500000-EnforceProtocolProjectionConstraints` (plus matching
+`@Check`/`@Unique`/FK decorators on the TypeORM entities so
+`synchronize:true` sqlite test DBs enforce the same rules):
 
-When `POST /indexer/backfill` is called and the gap between the requested start block
-and the current finalized block exceeds `ADAPTIVE_FILL_THRESHOLD_BLOCKS` (default:
-10 000), the indexer enters adaptive backfill mode. In this mode batches are issued
-immediately, without waiting for `POLLING_INTERVAL_MS`, until the gap is closed.
+- FKs: `v2_project_evidence_version.evidenceId -> v2_project_evidence`,
+  `v2_project_participant_position.roundId -> v2_project_verification_round`
+  (`ON DELETE/UPDATE CASCADE`). `v2_project_dispute.originalRoundId` has no
+  hard FK by design: disputes tolerate out-of-order arrival via the
+  `invalid_transition`/`out_of_order` anomaly path.
+- UNIQUEs: canonical event identity `(chainId,txHash,logIndex)`,
+  per-projector `(eventTxHash,eventLogIndex)`, anomaly dedup
+  `(sourceModule,kind,aggregateId,eventTxHash,eventLogIndex)`.
+- CHECKs: `chainId > 0`, `logIndex >= 0`, `blockNumber >= 0`,
+  `version/roundNumber > 0`, enum allow-lists for
+  `status/dataState/roundType/quarantine reason/anomaly kind`, canonical
+  identifiers (`txHash` length 66, `disputeId LIKE '%:%'`),
+  `lastFinalizedBlock <= lastSafeBlock`.
+- Immutable final state (fail closed, observable): Postgres triggers reject
+  `resolved/expired -> *` dispute mutations, `closed/resolved -> open` round
+  mutations, and any UPDATE/DELETE on append-only
+  `v2_project_evidence_version`. Projectors already record rejected
+  transitions as `v2_indexing_anomalies` instead of mutating; the triggers
+  make illegal states unrepresentable even on direct DB writes.
+- Prisma remains canonical for User/Wallet/Sybil/AI/Analytics. This change
+  adds constraints only — no new TypeORM tables, no dual-persistence drift,
+  no settlement/rewards/treasury authority, no Stellar/Soroban/Freighter deps.
 
-A structured JSON log event is emitted when the mode is entered:
-
-```json
-{ "event": "adaptive_backfill_mode_entered", "contractAddress": "0x...",
-  "startBlock": 1000000, "finalizedBlock": 1200000, "gapBlocks": 200000 }
-```
-
-And when it exits:
-
-```json
-{ "event": "adaptive_backfill_mode_exited", "contractAddress": "0x...",
-  "finalCursor": 1200001, "finalizedBlock": 1200000 }
-```
-
-### Finality-capped cursors (fix 1.3)
-
-The `endBlock` for every batch is now capped at the provider's reported finalized
-block (`eth_getBlockByNumber("finalized")`), not at `currentBlockNumber -
-confirmationsRequired`. This means the cursor never advances past canonical finality,
-preventing over-indexing on a head that may be rolled back.
-
-If the provider call fails, the service falls back to `currentBlockNumber -
-confirmationsRequired` (fail-closed, conservative behaviour).
-
-### Dead-letter health integration (fix 1.4)
-
-Events that fail processing past `MAX_RETRY_ATTEMPTS` are now permanently set to
-`dead_letter` status in `indexing_state` and `stateService.recordDeadLetter(1)` is
-called. The `deadLetterCount` field in `GET /health/indexer` and the
-`indexer_dead_letters_total` Prometheus counter therefore reflect these events.
-
-The existing `Dead letters` alert threshold (`blockchain.maxDeadLetters`, default 100)
-now fires correctly when events are exhausted. See [Remediation step 3](#remediation-steps)
-for handling dead letters.
-
-### Atomic batch commits (fix 1.5)
-
-All event rows for a batch and the `lastProcessedBlockNumber` checkpoint update are
-now written inside a **single database transaction**. A restart mid-batch will resume
-from the last successfully committed checkpoint — no duplicate delivery and no
-skipped blocks.
-
-### Deployment-block validation on backfill (fix 1.6)
-
-`POST /indexer/backfill` now validates that the requested `blockNumber` is greater
-than or equal to the `deploymentBlock` recorded in `v2_contract_artifacts` for the
-given `contractAddress` and `chainId`. Requests that predate the contract's on-chain
-genesis are rejected with `HTTP 400` and an explanatory message:
-
-```
-blockNumber 99999 predates the canonical deployment block 100000 for contract
-0x... on chain 10. Backfill must start at or after the contract's deployment block.
-```
-
-If no approved artifact exists for the contract, or if `deploymentBlock` is `NULL`
-(rows predating migration `1790000000000`), the validation is skipped and the
-backfill proceeds.
-
-**Migration required**: run `npm run migration:run` to apply
-`1790000000000-AddDeploymentBlockToContractArtifact` before deploying this change.
-
-### Immediate finalization of historical blocks (fix 1.7)
-
-Events whose `blockNumber` is less than or equal to the provider's current finalized
-block are immediately stored with `isFinalized = true`, bypassing the
-`CONFIRMATIONS_REQUIRED` check. This is correct because finalized historical blocks
-are canonical and cannot reorg.
-
-Live-tip events (above the finalized block) continue to use the confirmation-count
-threshold as before.
-
-### Paginated reorg reconciliation (fix 1.8)
-
-`reconcileReorgs` now loads finalized events in pages of 1 000 rows at a time
-(hardcoded; controlled by `reorgPageSize` in `EventIndexerService`). This prevents
-OOM crashes on nodes with large event histories.
-
-### Environment variables (new in V2-BE-125)
-
-| Variable | Default | Description |
-| -------- | ------- | ----------- |
-| `MIN_BATCH_SIZE_FLOOR` | `1` | Minimum block range the adaptive halving logic will try before giving up. |
-| `ADAPTIVE_FILL_THRESHOLD_BLOCKS` | `10000` | Gap above which `backfillFromBlock` enters high-throughput mode. |
-
----
+Failures are bounded/redacted: unique/check/FK violations surface as
+duplicate-skips or anomalies with `txPrefix:logIndex` coordinates only (see
+`src/v2/common/projection-constraints.ts`); never raw payloads or secrets.
 
 ## Supporting interfaces
 

@@ -1,8 +1,6 @@
 import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { InjectQueue } from '@nestjs/bullmq';
 import { Repository, Between, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
-import { Queue } from 'bullmq';
 import { Notification } from '../entities/notification.entity';
 import { NotificationPreference } from '../entities/notification-preference.entity';
 import { DeliveryHistoryService } from './delivery-history.service';
@@ -10,6 +8,8 @@ import { NotificationPreferencesService } from './notification-preferences.servi
 import { ListNotificationsDto } from '../dto';
 import { NotificationEvent, NotificationCategory, NotificationPriority } from '../interfaces/notification.types';
 import { MetricsService } from '../../metrics/metrics.service';
+import { PrismaService } from '../../prisma/prisma.service';
+import { OutboxService } from '../../outbox/outbox.service';
 
 @Injectable()
 export class NotificationsService {
@@ -18,11 +18,11 @@ export class NotificationsService {
   constructor(
     @InjectRepository(Notification)
     private readonly notificationRepository: Repository<Notification>,
-    @InjectQueue('notifications')
-    private readonly notificationsQueue: Queue,
     private readonly deliveryHistoryService: DeliveryHistoryService,
     private readonly preferencesService: NotificationPreferencesService,
     private readonly metricsService: MetricsService,
+    private readonly prisma: PrismaService,
+    private readonly outboxService: OutboxService,
   ) {}
 
   async listNotifications(userId: string, filters: ListNotificationsDto) {
@@ -133,9 +133,18 @@ export class NotificationsService {
         }
         
         const notification = this.createNotificationFromEvent(event, recipientId);
+
+        // V2-BE-048: persist the projection row, then record delivery intent in
+        // the transactional outbox. The outbox writes for all channels commit
+        // atomically in Prisma; OutboxScheduler relays them to BullMQ and the
+        // processor deduplicates retries via the deterministic idempotency key.
+        // (Notification rows remain on the legacy TypeORM boundary, so the
+        // outbox cannot cover that write atomically — a documented limitation,
+        // not a deepening of dual persistence.)
         const savedNotification = await this.notificationRepository.save(notification);
-        
-        await this.queueNotificationForDelivery(savedNotification, preferences);
+        await this.prisma.$transaction(async (tx) => {
+          await this.queueNotificationForDelivery(savedNotification, preferences, tx);
+        });
         
         this.metricsService.incrementCounter('notifications_created_total', 1);
         this.logger.debug(`Notification created for user ${recipientId}: ${savedNotification.id}`);
@@ -261,38 +270,25 @@ export class NotificationsService {
     };
   }
 
-  private async queueNotificationForDelivery(notification: Notification, preferences: NotificationPreference) {
+  private async queueNotificationForDelivery(
+    notification: Notification,
+    preferences: NotificationPreference,
+    tx: Parameters<Parameters<PrismaService['$transaction']>[0]>[0],
+  ) {
     const enabledChannels = preferences.settings.enabledChannels;
     
     for (const channel of enabledChannels) {
       await this.deliveryHistoryService.createDeliveryRecord(notification.id, channel);
-      
-      await this.notificationsQueue.add(
-        'deliver-notification',
-        {
-          notificationId: notification.id,
-          channel,
-          userId: notification.userId,
-        },
-        {
-          priority: this.getJobPriority(notification.priority),
-          attempts: 5,
-          backoff: {
-            type: 'exponential',
-            delay: 1000,
-          },
-        }
-      );
-    }
-  }
 
-  private getJobPriority(priority: NotificationPriority): number {
-    const priorityMap = {
-      [NotificationPriority.CRITICAL]: 1,
-      [NotificationPriority.HIGH]: 2,
-      [NotificationPriority.MEDIUM]: 3,
-      [NotificationPriority.LOW]: 4,
-    };
-    return priorityMap[priority] || 3;
+      // V2-BE-048: enqueue via the transactional outbox instead of writing to
+      // BullMQ directly. The payload carries opaque routing identifiers only —
+      // no claim content, PII, or settlement data. The BullMQ job is created
+      // by OutboxService.processOutbox() once the row is durably committed.
+      await this.outboxService.publishEvent(tx, 'notification.send', notification.id, {
+        notificationId: notification.id,
+        channel,
+        recipientIds: [notification.userId],
+      });
+    }
   }
 }

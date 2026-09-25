@@ -7,7 +7,7 @@ import { ContractArtifact } from '../v2/events/entities/contract-artifact.entity
 import { IndexerConfigService } from '../config';
 import { EventIndexerService } from './event-indexer.service';
 import { IndexerController } from './indexer.controller';
-import { BlockchainStateService } from '../blockchain/state.service';
+import { ReorgSafeCursorService } from './reorg-safe-cursor.service';
 
 /**
  * Indexer module — wires EventIndexerService for V2-BE-125.
@@ -26,40 +26,8 @@ import { BlockchainStateService } from '../blockchain/state.service';
     TypeOrmModule.forFeature([IndexedEvent, IndexingState, ContractArtifact]),
   ],
   controllers: [IndexerController],
-  providers: [
-    IndexerConfigService,
-    BlockchainStateService,
-    {
-      provide: EventIndexerService,
-      useFactory: (
-        indexerConfigService: IndexerConfigService,
-        indexedEventRepo: Repository<IndexedEvent>,
-        indexingStateRepo: Repository<IndexingState>,
-        dataSource: DataSource,
-        stateService: BlockchainStateService,
-        artifactRepo: Repository<ContractArtifact>,
-      ) => {
-        const config = indexerConfigService.getEventIndexerConfig();
-        return new EventIndexerService(
-          config,
-          indexedEventRepo,
-          indexingStateRepo,
-          dataSource,
-          stateService,
-          artifactRepo,
-        );
-      },
-      inject: [
-        IndexerConfigService,
-        getRepositoryToken(IndexedEvent),
-        getRepositoryToken(IndexingState),
-        DataSource,
-        BlockchainStateService,
-        getRepositoryToken(ContractArtifact),
-      ],
-    },
-  ],
-  exports: [EventIndexerService],
+  providers: [EventIndexerService, ReorgSafeCursorService],
+  exports: [EventIndexerService, ReorgSafeCursorService],
 })
 export class IndexerModule implements OnModuleInit, OnModuleDestroy {
   constructor(private readonly eventIndexerService: EventIndexerService) {}
