@@ -17,6 +17,7 @@ import {
   DisputeStatus,
   DisputeTrigger,
 } from './entities/dispute.entity';
+import { Idempotent } from '../common/idempotency';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -69,6 +70,7 @@ export class DisputeController {
   // ── CREATE (authenticated users only) ────────────────────────────────────
 
   @Post()
+  @Idempotent()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create a new dispute' })

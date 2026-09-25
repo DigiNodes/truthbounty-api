@@ -54,6 +54,8 @@ import { HealthModule } from './health/health.module';
 import { FeatureFlagsModule } from './feature-flags/feature-flags.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { StakingModule } from './staking/staking.module';
+import { IdempotencyModule } from './common/idempotency/idempotency.module';
+import { IdempotencyGuard } from './common/idempotency/idempotency.guard';
 
 // In-memory storage for development (no Redis needed)
 class ThrottlerMemoryStorage {
@@ -272,6 +274,9 @@ async function createThrottlerStorage(
     }),
     FinalityPolicyModule,
     ScheduleModule.forRoot(),
+    // Idempotency Module
+    // Provides idempotency key handling for safe commands
+    IdempotencyModule,
     // PostgreSQL Database Infrastructure (Issue #269)
     // DatabaseModule provides:
     // - PostgreSQL connectivity with connection pooling
@@ -355,6 +360,10 @@ async function createThrottlerStorage(
     {
       provide: APP_GUARD,
       useClass: WalletThrottlerGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: IdempotencyGuard,
     },
     {
       provide: APP_INTERCEPTOR,
