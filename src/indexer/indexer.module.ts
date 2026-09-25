@@ -4,12 +4,13 @@ import { IndexedEvent, IndexingState } from '../entities';
 import { IndexerConfigService } from '../config';
 import { EventIndexerService } from './event-indexer.service';
 import { IndexerController } from './indexer.controller';
+import { ReorgSafeCursorService } from './reorg-safe-cursor.service';
 
 @Module({
   imports: [TypeOrmModule.forFeature([IndexedEvent, IndexingState])],
   controllers: [IndexerController],
-  providers: [EventIndexerService],
-  exports: [EventIndexerService],
+  providers: [EventIndexerService, ReorgSafeCursorService],
+  exports: [EventIndexerService, ReorgSafeCursorService],
 })
 export class IndexerModule implements OnModuleInit, OnModuleDestroy {
   constructor(

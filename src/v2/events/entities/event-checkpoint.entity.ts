@@ -4,6 +4,7 @@ import {
   Column,
   UpdateDateColumn,
   Unique,
+  Check,
 } from 'typeorm';
 
 /**
@@ -20,6 +21,13 @@ import {
  */
 @Entity('v2_event_checkpoints')
 @Unique('uq_v2_checkpoint_source', ['chainId', 'contractAddress'])
+@Check('chk_v2_checkpoint_chain_positive', '"chainId" > 0')
+@Check('chk_v2_checkpoint_safe_nonneg', '"lastSafeBlock" >= 0')
+@Check('chk_v2_checkpoint_final_nonneg', '"lastFinalizedBlock" >= 0')
+@Check(
+  'chk_v2_checkpoint_final_lte_safe',
+  '"lastFinalizedBlock" <= "lastSafeBlock"',
+)
 export class EventCheckpoint {
   @PrimaryGeneratedColumn('uuid')
   id: string;
