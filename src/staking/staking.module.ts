@@ -7,6 +7,7 @@ import { ProjectStakeWithdrawal } from './entities/project-stake-withdrawal.enti
 import { StakingSyncService } from './staking-sync.service';
 import { ProjectStakeService } from './project-stake.service';
 import { StakingController } from './staking.controller';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { StakingController } from './staking.controller';
       ProjectStakeLock,
       ProjectStakeWithdrawal,
     ]),
+    AuthModule,
   ],
   controllers: [StakingController],
   providers: [StakingSyncService, ProjectStakeService],

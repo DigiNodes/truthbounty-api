@@ -12,6 +12,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { OptionalJwtAuthGuard } from './optional-jwt-auth.guard';
 import { AdminGuard } from './guards/admin.guard';
+import { RolesGuard } from './guards/roles.guard';
 import { ServiceAuthGuard } from './guards/service-auth.guard';
 
 @Module({
@@ -39,6 +40,7 @@ import { ServiceAuthGuard } from './guards/service-auth.guard';
     JwtAuthGuard,
     OptionalJwtAuthGuard,
     AdminGuard,
+    RolesGuard,
     ServiceAuthGuard,
   ],
   exports: [
@@ -49,6 +51,7 @@ import { ServiceAuthGuard } from './guards/service-auth.guard';
     JwtAuthGuard,
     OptionalJwtAuthGuard,
     AdminGuard,
+    RolesGuard,
     ServiceAuthGuard,
     PassportModule,
   ],
