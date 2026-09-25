@@ -51,6 +51,16 @@ export class ContractArtifact {
   @Column({ type: 'boolean', default: false })
   isApproved: boolean;
 
+  /**
+   * The canonical contract deployment block on this chain.
+   * Used by the backfill endpoint to reject requests that would begin before
+   * the contract existed on chain (V2-BE-125 fix 1.6).
+   * Nullable for rows that pre-date this column; backfill validation is skipped
+   * when null (treated as 0 / genesis).
+   */
+  @Column({ type: 'bigint', nullable: true })
+  deploymentBlock: string | null;
+
   @CreateDateColumn()
   registeredAt: Date;
 }

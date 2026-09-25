@@ -34,6 +34,14 @@ export class IndexerConfigService {
         this.configService.get('POLLING_INTERVAL_MS', '12000'),
         10,
       ),
+      minBatchSizeFloor: parseInt(
+        this.configService.get('MIN_BATCH_SIZE_FLOOR', '1'),
+        10,
+      ),
+      adaptiveFillThresholdBlocks: parseInt(
+        this.configService.get('ADAPTIVE_FILL_THRESHOLD_BLOCKS', '10000'),
+        10,
+      ),
       contracts: this.getContractConfigs(),
     };
   }

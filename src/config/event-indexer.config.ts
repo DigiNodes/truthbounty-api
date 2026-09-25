@@ -36,6 +36,20 @@ export interface EventIndexerConfig {
   pollingIntervalMs: number;
 
   /**
+   * Minimum block-range floor used by the adaptive halving logic (fix 1.1).
+   * When the provider rejects a getLogs range as too large, the service halves
+   * the range until it succeeds or reaches this floor.  Default: 1.
+   */
+  minBatchSizeFloor?: number;
+
+  /**
+   * Gap (in blocks) above which backfillFromBlock enters high-throughput
+   * adaptive mode instead of waiting for the standard polling interval (fix 1.2).
+   * Default: 10_000.
+   */
+  adaptiveFillThresholdBlocks?: number;
+
+  /**
    * Contract subscriptions configuration
    */
   contracts: ContractConfig[];
