@@ -8,19 +8,23 @@ on:
     branches:
       - main
 
-permissions:
-  contents: read
+# Deny by default; each job below opts in to only the scopes it needs.
+# Every job checks out the repository, so `contents: read` is the floor.
+# `security-events: write` is granted only to the job that uploads CodeQL results.
+permissions: {}
 
 jobs:
   build-and-test:
     name: Build, Lint, and Test
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '20'
           cache: 'npm'
@@ -43,11 +47,143 @@ jobs:
       - name: Run unit and integration tests
         run: npm run test:cov
 
-      - name: Run migration tests
+  node-toolchain:
+    name: Node/npm Toolchain
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # Proves the toolchain pinned in `engines` and documented in
+      # docs/DEPLOYMENT.md is the one CI actually runs, and that installs are
+      # deterministic (lockfile-only, no resolution at install time).
+      - name: Assert the runtime satisfies package.json engines
         run: |
-          # Simulates a fresh db migration and rollback
-          npx prisma migrate reset --force
-          npx prisma migrate deploy
+          set -euo pipefail
+          echo "node $(node --version) / npm $(npm --version)"
+
+          node_major=$(node -p "process.versions.node.split('.')[0]")
+          npm_major=$(npm --version | cut -d. -f1)
+          engines_node=$(node -p "require('./package.json').engines.node")
+          engines_npm=$(node -p "require('./package.json').engines.npm")
+          engines_node_major=$(node -p "require('./package.json').engines.node.replace('>=','').split(' ')[0]")
+          engines_npm_major=$(node -p "require('./package.json').engines.npm.replace('>=','').split(' ')[0]")
+          lockfile_version=$(node -p "require('./package-lock.json').lockfileVersion")
+
+          echo "engines.node=$engines_node engines.npm=$engines_npm lockfileVersion=$lockfile_version"
+
+          if [[ "$node_major" != "$engines_node_major" ]]; then
+            echo "::error::Node $node_major is not the supported major version $engines_node_major (engines.node=$engines_node)."
+            exit 1
+          fi
+
+          if [[ "$npm_major" != "$engines_npm_major" ]]; then
+            echo "::error::npm $npm_major is not the supported major version $engines_npm_major (engines.npm=$engines_npm)."
+            exit 1
+          fi
+
+          if [[ "$lockfile_version" != "3" ]]; then
+            echo "::error::package-lock.json declares lockfileVersion $lockfile_version; the supported npm major writes lockfileVersion 3."
+            exit 1
+          fi
+
+          # `npm ci` is the only install command any gate uses. Re-resolving the
+          # tree here would defeat the point of committing a lockfile.
+          if ! git diff --exit-code -- package.json package-lock.json; then
+            echo "::error::package.json or package-lock.json changed during install."
+            git --no-pager diff -- package.json package-lock.json
+            exit 1
+          fi
+
+          echo "Toolchain and lockfile are consistent with the declared engines."
+
+  schema-migration-gate:
+    name: Schema Migration and Drift Gate
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: truthbounty_migration_gate
+        ports:
+          - '5432:5432'
+        options: >-
+          --health-cmd "pg_isready -U postgres -d truthbounty_migration_gate"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # The gate targets PostgreSQL because that is the production driver in
+      # src/config/data-source.ts, whose Postgres branch hardcodes
+      # `synchronize: false`, so no NODE_ENV override is needed or wanted here.
+      # NODE_ENV=production in particular must be avoided at job level: it would
+      # make `npm ci` skip devDependencies, including the ts-node that the
+      # `migration:*` scripts require.
+      # Credentials are ephemeral CI service values, not secrets.
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/truthbounty_migration_gate
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Replaces the previous `npx prisma migrate reset --force` /
+      # `npx prisma migrate deploy` step, which exercised the legacy Prisma
+      # migration set and never touched the TypeORM migrations the application
+      # actually runs. See docs/PRISMA_INVENTORY.md for the full reference list.
+      - name: Apply all TypeORM migrations to an empty database
+        run: npm run migration:run
+
+      - name: Fail on schema drift between entities and committed migrations
+        run: |
+          set -uo pipefail
+          # `migration:generate` treats its argument as a path *prefix* and writes
+          # `<timestamp>-<prefix>.ts`, so the new file is located with git rather
+          # than by guessing the name.
+          output=$(npm run --silent migration:generate -- "src/migrations/ci-drift-check" 2>&1)
+          status=$?
+          printf '%s\n' "$output"
+
+          if [[ "$status" -eq 0 ]]; then
+            echo "::error::Schema drift detected. The committed migrations in src/migrations/ do not reproduce the TypeORM entities, so a fresh database would not match the code."
+            for file in $(git status --porcelain -- src/migrations | awk '{print $2}'); do
+              echo "::error::TypeORM generated an uncommitted migration, which is the missing delta: ${file}"
+              cat "$file"
+            done
+            exit 1
+          fi
+
+          if ! grep -qi "No changes in database schema were found" <<<"$output"; then
+            echo "::error::migration:generate exited ${status} for a reason other than 'no changes in database schema'. The drift check could not be evaluated; treat this as a failure, not a pass."
+            exit 1
+          fi
+
+          echo "No schema drift: committed migrations fully cover the TypeORM entities."
+
+      - name: Prove the latest migration is reversible and re-appliable
+        run: |
+          set -euo pipefail
+          npm run migration:revert
+          npm run migration:run
 
   security-scans:
     name: Security Scans
@@ -57,40 +193,69 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Dependency audit
-        run: npm audit --audit-level=high
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # Installed from the lockfile so the audit is evaluated against the exact
+      # tree that ships, and so this job installs deterministically like the rest.
+      - name: Install dependencies
+        run: npm ci
+
+      # Canonical dependency scanner. `pipefail` keeps npm's non-zero exit on a
+      # high-or-critical finding, so this step still fails the workflow. The
+      # report is written to a file and uploaded below as retained evidence.
+      - name: Dependency audit (npm audit)
+        run: |
+          set -o pipefail
+          npm audit --audit-level=high 2>&1 | tee npm-audit-report.txt
+
+      # `if: always()` only ensures the evidence is retained when the audit step
+      # fails; it does not suppress the failure. See docs/DEPENDENCY_SECURITY.md.
+      - name: Publish dependency audit evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: npm-audit-report
+          path: npm-audit-report.txt
+          if-no-files-found: error
+          retention-days: 90
 
       - name: Secret scanning (TruffleHog)
-        uses: trufflesecurity/trufflehog@main
+        uses: trufflesecurity/trufflehog@4dd8831c5f12599465d4d45c3c447b4018a34c85 # v3.97.9
         with:
           path: ./
           base: ${{ github.event.repository.default_branch }}
           head: HEAD
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4
+        uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
         with:
           languages: javascript, typescript
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v4
+        uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
         with:
           category: "/language:javascript-typescript"
 
   container-scan:
     name: Container Vulnerability Scan
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Build Docker image
         run: docker build -t truthbounty-api:test .
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: 'truthbounty-api:test'
           format: 'table'
@@ -101,25 +266,41 @@ jobs:
 
   sensitive-changes-check:
     name: Sensitive Changes Protection
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
     steps:
       - name: Check for sensitive changes
-        uses: dorny/paths-filter@v4
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: filter
         with:
           filters: |
             sensitive:
               - 'src/auth/**'
               - 'src/indexer/**'
+              - 'src/migrations/**'
+              - 'src/prisma/**'
               - 'prisma/**'
               - 'src/database/**'
               - '.github/workflows/**'
 
-      - name: Prohibit automatic merge
-        if: steps.filter.outputs.sensitive == 'true'
+      # Reports on both pull_request and push to main. The job is advisory by
+      # design and cannot fail; enforcement for the real gates lives in branch
+      # protection over the job names recorded in docs/CI_GATES.md.
+      - name: Report sensitive changes
+        env:
+          SENSITIVE: ${{ steps.filter.outputs.sensitive }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          echo "Sensitive changes detected in auth, indexer, or database."
-          echo "Automatic merge is prohibited. Ensure human review is completed."
-          # Remove auto-merge label if present (pseudo-command for demonstration)
-          # gh pr edit ${{ github.event.pull_request.number }} --remove-label "auto-merge"
+          set -euo pipefail
+          echo "sensitive=${SENSITIVE} event=${EVENT_NAME}"
+          if [[ "${SENSITIVE}" != "true" ]]; then
+            echo "No sensitive paths changed."
+          else
+            echo "Sensitive paths changed: auth, indexer, TypeORM migrations, Prisma, database, or CI workflows."
+            if [[ "${EVENT_NAME}" == "pull_request" ]]; then
+              echo "Automatic merge is prohibited. Ensure human review is completed."
+            else
+              echo "Landed on ${GITHUB_REF}. Confirm the required human review record exists."
+            fi
+          fi
