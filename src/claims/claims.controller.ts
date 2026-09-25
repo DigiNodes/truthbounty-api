@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery } from '@nestjs/
 import { ClaimsService } from './claims.service';
 import { EvidenceService } from './evidence.service';
 import { CreateClaimDto } from './dto/create-claim.dto';
+import { Idempotent } from '../common/idempotency';
 
 @ApiTags('claims')
 @Controller('claims')
@@ -38,6 +39,7 @@ export class ClaimsController {
     }
 
     @Post()
+    @Idempotent()
     @ApiOperation({ summary: 'Create a new claim' })
     @ApiResponse({ status: 201, description: 'Claim created' })
     @ApiResponse({ status: 400, description: 'Invalid input data' })
@@ -47,6 +49,7 @@ export class ClaimsController {
 
     // Evidence endpoints
     @Post(':claimId/evidence')
+    @Idempotent()
     @ApiOperation({ summary: 'Add evidence to a claim' })
     @ApiParam({ name: 'claimId', description: 'Claim ID' })
     @ApiResponse({ status: 201, description: 'Evidence created' })

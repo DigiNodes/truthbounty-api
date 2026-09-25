@@ -4,9 +4,9 @@ export class AddVerificationDisputeEnhancements1769800400000 implements Migratio
   name = 'AddVerificationDisputeEnhancements1769800400000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    // Add columns to v2_project_verification_rounds
+    // Add columns to v2_project_verification_round
     await queryRunner.query(`
-      ALTER TABLE "v2_project_verification_rounds"
+      ALTER TABLE "v2_project_verification_round"
       ADD COLUMN "dataState" VARCHAR(16) NOT NULL DEFAULT 'observed',
       ADD COLUMN "totalStake" VARCHAR(100),
       ADD COLUMN "totalEffectiveWeight" VARCHAR(100),
@@ -14,23 +14,23 @@ export class AddVerificationDisputeEnhancements1769800400000 implements Migratio
       ADD COLUMN "appealDeadline" TIMESTAMP
     `);
 
-    // Add dataState column to v2_project_participant_positions
+    // Add dataState column to v2_project_participant_position
     await queryRunner.query(`
-      ALTER TABLE "v2_project_participant_positions"
+      ALTER TABLE "v2_project_participant_position"
       ADD COLUMN "dataState" VARCHAR(16) NOT NULL DEFAULT 'observed'
     `);
 
-    // Add dataState column to v2_project_disputes
+    // Add dataState column to v2_project_dispute
     await queryRunner.query(`
-      ALTER TABLE "v2_project_disputes"
+      ALTER TABLE "v2_project_dispute"
       ADD COLUMN "dataState" VARCHAR(16) NOT NULL DEFAULT 'observed'
     `);
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    // Remove columns from v2_project_verification_rounds
+    // Remove columns from v2_project_verification_round
     await queryRunner.query(`
-      ALTER TABLE "v2_project_verification_rounds"
+      ALTER TABLE "v2_project_verification_round"
       DROP COLUMN "dataState",
       DROP COLUMN "totalStake",
       DROP COLUMN "totalEffectiveWeight",
@@ -38,15 +38,15 @@ export class AddVerificationDisputeEnhancements1769800400000 implements Migratio
       DROP COLUMN "appealDeadline"
     `);
 
-    // Remove dataState column from v2_project_participant_positions
+    // Remove dataState column from v2_project_participant_position
     await queryRunner.query(`
-      ALTER TABLE "v2_project_participant_positions"
+      ALTER TABLE "v2_project_participant_position"
       DROP COLUMN "dataState"
     `);
 
-    // Remove dataState column from v2_project_disputes
+    // Remove dataState column from v2_project_dispute
     await queryRunner.query(`
-      ALTER TABLE "v2_project_disputes"
+      ALTER TABLE "v2_project_dispute"
       DROP COLUMN "dataState"
     `);
   }

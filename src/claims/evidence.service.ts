@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -80,6 +81,21 @@ export class EvidenceService {
     userId?: string,
     hash?: string,
   ): Promise<Evidence> {
+    // Check if evidence with the same CID already exists for this claim
+    // This helps prevent duplicates even without idempotency keys
+    const existingEvidence = await this.evidenceRepository.findOne({
+      where: { claimId },
+      relations: ['versions'],
+    });
+
+    if (existingEvidence) {
+      const latestVersion = existingEvidence.versions.find(v => v.version === existingEvidence.latestVersion);
+      if (latestVersion && latestVersion.cid === cid) {
+        this.logger.log(`Duplicate evidence detected for claim ${claimId} with CID: ${cid}, returning existing: ${existingEvidence.id}`);
+        return existingEvidence;
+      }
+    }
+
     const evidence = this.evidenceRepository.create({
       claimId,
       latestVersion: 1,
