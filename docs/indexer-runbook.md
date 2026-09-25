@@ -25,6 +25,12 @@ All values are exposed via:
 
 - `GET /health/indexer` — sanitized JSON health snapshot (see `IndexerHealthSnapshot`).
 - `GET /metrics` — Prometheus text format (Bearer-token protected via `MetricsAuthGuard`).
+- `GET /v2/projections/freshness` — per-projector freshness and finality
+  metadata (`v2-evidence`, `v2-verification`, `v2-disputes`, plus any extra
+  persisted projector cursors). `GET /v2/projections/freshness/:projectorName`
+  returns a single projector. Public read-only GET surface (no auth required,
+  no mutation handlers); failures are bounded and fail closed (see
+  `ProjectionFreshness` in `src/v2/projection/`).
 
 ## Alert thresholds (defaults)
 
@@ -66,6 +72,33 @@ Projections are rebuildable from raw, persisted events. Replaying a block range 
 safe: it is idempotent (unique index on `(transactionHash, logIndex, eventType)`),
 and state mutations and the checkpoint commit atomically in a single transaction.
 Replays are monotonic and observable via `indexer_replay_count_total`.
+
+## Projection freshness fields (V2)
+
+Each entry in `GET /v2/projections/freshness` reports:
+
+| Field | Meaning |
+| ----- | ------- |
+| `projectorName` | Cursor name, e.g. `v2-evidence`. |
+| `indexedBlock` | Highest canonical-event block applied by the projector (`null` if never ran). |
+| `finalizedHeight` | Highest finalized block known — DB checkpoints primary, indexer snapshot fallback (`null` + `finality-unavailable` when unknown). |
+| `safeHeight` | Highest safe block known, same sourcing as finalized. |
+| `observedHead` | Live observed head from the indexer snapshot (`null` when unavailable). |
+| `headDistance` | `observedHead - indexedBlock` as a bigint-safe string (`null` when either side unknown). |
+| `lastSuccess` | ISO timestamp of the cursor's last advance (`null` if never ran). |
+| `status` | `healthy` / `degraded` / `unhealthy` (unhealthy wins over degraded). |
+| `degradedReason` | Semicolon-joined machine-readable reasons (`cursor-missing`, `finality-unavailable`, `indexer-degraded`, `indexer-unhealthy`, `indexer-health-unavailable`, …) or `null` when healthy. |
+| `dataState` | `observed` / `safe` / `finalized` for the projector's `indexedBlock`. |
+
+Notes:
+
+- The endpoints are derived read models only: they never settle protocol
+  state, sign transactions, or compute verdicts.
+- `lastFinalizedBlock` in `v2_event_checkpoints` is advanced by ingestion;
+  until a checkpoint row exists, heights fall back to the live snapshot and
+  the report names the gap via `degradedReason` instead of guessing.
+- Block heights are strings so values beyond `Number.MAX_SAFE_INTEGER` keep
+  full precision; cross-driver (PostgreSQL/SQLite) normalization is applied.
 
 ## Supporting interfaces
 
