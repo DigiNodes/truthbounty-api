@@ -7,9 +7,11 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { IpfsModule } from '../ipfs/ipfs.module';
 import { BlockchainModule } from '../blockchain/blockchain.module';
 import { MetricsModule } from '../metrics/metrics.module';
+import { DatabaseModule } from '../database/database.module';
 
 @Module({
   imports: [
+    DatabaseModule,
     RedisModule,
     JobsModule,
     NotificationsModule,
