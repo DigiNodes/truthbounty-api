@@ -65,4 +65,3 @@ pids
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 .qodo
 
-/generated/prisma

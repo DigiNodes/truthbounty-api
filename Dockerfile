@@ -4,7 +4,10 @@ FROM node:20-alpine AS builder
 # Set working directory
 WORKDIR /app
 
-# Install dependencies
+# Install dependencies from the committed lockfile.
+# `npm ci` makes package-lock.json authoritative: it installs exactly the
+# resolved tree and fails the build if package.json and the lockfile disagree.
+# `npm install` must not be used here or dependency drift goes undetected.
 COPY package*.json ./
 RUN npm ci
 
