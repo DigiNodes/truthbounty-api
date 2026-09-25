@@ -50,12 +50,18 @@ cp .env.example .env
 ## Deployment Steps
 
 ### 1. Artifact Validation
-Before deploying, ensure that the Docker image or generated binaries match the expected checksums and have passed all CI security gates (Trivy, CodeQL, etc.).
+Before deploying, ensure that the Docker image or generated binaries match the expected checksums and have passed all CI security gates (dependency SBOM and high-severity audit, Trivy, CodeQL, etc.). The dependency SBOM is generated from `package-lock.json` with development dependencies omitted, so it describes the production API dependency set.
 
 ```bash
+# Generate `artifacts/dependency-sbom.cdx.json` and fail on high or critical advisories
+npm ci
+npm run security:dependencies
+
 # Example validation using Trivy locally
 trivy image --exit-code 1 --severity CRITICAL,HIGH truthbounty-api:<TAG>
 ```
+
+The CI workflow uploads the CycloneDX SBOM as `dependency-sbom-<commit SHA>`. Treat a missing SBOM, an SBOM generation error, or a failed audit as a release blocker. Do not substitute an SBOM from another commit; regenerate it from the exact source and lockfile revision being deployed.
 
 ### 2. Database Migrations
 Always run database migrations before spinning up the application to ensure schema consistency. Note that the DB is non-authoritative compared to the chain, but must be in sync with the ORM.

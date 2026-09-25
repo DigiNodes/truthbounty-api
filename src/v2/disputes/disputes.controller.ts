@@ -1,5 +1,6 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { DisputesQueryService } from './disputes-query.service';
+import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 
 /**
  * Read-only V2 dispute endpoints. No write handlers: dispute state is
@@ -13,10 +14,9 @@ export class DisputesController {
   @Get()
   async listForClaim(
     @Param('claimId') claimId: string,
-    @Query('limit') limit?: string,
-    @Query('cursor') cursor?: string,
+    @Query() query: PaginationQueryDto,
   ) {
-    return this.queryService.listForClaim(claimId, limit ? parseInt(limit, 10) : 20, cursor);
+    return this.queryService.listForClaim(claimId, query.limit, query.cursor);
   }
 
   @Get(':originalRoundId')
