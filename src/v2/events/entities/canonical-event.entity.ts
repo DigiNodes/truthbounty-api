@@ -5,6 +5,7 @@ import {
   CreateDateColumn,
   Index,
   Unique,
+  Check,
 } from 'typeorm';
 
 /**
@@ -25,6 +26,14 @@ import {
 @Index(['eventName', 'blockNumber'])
 @Index(['claimId'])
 @Index(['roundId'])
+@Check('chk_v2_canonical_chain_positive', '"chainId" > 0')
+@Check('chk_v2_canonical_log_nonneg', '"logIndex" >= 0')
+@Check('chk_v2_canonical_block_nonneg', '"blockNumber" >= 0')
+@Check('chk_v2_canonical_tx_len', 'length("txHash") = 66')
+@Check(
+  'chk_v2_canonical_ids_present',
+  'length("eventName") > 0 AND length("contractAddress") > 0 AND length("artifactVersion") > 0',
+)
 export class CanonicalEvent {
   @PrimaryGeneratedColumn('uuid')
   id: string;

@@ -5,6 +5,8 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   Index,
+  Unique,
+  Check,
 } from 'typeorm';
 import { DataState } from '../../common/data-state.enum';
 
@@ -31,7 +33,21 @@ export enum DisputeStatus {
  * outcome of the dispute itself.
  */
 @Entity('v2_project_dispute')
+@Unique('uq_v2_dispute_event', ['eventTxHash', 'eventLogIndex'])
 @Index(['claimId'])
+@Index(['originalRoundId'])
+@Check('chk_v2_dispute_block_nonneg', '"blockNumber" >= 0')
+@Check('chk_v2_dispute_log_nonneg', '"eventLogIndex" >= 0')
+@Check('chk_v2_dispute_status', "\"status\" IN ('raised','resolved','expired')")
+@Check(
+  'chk_v2_dispute_data_state',
+  "\"dataState\" IN ('observed','safe','finalized')",
+)
+@Check(
+  'chk_v2_dispute_ids_present',
+  'length("disputeId") > 0 AND length("claimId") > 0 AND length("originalRoundId") > 0 AND length("eventTxHash") = 66',
+)
+@Check('chk_v2_dispute_canonical_id', '"disputeId" LIKE \'%:%\'')
 export class ProjectDispute {
   @PrimaryColumn({ type: 'varchar', length: 200 })
   disputeId: string;
@@ -75,6 +91,10 @@ export class ProjectDispute {
 
   @Column({ type: 'int' })
   eventLogIndex: number;
+
+  /** Ordering key of the raising/terminal event, for keyset pagination. */
+  @Column({ type: 'bigint', default: 0 })
+  blockNumber: string;
 
   @CreateDateColumn()
   createdAt: Date;

@@ -2,6 +2,7 @@ import { registerAs } from '@nestjs/config';
 
 export interface AuditConfig {
   retentionDays: number;
+  piiRetentionDays: number;
   archivalEnabled: boolean;
   archivalBucket: string;
   asyncWritesEnabled: boolean;
@@ -12,6 +13,7 @@ export interface AuditConfig {
 
 export default registerAs('audit', (): AuditConfig => ({
   retentionDays: parseInt(process.env.AUDIT_LOG_RETENTION_DAYS ?? '365', 10),
+  piiRetentionDays: parseInt(process.env.AUDIT_PII_RETENTION_DAYS ?? '30', 10),
   archivalEnabled: process.env.AUDIT_ARCHIVAL_ENABLED === 'true',
   archivalBucket: process.env.AUDIT_ARCHIVAL_BUCKET ?? 'audit-archive',
   asyncWritesEnabled: process.env.AUDIT_ASYNC_WRITES_ENABLED !== 'false',
