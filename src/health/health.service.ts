@@ -8,6 +8,7 @@ import { NotificationService } from '../notifications/services/notification.serv
 import { JobsService } from '../jobs/jobs.service';
 import { BlockchainStateService } from '../blockchain/state.service';
 import { MetricsService } from '../metrics/metrics.service';
+import { DatabaseReadinessService } from '../database/database-readiness.service';
 import { classifyFailure, withTimeout } from './utils/bounded-probe.util';
 import {
   DependencyHealthResult,
@@ -52,6 +53,7 @@ export class HealthService {
 
   constructor(
     private readonly dataSource: DataSource,
+    private readonly databaseReadinessService: DatabaseReadinessService,
     private readonly redisService: RedisService,
     @InjectQueue('jobs-queue') private readonly jobsQueue: Queue,
     private readonly jobsService: JobsService,
@@ -128,11 +130,6 @@ export class HealthService {
     };
   }
 
-  /**
-   * Sanitized indexer health report. Exposes observed head, safe/finalized
-   * cursors, projection lag, RPC failures, replay count, and dead letters
-   * without leaking credentials, user data, or live RPC URLs.
-   */
   async getIndexerHealth(): Promise<IndexerHealthResult> {
     const snapshot = await this.blockchainStateService.getIndexerHealth();
     const status = snapshot.status as HealthStatus;
@@ -267,10 +264,10 @@ export class HealthService {
   }
 
   private async checkDatabase(): Promise<void> {
-    if (!this.dataSource.isInitialized) {
-      throw new Error('Database connection not initialized');
+    const report = await this.databaseReadinessService.checkReadiness();
+    if (!report.ready) {
+      throw new Error(report.failureReason || 'Database readiness gate failed');
     }
-    await this.dataSource.query('SELECT 1');
   }
 
   private async checkRedis(): Promise<void> {
@@ -359,7 +356,6 @@ export class HealthService {
       resourceUsage: process.resourceUsage(),
     };
 
-    // Add database diagnostics
     try {
       const start = Date.now();
       await withTimeout('database-diagnostics', 2000, () =>
@@ -372,7 +368,7 @@ export class HealthService {
         2000,
         () => this.dataSource.query('SELECT COUNT(*) as count FROM migrations'),
       );
-      const totalMigrations = this.dataSource.migrations.length;
+      const totalMigrations = this.dataSource.migrations?.length || 0;
       const pool = (this.dataSource.driver as any).master;
 
       diagnostics.database = {
