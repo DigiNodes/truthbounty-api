@@ -81,8 +81,8 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.7",
     "@eslint/js": "^10.0.1",
-    "@nestjs/cli": "^12.0.1",
-    "@nestjs/schematics": "^12.0.2",
+    "@nestjs/cli": "^11.0.24",
+    "@nestjs/schematics": "^11.1.0",
     "@nestjs/testing": "11.2.6",
     "@swc/cli": "^0.8.1",
     "@swc/core": "^1.10.7",
