@@ -85,7 +85,7 @@
     "@eslint/js": "^10.0.1",
     "@nestjs/cli": "^12.0.1",
     "@nestjs/schematics": "^12.0.2",
-    "@nestjs/testing": "11.2.6",
+    "@nestjs/testing": "^11.1.12",
     "@swc/cli": "^0.8.1",
     "@swc/core": "^1.10.7",
     "@swc/jest": "^0.2.39",
@@ -107,7 +107,7 @@
     "ts-loader": "^9.6.2",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
-    "typescript": "^5.7.2",
+    "typescript": "^6.0.3",
     "typescript-eslint": "^8.70.0"
   }
 }
