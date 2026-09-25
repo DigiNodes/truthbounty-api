@@ -39,11 +39,19 @@ If the local cache/database is lost or corrupted, bootstrap from the authoritati
 npm run indexer:bootstrap -- --clean --checkpoint <SAFE_CHECKPOINT>
 ```
 
-### 4. Chain Reorg Response
-The system typically handles minor reorgs automatically. For deep reorgs:
+### 4. Chain Reorg Response and Canonical Reapplication
+The system handles chain reorganizations (fork switches) using `ReorgRollbackService` (`src/v2/events/reorg-rollback.service.ts`):
+- **Reorg Rollback:** Purges orphaned events with `blockNumber > rollbackToBlock` from `v2_canonical_events`, updates checkpoints (`lastSafeBlock`), rewinds projector cursors (`v2_projector_cursors`), and reverts/prunes downstream read models (`v2_project_evidence`, `v2_project_evidence_version`, `v2_project_verification_round`, `v2_project_participant_position`, `v2_project_dispute`, `v2_indexing_anomalies`).
+- **Canonical Reapplication:** Deterministically ingests new canonical logs on the winning fork `(blockNumber ASC, logIndex ASC)` and triggers all registered V2 projectors (`EvidenceProjectorService`, `VerificationProjectorService`, `DisputesProjectorService`) to advance read models.
+- **Reprojection from Genesis:** `rebuildAllProjections()` resets cursors and reconstructs all read models from genesis.
+
 ```bash
-# Force the indexer to rollback and re-evaluate from a specific block
-npm run indexer:rollback -- --block <SAFE_BLOCK>
+# Example programmatic invocation via ReorgRollbackService
+await reorgRollbackService.handleReorg({
+  chainId: 10,
+  rollbackToBlock: 12345678n,
+  newLogs: winningForkRawLogs,
+});
 ```
 
 ### 5. Database Rollback
