@@ -12,7 +12,7 @@ import { randomUUID } from 'crypto';
  * Processes queued (async) audit writes.
  *
  * This used to build and save its own `AuditLog` row directly, then call
- * `stampIntegrityHash` as a second step — a second, independent write path
+ * `stampIntegrityHash` as a second step: a second, independent write path
  * into `audit_logs` that bypassed the hash chain entirely (V2-BE-110).
  * It now goes through `AuditTrailService.persistChainedRecord`, the same
  * atomic write path used by `log()`/`logBatch()`, so every row in the

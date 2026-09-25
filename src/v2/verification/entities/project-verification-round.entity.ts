@@ -6,6 +6,7 @@ import {
   UpdateDateColumn,
   Index,
   Unique,
+  Check,
 } from 'typeorm';
 import { DataState } from '../../common/data-state.enum';
 
@@ -30,6 +31,13 @@ export enum RoundStatus {
 @Entity('v2_project_verification_round')
 @Unique('uq_v2_round_sequence', ['claimId', 'roundType', 'roundNumber'])
 @Index(['claimId'])
+@Check('chk_v2_round_status', `"status" IN ('open', 'closed', 'resolved')`)
+@Check('chk_v2_round_type', `"roundType" IN ('first', 'appeal')`)
+@Check(
+  'chk_v2_round_data_state',
+  `"dataState" IN ('observed', 'safe', 'finalized')`,
+)
+@Check('chk_v2_round_number_positive', `"roundNumber" > 0`)
 export class ProjectVerificationRound {
   /** Opaque protocol round id, taken verbatim from the event. */
   @PrimaryColumn({ type: 'varchar', length: 66 })
@@ -69,7 +77,7 @@ export class ProjectVerificationRound {
   roundSnapshot: Record<string, unknown> | null;
 
   /** Appeal deadline if this is an appeal round */
-  @Column({ type: 'Date', nullable: true })
+  @Column({ type: Date, nullable: true })
   appealDeadline: Date | null;
 
   @Column({ type: 'varchar', length: 66 })

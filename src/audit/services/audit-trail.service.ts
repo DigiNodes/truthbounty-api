@@ -1,7 +1,7 @@
 import { Injectable, Logger, Inject, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
-import { Repository, Between, Like, In, Not, IsNull, DeepPartial } from 'typeorm';
+import { Repository, Not, IsNull, DeepPartial } from 'typeorm';
 import { REQUEST } from '@nestjs/core';
 import { Request } from 'express';
 import {
@@ -11,13 +11,18 @@ import {
   AuditSeverity,
   AuditCategory,
 } from '../entities/audit-log.entity';
-import { AuditChainState, AUDIT_CHAIN_STATE_ID } from '../entities/audit-chain-state.entity';
+import {
+  AuditChainState,
+  AUDIT_CHAIN_STATE_ID,
+} from '../entities/audit-chain-state.entity';
 import { maskIp } from '../utils/ip-masking';
 import { AuditQueueService } from './audit-queue.service';
 import { AuditMetricsService } from './audit-metrics.service';
 import { randomUUID } from 'crypto';
-import { AuditPaginatedResponse } from '../interfaces/audit-response.interface';
-import { computeAuditRecordHash, verifyAuditRecordHash } from '../utils/integrity';
+import {
+  computeAuditRecordHash,
+  verifyAuditRecordHash,
+} from '../utils/integrity';
 import { TransactionRunner } from '../../database/transaction.runner';
 
 export interface AuditLogInput {
@@ -97,7 +102,7 @@ export class AuditTrailService implements OnModuleInit {
    * Fails closed in production: an app that cannot prove its own audit
    * trail hasn't been tampered with should not accept traffic. Outside
    * production (test/development), falls back to a fixed, clearly-labeled
-   * dev secret so local runs and CI don't require extra setup — this
+   * dev secret so local runs and CI don't require extra setup. This
    * fallback path is unreachable when `NODE_ENV=production`.
    */
   private getHashSecret(): string {
@@ -149,10 +154,12 @@ export class AuditTrailService implements OnModuleInit {
 
     try {
       await this.persistChainedRecord(record);
-      this.logger.debug(`Audit logged: ${input.actionType} on ${input.entityType} ${input.entityId}`);
+      this.logger.debug(
+        `Audit logged: ${input.actionType} on ${input.entityType} ${input.entityId}`,
+      );
     } catch (error) {
       // Deliberately not rethrown: audit logging must not take down the
-      // business action it's recording. The failure is not silent though —
+      // business action it's recording. The failure is not silent though,
       // it's counted and logged as a security-relevant event so it's
       // observable and actionable, not swallowed into "as if nothing
       // happened".
@@ -191,7 +198,10 @@ export class AuditTrailService implements OnModuleInit {
       this.logger.debug(`Batch audit logged: ${saved.length} records`);
     } catch (error) {
       this.auditMetricsService.incrementFailedWrite();
-      this.logger.error(`SECURITY: failed to batch-persist ${records.length} audit logs: ${error.message}`, error.stack);
+      this.logger.error(
+        `SECURITY: failed to batch-persist ${records.length} audit logs: ${error.message}`,
+        error.stack,
+      );
     }
   }
 
@@ -201,7 +211,7 @@ export class AuditTrailService implements OnModuleInit {
    * The row insert, its `previousHash`/`chainSequence` assignment, its
    * HMAC `integrityHash`, and the chain-state tip update all happen in a
    * single transaction with a row lock on {@link AuditChainState}. Either
-   * all of it lands, or none of it does — there is no window where a row
+   * all of it lands, or none of it does. There is no window where a row
    * exists without a valid chained hash. This is the single write path
    * used by `log()`, `logBatch()`, and the async queue processor, so no
    * writer can bypass the chain.
@@ -217,7 +227,9 @@ export class AuditTrailService implements OnModuleInit {
   }
 
   /** Batch form of {@link persistChainedRecord}: one lock, one chain-state update. */
-  async persistChainedRecords(records: DeepPartial<AuditLog>[]): Promise<AuditLog[]> {
+  async persistChainedRecords(
+    records: DeepPartial<AuditLog>[],
+  ): Promise<AuditLog[]> {
     if (records.length === 0) return [];
     const secret = this.getHashSecret();
 
@@ -246,7 +258,7 @@ export class AuditTrailService implements OnModuleInit {
         const entity = auditRepo.create({
           // `id`/`createdAt` are normally left for the DB to generate, but
           // that would mean hashing happens *after* insert, in a second
-          // step — exactly the non-atomic gap this change closes. Both
+          // step: exactly the non-atomic gap this change closes. Both
           // are assigned client-side here so the full record, including
           // its own id and timestamp, is known and hashed before the one
           // and only insert.
@@ -256,10 +268,7 @@ export class AuditTrailService implements OnModuleInit {
           previousHash,
           chainSequence: sequence,
         });
-        entity.integrityHash = computeAuditRecordHash(
-          { ...entity } as any,
-          secret,
-        );
+        entity.integrityHash = computeAuditRecordHash({ ...entity }, secret);
 
         const savedEntity = await auditRepo.save(entity);
         previousHash = savedEntity.integrityHash;
@@ -332,19 +341,27 @@ export class AuditTrailService implements OnModuleInit {
       .orderBy('audit.createdAt', 'DESC');
 
     if (filters.entityType) {
-      query.andWhere('audit.entityType = :entityType', { entityType: filters.entityType });
+      query.andWhere('audit.entityType = :entityType', {
+        entityType: filters.entityType,
+      });
     }
 
     if (filters.actionType) {
-      query.andWhere('audit.actionType = :actionType', { actionType: filters.actionType });
+      query.andWhere('audit.actionType = :actionType', {
+        actionType: filters.actionType,
+      });
     }
 
     if (filters.severity) {
-      query.andWhere('audit.severity = :severity', { severity: filters.severity });
+      query.andWhere('audit.severity = :severity', {
+        severity: filters.severity,
+      });
     }
 
     if (filters.category) {
-      query.andWhere('audit.category = :category', { category: filters.category });
+      query.andWhere('audit.category = :category', {
+        category: filters.category,
+      });
     }
 
     if (filters.userId) {
@@ -356,19 +373,27 @@ export class AuditTrailService implements OnModuleInit {
     }
 
     if (filters.requestId) {
-      query.andWhere('audit.requestId = :requestId', { requestId: filters.requestId });
+      query.andWhere('audit.requestId = :requestId', {
+        requestId: filters.requestId,
+      });
     }
 
     if (filters.correlationId) {
-      query.andWhere('audit.correlationId = :correlationId', { correlationId: filters.correlationId });
+      query.andWhere('audit.correlationId = :correlationId', {
+        correlationId: filters.correlationId,
+      });
     }
 
     if (filters.startDate) {
-      query.andWhere('audit.createdAt >= :startDate', { startDate: new Date(filters.startDate) });
+      query.andWhere('audit.createdAt >= :startDate', {
+        startDate: new Date(filters.startDate),
+      });
     }
 
     if (filters.endDate) {
-      query.andWhere('audit.createdAt <= :endDate', { endDate: new Date(filters.endDate) });
+      query.andWhere('audit.createdAt <= :endDate', {
+        endDate: new Date(filters.endDate),
+      });
     }
 
     if (filters.search) {
@@ -397,7 +422,10 @@ export class AuditTrailService implements OnModuleInit {
     const [logs, total] = await this.auditLogRepo
       .createQueryBuilder('audit')
       .leftJoinAndSelect('audit.user', 'user')
-      .where('audit.createdAt BETWEEN :startDate AND :endDate', { startDate, endDate })
+      .where('audit.createdAt BETWEEN :startDate AND :endDate', {
+        startDate,
+        endDate,
+      })
       .orderBy('audit.createdAt', 'DESC')
       .skip(offset)
       .take(limit)
@@ -455,7 +483,9 @@ export class AuditTrailService implements OnModuleInit {
     }));
   }
 
-  async getAuditLogsByCorrelationId(correlationId: string): Promise<AuditLog[]> {
+  async getAuditLogsByCorrelationId(
+    correlationId: string,
+  ): Promise<AuditLog[]> {
     return this.auditLogRepo.find({
       where: { correlationId },
       order: { createdAt: 'ASC' },
@@ -463,7 +493,10 @@ export class AuditTrailService implements OnModuleInit {
   }
 
   async getAuditLogsByEventId(eventId: string): Promise<AuditLog | null> {
-    return this.auditLogRepo.findOne({ where: { eventId }, relations: ['user'] });
+    return this.auditLogRepo.findOne({
+      where: { eventId },
+      relations: ['user'],
+    });
   }
 
   async deleteOldLogs(daysToKeep: number): Promise<number> {
@@ -479,11 +512,17 @@ export class AuditTrailService implements OnModuleInit {
 
     const result = await query.execute();
 
-    this.logger.log(`Purged ${result.affected || 0} audit logs older than ${daysToKeep} days`);
+    this.logger.log(
+      `Purged ${result.affected || 0} audit logs older than ${daysToKeep} days`,
+    );
     return result.affected || 0;
   }
 
-  async getStorageStats(): Promise<{ totalRecords: number; oldestRecord: Date | null; newestRecord: Date | null }> {
+  async getStorageStats(): Promise<{
+    totalRecords: number;
+    oldestRecord: Date | null;
+    newestRecord: Date | null;
+  }> {
     const totalRecords = await this.auditLogRepo.count();
     const oldest = await this.auditLogRepo
       .createQueryBuilder('audit')
@@ -506,11 +545,16 @@ export class AuditTrailService implements OnModuleInit {
    *
    * This proves the record's content hasn't been edited since it was
    * written, but it cannot by itself reveal a deleted record or a
-   * reordered chain — a deleted row simply isn't there to check. Use
+   * reordered chain: a deleted row simply isn't there to check. Use
    * {@link verifyChain} when the question is "has anything in this range
    * been tampered with or removed", not just "is this one row intact".
    */
-  async verifyIntegrity(id: string): Promise<{ valid: boolean; id: string; integrityHash?: string; reason?: string }> {
+  async verifyIntegrity(id: string): Promise<{
+    valid: boolean;
+    id: string;
+    integrityHash?: string;
+    reason?: string;
+  }> {
     const record = await this.auditLogRepo.findOne({ where: { id } });
     if (!record) {
       return { valid: false, id, reason: 'not_found' };
@@ -519,7 +563,10 @@ export class AuditTrailService implements OnModuleInit {
       return { valid: false, id, reason: 'hash_missing' };
     }
     const { integrityHash, ...hashable } = record;
-    const valid = verifyAuditRecordHash({ ...hashable, integrityHash }, this.getHashSecret());
+    const valid = verifyAuditRecordHash(
+      { ...hashable, integrityHash },
+      this.getHashSecret(),
+    );
     return valid
       ? { valid: true, id, integrityHash: record.integrityHash }
       : { valid: false, id, reason: 'hash_mismatch' };
@@ -539,13 +586,18 @@ export class AuditTrailService implements OnModuleInit {
    * safe to run over a large audit log.
    */
   async verifyChain(
-    options: { fromSequence?: number; toSequence?: number; batchSize?: number } = {},
+    options: {
+      fromSequence?: number;
+      toSequence?: number;
+      batchSize?: number;
+    } = {},
   ): Promise<{
     valid: boolean;
     recordsChecked: number;
     brokenAt?: { id: string; chainSequence: number; reason: string };
   }> {
-    const batchSize = options.batchSize && options.batchSize > 0 ? options.batchSize : 500;
+    const batchSize =
+      options.batchSize && options.batchSize > 0 ? options.batchSize : 500;
     let cursor = options.fromSequence ?? 0;
     let recordsChecked = 0;
     const secret = this.getHashSecret();
@@ -572,7 +624,9 @@ export class AuditTrailService implements OnModuleInit {
         .take(batchSize);
 
       if (options.toSequence != null) {
-        query.andWhere('audit.chainSequence <= :toSequence', { toSequence: options.toSequence });
+        query.andWhere('audit.chainSequence <= :toSequence', {
+          toSequence: options.toSequence,
+        });
       }
 
       const batch = await query.getMany();
@@ -581,7 +635,10 @@ export class AuditTrailService implements OnModuleInit {
       for (const record of batch) {
         recordsChecked += 1;
 
-        if (expectedPreviousHash !== undefined && record.previousHash !== expectedPreviousHash) {
+        if (
+          expectedPreviousHash !== undefined &&
+          record.previousHash !== expectedPreviousHash
+        ) {
           return {
             valid: false,
             recordsChecked,
@@ -594,7 +651,10 @@ export class AuditTrailService implements OnModuleInit {
         }
 
         const { integrityHash, ...hashable } = record;
-        if (!integrityHash || !verifyAuditRecordHash({ ...hashable, integrityHash }, secret)) {
+        if (
+          !integrityHash ||
+          !verifyAuditRecordHash({ ...hashable, integrityHash }, secret)
+        ) {
           return {
             valid: false,
             recordsChecked,
@@ -616,27 +676,40 @@ export class AuditTrailService implements OnModuleInit {
     return { valid: true, recordsChecked };
   }
 
-  async placeLegalHold(entityType: AuditEntityType, entityId: string): Promise<number> {
+  async placeLegalHold(
+    entityType: AuditEntityType,
+    entityId: string,
+  ): Promise<number> {
     const retentionUntil = new Date();
     retentionUntil.setFullYear(retentionUntil.getFullYear() + 100);
     const result = await this.auditLogRepo
       .createQueryBuilder()
       .update(AuditLog)
       .set({ retentionUntil })
-      .where('entityType = :entityType AND entityId = :entityId', { entityType, entityId })
+      .where('entityType = :entityType AND entityId = :entityId', {
+        entityType,
+        entityId,
+      })
       .execute();
     this.logger.log(`Legal hold placed on ${entityType} ${entityId}`);
     return result.affected || 0;
   }
 
-  async removeLegalHold(entityType: AuditEntityType, entityId: string, retentionDays = 365): Promise<number> {
+  async removeLegalHold(
+    entityType: AuditEntityType,
+    entityId: string,
+    retentionDays = 365,
+  ): Promise<number> {
     const retentionUntil = new Date();
     retentionUntil.setDate(retentionUntil.getDate() + retentionDays);
     const result = await this.auditLogRepo
       .createQueryBuilder()
       .update(AuditLog)
       .set({ retentionUntil })
-      .where('entityType = :entityType AND entityId = :entityId', { entityType, entityId })
+      .where('entityType = :entityType AND entityId = :entityId', {
+        entityType,
+        entityId,
+      })
       .execute();
     this.logger.log(`Legal hold removed on ${entityType} ${entityId}`);
     return result.affected || 0;
@@ -649,7 +722,9 @@ export class AuditTrailService implements OnModuleInit {
     pendingPurge: number;
   }> {
     const totalRecords = await this.auditLogRepo.count();
-    const archivedRecords = await this.auditLogRepo.count({ where: { archived: true } });
+    const archivedRecords = await this.auditLogRepo.count({
+      where: { archived: true },
+    });
     const recordsWithRetention = await this.auditLogRepo.count({
       where: { retentionUntil: Not(IsNull()) },
     });
@@ -659,7 +734,12 @@ export class AuditTrailService implements OnModuleInit {
         cutoff: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000),
       })
       .getCount();
-    return { totalRecords, archivedRecords, recordsWithRetention, pendingPurge };
+    return {
+      totalRecords,
+      archivedRecords,
+      recordsWithRetention,
+      pendingPurge,
+    };
   }
 
   getClientIp(): string | undefined {

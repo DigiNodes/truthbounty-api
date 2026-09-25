@@ -5,6 +5,7 @@ import {
   CreateDateColumn,
   Index,
   Unique,
+  Check,
 } from 'typeorm';
 
 /**
@@ -18,6 +19,7 @@ import {
 @Unique('uq_v2_evidence_version', ['evidenceId', 'version'])
 @Unique('uq_v2_evidence_version_event', ['eventTxHash', 'eventLogIndex'])
 @Index(['evidenceId'])
+@Check('chk_v2_evidence_version_number_positive', `"version" > 0`)
 export class ProjectEvidenceVersion {
   @PrimaryGeneratedColumn('uuid')
   id: string;

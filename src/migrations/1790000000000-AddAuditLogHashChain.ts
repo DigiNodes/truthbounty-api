@@ -1,7 +1,7 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
 /**
- * V2-BE-110 — Make Security Audit Logs Tamper Evident.
+ * V2-BE-110: Make Security Audit Logs Tamper Evident.
  *
  * Adds the columns and singleton state table needed for a real hash
  * chain over `audit_logs`:

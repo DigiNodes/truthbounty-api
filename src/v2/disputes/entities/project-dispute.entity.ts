@@ -5,6 +5,7 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   Index,
+  Check,
 } from 'typeorm';
 import { DataState } from '../../common/data-state.enum';
 
@@ -32,6 +33,11 @@ export enum DisputeStatus {
  */
 @Entity('v2_project_dispute')
 @Index(['claimId'])
+@Check('chk_v2_dispute_status', `"status" IN ('raised', 'resolved', 'expired')`)
+@Check(
+  'chk_v2_dispute_data_state',
+  `"dataState" IN ('observed', 'safe', 'finalized')`,
+)
 export class ProjectDispute {
   @PrimaryColumn({ type: 'varchar', length: 200 })
   disputeId: string;

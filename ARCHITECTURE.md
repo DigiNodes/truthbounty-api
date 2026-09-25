@@ -368,7 +368,7 @@ test in webdev
 
 TypeORM/PostgreSQL is the persistence path for all new backend code. `src/database/transaction.runner.ts` is the shared transaction helper; use it rather than reaching for a raw `DataSource` or a second transaction abstraction.
 
-Prisma (`src/prisma/`, `prisma/schema.prisma`) has pre-existing, real usage in a specific, closed list of modules: `auth`, `notifications`, `outbox` (see above), `sybil-resistance`, `analytics`, `ai-assistant`, and `identity`/`worldcoin`. That usage is grandfathered, not sanctioned for new work — it predates this boundary and migrating it off Prisma is a separate, larger effort, not part of this change.
+Prisma (`src/prisma/`, `prisma/schema.prisma`) has pre-existing, real usage in a specific, closed list of modules: `auth`, `notifications`, `outbox` (see above), `sybil-resistance`, `analytics`, `ai-assistant`, and `identity`/`worldcoin`. That usage is grandfathered, not sanctioned for new work: it predates this boundary and migrating it off Prisma is a separate, larger effort, not part of this change.
 
 Two things enforce the boundary going forward:
 - `eslint.config.mjs` restricts importing `@prisma/client` or `prisma.service` outside the grandfathered file list; new files hit this at lint time.

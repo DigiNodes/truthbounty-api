@@ -5,6 +5,7 @@ import {
   CreateDateColumn,
   Index,
   Unique,
+  Check,
 } from 'typeorm';
 import { DataState } from '../../common/data-state.enum';
 
@@ -20,6 +21,10 @@ import { DataState } from '../../common/data-state.enum';
 @Unique('uq_v2_position_event', ['eventTxHash', 'eventLogIndex'])
 @Unique('uq_v2_position_participant_round', ['roundId', 'participant'])
 @Index(['roundId'])
+@Check(
+  'chk_v2_position_data_state',
+  `"dataState" IN ('observed', 'safe', 'finalized')`,
+)
 export class ProjectParticipantPosition {
   @PrimaryGeneratedColumn('uuid')
   id: string;

@@ -33,12 +33,12 @@ export default tseslint.config(
     },
   },
   {
-    // V2-BE-111 — Enforce the TypeORM-only persistence boundary.
+    // V2-BE-111: Enforce the TypeORM-only persistence boundary.
     //
     // TypeORM/PostgreSQL is the one persistence path for new backend code.
     // Prisma already has real, load-bearing usage in the files listed in
     // the override below (auth, notifications, outbox, sybil-resistance,
-    // analytics, ai-assistant, identity/worldcoin) — this rule does not
+    // analytics, ai-assistant, identity/worldcoin), this rule does not
     // touch that existing usage, it only stops it from spreading further.
     // Migrating those files off Prisma is a separate, much larger change
     // and out of scope here.
@@ -68,7 +68,7 @@ export default tseslint.config(
   },
   {
     // Grandfathered: real, currently load-bearing Prisma usage that
-    // predates this rule. Do not add files here for new work — this list
+    // predates this rule. Do not add files here for new work; this list
     // should only shrink as these modules are migrated to TypeORM.
     files: [
       'src/prisma/prisma.module.ts',
