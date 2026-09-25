@@ -59,8 +59,29 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Generate SBOM and run dependency audit
+        run: npm run security:dependencies
+
+      - name: Upload dependency SBOM
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: dependency-sbom-${{ github.sha }}
+          path: artifacts/dependency-sbom.cdx.json
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Dependency audit
-        run: npm audit --audit-level=high
+        run: echo "Dependency audit is included in the SBOM gate above."
 
       - name: Secret scanning (TruffleHog)
         uses: trufflesecurity/trufflehog@main
