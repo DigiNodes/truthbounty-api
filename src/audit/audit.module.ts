@@ -9,6 +9,7 @@ import { AuditQueueService, AUDIT_QUEUE_NAME } from './services/audit-queue.serv
 import { ComplianceService } from './services/compliance.service';
 import { SecurityMonitoringService } from './services/security-monitoring.service';
 import { AuditMetricsService } from './services/audit-metrics.service';
+import { AdminAuditService } from './services/admin-audit.service';
 import { AuditController } from './controllers/audit-log.controller';
 import { AuditLoggingInterceptor } from './interceptors/audit-logging.interceptor';
 import { AuditLogProcessor } from './processors/audit-log.processor';
@@ -36,6 +37,7 @@ import { AuditLogProcessor } from './processors/audit-log.processor';
     ComplianceService,
     SecurityMonitoringService,
     AuditMetricsService,
+    AdminAuditService,
     AuditLogProcessor,
   ],
   controllers: [AuditController],
@@ -46,6 +48,7 @@ import { AuditLogProcessor } from './processors/audit-log.processor';
     ComplianceService,
     SecurityMonitoringService,
     AuditMetricsService,
+    AdminAuditService,
   ],
 })
 export class AuditModule {}
