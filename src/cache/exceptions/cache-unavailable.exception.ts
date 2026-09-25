@@ -18,7 +18,8 @@ export class CacheUnavailableException extends Error {
   ) {
     super(message);
     this.name = 'CacheUnavailableException';
-    Error.captureStackTrace(this, this.constructor);
+    // Note: Error.captureStackTrace is not available in all environments
+    // Stack trace will be captured automatically by the runtime
   }
 
   /**
