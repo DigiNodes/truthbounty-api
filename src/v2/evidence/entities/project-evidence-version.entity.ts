@@ -15,11 +15,28 @@ import {
  * existing one, so version history is always fully reconstructable and a
  * removal never destroys prior versions.
  */
-@Entity('v2_project_evidence_version')
+@Entity('v2_project_evidence_version', {
+  foreignKeys: [
+    {
+      columnNames: ['evidenceId'],
+      referencedTableName: 'v2_project_evidence',
+      referencedColumnNames: ['evidenceId'],
+      onDelete: 'CASCADE',
+      onUpdate: 'CASCADE',
+    },
+  ],
+})
 @Unique('uq_v2_evidence_version', ['evidenceId', 'version'])
 @Unique('uq_v2_evidence_version_event', ['eventTxHash', 'eventLogIndex'])
 @Index(['evidenceId'])
 @Check('chk_v2_evidence_version_number_positive', `"version" > 0`)
+@Check('chk_v2_evidence_v_version_positive', '"version" > 0')
+@Check('chk_v2_evidence_v_log_nonneg', '"eventLogIndex" >= 0')
+@Check('chk_v2_evidence_v_block_nonneg', '"blockNumber" >= 0')
+@Check(
+  'chk_v2_evidence_v_ids_present',
+  'length("evidenceId") > 0 AND length("contentDigest") > 0 AND length("eventTxHash") = 66',
+)
 export class ProjectEvidenceVersion {
   @PrimaryGeneratedColumn('uuid')
   id: string;

@@ -5,11 +5,13 @@ import { GovernanceService } from './governance.service';
 import { GovernanceCache } from './governance.cache';
 import { Proposal, Vote } from './entities/proposal.entity';
 import { CacheModule } from '../cache/cache.module';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Proposal, Vote]),
     CacheModule,
+    AuthModule,
   ],
   controllers: [GovernanceController],
   providers: [GovernanceService, GovernanceCache],
