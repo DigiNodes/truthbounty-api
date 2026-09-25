@@ -32,4 +32,61 @@ export default tseslint.config(
       '@typescript-eslint/no-unsafe-argument': 'warn'
     },
   },
+  {
+    // V2-BE-111 — Enforce the TypeORM-only persistence boundary.
+    //
+    // TypeORM/PostgreSQL is the one persistence path for new backend code.
+    // Prisma already has real, load-bearing usage in the files listed in
+    // the override below (auth, notifications, outbox, sybil-resistance,
+    // analytics, ai-assistant, identity/worldcoin) — this rule does not
+    // touch that existing usage, it only stops it from spreading further.
+    // Migrating those files off Prisma is a separate, much larger change
+    // and out of scope here.
+    files: ['src/**/*.ts'],
+    ignores: ['src/generated/**', 'src/prisma/**', '**/*.spec.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@prisma/client',
+              message:
+                'New code must use TypeORM, not Prisma. If this file is one of the pre-existing Prisma-backed modules, add it to the override in eslint.config.mjs rather than suppressing this inline.',
+            },
+          ],
+          patterns: [
+            {
+              group: ['**/prisma/prisma.service', '**/generated/client*'],
+              message:
+                'New code must use TypeORM, not Prisma. If this file is one of the pre-existing Prisma-backed modules, add it to the override in eslint.config.mjs rather than suppressing this inline.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // Grandfathered: real, currently load-bearing Prisma usage that
+    // predates this rule. Do not add files here for new work — this list
+    // should only shrink as these modules are migrated to TypeORM.
+    files: [
+      'src/prisma/prisma.module.ts',
+      'src/prisma/prisma.service.ts',
+      'src/auth/auth.service.ts',
+      'src/notifications/services/notifications.service.ts',
+      'src/outbox/outbox.service.ts',
+      'src/sybil-resistance/sybil-resistance.service.ts',
+      'src/analytics/analytics.service.ts',
+      'src/ai-assistant/ai-assistant.service.ts',
+      'src/ai-assistant/rag.service.ts',
+      'src/ai-assistant/services/ai-assistant.service.ts',
+      'src/ai-assistant/services/rag.service.ts',
+      'src/identity/identity.service.ts',
+      'src/identity/worldcoin/worldcoin.service.ts',
+    ],
+    rules: {
+      'no-restricted-imports': 'off',
+    },
+  },
 );
