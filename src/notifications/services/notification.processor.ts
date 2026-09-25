@@ -10,9 +10,17 @@ import { WebhookService } from './webhook.service';
 import { DeliveryHistoryService } from './delivery-history.service';
 import { 
   DeliveryChannel, 
-  DeliveryStatus,
-  NotificationDeliveryJob 
+  DeliveryStatus
 } from '../interfaces/notification.types';
+
+/** BullMQ job payload for notification delivery, relayed from the outbox (V2-BE-048). */
+export interface NotificationDeliveryJob {
+  notificationId: string;
+  channel: DeliveryChannel;
+  userId?: string;
+}
+
+import { RedisService } from '../../redis/redis.service';
 
 @Processor('notifications', {
   concurrency: 10,
@@ -28,22 +36,48 @@ export class NotificationProcessor extends WorkerHost {
     private readonly emailService: EmailService,
     private readonly webhookService: WebhookService,
     private readonly deliveryHistoryService: DeliveryHistoryService,
+    private readonly redisService: RedisService,
   ) {
     super();
   }
 
-  async process(job: Job<NotificationDeliveryJob>): Promise<any> {
-    const { notificationId, channel } = job.data;
+  async process(job: Job<NotificationDeliveryJob & { idempotencyKey?: string }>): Promise<any> {
+    const { notificationId, channel, idempotencyKey } = job.data;
     this.logger.debug(`Processing notification delivery: ${notificationId} via ${channel} (attempt ${job.attemptsMade + 1})`);
 
-    const deliveryRecord = await this.deliveryHistoryService.findPendingDeliveryByNotificationAndChannel(
+    // 1. Fast-path Redis SETNX guard for idempotency
+    if (idempotencyKey) {
+      const redisKey = `idempotency:notification:${idempotencyKey}`;
+      const acquiredLock = await this.redisService.setnx(redisKey, '1', 86400); // 24h TTL
+      if (!acquiredLock) {
+        this.logger.warn(
+          `[Idempotency Guard] Duplicate job execution suppressed by Redis SETNX: key=${idempotencyKey}`,
+        );
+        return { success: true, status: DeliveryStatus.DELIVERED, deduplicated: true };
+      }
+
+      // 2. DB fallback guard (in case Redis was evicted or restarted)
+      const existingHistory = await this.deliveryHistoryService.findByIdempotencyKey(idempotencyKey);
+      if (existingHistory && existingHistory.status === DeliveryStatus.DELIVERED) {
+        this.logger.warn(
+          `[Idempotency Guard] Duplicate job execution suppressed by DB check: key=${idempotencyKey}`,
+        );
+        return { success: true, status: DeliveryStatus.DELIVERED, deduplicated: true };
+      }
+    }
+
+    let deliveryRecord = await this.deliveryHistoryService.findPendingDeliveryByNotificationAndChannel(
       notificationId,
-      channel
+      channel,
     );
 
     if (!deliveryRecord) {
-      this.logger.warn(`No pending delivery record found for ${notificationId} via ${channel}`);
-      return;
+      // Auto-create delivery record if dispatched via Outbox pattern
+      deliveryRecord = await this.deliveryHistoryService.createDeliveryRecord(
+        notificationId,
+        channel as DeliveryChannel,
+        idempotencyKey,
+      );
     }
 
     if (job.attemptsMade > 0) {

@@ -243,7 +243,7 @@ export type SybilScoreGroupByOutputType = {
   _max: SybilScoreMaxAggregateOutputType | null
 }
 
-type GetSybilScoreGroupByPayload<T extends SybilScoreGroupByArgs> = Prisma.PrismaPromise<
+export type GetSybilScoreGroupByPayload<T extends SybilScoreGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<SybilScoreGroupByOutputType, T['by']> &
       {
@@ -1484,6 +1484,11 @@ export type SybilScoreFindManyArgs<ExtArgs extends runtime.Types.Extensions.Inte
    * Skip the first `n` SybilScores.
    */
   skip?: number
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+   * 
+   * Filter by unique combinations of SybilScores.
+   */
   distinct?: Prisma.SybilScoreScalarFieldEnum | Prisma.SybilScoreScalarFieldEnum[]
 }
 
