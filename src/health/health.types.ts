@@ -4,6 +4,18 @@ export interface IndexerHealthResult {
   status: HealthStatus;
   timestamp: string;
   snapshot: import('../blockchain/types').IndexerHealthSnapshot;
+  evidenceIntegrity?: EvidenceIntegrityHealth;
+}
+
+export interface EvidenceIntegrityHealth {
+  status: HealthStatus;
+  totalEvidence: number;
+  evidenceStamped: number;
+  versionsStamped: number;
+  evidenceUnstamped: number;
+  versionsUnstamped: number;
+  stampedPercentage: number;
+  lastVerificationRun?: string;
 }
 
 export type FailureReasonCode =
