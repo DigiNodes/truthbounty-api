@@ -312,5 +312,30 @@ describe('ClaimFeedService', () => {
       expect(result.confirmations.current).toBe(40);
       expect(result.confirmations.required).toBe(12);
     });
+
+    it('fetches the latest ClaimCreated event exactly once per feed page, not once per row (N+1 regression guard)', async () => {
+      const claims = Array.from({ length: 10 }, (_, i) =>
+        makeClaim({ id: `id-${i}`, effectiveAt: new Date(2026, 7, 30, 0, i) }),
+      );
+      const qb = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        innerJoin: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue(claims),
+      };
+      jest.spyOn(claimRepo, 'createQueryBuilder').mockReturnValue(qb as any);
+      const findOneSpy = jest.spyOn(indexedEventRepo, 'findOne').mockResolvedValue({
+        confirmations: 5,
+        isFinalized: false,
+      } as IndexedEvent);
+
+      const result = await service.getFeed({ limit: 20 });
+
+      expect(result.data).toHaveLength(10);
+      expect(findOneSpy).toHaveBeenCalledTimes(1);
+    });
   });
 });
