@@ -31,7 +31,7 @@ model User {
   updatedAt DateTime @updatedAt
 
   // Primary wallet address — canonical identifier for the user
-  walletAddress String @unique
+  walletAddress String? @unique
 
   reputation Int @default(0)
 

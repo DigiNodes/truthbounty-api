@@ -24,7 +24,7 @@ export class PushChannel implements NotificationChannel {
       return false;
     }
     
-    return preferences.enabledChannels[this.channelType] ?? false;
+    return preferences.enabledChannels?.[this.channelType] ?? false;
   }
 
   async send(notification: Notification): Promise<ChannelDeliveryResult> {

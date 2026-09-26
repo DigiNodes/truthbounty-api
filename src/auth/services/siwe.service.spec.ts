@@ -1,5 +1,4 @@
 import { SiweService } from './siwe.service';
-import { ConfigService } from '@nestjs/config';
 
 describe('SiweService', () => {
   let service: SiweService;

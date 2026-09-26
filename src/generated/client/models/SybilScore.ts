@@ -563,10 +563,6 @@ export type FloatFieldUpdateOperationsInput = {
   divide?: number
 }
 
-export type NullableStringFieldUpdateOperationsInput = {
-  set?: string | null
-}
-
 export type SybilScoreCreateNestedOneWithoutExplanationInput = {
   create?: Prisma.XOR<Prisma.SybilScoreCreateWithoutExplanationInput, Prisma.SybilScoreUncheckedCreateWithoutExplanationInput>
   connectOrCreate?: Prisma.SybilScoreCreateOrConnectWithoutExplanationInput

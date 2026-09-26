@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { BlockchainStateService } from './state.service';
-import { BlockInfo, PendingEvent, ReorgEvent } from './types';
+import { BlockInfo, PendingEvent } from './types';
 
 describe('BlockchainStateService', () => {
   let service: BlockchainStateService;

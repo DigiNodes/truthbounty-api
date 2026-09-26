@@ -67,9 +67,14 @@ const mockMetricsService = () => ({
 
 describe('HealthService', () => {
   let service: HealthService;
-  let dataSource: DataSource;
-  let redisService: RedisService;
-  let queue: Queue;
+  let dataSource: any;
+  let redisService: any;
+  let queue: any;
+  let jobsService: any;
+  let notificationService: any;
+  let ipfsService: any;
+  let blockchainStateService: any;
+  let metricsService: any;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -90,6 +95,11 @@ describe('HealthService', () => {
     dataSource = module.get<DataSource>(DataSource);
     redisService = module.get<RedisService>(RedisService);
     queue = module.get<Queue>('BullQueue_jobs-queue');
+    jobsService = module.get<JobsService>(JobsService);
+    notificationService = module.get<NotificationService>(NotificationService);
+    ipfsService = module.get<IpfsService>(IpfsService);
+    blockchainStateService = module.get<BlockchainStateService>(BlockchainStateService);
+    metricsService = module.get<MetricsService>(MetricsService);
   });
 
   it('should return alive liveness result', () => {
@@ -107,6 +117,10 @@ describe('HealthService', () => {
       completed: 0,
       failed: 0,
     });
+    // The service runs 6 checks (database, redis, queue, notifications,
+    // ipfs, blockchain) — all non-critical ones must also resolve healthy.
+    (notificationService.getMetrics as jest.Mock).mockResolvedValue({ queueDepth: 0 });
+    (ipfsService.uploadBuffer as jest.Mock).mockResolvedValue({ cid: 'QmTest' });
 
     const result = await service.getReadiness();
     expect(result.ready).toBe(true);

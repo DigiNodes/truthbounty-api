@@ -201,7 +201,7 @@ export type UserGroupByOutputType = {
   id: string
   createdAt: Date
   updatedAt: Date
-  walletAddress: string
+  walletAddress: string | null
   reputation: number
   role: $Enums.UserRole
   worldcoinVerified: boolean
@@ -235,7 +235,7 @@ export type UserWhereInput = {
   id?: Prisma.StringFilter<"User"> | string
   createdAt?: Prisma.DateTimeFilter<"User"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"User"> | Date | string
-  walletAddress?: Prisma.StringFilter<"User"> | string
+  walletAddress?: Prisma.StringNullableFilter<"User"> | string | null
   reputation?: Prisma.IntFilter<"User"> | number
   role?: Prisma.EnumUserRoleFilter<"User"> | $Enums.UserRole
   worldcoinVerified?: Prisma.BoolFilter<"User"> | boolean
@@ -250,7 +250,7 @@ export type UserOrderByWithRelationInput = {
   id?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
-  walletAddress?: Prisma.SortOrder
+  walletAddress?: Prisma.SortOrderInput | Prisma.SortOrder
   reputation?: Prisma.SortOrder
   role?: Prisma.SortOrder
   worldcoinVerified?: Prisma.SortOrder
@@ -283,7 +283,7 @@ export type UserOrderByWithAggregationInput = {
   id?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
-  walletAddress?: Prisma.SortOrder
+  walletAddress?: Prisma.SortOrderInput | Prisma.SortOrder
   reputation?: Prisma.SortOrder
   role?: Prisma.SortOrder
   worldcoinVerified?: Prisma.SortOrder
@@ -302,7 +302,7 @@ export type UserScalarWhereWithAggregatesInput = {
   id?: Prisma.StringWithAggregatesFilter<"User"> | string
   createdAt?: Prisma.DateTimeWithAggregatesFilter<"User"> | Date | string
   updatedAt?: Prisma.DateTimeWithAggregatesFilter<"User"> | Date | string
-  walletAddress?: Prisma.StringWithAggregatesFilter<"User"> | string
+  walletAddress?: Prisma.StringNullableWithAggregatesFilter<"User"> | string | null
   reputation?: Prisma.IntWithAggregatesFilter<"User"> | number
   role?: Prisma.EnumUserRoleWithAggregatesFilter<"User"> | $Enums.UserRole
   worldcoinVerified?: Prisma.BoolWithAggregatesFilter<"User"> | boolean
@@ -313,7 +313,7 @@ export type UserCreateInput = {
   id?: string
   createdAt?: Date | string
   updatedAt?: Date | string
-  walletAddress: string
+  walletAddress?: string | null
   reputation?: number
   role?: $Enums.UserRole
   worldcoinVerified?: boolean
@@ -328,7 +328,7 @@ export type UserUncheckedCreateInput = {
   id?: string
   createdAt?: Date | string
   updatedAt?: Date | string
-  walletAddress: string
+  walletAddress?: string | null
   reputation?: number
   role?: $Enums.UserRole
   worldcoinVerified?: boolean
@@ -343,7 +343,7 @@ export type UserUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  walletAddress?: Prisma.StringFieldUpdateOperationsInput | string
+  walletAddress?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   reputation?: Prisma.IntFieldUpdateOperationsInput | number
   role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
   worldcoinVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -358,7 +358,7 @@ export type UserUncheckedUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  walletAddress?: Prisma.StringFieldUpdateOperationsInput | string
+  walletAddress?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   reputation?: Prisma.IntFieldUpdateOperationsInput | number
   role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
   worldcoinVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -373,7 +373,7 @@ export type UserCreateManyInput = {
   id?: string
   createdAt?: Date | string
   updatedAt?: Date | string
-  walletAddress: string
+  walletAddress?: string | null
   reputation?: number
   role?: $Enums.UserRole
   worldcoinVerified?: boolean
@@ -384,7 +384,7 @@ export type UserUpdateManyMutationInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  walletAddress?: Prisma.StringFieldUpdateOperationsInput | string
+  walletAddress?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   reputation?: Prisma.IntFieldUpdateOperationsInput | number
   role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
   worldcoinVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -395,7 +395,7 @@ export type UserUncheckedUpdateManyInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  walletAddress?: Prisma.StringFieldUpdateOperationsInput | string
+  walletAddress?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   reputation?: Prisma.IntFieldUpdateOperationsInput | number
   role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
   worldcoinVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -454,6 +454,10 @@ export type StringFieldUpdateOperationsInput = {
 
 export type DateTimeFieldUpdateOperationsInput = {
   set?: Date | string
+}
+
+export type NullableStringFieldUpdateOperationsInput = {
+  set?: string | null
 }
 
 export type IntFieldUpdateOperationsInput = {
@@ -536,7 +540,7 @@ export type UserCreateWithoutWalletsInput = {
   id?: string
   createdAt?: Date | string
   updatedAt?: Date | string
-  walletAddress: string
+  walletAddress?: string | null
   reputation?: number
   role?: $Enums.UserRole
   worldcoinVerified?: boolean
@@ -550,7 +554,7 @@ export type UserUncheckedCreateWithoutWalletsInput = {
   id?: string
   createdAt?: Date | string
   updatedAt?: Date | string
-  walletAddress: string
+  walletAddress?: string | null
   reputation?: number
   role?: $Enums.UserRole
   worldcoinVerified?: boolean
@@ -580,7 +584,7 @@ export type UserUpdateWithoutWalletsInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  walletAddress?: Prisma.StringFieldUpdateOperationsInput | string
+  walletAddress?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   reputation?: Prisma.IntFieldUpdateOperationsInput | number
   role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
   worldcoinVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -594,7 +598,7 @@ export type UserUncheckedUpdateWithoutWalletsInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  walletAddress?: Prisma.StringFieldUpdateOperationsInput | string
+  walletAddress?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   reputation?: Prisma.IntFieldUpdateOperationsInput | number
   role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
   worldcoinVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -608,7 +612,7 @@ export type UserCreateWithoutSybilScoresInput = {
   id?: string
   createdAt?: Date | string
   updatedAt?: Date | string
-  walletAddress: string
+  walletAddress?: string | null
   reputation?: number
   role?: $Enums.UserRole
   worldcoinVerified?: boolean
@@ -622,7 +626,7 @@ export type UserUncheckedCreateWithoutSybilScoresInput = {
   id?: string
   createdAt?: Date | string
   updatedAt?: Date | string
-  walletAddress: string
+  walletAddress?: string | null
   reputation?: number
   role?: $Enums.UserRole
   worldcoinVerified?: boolean
@@ -652,7 +656,7 @@ export type UserUpdateWithoutSybilScoresInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  walletAddress?: Prisma.StringFieldUpdateOperationsInput | string
+  walletAddress?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   reputation?: Prisma.IntFieldUpdateOperationsInput | number
   role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
   worldcoinVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -666,7 +670,7 @@ export type UserUncheckedUpdateWithoutSybilScoresInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  walletAddress?: Prisma.StringFieldUpdateOperationsInput | string
+  walletAddress?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   reputation?: Prisma.IntFieldUpdateOperationsInput | number
   role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
   worldcoinVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -680,7 +684,7 @@ export type UserCreateWithoutWorldIdVerificationsInput = {
   id?: string
   createdAt?: Date | string
   updatedAt?: Date | string
-  walletAddress: string
+  walletAddress?: string | null
   reputation?: number
   role?: $Enums.UserRole
   worldcoinVerified?: boolean
@@ -694,7 +698,7 @@ export type UserUncheckedCreateWithoutWorldIdVerificationsInput = {
   id?: string
   createdAt?: Date | string
   updatedAt?: Date | string
-  walletAddress: string
+  walletAddress?: string | null
   reputation?: number
   role?: $Enums.UserRole
   worldcoinVerified?: boolean
@@ -724,7 +728,7 @@ export type UserUpdateWithoutWorldIdVerificationsInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  walletAddress?: Prisma.StringFieldUpdateOperationsInput | string
+  walletAddress?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   reputation?: Prisma.IntFieldUpdateOperationsInput | number
   role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
   worldcoinVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -738,7 +742,7 @@ export type UserUncheckedUpdateWithoutWorldIdVerificationsInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  walletAddress?: Prisma.StringFieldUpdateOperationsInput | string
+  walletAddress?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   reputation?: Prisma.IntFieldUpdateOperationsInput | number
   role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
   worldcoinVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -752,7 +756,7 @@ export type UserCreateWithoutConversationsInput = {
   id?: string
   createdAt?: Date | string
   updatedAt?: Date | string
-  walletAddress: string
+  walletAddress?: string | null
   reputation?: number
   role?: $Enums.UserRole
   worldcoinVerified?: boolean
@@ -766,7 +770,7 @@ export type UserUncheckedCreateWithoutConversationsInput = {
   id?: string
   createdAt?: Date | string
   updatedAt?: Date | string
-  walletAddress: string
+  walletAddress?: string | null
   reputation?: number
   role?: $Enums.UserRole
   worldcoinVerified?: boolean
@@ -796,7 +800,7 @@ export type UserUpdateWithoutConversationsInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  walletAddress?: Prisma.StringFieldUpdateOperationsInput | string
+  walletAddress?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   reputation?: Prisma.IntFieldUpdateOperationsInput | number
   role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
   worldcoinVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -810,7 +814,7 @@ export type UserUncheckedUpdateWithoutConversationsInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  walletAddress?: Prisma.StringFieldUpdateOperationsInput | string
+  walletAddress?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   reputation?: Prisma.IntFieldUpdateOperationsInput | number
   role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
   worldcoinVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
@@ -950,7 +954,7 @@ export type $UserPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs =
     id: string
     createdAt: Date
     updatedAt: Date
-    walletAddress: string
+    walletAddress: string | null
     reputation: number
     role: $Enums.UserRole
     worldcoinVerified: boolean

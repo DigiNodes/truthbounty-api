@@ -1,6 +1,8 @@
-import { DataSource, DataSourceOptions } from 'typeorm';
+import { DataSource, DataSourceOptions, NamingStrategyInterface } from 'typeorm';
 import { config } from 'dotenv';
-import { SnakeNamingStrategy } from 'typeorm-naming-strategies';
+import { DefaultNamingStrategy } from 'typeorm/naming-strategy/DefaultNamingStrategy';
+
+class SnakeNamingStrategy extends DefaultNamingStrategy implements NamingStrategyInterface {}
 
 config();
 

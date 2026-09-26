@@ -26,7 +26,7 @@ export class EmailChannel implements NotificationChannel {
       return false; // Default to disabled if no email configured
     }
     
-    return preferences.enabledChannels[this.channelType] ?? false && preferences.emailEnabled;
+    return (preferences.enabledChannels?.[this.channelType] ?? false) && preferences.emailEnabled;
   }
 
   async send(notification: Notification): Promise<ChannelDeliveryResult> {

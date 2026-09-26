@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
+import { Repository } from 'typeorm';
 import { Claim } from '../entities/claim.entity';
 import { IndexedEvent } from '../../entities/indexed-event.entity';
 import { Stake } from '../../staking/entities/stake.entity';

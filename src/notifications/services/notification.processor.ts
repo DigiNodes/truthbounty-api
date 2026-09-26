@@ -8,9 +8,9 @@ import { WebSocketService } from './websocket.service';
 import { EmailService } from './email.service';
 import { WebhookService } from './webhook.service';
 import { DeliveryHistoryService } from './delivery-history.service';
-import { 
-  DeliveryChannel, 
-  DeliveryStatus
+import {
+  DeliveryChannel,
+  DeliveryStatus,
 } from '../interfaces/notification.types';
 
 /** BullMQ job payload for notification delivery, relayed from the outbox (V2-BE-048). */

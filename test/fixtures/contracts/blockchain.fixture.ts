@@ -1,4 +1,4 @@
-import { Wallet } from 'ethers';
+import { Wallet, HDNodeWallet } from 'ethers';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
@@ -20,7 +20,7 @@ export type ContractType = keyof typeof CONTRACT_ADDRESSES;
 /**
  * Generate deterministic wallet for testing
  */
-export function createTestWallet(seed: string = 'test'): Wallet {
+export function createTestWallet(seed: string = 'test'): HDNodeWallet {
   const mnemonic = `test test test test test test test test test test test ${seed}`;
   return Wallet.fromPhrase(mnemonic);
 }

@@ -3,7 +3,6 @@ import {
   Catch,
   ArgumentsHost,
   HttpException,
-  HttpStatus,
   Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
@@ -99,27 +98,54 @@ export class AuthExceptionFilter implements ExceptionFilter {
 
     const status = exception.getStatus();
     const exceptionResponse = exception.getResponse();
-    const message =
+    const rawMessage =
       typeof exceptionResponse === 'string'
         ? exceptionResponse
         : (exceptionResponse as any)?.message || exception.message;
 
     const errorCode = mapExceptionToErrorCode(exception);
 
-    // Log security-relevant auth failures
+    // Log security-relevant auth failures with the granular code/message
+    // server-side only (observable, fail-closed, redacted externally).
     if (status >= 400 && status !== 404) {
       this.logger.warn(
         `Auth failure [${errorCode}] ${request.method} ${request.url} — ${JSON.stringify(
-          typeof message === 'string' ? message : message,
+          typeof rawMessage === 'string' ? rawMessage : rawMessage,
         )}`,
       );
     }
 
+    // issue-416: constant-shape responses for authentication failures.
+    // All 401s collapse to a single code + generic message so callers cannot
+    // distinguish bad signature / unknown challenge / expired challenge /
+    // invalid nonce / revoked refresh via status, code, message, or timing.
+    // 429/403/other statuses preserve their distinct shapes (not oracles).
+    const isAuthFailure =
+      status === 401 &&
+      [
+        AuthErrorCode.INVALID_SIGNATURE,
+        AuthErrorCode.EXPIRED_SESSION,
+        AuthErrorCode.REVOKED_TOKEN,
+        AuthErrorCode.MALFORMED_TOKEN,
+        AuthErrorCode.UNAUTHORIZED,
+        AuthErrorCode.CHALLENGE_EXPIRED,
+        AuthErrorCode.CHALLENGE_NOT_FOUND,
+        AuthErrorCode.REFRESH_INVALID,
+        AuthErrorCode.REFRESH_REVOKED,
+      ].includes(errorCode);
+
+    const publicCode = isAuthFailure ? AuthErrorCode.UNAUTHORIZED : errorCode;
+    const publicMessage: string = isAuthFailure
+      ? 'Invalid credentials'
+      : Array.isArray(rawMessage)
+        ? rawMessage[0]
+        : (rawMessage as string);
+
     response.status(status).json({
       statusCode: status,
       error: this.getErrorTitle(status),
-      code: errorCode,
-      message: Array.isArray(message) ? message[0] : message,
+      code: publicCode,
+      message: publicMessage,
       timestamp: new Date().toISOString(),
       path: request.url,
     });

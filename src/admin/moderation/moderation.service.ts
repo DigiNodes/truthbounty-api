@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like } from 'typeorm';
-import { ModerationReport, ReportStatus, ReportType, ReportPriority } from '../entities/moderation-report.entity';
+import { ModerationReport, ReportStatus, ReportPriority } from '../entities/moderation-report.entity';
 import { AuditTrailService } from '../../audit/services/audit-trail.service';
 import { AuditActionType, AuditEntityType } from '../../audit/entities/audit-log.entity';
 import { CreateReportDto, UpdateReportDto, ResolveReportDto, AssignDto, ModerationQueryDto } from '../dto/moderation.dto';

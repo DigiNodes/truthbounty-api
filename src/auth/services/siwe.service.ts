@@ -1,8 +1,11 @@
-import { Injectable, Logger, BadRequestException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { verifyMessage } from 'ethers';
 import {
-  SiweMessage,
+  constantTimeAddressEqual,
+  timingSafeEqualUtf8,
+} from '../../common/utils/timing-safe.util';
+import {
   ParsedSiweMessage,
   SiweVerifyParams,
   SiweVerifyResult,
@@ -130,14 +133,16 @@ export class SiweService {
   async verifySiwe(params: SiweVerifyParams): Promise<SiweVerifyResult> {
     const { message, signature, expectedDomain, expectedOrigin } = params;
 
-    // 1. Recover address from signature
+    // 1. Recover address from signature — constant-shape failure.
     let recoveredAddress: string;
     try {
       recoveredAddress = verifyMessage(message, signature);
     } catch {
+      this.logger.warn('SIWE verification failed [signature]');
+      timingSafeEqualUtf8(message, message);
       return {
         success: false,
-        error: 'INVALID_SIGNATURE',
+        error: 'AUTH_FAILED',
         address: undefined,
       };
     }
@@ -145,43 +150,50 @@ export class SiweService {
     // 2. Parse the message
     const parsed = this.parseMessage(message);
     if (!parsed) {
+      this.logger.warn('SIWE verification failed [malformed]');
+      timingSafeEqualUtf8(message, message);
       return {
         success: false,
-        error: 'MALFORMED_MESSAGE',
+        error: 'AUTH_FAILED',
         address: recoveredAddress,
       };
     }
 
-    // 3. Validate address matches (case-insensitive)
+    // 3. Validate address matches (timing-safe, case-insensitive)
     if (
       parsed.address &&
-      parsed.address.toLowerCase() !== recoveredAddress.toLowerCase()
+      !constantTimeAddressEqual(parsed.address, recoveredAddress)
     ) {
+      this.logger.warn('SIWE verification failed [address]');
+      timingSafeEqualUtf8(message, message);
       return {
         success: false,
-        error: 'ADDRESS_MISMATCH',
+        error: 'AUTH_FAILED',
         address: recoveredAddress,
       };
     }
 
-    // 4. Validate domain if expected
-    if (expectedDomain && parsed.domain !== expectedDomain) {
+    // 4. Validate domain if expected (timing-safe; generic failure shape)
+    if (expectedDomain && !timingSafeEqualUtf8(parsed.domain, expectedDomain)) {
+      this.logger.warn('SIWE verification failed [domain]');
+      timingSafeEqualUtf8(message, message);
       return {
         success: false,
-        error: 'DOMAIN_MISMATCH',
+        error: 'AUTH_FAILED',
         address: recoveredAddress,
         data: parsed,
       };
     }
 
-    // 5. Validate origin/URI if expected
+    // 5. Validate origin/URI if expected (timing-safe; generic failure shape)
     if (expectedOrigin && parsed.uri) {
       try {
         const parsedOrigin = new URL(parsed.uri).origin;
-        if (parsedOrigin !== expectedOrigin) {
+        if (!timingSafeEqualUtf8(parsedOrigin, expectedOrigin)) {
+          this.logger.warn('SIWE verification failed [origin]');
           return {
             success: false,
-            error: 'ORIGIN_MISMATCH',
+            error: 'AUTH_FAILED',
             address: recoveredAddress,
             data: parsed,
           };
@@ -191,38 +203,41 @@ export class SiweService {
       }
     }
 
-    // 6. Validate expiration
+    // 6. Validate expiration (generic failure shape)
     if (parsed.expirationTime) {
       const expirationMs = new Date(parsed.expirationTime).getTime();
       if (Date.now() > expirationMs) {
+        this.logger.warn('SIWE verification failed [expired]');
         return {
           success: false,
-          error: 'MESSAGE_EXPIRED',
+          error: 'AUTH_FAILED',
           address: recoveredAddress,
           data: parsed,
         };
       }
     }
 
-    // 7. Validate not-before
+    // 7. Validate not-before (generic failure shape)
     if (parsed.notBefore) {
       const notBeforeMs = new Date(parsed.notBefore).getTime();
       if (Date.now() < notBeforeMs) {
+        this.logger.warn('SIWE verification failed [not-yet-valid]');
         return {
           success: false,
-          error: 'MESSAGE_NOT_YET_VALID',
+          error: 'AUTH_FAILED',
           address: recoveredAddress,
           data: parsed,
         };
       }
     }
 
-    // 8. Validate issuedAt is not too far in the past (stale message)
+    // 8. Validate issuedAt is not too far in the past (generic failure shape)
     const issuedAtMs = new Date(parsed.issuedAt).getTime();
     if (Date.now() - issuedAtMs > this.NONCE_TTL_MS) {
+      this.logger.warn('SIWE verification failed [stale]');
       return {
         success: false,
-        error: 'MESSAGE_STALE',
+        error: 'AUTH_FAILED',
         address: recoveredAddress,
         data: parsed,
       };

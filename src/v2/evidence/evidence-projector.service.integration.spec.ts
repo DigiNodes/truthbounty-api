@@ -567,4 +567,3 @@ describe('EvidenceProjectorService (integration)', () => {
       expect(results[1].valid).toBe(true);
     });
   });
-});

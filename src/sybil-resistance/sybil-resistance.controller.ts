@@ -1,5 +1,5 @@
 import { Controller, Get, Post, Param, Body, BadRequestException } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
+import { ApiTags } from '@nestjs/swagger';
 import { SybilResistanceService } from './sybil-resistance.service';
 
 @ApiTags('sybil')

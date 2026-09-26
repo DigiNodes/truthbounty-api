@@ -1,6 +1,6 @@
 // src/indexer/reorg-safe-cursor.service.ts
 import { Injectable, Logger, InternalServerErrorException } from '@nestjs/common';
-import { DataSource, QueryRunner } from 'typeorm';
+import { DataSource } from 'typeorm';
 
 export interface IndexerCoordinate {
     chainId: number;

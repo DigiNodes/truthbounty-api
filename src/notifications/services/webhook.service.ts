@@ -25,7 +25,7 @@ export class WebhookService {
         headers: {
           'Content-Type': 'application/json',
           'X-TruthBounty-Signature': signature,
-          'X-TruthBounty-Event': notification.category,
+          'X-TruthBounty-Event': notification.category ?? '',
           'User-Agent': 'TruthBounty-Webhook/1.0',
         } as Record<string, string>,
         body: JSON.stringify(payload),

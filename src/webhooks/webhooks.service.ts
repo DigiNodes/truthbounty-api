@@ -18,6 +18,7 @@ import { WebhookDelivery, DeliveryStatus } from './entities/webhook-delivery.ent
 import { CreateWebhookDto } from './dto/create-webhook.dto';
 import { UpdateWebhookDto } from './dto/update-webhook.dto';
 import { WebhookDeliveryFilterDto } from './dto/webhook-filter.dto';
+import { timingSafeEqualHex } from '../common/utils/timing-safe.util';
 
 export const WEBHOOK_SECRET_BYTES = 32;
 export const SIGNATURE_ALGORITHM = 'sha256';
@@ -559,7 +560,9 @@ async onModuleInit(): Promise<void> {
     nonce: string,
   ): boolean {
     const expected = this.signPayload(secret, payload, timestamp, nonce);
-    return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
+    // Length-guarded timing-safe compare: never throws, never leaks length
+    // via ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH (previous 500-vs-false oracle).
+    return timingSafeEqualHex(expected, signature);
   }
 
   // ─── Private Helpers ───────────────────────────────────────────────────

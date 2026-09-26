@@ -41,7 +41,14 @@ describe('V2 Architectural Module Boundaries & Dependency Enforcement', () => {
     });
 
     it('should enforce that queries and projections modules depend only on read-only read models', () => {
-        const projectionFiles = scanDirectory(path.join(srcDir, 'projections'));
+        // Projectors live under */projectors/ (e.g. src/indexer/projectors,
+        // src/claims/claim-projector.service.ts is a sibling; the historical
+        // src/projections directory no longer exists).
+        const allFiles = scanDirectory(srcDir);
+        const projectionFiles = allFiles.filter(
+            (f) => f.includes(`${path.sep}projectors${path.sep}`) || f.includes('Projector'),
+        );
+        expect(projectionFiles.length).toBeGreaterThan(0);
         for (const file of projectionFiles) {
             const content = fs.readFileSync(file, 'utf8');
             expect(content).not.toContain('MutationService');

@@ -524,11 +524,6 @@ export class AuditTrailService implements OnModuleInit {
     return result.affected || 0;
   }
 
-  async getStorageStats(): Promise<{
-    totalRecords: number;
-    oldestRecord: Date | null;
-    newestRecord: Date | null;
-  }> {
   /**
    * Privacy Control: Scrubs identifiable IP addresses and User-Agents for logs older
    * than daysToKeepPii, while retaining the audit event structure for security compliance.

@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
-import * as request from 'supertest';
+import request from 'supertest';
 import { createGlobalValidationPipe } from '../src/bootstrap';
 import { createAuthenticatedTestUser, TestAuthUser } from './utils/ai-assistant-auth.helper';
 import { AiAssistantTestModule } from './utils/ai-assistant-test.module';

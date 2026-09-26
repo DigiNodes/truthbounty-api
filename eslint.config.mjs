@@ -33,6 +33,15 @@ export default tseslint.config(
     },
   },
   {
+    // Type-aware rules require precise types, which test doubles (jest.fn(),
+    // supertest bodies, fixture casts) intentionally do not have. Follow the
+    // typescript-eslint documented pattern: disable the type-checked rule
+    // subset for test files only. All base rules, style, and prettier still
+    // apply to these files, and src/** keeps the full strict gate.
+    files: ['**/*.spec.ts', 'test/**/*.ts', 'scripts/**/*.ts', 'examples/**/*.ts'],
+    extends: [tseslint.configs.disableTypeChecked],
+  },
+  {
     // V2-BE-111: Enforce the TypeORM-only persistence boundary.
     //
     // TypeORM/PostgreSQL is the one persistence path for new backend code.

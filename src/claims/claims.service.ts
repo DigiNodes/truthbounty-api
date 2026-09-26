@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Claim, ClaimState } from './entities/claim.entity';
@@ -11,7 +11,6 @@ import { AuditActionType, AuditEntityType } from '../audit/entities/audit-log.en
 import { AuditLog } from '../audit/decorators/audit-log.decorator';
 import {
   assertResolvedAtInvariant,
-  buildResolvedFields,
 } from './claim-resolution.invariant';
 
 

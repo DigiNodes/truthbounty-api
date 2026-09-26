@@ -4,7 +4,6 @@ import {
 } from './auth-exception.filter';
 import {
   HttpException,
-  HttpStatus,
   UnauthorizedException,
   BadRequestException,
   ForbiddenException,
@@ -37,6 +36,8 @@ describe('AuthExceptionFilter', () => {
   }
 
   // ── Error code mapping ───────────────────────────────────────────────────
+  // issue-416: all 401 auth failures collapse to constant-shape UNAUTHORIZED
+  // externally (granular reason kept in server logs only).
 
   const testCases: Array<{
     description: string;
@@ -44,44 +45,44 @@ describe('AuthExceptionFilter', () => {
     expectedCode: AuthErrorCode;
   }> = [
     {
-      description: 'should map invalid signature errors to INVALID_SIGNATURE',
+      description: 'should collapse invalid signature errors to UNAUTHORIZED',
       exception: new UnauthorizedException('Invalid signature'),
-      expectedCode: AuthErrorCode.INVALID_SIGNATURE,
+      expectedCode: AuthErrorCode.UNAUTHORIZED,
     },
     {
-      description: 'should map expired session errors to EXPIRED_SESSION',
+      description: 'should collapse expired session errors to UNAUTHORIZED',
       exception: new UnauthorizedException('Session expired'),
-      expectedCode: AuthErrorCode.EXPIRED_SESSION,
+      expectedCode: AuthErrorCode.UNAUTHORIZED,
     },
     {
-      description: 'should map revoked token errors to REVOKED_TOKEN',
+      description: 'should collapse revoked token errors to UNAUTHORIZED',
       exception: new UnauthorizedException('Token has been revoked'),
-      expectedCode: AuthErrorCode.REVOKED_TOKEN,
+      expectedCode: AuthErrorCode.UNAUTHORIZED,
     },
     {
-      description: 'should map malformed token errors to MALFORMED_TOKEN',
+      description: 'should collapse malformed token errors to UNAUTHORIZED',
       exception: new UnauthorizedException('Malformed token received'),
-      expectedCode: AuthErrorCode.MALFORMED_TOKEN,
+      expectedCode: AuthErrorCode.UNAUTHORIZED,
     },
     {
-      description: 'should map challenge expired errors to CHALLENGE_EXPIRED',
+      description: 'should collapse challenge expired errors to UNAUTHORIZED',
       exception: new UnauthorizedException('Challenge expired'),
-      expectedCode: AuthErrorCode.CHALLENGE_EXPIRED,
+      expectedCode: AuthErrorCode.UNAUTHORIZED,
     },
     {
-      description: 'should map challenge not found errors to CHALLENGE_NOT_FOUND',
+      description: 'should collapse challenge not found errors to UNAUTHORIZED',
       exception: new UnauthorizedException('No challenge found'),
-      expectedCode: AuthErrorCode.CHALLENGE_NOT_FOUND,
+      expectedCode: AuthErrorCode.UNAUTHORIZED,
     },
     {
-      description: 'should map refresh invalid errors to REFRESH_INVALID',
+      description: 'should collapse refresh invalid errors to UNAUTHORIZED',
       exception: new UnauthorizedException('Refresh token invalid'),
-      expectedCode: AuthErrorCode.REFRESH_INVALID,
+      expectedCode: AuthErrorCode.UNAUTHORIZED,
     },
     {
-      description: 'should map refresh revoked errors to REFRESH_REVOKED',
+      description: 'should collapse refresh revoked errors to UNAUTHORIZED',
       exception: new UnauthorizedException('Refresh token has been revoked'),
-      expectedCode: AuthErrorCode.REFRESH_REVOKED,
+      expectedCode: AuthErrorCode.UNAUTHORIZED,
     },
     {
       description: 'should map forbidden errors to FORBIDDEN',
@@ -102,9 +103,14 @@ describe('AuthExceptionFilter', () => {
 
       const response = host.switchToHttp().getResponse();
       const json = response.status().json;
+      // issue-416: only 401s collapse to the generic message; other statuses
+      // (e.g. 403) preserve their message.
+      const expectedMessage =
+        exception.getStatus() === 401 ? 'Invalid credentials' : exception.message;
       expect(json).toHaveBeenCalledWith(
         expect.objectContaining({
           code: expectedCode,
+          message: expectedMessage,
           statusCode: exception.getStatus(),
           timestamp: expect.any(String),
           path: '/auth/login',
@@ -147,9 +153,11 @@ describe('AuthExceptionFilter', () => {
     const response = host.switchToHttp().getResponse();
     const json = response.status().json;
 
+    // issue-416: 401 object messages collapse to generic constant-shape.
     expect(json).toHaveBeenCalledWith(
       expect.objectContaining({
-        message: 'Invalid signature',
+        code: AuthErrorCode.UNAUTHORIZED,
+        message: 'Invalid credentials',
       }),
     );
   });
