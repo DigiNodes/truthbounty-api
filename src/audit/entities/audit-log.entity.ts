@@ -145,6 +145,7 @@ export enum AuditCategory {
 @Index(['severity', 'createdAt'])
 @Index(['archived'])
 @Index(['integrityHash'])
+@Index(['chainSequence'])
 export class AuditLog {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -218,6 +219,33 @@ export class AuditLog {
 
   @Column({ type: 'varchar', nullable: true })
   integrityHash: string | null;
+
+  /**
+   * The `integrityHash` of the chain-previous record at the time this
+   * record was written, or null for the first record in the chain.
+   * Set atomically alongside `chainSequence` and `integrityHash` inside
+   * the same transaction; never backfilled after the fact. See
+   * {@link AuditChainState} and `AuditTrailService.persistChainedRecord`.
+   */
+  @Column({ type: 'varchar', nullable: true })
+  previousHash: string | null;
+
+  /**
+   * Monotonically increasing position of this record in the tamper-evident
+   * hash chain. Enforced unique (excluding legacy pre-chain rows where it
+   * is null) by a partial unique index added in the migration that
+   * introduced this column, since a nullable TypeORM `unique: true` column
+   * cannot express "unique among non-null values" across dialects.
+   */
+  @Column({
+    type: 'bigint',
+    nullable: true,
+    transformer: {
+      to: (value: number | null) => value,
+      from: (value: string | null) => (value === null ? null : Number(value)),
+    },
+  })
+  chainSequence: number | null;
 
   @Column({ default: false })
   archived: boolean;

@@ -5,6 +5,10 @@ import { DataSource } from 'typeorm';
 import { DatabaseService } from './database.service';
 import { TransactionRunner } from './transaction.runner';
 import { TransactionHelper } from './transaction.helper';
+import { DatabaseReadinessService } from './database-readiness.service';
+import { MigrationValidatorService } from './migrations/migration-validator.service';
+
+
 
 /**
  * DatabaseModule — PostgreSQL infrastructure for TruthBounty V2.
@@ -45,6 +49,10 @@ import { TransactionHelper } from './transaction.helper';
  */
 @Global()
 @Module({
+
+
+  providers: [DatabaseService, DatabaseReadinessService, MigrationValidatorService],
+  exports: [DatabaseService, DatabaseReadinessService],
   imports: [
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
@@ -142,3 +150,5 @@ export class DatabaseModule implements OnModuleInit, OnModuleDestroy {
     }
   }
 }
+
+export class DatabaseModule {}

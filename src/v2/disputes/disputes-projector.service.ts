@@ -71,6 +71,10 @@ export class DisputesProjectorService {
   ) {}
 
   async processNewEvents(batchSize = 100): Promise<ProjectorRunSummary> {
+    if (!Number.isInteger(batchSize) || batchSize <= 0) {
+      return { processed: 0, applied: 0, anomalies: 0 };
+    }
+
     const cursorRepo = this.dataSource.getRepository(ProjectorCursor);
     const cursor = await cursorRepo.findOne({
       where: { projectorName: PROJECTOR_NAME },
@@ -151,6 +155,7 @@ export class DisputesProjectorService {
         deadline: readDate(event.payload, 'deadline'),
         eventTxHash: event.txHash,
         eventLogIndex: event.logIndex,
+        blockNumber: event.blockNumber,
       });
       return 'applied';
     } catch (err) {
@@ -209,6 +214,7 @@ export class DisputesProjectorService {
     dispute.status = nextStatus;
     dispute.eventTxHash = event.txHash;
     dispute.eventLogIndex = event.logIndex;
+    dispute.blockNumber = event.blockNumber;
     if (nextStatus === DisputeStatus.RESOLVED) {
       dispute.resolvedOutcome = readString(event.payload, 'outcome');
     }
