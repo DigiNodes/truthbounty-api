@@ -1,5 +1,6 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { VerificationQueryService } from './verification-query.service';
+import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 
 /**
  * Read-only V2 verification endpoints. No write handlers: round and
@@ -13,14 +14,9 @@ export class VerificationController {
   @Get('claims/:claimId/verification-rounds')
   async listRounds(
     @Param('claimId') claimId: string,
-    @Query('limit') limit?: string,
-    @Query('cursor') cursor?: string,
+    @Query() query: PaginationQueryDto,
   ) {
-    return this.queryService.listRounds(
-      claimId,
-      limit ? parseInt(limit, 10) : 20,
-      cursor,
-    );
+    return this.queryService.listRounds(claimId, query.limit, query.cursor);
   }
 
   @Get('verification-rounds/:roundId')
@@ -31,13 +27,8 @@ export class VerificationController {
   @Get('verification-rounds/:roundId/positions')
   async listPositions(
     @Param('roundId') roundId: string,
-    @Query('limit') limit?: string,
-    @Query('cursor') cursor?: string,
+    @Query() query: PaginationQueryDto,
   ) {
-    return this.queryService.listPositions(
-      roundId,
-      limit ? parseInt(limit, 10) : 20,
-      cursor,
-    );
+    return this.queryService.listPositions(roundId, query.limit, query.cursor);
   }
 }

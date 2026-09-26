@@ -1,5 +1,6 @@
 import { Module, Logger } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { EnvironmentValidationService } from './config/environment-validation.service';
 import { BullModule } from '@nestjs/bullmq';
 import { BullBoardModule } from '@bull-board/nestjs';
 import { ExpressAdapter } from '@bull-board/express';
@@ -11,6 +12,8 @@ import { AppService } from './app.service';
 import { RewardsModule } from './rewards/rewards.module';
 import blockchainConfig from './config/blockchain.config';
 import sybilConfig from './config/sybil.config';
+import finalityPolicyConfig from './config/finality-policy.config';
+import { FinalityPolicyModule } from './config/finality-policy.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { DatabaseModule } from './database/database.module';
 import { BlockchainModule } from './blockchain/blockchain.module';
@@ -44,13 +47,19 @@ import { V2EventsModule } from './v2/events/v2-events.module';
 import { V2EvidenceModule } from './v2/evidence/v2-evidence.module';
 import { V2VerificationModule } from './v2/verification/v2-verification.module';
 import { V2DisputesModule } from './v2/disputes/v2-disputes.module';
-import { ProjectionReadinessModule } from './v2/common/projection-readiness/projection-readiness.module';
+import { ChainEventsModule } from './v2/chain-events/chain-events.module';
+import { BlockCursorModule } from './v2/block-cursor/block-cursor.module';
+import { V2RewardsModule } from './v2/rewards/v2-rewards.module';
+import { V2RebuildModule } from './v2/rebuild/v2-rebuild.module';
+import { V2ProjectionModule } from './v2/projection/v2-projection.module';
 import { ProfilerModule } from './profiler/profiler.module';
 import { ProfilerInterceptor } from './profiler/profiler.interceptor';
 import { HealthModule } from './health/health.module';
 import { FeatureFlagsModule } from './feature-flags/feature-flags.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { StakingModule } from './staking/staking.module';
+import { IdempotencyModule } from './common/idempotency/idempotency.module';
+import { IdempotencyGuard } from './common/idempotency/idempotency.guard';
 
 // In-memory storage for development (no Redis needed)
 class ThrottlerMemoryStorage {
@@ -264,10 +273,14 @@ async function createThrottlerStorage(
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [blockchainConfig, throttlerConfig, sybilConfig],
+      load: [blockchainConfig, throttlerConfig, sybilConfig, finalityPolicyConfig],
       envFilePath: ['.env.local', '.env'],
     }),
+    FinalityPolicyModule,
     ScheduleModule.forRoot(),
+    // Idempotency Module
+    // Provides idempotency key handling for safe commands
+    IdempotencyModule,
     // PostgreSQL Database Infrastructure (Issue #269)
     // DatabaseModule provides:
     // - PostgreSQL connectivity with connection pooling
@@ -334,6 +347,11 @@ async function createThrottlerStorage(
     V2EvidenceModule,
     V2VerificationModule,
     V2DisputesModule,
+    ChainEventsModule,
+    BlockCursorModule,
+    V2RewardsModule,
+    V2RebuildModule,
+    V2ProjectionModule,
     ProfilerModule,
     HealthModule,
     FeatureFlagsModule,
@@ -343,6 +361,7 @@ async function createThrottlerStorage(
   controllers: [AppController],
   providers: [
     AppService,
+    EnvironmentValidationService,
     {
       provide: APP_GUARD,
       useClass: GlobalAuthGuard,
@@ -350,6 +369,10 @@ async function createThrottlerStorage(
     {
       provide: APP_GUARD,
       useClass: WalletThrottlerGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: IdempotencyGuard,
     },
     {
       provide: APP_INTERCEPTOR,

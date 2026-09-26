@@ -105,6 +105,20 @@ export type ReportJob = Prisma.ReportJobModel
  */
 export type MonitoringMetric = Prisma.MonitoringMetricModel
 /**
+ * Model ChainEvent
+ * 
+ */
+export type ChainEvent = Prisma.ChainEventModel
+/**
+ * Model BlockCursor
+ * 
+ */
+export type BlockCursor = Prisma.BlockCursorModel
+/**
+ * Model BlockCursorAncestor
+ * 
+ */
+export type BlockCursorAncestor = Prisma.BlockCursorAncestorModel
  * Model OutboxEvent
  * 
  */

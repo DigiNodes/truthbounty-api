@@ -410,6 +410,9 @@ export const ModelName = {
   MetricAggregate: 'MetricAggregate',
   ReportJob: 'ReportJob',
   MonitoringMetric: 'MonitoringMetric',
+  ChainEvent: 'ChainEvent',
+  BlockCursor: 'BlockCursor',
+  BlockCursorAncestor: 'BlockCursorAncestor'
   OutboxEvent: 'OutboxEvent'
 } as const
 
@@ -1392,77 +1395,225 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
-    OutboxEvent: {
-      payload: Prisma.$OutboxEventPayload<ExtArgs>
-      fields: Prisma.OutboxEventFieldRefs
+    ChainEvent: {
+      payload: Prisma.$ChainEventPayload<ExtArgs>
+      fields: Prisma.ChainEventFieldRefs
       operations: {
         findUnique: {
-          args: Prisma.OutboxEventFindUniqueArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$OutboxEventPayload> | null
+          args: Prisma.ChainEventFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ChainEventPayload> | null
         }
         findUniqueOrThrow: {
-          args: Prisma.OutboxEventFindUniqueOrThrowArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$OutboxEventPayload>
+          args: Prisma.ChainEventFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ChainEventPayload>
         }
         findFirst: {
-          args: Prisma.OutboxEventFindFirstArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$OutboxEventPayload> | null
+          args: Prisma.ChainEventFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ChainEventPayload> | null
         }
         findFirstOrThrow: {
-          args: Prisma.OutboxEventFindFirstOrThrowArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$OutboxEventPayload>
+          args: Prisma.ChainEventFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ChainEventPayload>
         }
         findMany: {
-          args: Prisma.OutboxEventFindManyArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$OutboxEventPayload>[]
+          args: Prisma.ChainEventFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ChainEventPayload>[]
         }
         create: {
-          args: Prisma.OutboxEventCreateArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$OutboxEventPayload>
+          args: Prisma.ChainEventCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ChainEventPayload>
         }
         createMany: {
-          args: Prisma.OutboxEventCreateManyArgs<ExtArgs>
+          args: Prisma.ChainEventCreateManyArgs<ExtArgs>
           result: BatchPayload
         }
         createManyAndReturn: {
-          args: Prisma.OutboxEventCreateManyAndReturnArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$OutboxEventPayload>[]
+          args: Prisma.ChainEventCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ChainEventPayload>[]
         }
         delete: {
-          args: Prisma.OutboxEventDeleteArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$OutboxEventPayload>
+          args: Prisma.ChainEventDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ChainEventPayload>
         }
         update: {
-          args: Prisma.OutboxEventUpdateArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$OutboxEventPayload>
+          args: Prisma.ChainEventUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ChainEventPayload>
         }
         deleteMany: {
-          args: Prisma.OutboxEventDeleteManyArgs<ExtArgs>
+          args: Prisma.ChainEventDeleteManyArgs<ExtArgs>
           result: BatchPayload
         }
         updateMany: {
-          args: Prisma.OutboxEventUpdateManyArgs<ExtArgs>
+          args: Prisma.ChainEventUpdateManyArgs<ExtArgs>
           result: BatchPayload
         }
         updateManyAndReturn: {
-          args: Prisma.OutboxEventUpdateManyAndReturnArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$OutboxEventPayload>[]
+          args: Prisma.ChainEventUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ChainEventPayload>[]
         }
         upsert: {
-          args: Prisma.OutboxEventUpsertArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$OutboxEventPayload>
+          args: Prisma.ChainEventUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ChainEventPayload>
         }
         aggregate: {
-          args: Prisma.OutboxEventAggregateArgs<ExtArgs>
-          result: runtime.Types.Utils.Optional<Prisma.AggregateOutboxEvent>
+          args: Prisma.ChainEventAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateChainEvent>
         }
         groupBy: {
-          args: Prisma.OutboxEventGroupByArgs<ExtArgs>
-          result: runtime.Types.Utils.Optional<Prisma.OutboxEventGroupByOutputType>[]
+          args: Prisma.ChainEventGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.ChainEventGroupByOutputType>[]
         }
         count: {
-          args: Prisma.OutboxEventCountArgs<ExtArgs>
-          result: runtime.Types.Utils.Optional<Prisma.OutboxEventCountAggregateOutputType> | number
+          args: Prisma.ChainEventCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.ChainEventCountAggregateOutputType> | number
+        }
+      }
+    }
+    BlockCursor: {
+      payload: Prisma.$BlockCursorPayload<ExtArgs>
+      fields: Prisma.BlockCursorFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.BlockCursorFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BlockCursorPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.BlockCursorFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BlockCursorPayload>
+        }
+        findFirst: {
+          args: Prisma.BlockCursorFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BlockCursorPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.BlockCursorFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BlockCursorPayload>
+        }
+        findMany: {
+          args: Prisma.BlockCursorFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BlockCursorPayload>[]
+        }
+        create: {
+          args: Prisma.BlockCursorCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BlockCursorPayload>
+        }
+        createMany: {
+          args: Prisma.BlockCursorCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.BlockCursorCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BlockCursorPayload>[]
+        }
+        delete: {
+          args: Prisma.BlockCursorDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BlockCursorPayload>
+        }
+        update: {
+          args: Prisma.BlockCursorUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BlockCursorPayload>
+        }
+        deleteMany: {
+          args: Prisma.BlockCursorDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.BlockCursorUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.BlockCursorUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BlockCursorPayload>[]
+        }
+        upsert: {
+          args: Prisma.BlockCursorUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BlockCursorPayload>
+        }
+        aggregate: {
+          args: Prisma.BlockCursorAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateBlockCursor>
+        }
+        groupBy: {
+          args: Prisma.BlockCursorGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.BlockCursorGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.BlockCursorCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.BlockCursorCountAggregateOutputType> | number
+        }
+      }
+    }
+    BlockCursorAncestor: {
+      payload: Prisma.$BlockCursorAncestorPayload<ExtArgs>
+      fields: Prisma.BlockCursorAncestorFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.BlockCursorAncestorFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BlockCursorAncestorPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.BlockCursorAncestorFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BlockCursorAncestorPayload>
+        }
+        findFirst: {
+          args: Prisma.BlockCursorAncestorFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BlockCursorAncestorPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.BlockCursorAncestorFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BlockCursorAncestorPayload>
+        }
+        findMany: {
+          args: Prisma.BlockCursorAncestorFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BlockCursorAncestorPayload>[]
+        }
+        create: {
+          args: Prisma.BlockCursorAncestorCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BlockCursorAncestorPayload>
+        }
+        createMany: {
+          args: Prisma.BlockCursorAncestorCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.BlockCursorAncestorCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BlockCursorAncestorPayload>[]
+        }
+        delete: {
+          args: Prisma.BlockCursorAncestorDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BlockCursorAncestorPayload>
+        }
+        update: {
+          args: Prisma.BlockCursorAncestorUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BlockCursorAncestorPayload>
+        }
+        deleteMany: {
+          args: Prisma.BlockCursorAncestorDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.BlockCursorAncestorUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.BlockCursorAncestorUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BlockCursorAncestorPayload>[]
+        }
+        upsert: {
+          args: Prisma.BlockCursorAncestorUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$BlockCursorAncestorPayload>
+        }
+        aggregate: {
+          args: Prisma.BlockCursorAncestorAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateBlockCursorAncestor>
+        }
+        groupBy: {
+          args: Prisma.BlockCursorAncestorGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.BlockCursorAncestorGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.BlockCursorAncestorCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.BlockCursorAncestorCountAggregateOutputType> | number
         }
       }
     }
@@ -1679,24 +1830,52 @@ export const MonitoringMetricScalarFieldEnum = {
 export type MonitoringMetricScalarFieldEnum = (typeof MonitoringMetricScalarFieldEnum)[keyof typeof MonitoringMetricScalarFieldEnum]
 
 
-export const OutboxEventScalarFieldEnum = {
+export const ChainEventScalarFieldEnum = {
   id: 'id',
-  eventType: 'eventType',
-  aggregateId: 'aggregateId',
+  chainId: 'chainId',
+  contractAddress: 'contractAddress',
+  eventName: 'eventName',
+  blockNumber: 'blockNumber',
+  blockHash: 'blockHash',
+  txHash: 'txHash',
+  logIndex: 'logIndex',
+  blockTimestamp: 'blockTimestamp',
   payload: 'payload',
-  idempotencyKey: 'idempotencyKey',
-  status: 'status',
-  jobId: 'jobId',
-  retryCount: 'retryCount',
-  maxRetries: 'maxRetries',
-  lastError: 'lastError',
-  scheduledAt: 'scheduledAt',
-  processedAt: 'processedAt',
-  createdAt: 'createdAt',
+  rawArgs: 'rawArgs',
+  ingestedAt: 'ingestedAt'
+} as const
+
+export type ChainEventScalarFieldEnum = (typeof ChainEventScalarFieldEnum)[keyof typeof ChainEventScalarFieldEnum]
+
+
+export const BlockCursorScalarFieldEnum = {
+  id: 'id',
+  chainId: 'chainId',
+  source: 'source',
+  processedHeight: 'processedHeight',
+  processedHash: 'processedHash',
+  safeHeight: 'safeHeight',
+  safeHash: 'safeHash',
+  finalizedHeight: 'finalizedHeight',
+  finalizedHash: 'finalizedHash',
   updatedAt: 'updatedAt'
 } as const
 
-export type OutboxEventScalarFieldEnum = (typeof OutboxEventScalarFieldEnum)[keyof typeof OutboxEventScalarFieldEnum]
+export type BlockCursorScalarFieldEnum = (typeof BlockCursorScalarFieldEnum)[keyof typeof BlockCursorScalarFieldEnum]
+
+
+export const BlockCursorAncestorScalarFieldEnum = {
+  id: 'id',
+  cursorId: 'cursorId',
+  height: 'height',
+  hash: 'hash',
+  parentHash: 'parentHash',
+  isCanonical: 'isCanonical',
+  confirmation: 'confirmation',
+  recordedAt: 'recordedAt'
+} as const
+
+export type BlockCursorAncestorScalarFieldEnum = (typeof BlockCursorAncestorScalarFieldEnum)[keyof typeof BlockCursorAncestorScalarFieldEnum]
 
 
 export const SortOrder = {
@@ -1713,6 +1892,13 @@ export const NullableJsonNullValueInput = {
 } as const
 
 export type NullableJsonNullValueInput = (typeof NullableJsonNullValueInput)[keyof typeof NullableJsonNullValueInput]
+
+
+export const JsonNullValueInput = {
+  JsonNull: JsonNull
+} as const
+
+export type JsonNullValueInput = (typeof JsonNullValueInput)[keyof typeof JsonNullValueInput]
 
 
 export const NullsOrder = {
@@ -1799,6 +1985,20 @@ export type JsonFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'J
  * Reference to a field of type 'QueryMode'
  */
 export type EnumQueryModeFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'QueryMode'>
+    
+
+
+/**
+ * Reference to a field of type 'BigInt'
+ */
+export type BigIntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'BigInt'>
+    
+
+
+/**
+ * Reference to a field of type 'BlockConfirmation'
+ */
+export type EnumBlockConfirmationFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'BlockConfirmation'>
     
 
 /**
@@ -1965,6 +2165,9 @@ export type GlobalOmitConfig = {
   metricAggregate?: Prisma.MetricAggregateOmit
   reportJob?: Prisma.ReportJobOmit
   monitoringMetric?: Prisma.MonitoringMetricOmit
+  chainEvent?: Prisma.ChainEventOmit
+  blockCursor?: Prisma.BlockCursorOmit
+  blockCursorAncestor?: Prisma.BlockCursorAncestorOmit
   outboxEvent?: Prisma.OutboxEventOmit
 }
 

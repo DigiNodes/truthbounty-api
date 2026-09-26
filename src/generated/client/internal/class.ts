@@ -319,6 +319,34 @@ export interface PrismaClient<
   get monitoringMetric(): Prisma.MonitoringMetricDelegate<ExtArgs, { omit: OmitOpts }>;
 
   /**
+   * `prisma.chainEvent`: Exposes CRUD operations for the **ChainEvent** model.
+    * Example usage:
+    * ```ts
+    * // Fetch zero or more ChainEvents
+    * const chainEvents = await prisma.chainEvent.findMany()
+    * ```
+    */
+  get chainEvent(): Prisma.ChainEventDelegate<ExtArgs, { omit: OmitOpts }>;
+
+  /**
+   * `prisma.blockCursor`: Exposes CRUD operations for the **BlockCursor** model.
+    * Example usage:
+    * ```ts
+    * // Fetch zero or more BlockCursors
+    * const blockCursors = await prisma.blockCursor.findMany()
+    * ```
+    */
+  get blockCursor(): Prisma.BlockCursorDelegate<ExtArgs, { omit: OmitOpts }>;
+
+  /**
+   * `prisma.blockCursorAncestor`: Exposes CRUD operations for the **BlockCursorAncestor** model.
+    * Example usage:
+    * ```ts
+    * // Fetch zero or more BlockCursorAncestors
+    * const blockCursorAncestors = await prisma.blockCursorAncestor.findMany()
+    * ```
+    */
+  get blockCursorAncestor(): Prisma.BlockCursorAncestorDelegate<ExtArgs, { omit: OmitOpts }>;
    * `prisma.outboxEvent`: Exposes CRUD operations for the **OutboxEvent** model.
     * Example usage:
     * ```ts

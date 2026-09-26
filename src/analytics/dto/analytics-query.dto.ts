@@ -1,10 +1,4 @@
-import {
-  IsDateString,
-  IsIn,
-  IsNumber,
-  IsOptional,
-  IsString,
-} from 'class-validator';
+import { IsOptional, IsString, IsDateString, IsNumber, IsIn } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 export class AnalyticsQueryDto {
@@ -45,7 +39,7 @@ export class AnalyticsQueryDto {
   format?: 'json' | 'csv';
 
   @IsOptional()
-  @Transform(({ value }) => parseInt(String(value), 10))
+  @Transform(({ value }) => parseInt(value, 10))
   @IsNumber()
   page?: number = 1;
 

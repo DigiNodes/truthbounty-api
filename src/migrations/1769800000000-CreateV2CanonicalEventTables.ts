@@ -16,6 +16,7 @@ export class CreateV2CanonicalEventTables1769800000000 implements MigrationInter
         "chainId" integer NOT NULL,
         "contractAddress" varchar(42) NOT NULL,
         "artifactVersion" varchar(64) NOT NULL,
+        "abiChecksum" varchar(64) NOT NULL,
         "abi" json NOT NULL,
         "isApproved" boolean NOT NULL DEFAULT false,
         "registeredAt" TIMESTAMP NOT NULL DEFAULT now(),

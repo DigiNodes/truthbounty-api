@@ -151,8 +151,12 @@ export class ClaimFeedService {
         })
       : null;
 
+    // Fetch once for the whole page: the underlying query has no per-claim
+    // filter (see getLatestClaimCreatedEvent), so calling it once per row
+    // (as toFeedItem used to) issued the same query `limit` times over.
+    const latestEvent = await this.getLatestClaimCreatedEvent();
     const data = await Promise.all(
-      page.map((claim) => this.toFeedItem(claim)),
+      page.map((claim) => this.toFeedItem(claim, latestEvent)),
     );
 
     return {
@@ -173,7 +177,7 @@ export class ClaimFeedService {
       throw new NotFoundException(`Claim ${id} not found`);
     }
 
-    const confirmations = await this.getConfirmations(claim.id);
+    const confirmations = this.computeConfirmations(await this.getLatestClaimCreatedEvent());
 
     return {
       id: claim.id,
@@ -197,8 +201,8 @@ export class ClaimFeedService {
     };
   }
 
-  private async toFeedItem(claim: Claim): Promise<any> {
-    const confirmations = await this.getConfirmations(claim.id);
+  private async toFeedItem(claim: Claim, latestEvent: IndexedEvent | null): Promise<any> {
+    const confirmations = this.computeConfirmations(latestEvent);
 
     return {
       id: claim.id,
@@ -217,17 +221,23 @@ export class ClaimFeedService {
     };
   }
 
-  private async getConfirmations(claimId: string): Promise<{
-    current: number;
-    required: number;
-    finalized: boolean;
-  }> {
-    const event = await this.indexedEventRepo.findOne({
+  /**
+   * The confirmations filter is not claim-specific (no claimId column exists
+   * on IndexedEvent), so this is fetched once per request/page rather than
+   * once per claim.
+   */
+  private async getLatestClaimCreatedEvent(): Promise<IndexedEvent | null> {
+    return this.indexedEventRepo.findOne({
       where: { eventType: 'ClaimCreated' },
       order: { blockNumber: 'DESC' },
     });
+  }
 
-    // If no indexed event found, return default values
+  private computeConfirmations(event: IndexedEvent | null): {
+    current: number;
+    required: number;
+    finalized: boolean;
+  } {
     if (!event) {
       return {
         current: 0,

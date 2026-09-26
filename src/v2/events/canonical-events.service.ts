@@ -10,6 +10,7 @@ import {
 } from './entities/event-quarantine.entity';
 import { EventCheckpoint } from './entities/event-checkpoint.entity';
 import { RawLog, IngestOutcome } from './interfaces/canonical-event.interface';
+import { IndexerConfigService } from '../../config/indexer-config.service';
 
 /** Postgres unique_violation error code. */
 const PG_UNIQUE_VIOLATION = '23505';
@@ -22,7 +23,13 @@ export class CanonicalEventsService {
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly artifacts: ArtifactRegistryService,
     private readonly decoder: EventDecoderService,
+    private readonly indexerConfig: IndexerConfigService,
   ) {}
+
+  private getFinalizedBlock(currentEventBlock: bigint): bigint {
+    const config = this.indexerConfig.getEventIndexerConfig();
+    return currentEventBlock - BigInt(config.confirmationsRequired);
+  }
 
   /**
    * Ingest one raw log. Idempotent: replaying the same (chainId, txHash,
@@ -114,25 +121,34 @@ export class CanonicalEventsService {
       }
 
       // Advance the checkpoint atomically with the event write. Monotonic:
-      // never move the cursor backward, so out-of-order batches can't regress it.
-      const checkpointRepo = manager.getRepository(EventCheckpoint);
-      const existing = await checkpointRepo.findOne({
-        where: {
+      // never move any cursor backward, so out-of-order batches can't regress state.
+      // Use atomic database operations to prevent read-then-write race conditions
+      const newBlock = normalized.event.blockNumber;
+      const newBlockStr = newBlock.toString();
+      const finalizedBlock = this.getFinalizedBlock(newBlock);
+      const finalizedBlockStr = finalizedBlock > 0n ? finalizedBlock.toString() : '0';
+      
+      // First try to update existing checkpoint atomically
+      const updateResult = await manager
+        .createQueryBuilder()
+        .update(EventCheckpoint)
+        .set({
+          lastSafeBlock: () => `GREATEST("lastSafeBlock", '${newBlockStr}')`,
+          lastFinalizedBlock: () => `GREATEST("lastFinalizedBlock", '${finalizedBlockStr}')`
+        })
+        .where('chainId = :chainId AND contractAddress = :contractAddress', {
           chainId: log.chainId,
           contractAddress: normalized.event.contractAddress,
-        },
-      });
-      if (!existing) {
-        await checkpointRepo.insert({
+        })
+        .execute();
+
+      // If no existing checkpoint, insert it with both safe and finalized blocks
+      if (updateResult.affected === 0) {
+        await manager.insert(EventCheckpoint, {
           chainId: log.chainId,
           contractAddress: normalized.event.contractAddress,
-          lastSafeBlock: normalized.event.blockNumber.toString(),
-        });
-      } else if (
-        BigInt(existing.lastSafeBlock) < normalized.event.blockNumber
-      ) {
-        await checkpointRepo.update(existing.id, {
-          lastSafeBlock: normalized.event.blockNumber.toString(),
+          lastSafeBlock: newBlockStr,
+          lastFinalizedBlock: finalizedBlockStr,
         });
       }
 

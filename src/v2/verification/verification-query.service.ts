@@ -12,13 +12,9 @@ import {
 import { ProjectParticipantPosition } from './entities/project-participant-position.entity';
 import { EventCheckpoint } from '../events/entities/event-checkpoint.entity';
 import { DataState } from '../common/data-state.enum';
-import {
-  CursorPage,
-  encodeCursor,
-  decodeCursor,
-} from '../common/cursor-pagination';
-import { ProjectionReadinessService } from '../common/projection-readiness/projection-readiness.service';
-import { V2_PROJECTORS } from '../common/projection-readiness/projector-registry';
+import { CursorPage, encodeCursor, decodeCursor } from '../common/cursor-pagination';
+import { FinalityPolicyService } from '../../config/finality-policy.service';
+
 
 @Injectable()
 export class VerificationQueryService {
@@ -29,35 +25,18 @@ export class VerificationQueryService {
     private readonly positionRepo: Repository<ProjectParticipantPosition>,
     @InjectRepository(EventCheckpoint)
     private readonly checkpointRepo: Repository<EventCheckpoint>,
-    private readonly readiness: ProjectionReadinessService,
+    private readonly finalityPolicy: FinalityPolicyService,
   ) {}
 
   /**
-   * Calculate the data state for a block number based on chain's safe and finalized blocks
+   * Fetch the latest checkpoint once (assuming single chain for simplicity)
+   * so callers can classify a whole batch of rows without re-querying per row.
    */
-  private async calculateDataState(blockNumber: string): Promise<DataState> {
-    // Get the latest checkpoint (assuming single chain for simplicity).
-    // `findOne` requires a selection condition, so the newest row is taken
-    // with an ordered, limited `find` instead of a bare `findOne`.
-    const [checkpoint] = await this.checkpointRepo.find({
+  private async getLatestCheckpoint(): Promise<EventCheckpoint | null> {
+    return this.checkpointRepo.findOne({
       order: { updatedAt: 'DESC' },
       take: 1,
     });
-
-    if (!checkpoint) {
-      return DataState.OBSERVED;
-    }
-
-    const blockNum = BigInt(blockNumber);
-    const lastSafe = BigInt(checkpoint.lastSafeBlock);
-    const lastFinalized = BigInt(checkpoint.lastFinalizedBlock);
-
-    if (blockNum <= lastFinalized) {
-      return DataState.FINALIZED;
-    } else if (blockNum <= lastSafe) {
-      return DataState.SAFE;
-    }
-    return DataState.OBSERVED;
   }
 
   /** First-round and appeal-round records are always returned separately with cursor pagination. */
@@ -104,14 +83,16 @@ export class VerificationQueryService {
 
     const firstRounds = await firstRoundQuery.limit(limit).getMany();
 
-    // Calculate data states for first rounds
-    const firstRoundsWithState = await Promise.all(
-      firstRounds.map(async (round) => ({
-        ...round,
-        computedDataState: await this.calculateDataState(round.openedAtBlock),
-      })),
-    );
+    // Single checkpoint fetch for the whole request, reused below for both
+    // first-instance and appeal rounds (was previously re-fetched once per
+    // row via a private calculateDataState — an N+1 against v2_event_checkpoints).
+    const checkpoint = await this.getLatestCheckpoint();
 
+    const firstRoundsWithState = firstRounds.map((round) => ({
+      ...round,
+      computedDataState: this.finalityPolicy.classifyByCheckpoint(round.openedAtBlock, checkpoint),
+    }));
+    
     // Get appeal rounds
     const appealRoundQuery = this.roundRepo
       .createQueryBuilder('round')
@@ -130,14 +111,11 @@ export class VerificationQueryService {
 
     const appealRounds = await appealRoundQuery.limit(limit).getMany();
 
-    // Calculate data states for appeal rounds
-    const appealRoundsWithState = await Promise.all(
-      appealRounds.map(async (round) => ({
-        ...round,
-        computedDataState: await this.calculateDataState(round.openedAtBlock),
-      })),
-    );
-
+    const appealRoundsWithState = appealRounds.map((round) => ({
+      ...round,
+      computedDataState: this.finalityPolicy.classifyByCheckpoint(round.openedAtBlock, checkpoint),
+    }));
+    
     // Generate next cursors
     const firstNextCursor =
       firstRoundsWithState.length === limit
@@ -193,10 +171,9 @@ export class VerificationQueryService {
         `No verification round projected for id ${roundId}`,
       );
     }
-
-    const computedDataState = await this.calculateDataState(
-      round.openedAtBlock,
-    );
+    
+    const checkpoint = await this.getLatestCheckpoint();
+    const computedDataState = this.finalityPolicy.classifyByCheckpoint(round.openedAtBlock, checkpoint);
     return {
       ...round,
       computedDataState,
@@ -239,14 +216,12 @@ export class VerificationQueryService {
 
     const positions = await query.limit(limit).getMany();
 
-    // Add computed data states
-    const positionsWithState = await Promise.all(
-      positions.map(async (pos) => ({
-        ...pos,
-        computedDataState: await this.calculateDataState(pos.blockNumber),
-      })),
-    );
-
+    const checkpoint = await this.getLatestCheckpoint();
+    const positionsWithState = positions.map((pos) => ({
+      ...pos,
+      computedDataState: this.finalityPolicy.classifyByCheckpoint(pos.blockNumber, checkpoint),
+    }));
+    
     // Generate next cursor
     const nextCursor =
       positionsWithState.length === limit

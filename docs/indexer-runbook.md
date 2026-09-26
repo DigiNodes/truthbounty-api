@@ -25,6 +25,12 @@ All values are exposed via:
 
 - `GET /health/indexer` — sanitized JSON health snapshot (see `IndexerHealthSnapshot`).
 - `GET /metrics` — Prometheus text format (Bearer-token protected via `MetricsAuthGuard`).
+- `GET /v2/projections/freshness` — per-projector freshness and finality
+  metadata (`v2-evidence`, `v2-verification`, `v2-disputes`, plus any extra
+  persisted projector cursors). `GET /v2/projections/freshness/:projectorName`
+  returns a single projector. Public read-only GET surface (no auth required,
+  no mutation handlers); failures are bounded and fail closed (see
+  `ProjectionFreshness` in `src/v2/projection/`).
 
 ## Alert thresholds (defaults)
 
@@ -67,35 +73,66 @@ safe: it is idempotent (unique index on `(transactionHash, logIndex, eventType)`
 and state mutations and the checkpoint commit atomically in a single transaction.
 Replays are monotonic and observable via `indexer_replay_count_total`.
 
-## Projection readiness gate (V2-BE-100)
+## Projection freshness fields (V2)
 
-The canonical event stream is protocol authority; the V2 read models only
-reproduce it. `GET /v2/projections/readiness` reports, per projector
-(`v2-evidence`, `v2-verification`, `v2-disputes`), whether that reproduction can
-currently be proven, and the V2 read endpoints return `503`
-(`error: "projection_not_ready"`) instead of answering from an unverifiable
-projection.
+Each entry in `GET /v2/projections/freshness` reports:
 
-Triage:
+| Field | Meaning |
+| ----- | ------- |
+| `projectorName` | Cursor name, e.g. `v2-evidence`. |
+| `indexedBlock` | Highest canonical-event block applied by the projector (`null` if never ran). |
+| `finalizedHeight` | Highest finalized block known — DB checkpoints primary, indexer snapshot fallback (`null` + `finality-unavailable` when unknown). |
+| `safeHeight` | Highest safe block known, same sourcing as finalized. |
+| `observedHead` | Live observed head from the indexer snapshot (`null` when unavailable). |
+| `headDistance` | `observedHead - indexedBlock` as a bigint-safe string (`null` when either side unknown). |
+| `lastSuccess` | ISO timestamp of the cursor's last advance (`null` if never ran). |
+| `status` | `healthy` / `degraded` / `unhealthy` (unhealthy wins over degraded). |
+| `degradedReason` | Semicolon-joined machine-readable reasons (`cursor-missing`, `finality-unavailable`, `indexer-degraded`, `indexer-unhealthy`, `indexer-health-unavailable`, …) or `null` when healthy. |
+| `dataState` | `observed` / `safe` / `finalized` for the projector's `indexedBlock`. |
 
-1. Read the `reasons` array in the 503 body (or on the readiness endpoint).
-2. `backlog` / `cursor_missing` — the projector is behind or never ran. Let it
-drain; `pendingEvents` is the exact remainder. Do not edit the cursor.
-3. `quarantine_backlog` — a log from an approved contract could not be decoded.
-   Inspect `v2_event_quarantine` (`reason`, `topic0`, `detail`). Register the
-   corrected artifact and replay; raise
-   `PROJECTION_READINESS_QUARANTINE_MAX_PENDING` only as a deliberate,
-   documented decision.
-4. `cursor_ahead_of_stream` — treat as an integrity incident and rebuild the
-   read model from canonical events (see docs/PROJECTION_READINESS_GATE.md).
-5. `evaluation_error` — a dependency or the configuration is unreadable. Check
-   database connectivity/migrations and that the quarantine allowance is a
-   non-negative integer. Never treat this as ready.
+Notes:
 
-Full design, invariants, and rebuild procedure:
-[docs/PROJECTION_READINESS_GATE.md](PROJECTION_READINESS_GATE.md).
-This is separate from the in-memory `projectionLag` signal above, which reports
-the legacy indexer's own head and is not derived from the canonical stream.
+- The endpoints are derived read models only: they never settle protocol
+  state, sign transactions, or compute verdicts.
+- `lastFinalizedBlock` in `v2_event_checkpoints` is advanced by ingestion;
+  until a checkpoint row exists, heights fall back to the live snapshot and
+  the report names the gap via `degradedReason` instead of guessing.
+- Block heights are strings so values beyond `Number.MAX_SAFE_INTEGER` keep
+  full precision; cross-driver (PostgreSQL/SQLite) normalization is applied.
+
+## Protocol projection DB constraints (issue396)
+
+Enforced at the database boundary by migration
+`1769800500000-EnforceProtocolProjectionConstraints` (plus matching
+`@Check`/`@Unique`/FK decorators on the TypeORM entities so
+`synchronize:true` sqlite test DBs enforce the same rules):
+
+- FKs: `v2_project_evidence_version.evidenceId -> v2_project_evidence`,
+  `v2_project_participant_position.roundId -> v2_project_verification_round`
+  (`ON DELETE/UPDATE CASCADE`). `v2_project_dispute.originalRoundId` has no
+  hard FK by design: disputes tolerate out-of-order arrival via the
+  `invalid_transition`/`out_of_order` anomaly path.
+- UNIQUEs: canonical event identity `(chainId,txHash,logIndex)`,
+  per-projector `(eventTxHash,eventLogIndex)`, anomaly dedup
+  `(sourceModule,kind,aggregateId,eventTxHash,eventLogIndex)`.
+- CHECKs: `chainId > 0`, `logIndex >= 0`, `blockNumber >= 0`,
+  `version/roundNumber > 0`, enum allow-lists for
+  `status/dataState/roundType/quarantine reason/anomaly kind`, canonical
+  identifiers (`txHash` length 66, `disputeId LIKE '%:%'`),
+  `lastFinalizedBlock <= lastSafeBlock`.
+- Immutable final state (fail closed, observable): Postgres triggers reject
+  `resolved/expired -> *` dispute mutations, `closed/resolved -> open` round
+  mutations, and any UPDATE/DELETE on append-only
+  `v2_project_evidence_version`. Projectors already record rejected
+  transitions as `v2_indexing_anomalies` instead of mutating; the triggers
+  make illegal states unrepresentable even on direct DB writes.
+- Prisma remains canonical for User/Wallet/Sybil/AI/Analytics. This change
+  adds constraints only — no new TypeORM tables, no dual-persistence drift,
+  no settlement/rewards/treasury authority, no Stellar/Soroban/Freighter deps.
+
+Failures are bounded/redacted: unique/check/FK violations surface as
+duplicate-skips or anomalies with `txPrefix:logIndex` coordinates only (see
+`src/v2/common/projection-constraints.ts`); never raw payloads or secrets.
 
 ## Supporting interfaces
 

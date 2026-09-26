@@ -9,11 +9,7 @@ import {
 } from './entities/project-evidence.entity';
 import { ProjectEvidenceVersion } from './entities/project-evidence-version.entity';
 import { ProjectorCursor } from '../common/entities/projector-cursor.entity';
-import {
-  PROJECTOR_HANDLED_EVENTS,
-  V2_PROJECTORS,
-  V2ProjectorName,
-} from '../common/projection-readiness/projector-registry';
+import { EvidenceIntegrityService } from './evidence-integrity.service';
 
 const PROJECTOR_NAME: V2ProjectorName = V2_PROJECTORS.EVIDENCE;
 const PG_UNIQUE_VIOLATION = '23505';
@@ -28,6 +24,7 @@ export interface ProjectorRunSummary {
   processed: number;
   applied: number;
   duplicates: number;
+  integrityFailures?: number;
 }
 
 /**
@@ -38,6 +35,11 @@ export interface ProjectorRunSummary {
  * replaying canonical events. There is no create/update/delete endpoint for
  * evidence content in this module, by design (V2-BE-013 AC: "No
  * backend-authoritative protocol mutation is introduced").
+ *
+ * V2-BE-013: Stamps cryptographic integrity hashes on all evidence projections
+ * to enable detection of database corruption, unauthorized mutation, and
+ * reorg-induced inconsistencies. Hash computation failures trigger transaction
+ * rollback and projector halt (fail-closed behavior).
  */
 @Injectable()
 export class EvidenceProjectorService {
@@ -46,10 +48,15 @@ export class EvidenceProjectorService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly canonicalEvents: CanonicalEventQueryService,
+    private readonly integrityService: EvidenceIntegrityService,
   ) {}
 
   /** Process up to `batchSize` new canonical events since the last run. Idempotent. */
   async processNewEvents(batchSize = 100): Promise<ProjectorRunSummary> {
+    if (!Number.isInteger(batchSize) || batchSize <= 0) {
+      return { processed: 0, applied: 0, duplicates: 0 };
+    }
+
     const cursorRepo = this.dataSource.getRepository(ProjectorCursor);
     const cursor = await cursorRepo.findOne({
       where: { projectorName: PROJECTOR_NAME },
@@ -127,8 +134,17 @@ export class EvidenceProjectorService {
         let evidence = await evidenceRepo.findOne({ where: { evidenceId } });
         const nextVersion = evidence ? evidence.currentVersion + 1 : 1;
 
+        // Create version record with integrity hash
+        let versionRecord: ProjectEvidenceVersion;
         try {
-          await versionRepo.insert({
+          // Get previous version hash for chain-of-custody
+          const previousVersionHash =
+            await this.integrityService.getPreviousVersionHash(
+              evidenceId,
+              nextVersion - 1,
+            );
+
+          versionRecord = versionRepo.create({
             evidenceId,
             version: nextVersion,
             contentDigest: digest,
@@ -137,12 +153,39 @@ export class EvidenceProjectorService {
             eventTxHash: event.txHash,
             eventLogIndex: event.logIndex,
             blockNumber: event.blockNumber,
+            previousVersionHash,
+            integrityHash: null, // Will be computed below
           });
+
+          // Compute integrity hash before insert
+          try {
+            const hash = this.integrityService.computeVersionHash(versionRecord);
+            versionRecord.integrityHash = hash;
+          } catch (hashError) {
+            this.logger.error(
+              `Integrity hash computation failed for ${evidenceId}:v${nextVersion}`,
+              {
+                evidenceId,
+                version: nextVersion,
+                eventTxHash: event.txHash,
+                eventLogIndex: event.logIndex,
+                error: hashError.message,
+                stack: hashError.stack,
+              },
+            );
+            // Fail-closed: throw to rollback transaction
+            throw new Error(
+              `Evidence integrity hash computation failed: ${hashError.message}`,
+            );
+          }
+
+          await versionRepo.insert(versionRecord);
         } catch (err) {
           if (this.isUniqueViolation(err)) return 'duplicate';
           throw err;
         }
 
+        // Update or create current-state evidence projection
         if (!evidence) {
           evidence = evidenceRepo.create({
             evidenceId,
@@ -152,6 +195,7 @@ export class EvidenceProjectorService {
             contentDigest: digest,
             lastEventBlockNumber: event.blockNumber,
             lastEventLogIndex: event.logIndex,
+            integrityHash: null, // Will be computed below
           });
         } else {
           evidence.currentVersion = nextVersion;
@@ -160,6 +204,28 @@ export class EvidenceProjectorService {
           evidence.lastEventBlockNumber = event.blockNumber;
           evidence.lastEventLogIndex = event.logIndex;
         }
+
+        // Compute evidence integrity hash
+        try {
+          const hash = this.integrityService.computeEvidenceHash(evidence);
+          evidence.integrityHash = hash;
+        } catch (hashError) {
+          this.logger.error(
+            `Integrity hash computation failed for evidence ${evidenceId}`,
+            {
+              evidenceId,
+              eventTxHash: event.txHash,
+              eventLogIndex: event.logIndex,
+              error: hashError.message,
+              stack: hashError.stack,
+            },
+          );
+          // Fail-closed: throw to rollback transaction
+          throw new Error(
+            `Evidence integrity hash computation failed: ${hashError.message}`,
+          );
+        }
+
         await evidenceRepo.save(evidence);
         return 'applied';
       }
@@ -177,6 +243,28 @@ export class EvidenceProjectorService {
         evidence.status = EvidenceStatus.REMOVED;
         evidence.lastEventBlockNumber = event.blockNumber;
         evidence.lastEventLogIndex = event.logIndex;
+
+        // Recompute integrity hash with updated status
+        try {
+          const hash = this.integrityService.computeEvidenceHash(evidence);
+          evidence.integrityHash = hash;
+        } catch (hashError) {
+          this.logger.error(
+            `Integrity hash computation failed for evidence removal ${evidenceId}`,
+            {
+              evidenceId,
+              eventTxHash: event.txHash,
+              eventLogIndex: event.logIndex,
+              error: hashError.message,
+              stack: hashError.stack,
+            },
+          );
+          // Fail-closed: throw to rollback transaction
+          throw new Error(
+            `Evidence integrity hash computation failed: ${hashError.message}`,
+          );
+        }
+
         await evidenceRepo.save(evidence);
         return 'applied';
       }

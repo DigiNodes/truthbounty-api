@@ -6,60 +6,6 @@ import { RedisService } from '../redis/redis.service';
 import { AnalyticsQueryDto } from './dto/analytics-query.dto';
 import { AnalyticsResponse } from './interfaces/analytics-response.interface';
 
-/**
- * NOTE (build repair): this module is not imported by AppModule and is
- * therefore unreachable at runtime. It previously did not parse (unresolved
- * conflict residue and typo'd imports), which made `tsc`/`npm run build` fail
- * for the whole repository. It is repaired here only to the point of being
- * valid, deterministic TypeScript:
- *  - queries run against the TypeORM DataSource (the canonical persistence
- *    boundary) instead of a second client,
- *  - every value interpolated into SQL is validated/sanitized, so report
- *    filters cannot alter the statement shape,
- *  - a table that does not exist yields 0 rather than an error, which is the
- *    tolerant behavior this module was written with.
- * No product behavior is added or removed.
- */
-
-const CACHE_TTL_SECONDS = 5 * 60;
-
-/** Tables this service is permitted to aggregate. Never built from request input. */
-const ALLOWED_TABLES = new Set([
-  'claim',
-  'claim_event',
-  'verification',
-  'dispute',
-  'reward',
-  'staking',
-  'governance_proposal',
-  'vote',
-  'treasury',
-  'bounty',
-  'incentive',
-  'users',
-  'conversations',
-  'messages',
-]);
-
-const ALLOWED_DATE_COLUMNS = new Set([
-  'created_at',
-  'updated_at',
-  'effective_at',
-  'resolved_at',
-  'opened_at',
-]);
-
-type Period = 'day' | 'week' | 'month' | 'quarter' | 'year';
-
-/** Decimal-string coercion for aggregate columns, without object stringification. */
-function toNumericString(value: unknown): string {
-  if (typeof value === 'string') return value;
-  if (typeof value === 'number' || typeof value === 'bigint') {
-    return String(value);
-  }
-  return '0';
-}
-
 @Injectable()
 export class AnalyticsService {
   private readonly logger = new Logger(AnalyticsService.name);
@@ -125,73 +71,25 @@ export class AnalyticsService {
     return date ? new Date(date) : undefined;
   }
 
-  /** Column/identifier fragments originate here, never from request input. */
-  private assertKnownTable(table: string): void {
-    if (!ALLOWED_TABLES.has(table)) {
-      throw new Error(`Unsupported analytics table "${table}"`);
-    }
-  }
-
-  /**
-   * Values are restricted to the characters used by protocol identifiers, so
-   * a filter can only ever narrow the predicate and never extend it.
-   */
-  private sanitizeValue(value: string): string {
-    return value.replace(/[^A-Za-z0-9_.:-]/g, '');
-  }
-
-  private dateRangeClause(
-    column: string,
-    start: Date | undefined,
-    end: Date | undefined,
-  ): string {
-    if (!ALLOWED_DATE_COLUMNS.has(column)) return '';
-    const clauses: string[] = [];
-    if (start) clauses.push(`${column} >= '${start.toISOString()}'`);
-    if (end) clauses.push(`${column} <= '${end.toISOString()}'`);
-    return clauses.join(' AND ');
-  }
-
-  /**
-   * Runs a statement and normalizes the driver's rows to plain records, so
-   * callers narrow field values explicitly instead of trusting the driver's
-   * `any` typing.
-   */
-  private async queryRows(sql: string): Promise<Record<string, unknown>[]> {
-    const rows: unknown = await this.dataSource.query(sql);
-    if (!Array.isArray(rows)) return [];
-    return rows.filter(
-      (row): row is Record<string, unknown> =>
-        typeof row === 'object' && row !== null,
-    );
-  }
-
-  private async safeCount(table: string, where?: string): Promise<number> {
+  private async safeRawCount(table: string, where?: string): Promise<number> {
     try {
-      this.assertKnownTable(table);
-      const sql = `SELECT COUNT(*) AS count FROM "${table}"${where ? ` WHERE ${where}` : ''}`;
-      const rows = await this.queryRows(sql);
-      return parseInt(toNumericString(rows[0]?.count), 10) || 0;
-    } catch (error) {
-      this.logger.warn(`Table ${table} not available: ${String(error)}`);
+      const sql = `SELECT COUNT(*) as count FROM "${table}"${where ? ` WHERE ${where}` : ''}`;
+      const result = await this.dataSource.query(sql);
+      return parseInt(result[0]?.count || '0', 10);
+    } catch (e) {
+      this.logger.warn(`Table ${table} not available`, e);
       return 0;
     }
   }
 
-  private async safeSum(
-    table: string,
-    column: string,
-    where?: string,
-  ): Promise<number> {
+  private async safeRawSum(table: string, column: string, where?: string): Promise<number> {
     try {
-      this.assertKnownTable(table);
-      const sql = `SELECT COALESCE(SUM("${column}"), 0) AS total FROM "${table}"${where ? ` WHERE ${where}` : ''}`;
-      const rows = await this.queryRows(sql);
-      return parseFloat(toNumericString(rows[0]?.total)) || 0;
-    } catch (error) {
-      this.logger.warn(
-        `Table ${table} not available for sum: ${String(error)}`,
-      );
+      const sql = `SELECT COALESCE(SUM("${column}"), 0) as total FROM "${table}"${where ? ` WHERE ${where}` : ''}`;
+      const result = await this.dataSource.query(sql);
+      const total = result[0]?.total || '0';
+      return parseFloat(total);
+    } catch (e) {
+      this.logger.warn(`Table ${table} not available for sum`, e);
       return 0;
     }
   }
@@ -333,60 +231,29 @@ export class AnalyticsService {
     const start = Date.now();
     const cacheKey = `analytics:claims:${JSON.stringify(query)}`;
 
-    const { data, cached } = await this.getCached(
-      cacheKey,
-      CACHE_TTL_SECONDS,
-      async () => {
-        const startDate = this.parseDate(query.startDate);
-        const endDate = this.parseDate(query.endDate);
+    const { data, cached } = await this.getCached(cacheKey, 60 * 5, async () => {
+      const startDate = this.parseDate(query.startDate);
+      const endDate = this.parseDate(query.endDate);
+      let whereClaim = ['created_at' >= 'startDate', 'created_at' <= 'endDate'].join(' AND ');
+      if (query.contributorId) whereClaim += ` AND contributor_id = '${query.contributorId}'`;
+      if (query.categoryId) whereClaim += ` AND category_id = '${query.categoryId}'`;
+      if (query.status) whereClaim += ` AND status = '${query.status}'`;
 
-        const clauses: string[] = [];
-        const range = this.dateRangeClause('created_at', startDate, endDate);
-        if (range) clauses.push(range);
-        if (query.contributorId) {
-          clauses.push(
-            `contributor_id = '${this.sanitizeValue(query.contributorId)}'`,
-          );
-        }
-        if (query.categoryId) {
-          clauses.push(
-            `category_id = '${this.sanitizeValue(query.categoryId)}'`,
-          );
-        }
-        if (query.status) {
-          clauses.push(`status = '${this.sanitizeValue(query.status)}'`);
-        }
-        const where = clauses.join(' AND ');
+      const totalClaims = await this.safeRawCount('claim', whereClaim);
+      const verificationRates = await this.safeRawCount('verification', whereClaim);
+      const disputeCount = await this.safeRawCount('dispute', whereClaim);
 
-        const totalClaims = await this.safeCount('claim', where || undefined);
-        const resolvedClaims = await this.safeCount(
-          'claim',
-          where
-            ? `${where} AND resolved_at IS NOT NULL`
-            : 'resolved_at IS NOT NULL',
-        );
-        const disputeCount = await this.safeCount(
-          'dispute',
-          where || undefined,
-        );
-        const submissionTrends = await this.trendSeries(
-          'claim',
-          'created_at',
-          startDate,
-          endDate,
-        );
+      const submissionTrends = await this.getTrendArray('claim', 'created_at', startDate, endDate, query.period);
 
-        return {
-          submissionTrends,
-          categoryDistribution: {}, // requires group-by category, not implemented yet
-          verificationRates: totalClaims ? resolvedClaims / totalClaims : 0,
-          verificationDuration: null,
-          settlementStatistics: {},
-          claimOutcomes: {},
-          disputeCount,
-        };
-      },
-    );
+      return {
+        submissionTrends,
+        categoryDistribution: {}, // Requires group by category, not implemented yet
+        verificationRates: verificationRates ? verificationRates/(totalClaims || 1) : 0,
+        verificationDuration: null,
+        settlementStatistics: {},
+        claimOutcomes: {},
+      };
+    });
 
     return this.wrapResponse(data, cached, Date.now() - start, query);
   }
@@ -397,32 +264,22 @@ export class AnalyticsService {
     const start = Date.now();
     const cacheKey = `analytics:governance:${JSON.stringify(query)}`;
 
-    const { data, cached } = await this.getCached(
-      cacheKey,
-      CACHE_TTL_SECONDS,
-      async () => {
-        const total = await this.safeCount('governance_proposal');
-        const passed = await this.safeCount(
-          'governance_proposal',
-          "status = 'PASSED'",
-        );
-        const failed = await this.safeCount(
-          'governance_proposal',
-          "status = 'FAILED'",
-        );
-        const voterTurnout = await this.safeCount('vote');
-        const participation = total ? voterTurnout / total : 0;
+    const { data, cached } = await this.getCached(cacheKey, 60 * 5, async () => {
+      const total = await this.safeRawCount('gvn_proposal');
+      const passed = await this.safeRawCount('gvn_proposal', "status = 'PASSED'");
+      const failed = await this.safeRawCount('gvn_proposal', "status = 'FAILED'");
+      const voterTurnout = await this.safeRawCount('vote');
+      const participation = total ? voterTurnout / total : 0;
 
-        return {
-          proposalStatistics: { total, passed, failed },
-          participationRates: participation > 1 ? 1 : participation,
-          votingTrends: [],
-          quorumAchievement: 0,
-          treasuryAllocationSummaries: {},
-          governanceGrowth: {},
-        };
-      },
-    );
+      return {
+        proposalStatistics: { total, passed, failed },
+        participationRates: participation > 1 ? 1 : participation,
+        votingTrends: [],
+        quorumAchievement: 0,
+        treasuryAllocationSummaries: {},
+        governanceGrowth: {},
+      };
+    });
 
     return this.wrapResponse(data, cached, Date.now() - start, query);
   }
@@ -508,20 +365,23 @@ export class AnalyticsService {
     return this.wrapResponse(data, cached, Date.now() - start, query);
   }
 
-  private resolvePeriod(period?: string): Period {
-    switch (period) {
-      case 'weekly':
-        return 'week';
-      case 'monthly':
-        return 'month';
-      case 'quarterly':
-        return 'quarter';
-      case 'yearly':
-        return 'year';
-      default:
-        return 'day';
-    }
-  }
+  private async getMessageTrends(period: string, start: Date | undefined, end: Date | undefined): Promise<any[]> {
+    const startDate = start ? start : new Date(0);
+    const endDate = end ? end : new Date();
+
+    // Use Prisma to group messages by createdAt date ranges
+    // This is a simplified version; in production, use raw SQL for better performance.
+    const messages = await this.prisma.message.findMany({
+      where: {
+        createdAt: {
+          gte: startDate,
+          lte: endDate,
+        },
+      },
+      select: { createdAt: true },
+    });
+
+    if (messages.length === 0) return [];
 
   private bucketTrend(
     rows: { period: string; count: number }[],
@@ -558,7 +418,21 @@ export class AnalyticsService {
       .sort((a, b) => a.period.localeCompare(b.period));
   }
 
-  getMonitoringMetrics(): AnalyticsResponse<Record<string, number>> {
+  private async getTrendArray(table: string, column: string, start: Date | undefined, end: Date | undefined, period?: string): Promise<any[]> {
+    try {
+      const whereClauses: string[] = [];
+      if (start) whereClauses.push(`${column} >= '${start.toISOString()}'`);
+      if (end) whereClauses.push(`${column} <= '${end.toISOString()}'`);
+      const where = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+      const query = `SELECT strftime(${column}, '%Y-%m-%d') as period, COUNT(*) as count FROM "${table}" ${where} GROUP BY period ORDER BY period`;
+      const result = await this.dataSource.query(query);
+      return result.map((row) => ({ period: row.period, count: parseInt(row.count, 10) }));
+    } catch (e) {
+      return [];
+    }
+  }
+
+  async getMonitoringMetrics(): Promise<AnalyticsResponse<any>> {
     const start = Date.now();
     const totalQueries =
       this.monitoring.cacheHits + this.monitoring.cacheMisses;

@@ -364,40 +364,15 @@ test in webdev
 - **Protocol Boundary**: API layer indexes, validates, and relays user-signed intent; it is never authoritative for settlement, rewards, or governance.
 - **EVM Semantics**: Full compatibility with Optimism/EVM chain rules.
 
----
+## Persistence Boundary: TypeORM-Only for New Code (V2-BE-111)
 
-## Projection Readiness Gate (V2-BE-100)
+TypeORM/PostgreSQL is the persistence path for all new backend code. `src/database/transaction.runner.ts` is the shared transaction helper; use it rather than reaching for a raw `DataSource` or a second transaction abstraction.
 
-```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                     PROJECTION READINESS GATE                                │
-├──────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  Canonical Optimism/EVM events (v2_canonical_events)  ◄── protocol authority │
-│         │                                                                    │
-│         ▼                                                                    │
-│  Projectors (v2-evidence, v2-verification, v2-disputes)                      │
-│    read in (blockNumber, logIndex) order; idempotent; cursor in              │
-│    v2_projector_cursors                                                     │
-│         │                                                                    │
-│         ▼                                                                    │
-│  ProjectionReadinessService.evaluate(projector)   ← reads only, never writes │
-│    I1 total evaluation (any error ⇒ not ready)                                │
-│    I2 registered projector only                                              │
-│    I3 events ⇒ cursor exists                                                 │
-│    I4 cursor neither lags nor leads the canonical stream                     │
-│    I5 no undecodable logs from approved protocol contracts                   │
-│         │                                                                    │
-│         ├── ready     → V2 read endpoints serve the projection               │
-│         └── not ready → 503 projection_not_ready (reasons + evidence)         │
-│                         and GET /v2/projections/readiness reports why         │
-│                                                                              │
-└──────────────────────────────────────────────────────────────────────────────┘
-```
+Prisma (`src/prisma/`, `prisma/schema.prisma`) has pre-existing, real usage in a specific, closed list of modules: `auth`, `notifications`, `outbox` (see above), `sybil-resistance`, `analytics`, `ai-assistant`, and `identity`/`worldcoin`. That usage is grandfathered, not sanctioned for new work: it predates this boundary and migrating it off Prisma is a separate, larger effort, not part of this change.
 
-The gate adds an enforcement layer, not a second source of truth: it derives
-every input from existing V2 tables and never mutates protocol-derived state.
-Read paths fail closed rather than answering from a projection the API cannot
-prove still reproduces canonical events. Design, invariants, failure modes and
-recovery: [docs/PROJECTION_READINESS_GATE.md](docs/PROJECTION_READINESS_GATE.md).
+Two things enforce the boundary going forward:
+- `eslint.config.mjs` restricts importing `@prisma/client` or `prisma.service` outside the grandfathered file list; new files hit this at lint time.
+- `src/architecture.spec.ts` asserts the same thing at test time, independent of whether lint runs.
+
+Adding a file to either allowlist is a signal that the "TypeORM-only" boundary is being widened, not narrowed, so it should be treated the same as adding a new ORM: reviewed deliberately, not done to silence a lint error.
 

@@ -19,6 +19,7 @@ const mockRedisService = () => ({
 });
 
 const mockQueue = () => ({
+  name: 'jobs-queue',
   getJobCounts: jest.fn(),
 });
 
@@ -27,11 +28,11 @@ const mockJobsService = () => ({
 });
 
 const mockNotificationService = () => ({
-  getMetrics: jest.fn(),
+  getMetrics: jest.fn().mockResolvedValue({ queueDepth: 0 }),
 });
 
 const mockIpfsService = () => ({
-  uploadBuffer: jest.fn(),
+  uploadBuffer: jest.fn().mockResolvedValue({ cid: 'bafy-test' }),
 });
 
 const mockBlockchainStateService = () => ({
@@ -80,10 +81,7 @@ describe('HealthService', () => {
         { provide: JobsService, useFactory: mockJobsService },
         { provide: NotificationService, useFactory: mockNotificationService },
         { provide: IpfsService, useFactory: mockIpfsService },
-        {
-          provide: BlockchainStateService,
-          useFactory: mockBlockchainStateService,
-        },
+        { provide: BlockchainStateService, useFactory: mockBlockchainStateService },
         { provide: MetricsService, useFactory: mockMetricsService },
       ],
     }).compile();
@@ -113,7 +111,8 @@ describe('HealthService', () => {
     const result = await service.getReadiness();
     expect(result.ready).toBe(true);
     expect(result.status).toBe('healthy');
-    expect(result.dependencies).toHaveLength(3);
+    expect(result.dependencies).toHaveLength(6);
+    expect(result.checkedAt).toBeTruthy();
   });
 
   it('should report unhealthy when database is down', async () => {
@@ -129,6 +128,26 @@ describe('HealthService', () => {
     const result = await service.getReadiness();
     expect(result.ready).toBe(false);
     expect(result.status).toBe('unhealthy');
+    const db = result.dependencies.find((d) => d.name === 'database');
+    expect(db?.failureReasonCode).toBeDefined();
+  });
+
+  it('should not leak connection-string-like details in failure reasons', async () => {
+    (dataSource.query as jest.Mock).mockRejectedValue(
+      new Error('connection to postgres://user:supersecret@db-host:5432/app failed'),
+    );
+    (redisService.isHealthy as jest.Mock).mockResolvedValue(true);
+    (queue.getJobCounts as jest.Mock).mockResolvedValue({
+      waiting: 0,
+      active: 0,
+      completed: 0,
+      failed: 0,
+    });
+
+    const result = await service.getReadiness();
+    const db = result.dependencies.find((d) => d.name === 'database');
+    expect(db?.failureReason).not.toContain('supersecret');
+    expect(db?.failureReason).not.toContain('postgres://');
   });
 
   it('should report degraded when redis is down but db and queue are up', async () => {
@@ -144,6 +163,42 @@ describe('HealthService', () => {
     const result = await service.getReadiness();
     expect(result.ready).toBe(true);
     expect(result.status).toBe('degraded');
+  });
+
+  it('should fail closed when a probe times out', async () => {
+    (dataSource.query as jest.Mock).mockImplementation(
+      () => new Promise(() => {}), // never resolves
+    );
+    (redisService.isHealthy as jest.Mock).mockResolvedValue(true);
+    (queue.getJobCounts as jest.Mock).mockResolvedValue({
+      waiting: 0,
+      active: 0,
+      completed: 0,
+      failed: 0,
+    });
+
+    const result = await service.getReadiness();
+    const db = result.dependencies.find((d) => d.name === 'database');
+    expect(db?.status).toBe('unhealthy');
+    expect(db?.failureReasonCode).toBe('TIMEOUT');
+  }, 10000);
+
+  it('should reuse a recent check pass instead of re-querying every dependency', async () => {
+    (dataSource.query as jest.Mock).mockResolvedValue([{ 1: 1 }]);
+    (redisService.isHealthy as jest.Mock).mockResolvedValue(true);
+    (queue.getJobCounts as jest.Mock).mockResolvedValue({
+      waiting: 0,
+      active: 0,
+      completed: 0,
+      failed: 0,
+    });
+
+    await service.getReadiness();
+    const callsAfterFirst = (dataSource.query as jest.Mock).mock.calls.length;
+    await service.getReadiness();
+    const callsAfterSecond = (dataSource.query as jest.Mock).mock.calls.length;
+
+    expect(callsAfterSecond).toBe(callsAfterFirst);
   });
 
   it('should include health metadata and dependency summary', async () => {
@@ -204,5 +259,21 @@ describe('HealthService', () => {
       0,
     );
     expect(result.snapshot.runbookUrl).toBeTruthy();
+  });
+
+  it('should not fabricate zero-latency always-healthy dependency reports', async () => {
+    (dataSource.query as jest.Mock).mockRejectedValue(new Error('down'));
+    (redisService.isHealthy as jest.Mock).mockResolvedValue(true);
+    (queue.getJobCounts as jest.Mock).mockResolvedValue({
+      waiting: 0,
+      active: 0,
+      completed: 0,
+      failed: 0,
+    });
+
+    const result = await service.getDependencyHealth();
+    const db = result.dependencies.find((d) => d.name === 'database');
+    expect(db?.status).toBe('unhealthy');
+    expect(result.status).toBe('unhealthy');
   });
 });

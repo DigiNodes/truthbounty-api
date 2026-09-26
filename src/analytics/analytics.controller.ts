@@ -1,11 +1,4 @@
-import {
-  Controller,
-  Get,
-  Query,
-  Res,
-  UseGuards,
-  ValidationPipe,
-} from '@nestjs/common';
+import { Controller, Get, Query, Res, UseGuards, ValidationPipe } from '@nestjs/common';
 import { Response } from 'express';
 import { AnalyticsService } from './analytics.service';
 import { AnalyticsQueryDto } from './dto/analytics-query.dto';
@@ -25,9 +18,7 @@ export class AnalyticsController {
   }
 
   @Get('contributors')
-  getContributorAnalytics(
-    @Query(new ValidationPipe({ transform: true })) query: AnalyticsQueryDto,
-  ): Promise<AnalyticsResponse<any>> {
+  getContributorAnalytics(@Query(new ValidationPipe({ transform: true })) query: AnalyticsQueryDto): Promise<AnalyticsResponse<any>> {
     return this.analyticsService.getContributorAnalytics(query);
   }
 

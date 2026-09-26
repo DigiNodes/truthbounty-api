@@ -8,13 +8,8 @@ import { Repository } from 'typeorm';
 import { ProjectDispute } from './entities/project-dispute.entity';
 import { EventCheckpoint } from '../events/entities/event-checkpoint.entity';
 import { DataState } from '../common/data-state.enum';
-import {
-  CursorPage,
-  encodeCursor,
-  decodeCursor,
-} from '../common/cursor-pagination';
-import { ProjectionReadinessService } from '../common/projection-readiness/projection-readiness.service';
-import { V2_PROJECTORS } from '../common/projection-readiness/projector-registry';
+import { CursorPage, encodeCursor, decodeCursor } from '../common/cursor-pagination';
+import { FinalityPolicyService } from '../../config/finality-policy.service';
 
 @Injectable()
 export class DisputesQueryService {
@@ -23,43 +18,18 @@ export class DisputesQueryService {
     private readonly disputeRepo: Repository<ProjectDispute>,
     @InjectRepository(EventCheckpoint)
     private readonly checkpointRepo: Repository<EventCheckpoint>,
-    private readonly readiness: ProjectionReadinessService,
+    private readonly finalityPolicy: FinalityPolicyService,
   ) {}
 
   /**
-   * Calculate the data state for a block number based on chain's safe and finalized blocks.
-   * A row whose originating block is unknown is reported as OBSERVED: finality
-   * is never asserted for data whose provenance cannot be established.
+   * Fetch the latest checkpoint once (assuming single chain for simplicity)
+   * so callers can classify a whole batch of rows without re-querying per row.
    */
-  private async calculateDataState(
-    blockNumber: string | null,
-  ): Promise<DataState> {
-    if (blockNumber === null) {
-      return DataState.OBSERVED;
-    }
-
-    // Get the latest checkpoint (assuming single chain for simplicity).
-    // `findOne` requires a selection condition, so the newest row is taken
-    // with an ordered, limited `find` instead of a bare `findOne`.
-    const [checkpoint] = await this.checkpointRepo.find({
+  private async getLatestCheckpoint(): Promise<EventCheckpoint | null> {
+    return this.checkpointRepo.findOne({
       order: { updatedAt: 'DESC' },
       take: 1,
     });
-
-    if (!checkpoint) {
-      return DataState.OBSERVED;
-    }
-
-    const blockNum = BigInt(blockNumber);
-    const lastSafe = BigInt(checkpoint.lastSafeBlock);
-    const lastFinalized = BigInt(checkpoint.lastFinalizedBlock);
-
-    if (blockNum <= lastFinalized) {
-      return DataState.FINALIZED;
-    } else if (blockNum <= lastSafe) {
-      return DataState.SAFE;
-    }
-    return DataState.OBSERVED;
   }
 
   async listForClaim(
@@ -96,14 +66,14 @@ export class DisputesQueryService {
 
     const disputes = await query.limit(limit).getMany();
 
-    // Add computed data states
-    const disputesWithState = await Promise.all(
-      disputes.map(async (dispute) => ({
-        ...dispute,
-        computedDataState: await this.calculateDataState(dispute.blockNumber),
-      })),
-    );
-
+    // Single checkpoint fetch for the whole page (was previously re-fetched
+    // once per row via a private calculateDataState — an N+1).
+    const checkpoint = await this.getLatestCheckpoint();
+    const disputesWithState = disputes.map((dispute) => ({
+      ...dispute,
+      computedDataState: this.finalityPolicy.classifyByCheckpoint(dispute.blockNumber, checkpoint),
+    }));
+    
     // Generate next cursor
     const nextCursor =
       disputesWithState.length === limit
@@ -136,9 +106,8 @@ export class DisputesQueryService {
       throw new NotFoundException(
         `No dispute projected for round ${originalRoundId} on claim ${claimId}`,
       );
-    const computedDataState = await this.calculateDataState(
-      dispute.blockNumber,
-    );
+    const checkpoint = await this.getLatestCheckpoint();
+    const computedDataState = this.finalityPolicy.classifyByCheckpoint(dispute.blockNumber, checkpoint);
     return {
       ...dispute,
       computedDataState,

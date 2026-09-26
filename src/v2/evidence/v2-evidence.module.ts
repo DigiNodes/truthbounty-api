@@ -7,7 +7,8 @@ import { ProjectorCursor } from '../common/entities/projector-cursor.entity';
 import { ProjectionReadinessModule } from '../common/projection-readiness/projection-readiness.module';
 import { EvidenceProjectorService } from './evidence-projector.service';
 import { EvidenceQueryService } from './evidence-query.service';
-import { EvidenceController } from './evidence.controller';
+import { EvidenceIntegrityService } from './evidence-integrity.service';
+import { EvidenceController, EvidenceIntegrityController } from './evidence.controller';
 
 @Module({
   imports: [
@@ -19,8 +20,16 @@ import { EvidenceController } from './evidence.controller';
     V2EventsModule,
     ProjectionReadinessModule,
   ],
-  controllers: [EvidenceController],
-  providers: [EvidenceProjectorService, EvidenceQueryService],
-  exports: [EvidenceProjectorService, EvidenceQueryService],
+  controllers: [EvidenceController, EvidenceIntegrityController],
+  providers: [
+    EvidenceProjectorService,
+    EvidenceQueryService,
+    EvidenceIntegrityService,
+  ],
+  exports: [
+    EvidenceProjectorService,
+    EvidenceQueryService,
+    EvidenceIntegrityService,
+  ],
 })
 export class V2EvidenceModule {}

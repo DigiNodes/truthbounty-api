@@ -1,28 +1,47 @@
 import { ValidationPipe } from '@nestjs/common';
+import { describe, expect, it, jest } from '@jest/globals';
 import { configureApp } from './bootstrap';
 
-jest.mock('@nestjs/swagger', () => {
-  const actual = jest.requireActual('@nestjs/swagger');
-  return {
-    ...actual,
-    SwaggerModule: {
-      createDocument: jest.fn().mockReturnValue({}),
-      setup: jest.fn(),
-    },
-  };
-});
+jest.mock('@nestjs/swagger', () => ({
+  SwaggerModule: {
+    createDocument: jest.fn().mockReturnValue({}),
+    setup: jest.fn(),
+  },
+  DocumentBuilder: jest.fn().mockImplementation(() => ({
+    setTitle: jest.fn().mockReturnThis(),
+    setDescription: jest.fn().mockReturnThis(),
+    setVersion: jest.fn().mockReturnThis(),
+    addBearerAuth: jest.fn().mockReturnThis(),
+    addTag: jest.fn().mockReturnThis(),
+    build: jest.fn().mockReturnValue({}),
+  })),
+}));
 
 describe('configureApp', () => {
-  it('registers a single strict global validation pipe', () => {
-    const httpAdapter = { set: jest.fn() };
+  it('registers strict global validation and bounded body parsers', () => {
+    const httpAdapter = {
+      set: jest.fn(),
+      use: jest.fn(),
+    };
+
     const app = {
       useLogger: jest.fn(),
       get: jest.fn(),
-      getHttpAdapter: jest.fn().mockReturnValue({ getInstance: () => httpAdapter }),
+      getHttpAdapter: jest.fn().mockReturnValue({
+        getInstance: () => httpAdapter,
+      }),
       useGlobalPipes: jest.fn(),
     } as any;
 
     configureApp(app);
+
+    expect(httpAdapter.use).toHaveBeenCalledTimes(2);
+
+    const [jsonParser] = httpAdapter.use.mock.calls[0];
+    const [urlencodedParser] = httpAdapter.use.mock.calls[1];
+
+    expect(jsonParser).toHaveProperty('name', 'jsonParser');
+    expect(urlencodedParser).toHaveProperty('name', 'urlencodedParser');
 
     expect(app.useGlobalPipes).toHaveBeenCalledTimes(1);
 

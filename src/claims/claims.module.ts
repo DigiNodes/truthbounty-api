@@ -8,6 +8,7 @@ import { Stake } from '../staking/entities/stake.entity';
 import { ClaimsService } from './claims.service';
 import { ClaimsController } from './claims.controller';
 import { EvidenceService } from './evidence.service';
+import { ClaimResolutionService } from './claim-resolution.service';
 import { CacheModule } from '../cache/cache.module';
 import { EvidenceIntegrityMiddleware } from '../common/middleware/evidence-integrity.middleware';
 import { EvidenceFlagService } from './evidence-flag.service';
@@ -38,6 +39,7 @@ import { IpfsModule } from '../ipfs/ipfs.module';
     EvidenceService,
     EvidenceFlagService,
     ClaimProjectorService,
+    ClaimResolutionService,
   ],
   exports: [
     ClaimsService,
