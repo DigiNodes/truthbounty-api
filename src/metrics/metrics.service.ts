@@ -32,6 +32,12 @@ export class MetricsService {
   // Lazily-registered domain counters (outbox, notifications, ...) so that
   // services can record business events without pre-declaring each metric.
   private readonly customCounters = new Map<string, Counter<string>>();
+  
+  // Lazily-registered labeled counters for cache health and other domain metrics
+  private readonly labeledCounters = new Map<string, Counter<string>>();
+  
+  // Lazily-registered labeled gauges for cache health and other domain metrics
+  private readonly labeledGauges = new Map<string, Gauge<string>>();
 
   constructor() {
     this.requestCounter = new Counter({
@@ -80,14 +86,56 @@ export class MetricsService {
    * Increment a named domain counter (created lazily on first use).
    * Used for business-level events such as outbox dispatches and
    * notification lifecycle transitions.
+   * Overloaded to support labeled counters.
    */
-  incrementCounter(name: string, value = 1): void {
+  incrementCounter(name: string, labelsOrValue?: Record<string, string | number> | number, value = 1): void {
+    // If second arg is a number, it's the value (unlabeled version)
+    if (typeof labelsOrValue === 'number') {
+      let counter = this.customCounters.get(name);
+      if (!counter) {
+        counter = new Counter({ name, help: name });
+        this.customCounters.set(name, counter);
+      }
+      counter.inc(labelsOrValue);
+      return;
+    }
+    
+    // If second arg is an object, it's labels (labeled version)
+    if (typeof labelsOrValue === 'object') {
+      let counter = this.labeledCounters.get(name);
+      if (!counter) {
+        counter = new Counter({ name, help: name, labelNames: Object.keys(labelsOrValue) });
+        this.labeledCounters.set(name, counter);
+      }
+      counter.inc(labelsOrValue, value);
+      return;
+    }
+    
+    // Default unlabeled version
     let counter = this.customCounters.get(name);
     if (!counter) {
       counter = new Counter({ name, help: name });
       this.customCounters.set(name, counter);
     }
     counter.inc(value);
+  }
+
+  /**
+   * Set a labeled gauge (created lazily on first use).
+   * Used for metrics with labels such as cache health status, failure rates, etc.
+   */
+  setGauge(name: string, value: number, labels?: Record<string, string | number>): void {
+    let gauge = this.labeledGauges.get(name);
+    if (!gauge) {
+      const labelNames = labels ? Object.keys(labels) : [];
+      gauge = new Gauge({ name, help: name, labelNames });
+      this.labeledGauges.set(name, gauge);
+    }
+    if (labels) {
+      gauge.set(labels, value);
+    } else {
+      gauge.set(value);
+    }
   }
 
   incrementRequest(method: string, route: string, status: string) {

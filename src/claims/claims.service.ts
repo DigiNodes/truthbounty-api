@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Claim, ClaimState } from './entities/claim.entity';
@@ -13,6 +13,7 @@ import {
   assertResolvedAtInvariant,
   buildResolvedFields,
 } from './claim-resolution.invariant';
+import { CacheUnavailableException } from '../cache/exceptions/cache-unavailable.exception';
 
 
 @Injectable()
@@ -31,40 +32,88 @@ export class ClaimsService {
 
     /**
      * Find a single claim by ID with caching
+     * Cache failures are logged and reported, but canonical state (DB) is always served
      */
     async findOne(id: string): Promise<Claim | null> {
-        const cached = await this.claimsCache.getClaim(id);
-        if (cached) return cached;
+        try {
+            const cached = await this.claimsCache.getClaim(id);
+            if (cached) return cached;
+        } catch (error) {
+            if (error instanceof CacheUnavailableException) {
+                this.logger.warn(`Cache unavailable for claim ${id}, serving from database: ${error.message}`);
+                // Fall through to database fetch - cache failure is isolated from canonical state
+            } else {
+                throw error;
+            }
+        }
 
         const claim = await this.claimRepo.findOneBy({ id });
         if (claim) {
-            await this.claimsCache.setClaim(id, claim);
+            try {
+                await this.claimsCache.setClaim(id, claim);
+            } catch (error) {
+                if (error instanceof CacheUnavailableException) {
+                    this.logger.warn(`Cache unavailable for claim ${id}, skipping cache update: ${error.message}`);
+                    // Continue - cache failure is isolated from canonical state
+                } else {
+                    throw error;
+                }
+            }
         }
         return claim;
     }
 
     /**
      * Find latest claims with caching
+     * Cache failures are logged and reported, but canonical state (DB) is always served
      */
     async findLatest(limit = 10): Promise<Claim[]> {
-        const cached = await this.claimsCache.getLatestClaims();
-        if (cached) return cached;
+        try {
+            const cached = await this.claimsCache.getLatestClaims();
+            if (cached) return cached;
+        } catch (error) {
+            if (error instanceof CacheUnavailableException) {
+                this.logger.warn(`Cache unavailable for latest claims, serving from database: ${error.message}`);
+                // Fall through to database fetch - cache failure is isolated from canonical state
+            } else {
+                throw error;
+            }
+        }
 
         const claims = await this.claimRepo.find({
             order: { createdAt: 'DESC' },
             take: limit,
         });
 
-        await this.claimsCache.setLatestClaims(claims);
+        try {
+            await this.claimsCache.setLatestClaims(claims);
+        } catch (error) {
+            if (error instanceof CacheUnavailableException) {
+                this.logger.warn(`Cache unavailable for latest claims, skipping cache update: ${error.message}`);
+                // Continue - cache failure is isolated from canonical state
+            } else {
+                throw error;
+            }
+        }
         return claims;
     }
 
     /**
      * Find claims associated with a user wallet with caching
+     * Cache failures are logged and reported, but canonical state (DB) is always served
      */
     async findByUser(wallet: string): Promise<Claim[]> {
-        const cached = await this.claimsCache.getUserClaims(wallet);
-        if (cached) return cached;
+        try {
+            const cached = await this.claimsCache.getUserClaims(wallet);
+            if (cached) return cached;
+        } catch (error) {
+            if (error instanceof CacheUnavailableException) {
+                this.logger.warn(`Cache unavailable for user claims ${wallet}, serving from database: ${error.message}`);
+                // Fall through to database fetch - cache failure is isolated from canonical state
+            } else {
+                throw error;
+            }
+        }
 
         // Get claim IDs from user stakes
         const stakes = await this.stakeRepo.find({
@@ -79,7 +128,16 @@ export class ClaimsService {
             .orderBy('claim.createdAt', 'DESC')
             .getMany();
 
-        await this.claimsCache.setUserClaims(wallet, claims);
+        try {
+            await this.claimsCache.setUserClaims(wallet, claims);
+        } catch (error) {
+            if (error instanceof CacheUnavailableException) {
+                this.logger.warn(`Cache unavailable for user claims ${wallet}, skipping cache update: ${error.message}`);
+                // Continue - cache failure is isolated from canonical state
+            } else {
+                throw error;
+            }
+        }
         return claims;
     }
 
@@ -126,11 +184,25 @@ export class ClaimsService {
         });
         const savedClaim = await this.claimRepo.save(claim);
 
-        // Cache the new claim
-        await this.claimsCache.setClaim(savedClaim.id, savedClaim);
+        // Cache the new claim (non-critical - failure is isolated)
+        try {
+            await this.claimsCache.setClaim(savedClaim.id, savedClaim);
+        } catch (error) {
+            if (error instanceof CacheUnavailableException) {
+                this.logger.warn(`Cache unavailable for new claim ${savedClaim.id}, skipping cache update: ${error.message}`);
+                // Continue - cache failure is isolated from canonical state
+            } else {
+                throw error;
+            }
+        }
 
-        // Invalidate latest claims cache since we added a new claim
-        await this.redisService.del('claims:latest');
+        // Invalidate latest claims cache since we added a new claim (non-critical)
+        try {
+            await this.redisService.del('claims:latest');
+        } catch (error) {
+            this.logger.warn(`Failed to invalidate latest claims cache: ${error}`);
+            // Continue - cache failure is isolated from canonical state
+        }
 
         this.logger.log(`Created new claim: ${savedClaim.id} - ${savedClaim.title}`);
         return savedClaim;
@@ -163,8 +235,17 @@ export class ClaimsService {
         assertResolvedAtInvariant(claim);
 
         const updatedClaim = await this.claimRepo.save(claim);
-        // Invalidate both the claim-specific cache and the latest claims list cache
-        await this.claimsCache.invalidateClaim(claimId);
+        // Invalidate both the claim-specific cache and the latest claims list cache (non-critical)
+        try {
+            await this.claimsCache.invalidateClaim(claimId);
+        } catch (error) {
+            if (error instanceof CacheUnavailableException) {
+                this.logger.warn(`Cache unavailable for claim invalidation ${claimId}, skipping: ${error.message}`);
+                // Continue - cache failure is isolated from canonical state
+            } else {
+                throw error;
+            }
+        }
 
         // Log the resolution
         await this.auditTrailService.log({
@@ -195,8 +276,17 @@ export class ClaimsService {
         claim.transitionTo(ClaimState.FINALIZED);
 
         const updatedClaim = await this.claimRepo.save(claim);
-        // Invalidate both the claim-specific cache and the latest claims list cache
-        await this.claimsCache.invalidateClaim(claimId);
+        // Invalidate both the claim-specific cache and the latest claims list cache (non-critical)
+        try {
+            await this.claimsCache.invalidateClaim(claimId);
+        } catch (error) {
+            if (error instanceof CacheUnavailableException) {
+                this.logger.warn(`Cache unavailable for claim invalidation ${claimId}, skipping: ${error.message}`);
+                // Continue - cache failure is isolated from canonical state
+            } else {
+                throw error;
+            }
+        }
 
         // Log the finalization
         await this.auditTrailService.log({

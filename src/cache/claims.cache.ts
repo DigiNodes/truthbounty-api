@@ -2,13 +2,27 @@ import { Injectable, Logger } from '@nestjs/common';
 import { RedisService } from '../redis/redis.service';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
+import { CacheUnavailableException } from './exceptions/cache-unavailable.exception';
+import { CacheHealthService } from './cache-health.service';
 
 @Injectable()
 export class ClaimsCache {
-  private readonly logger = new Logger(ClaimsCache.name);
-  private readonly ttl: number;
-  private readonly cacheVersion: string;
-  private readonly indexKey = 'claims:cache:keys'; // Track all cache keys for bulk invalidation
+    private readonly logger = new Logger(ClaimsCache.name);
+    private readonly ttl: number;
+    private readonly cacheVersion: string;
+    private readonly indexKey = 'claims:cache:keys'; // Track all cache keys for bulk invalidation
+
+    constructor(
+        private readonly redisService: RedisService,
+        private readonly configService: ConfigService,
+        private readonly cacheHealthService: CacheHealthService,
+    ) {
+        // TTL is configurable via environment variable, defaults to 300 seconds (5 minutes) - bounded TTL
+        this.ttl = this.configService.get<number>('CACHE_CLAIMS_TTL', 300);
+        // Versioned cache keys - increment this when cache schema changes
+        this.cacheVersion = this.configService.get<string>('CACHE_VERSION', 'v1');
+        this.logger.log(`Claims cache initialized with version ${this.cacheVersion}, TTL ${this.ttl}s`);
+    }
 
   constructor(
     private readonly redisService: RedisService,
@@ -59,92 +73,150 @@ export class ClaimsCache {
     return `${this.cacheVersion}:${namespace}:${hash}`;
   }
 
-  /**
-   * Retrieves a claim from cache
-   */
-  async getClaim(id: string): Promise<any | null> {
-    const data = await this.redisService.get(this.getClaimKey(id));
-    if (data) {
-      this.logger.debug(`Cache hit for claim:${id}`);
-      try {
-        return JSON.parse(data);
-      } catch (e) {
-        this.logger.error(`Failed to parse cached claim ${id}: ${e.message}`);
-        return null;
-      }
+    /**
+     * Retrieves a claim from cache
+     * @throws CacheUnavailableException if Redis is unavailable or fails
+     */
+    async getClaim(id: string): Promise<any | null> {
+        const key = this.getClaimKey(id);
+        try {
+            const data = await this.redisService.get(key);
+            if (data) {
+                this.logger.debug(`Cache hit for claim:${id}`);
+                this.cacheHealthService.recordSuccess('GET');
+                try {
+                    return JSON.parse(data);
+                } catch (e) {
+                    this.cacheHealthService.recordFailure('GET', key, e as Error);
+                    this.logger.error(`Failed to parse cached claim ${id}: ${(e as Error).message}`);
+                    return null;
+                }
+            }
+            this.logger.debug(`Cache miss for claim:${id}`);
+            this.cacheHealthService.recordSuccess('GET');
+            return null;
+        } catch (error) {
+            this.cacheHealthService.recordFailure('GET', key, error as Error);
+            throw CacheUnavailableException.forGet(key, error as Error);
+        }
     }
     this.logger.debug(`Cache miss for claim:${id}`);
     return null;
   }
 
-  /**
-   * Stores a claim in cache and tracks the key for future invalidation
-   */
-  async setClaim(id: string, claim: any): Promise<void> {
-    const key = this.getClaimKey(id);
-    await this.redisService.set(key, JSON.stringify(claim), this.ttl);
-    // Track this key in our index for bulk invalidation during reorgs
-    await this.trackKey(key);
-    this.logger.debug(`Cached claim:${id} with key ${key}`);
-  }
+    /**
+     * Stores a claim in cache and tracks the key for future invalidation
+     * @throws CacheUnavailableException if Redis is unavailable or fails
+     */
+    async setClaim(id: string, claim: any): Promise<void> {
+        const key = this.getClaimKey(id);
+        try {
+            await this.redisService.set(key, JSON.stringify(claim), this.ttl);
+            // Track this key in our index for bulk invalidation during reorgs
+            await this.trackKey(key);
+            this.cacheHealthService.recordSuccess('SET');
+            this.logger.debug(`Cached claim:${id} with key ${key}`);
+        } catch (error) {
+            this.cacheHealthService.recordFailure('SET', key, error as Error);
+            throw CacheUnavailableException.forSet(key, error as Error);
+        }
+    }
 
-  /**
-   * Retrieves the list of latest claims from cache
-   */
-  async getLatestClaims(): Promise<any[] | null> {
-    const data = await this.redisService.get(this.getLatestClaimsKey());
-    if (data) {
-      this.logger.debug('Cache hit for claims:latest');
-      try {
-        return JSON.parse(data);
-      } catch (e) {
-        this.logger.error(`Failed to parse cached latest claims: ${e.message}`);
-        return null;
-      }
+    /**
+     * Retrieves the list of latest claims from cache
+     * @throws CacheUnavailableException if Redis is unavailable or fails
+     */
+    async getLatestClaims(): Promise<any[] | null> {
+        const key = this.getLatestClaimsKey();
+        try {
+            const data = await this.redisService.get(key);
+            if (data) {
+                this.logger.debug('Cache hit for claims:latest');
+                this.cacheHealthService.recordSuccess('GET');
+                try {
+                    return JSON.parse(data);
+                } catch (e) {
+                    this.cacheHealthService.recordFailure('GET', key, e as Error);
+                    this.logger.error(`Failed to parse cached latest claims: ${(e as Error).message}`);
+                    return null;
+                }
+            }
+            this.logger.debug('Cache miss for claims:latest');
+            this.cacheHealthService.recordSuccess('GET');
+            return null;
+        } catch (error) {
+            this.cacheHealthService.recordFailure('GET', key, error as Error);
+            throw CacheUnavailableException.forGet(key, error as Error);
+        }
     }
     this.logger.debug('Cache miss for claims:latest');
     return null;
   }
 
-  /**
-   * Stores the list of latest claims in cache and tracks the key
-   */
-  async setLatestClaims(claims: any[]): Promise<void> {
-    const key = this.getLatestClaimsKey();
-    await this.redisService.set(key, JSON.stringify(claims), this.ttl);
-    await this.trackKey(key);
-    this.logger.debug(`Cached claims:latest with key ${key}`);
-  }
+    /**
+     * Stores the list of latest claims in cache and tracks the key
+     * @throws CacheUnavailableException if Redis is unavailable or fails
+     */
+    async setLatestClaims(claims: any[]): Promise<void> {
+        const key = this.getLatestClaimsKey();
+        try {
+            await this.redisService.set(key, JSON.stringify(claims), this.ttl);
+            await this.trackKey(key);
+            this.cacheHealthService.recordSuccess('SET');
+            this.logger.debug(`Cached claims:latest with key ${key}`);
+        } catch (error) {
+            this.cacheHealthService.recordFailure('SET', key, error as Error);
+            throw CacheUnavailableException.forSet(key, error as Error);
+        }
+    }
 
-  /**
-   * Retrieves claims for a specific user from cache
-   */
-  async getUserClaims(wallet: string): Promise<any[] | null> {
-    const data = await this.redisService.get(this.getUserClaimsKey(wallet));
-    if (data) {
-      this.logger.debug(`Cache hit for claims:user:${wallet}`);
-      try {
-        return JSON.parse(data);
-      } catch (e) {
-        this.logger.error(
-          `Failed to parse cached user claims for ${wallet}: ${e.message}`,
-        );
-        return null;
-      }
+    /**
+     * Retrieves claims for a specific user from cache
+     * @throws CacheUnavailableException if Redis is unavailable or fails
+     */
+    async getUserClaims(wallet: string): Promise<any[] | null> {
+        const key = this.getUserClaimsKey(wallet);
+        try {
+            const data = await this.redisService.get(key);
+            if (data) {
+                this.logger.debug(`Cache hit for claims:user:${wallet}`);
+                this.cacheHealthService.recordSuccess('GET');
+                try {
+                    return JSON.parse(data);
+                } catch (e) {
+                    this.cacheHealthService.recordFailure('GET', key, e as Error);
+                    this.logger.error(`Failed to parse cached user claims for ${wallet}: ${(e as Error).message}`);
+                    return null;
+                }
+            }
+            this.logger.debug(`Cache miss for claims:user:${wallet}`);
+            this.cacheHealthService.recordSuccess('GET');
+            return null;
+        } catch (error) {
+            this.cacheHealthService.recordFailure('GET', key, error as Error);
+            throw CacheUnavailableException.forGet(key, error as Error);
+        }
     }
     this.logger.debug(`Cache miss for claims:user:${wallet}`);
     return null;
   }
 
-  /**
-   * Stores user claims in cache and tracks the key
-   */
-  async setUserClaims(wallet: string, claims: any[]): Promise<void> {
-    const key = this.getUserClaimsKey(wallet);
-    await this.redisService.set(key, JSON.stringify(claims), this.ttl);
-    await this.trackKey(key);
-    this.logger.debug(`Cached claims:user:${wallet} with key ${key}`);
-  }
+    /**
+     * Stores user claims in cache and tracks the key
+     * @throws CacheUnavailableException if Redis is unavailable or fails
+     */
+    async setUserClaims(wallet: string, claims: any[]): Promise<void> {
+        const key = this.getUserClaimsKey(wallet);
+        try {
+            await this.redisService.set(key, JSON.stringify(claims), this.ttl);
+            await this.trackKey(key);
+            this.cacheHealthService.recordSuccess('SET');
+            this.logger.debug(`Cached claims:user:${wallet} with key ${key}`);
+        } catch (error) {
+            this.cacheHealthService.recordFailure('SET', key, error as Error);
+            throw CacheUnavailableException.forSet(key, error as Error);
+        }
+    }
 
   /**
    * Track a cache key in our index set for future bulk invalidation
