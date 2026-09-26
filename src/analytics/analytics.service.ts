@@ -211,7 +211,7 @@ export class AnalyticsService {
 
   async getGovernanceAnalytics(query: AnalyticsQueryDto): Promise<AnalyticsResponse<any>> {
     const start = Date.now();
-    const cacheKey = `angelitics:governance:${JSON.stringify(query)}`;
+    const cacheKey = `analytics:governance:${JSON.stringify(query)}`;
 
     const { data, cached } = await this.getCached(cacheKey, 60 * 5, async () => {
       const total = await this.safeRawCount('gvn_proposal');

@@ -40,7 +40,7 @@ function buildOptions(): DataSourceOptions {
       type: 'postgres',
       url: databaseUrl,
       entities: ['src/**/*.entity.ts'],
-      migrations: ['src/migrations/*.ts'],
+      migrations: ['src/database/migrations/*.ts'],
       subscribers: ['src/**/*.subscriber.ts'],
       namingStrategy: new SnakeNamingStrategy(),
       synchronize: false, // NEVER synchronize via CLI — use migrations
@@ -72,7 +72,7 @@ function buildOptions(): DataSourceOptions {
     type: 'sqlite',
     database: process.env.SQLITE_PATH ?? 'database.sqlite',
     entities: ['src/**/*.entity.ts'],
-    migrations: ['src/migrations/*.ts'],
+    migrations: ['src/database/migrations/*.ts'],
     synchronize: process.env.NODE_ENV !== 'production',
     logging: process.env.DATABASE_LOGGING === 'true',
   };

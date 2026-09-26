@@ -15,7 +15,9 @@ describe('ClaimsCache', () => {
 
   beforeEach(() => {
     mockSadd = jest.fn().mockResolvedValue(1);
-    mockSmembers = jest.fn().mockResolvedValue(['v1:claim:123', 'v1:claims:latest']);
+    mockSmembers = jest
+      .fn()
+      .mockResolvedValue(['v1:claim:123', 'v1:claims:latest']);
     mockDel = jest.fn().mockResolvedValue(2);
     mockSrem = jest.fn().mockResolvedValue(1);
     mockExpire = jest.fn().mockResolvedValue(true);
@@ -53,7 +55,7 @@ describe('ClaimsCache', () => {
     it('uses versioned cache keys', async () => {
       const claim = { id: '123', title: 'Test Claim' };
       redisService.get.mockResolvedValue(JSON.stringify(claim));
-      
+
       await cache.setClaim('123', claim);
       expect(redisService.set).toHaveBeenCalledWith(
         'v1:claim:123',
@@ -69,7 +71,7 @@ describe('ClaimsCache', () => {
     it('generates correct versioned keys for user claims', async () => {
       const wallet = '0x1234567890123456789012345678901234567890';
       const claims = [{ id: '123', title: 'Test' }];
-      
+
       await cache.setUserClaims(wallet, claims);
       expect(redisService.set).toHaveBeenCalledWith(
         'v1:claims:user:0x1234567890123456789012345678901234567890',
@@ -83,10 +85,10 @@ describe('ClaimsCache', () => {
     it('tracks cache keys in the index set', async () => {
       const claim = { id: '123', title: 'Test' };
       await cache.setClaim('123', claim);
-      
+
       expect(mockSadd).toHaveBeenCalledWith(
         'claims:cache:keys',
-        'v1:claim:123'
+        'v1:claim:123',
       );
       expect(mockExpire).toHaveBeenCalledWith('claims:cache:keys', 600); // 2*TTL
     });
@@ -95,7 +97,7 @@ describe('ClaimsCache', () => {
   describe('cache invalidation', () => {
     it('invalidates a specific claim and related lists', async () => {
       await cache.invalidateClaim('123', '0x1234567890');
-      
+
       expect(redisService.del).toHaveBeenCalledTimes(3);
       expect(redisService.del).toHaveBeenCalledWith('v1:claim:123');
       expect(redisService.del).toHaveBeenCalledWith('v1:claims:latest');
@@ -108,14 +110,14 @@ describe('ClaimsCache', () => {
   describe('reorg handling', () => {
     it('invalidates ALL cache during a chain reorg', async () => {
       await cache.invalidateAllForReorg();
-      
+
       expect(mockSmembers).toHaveBeenCalledWith('claims:cache:keys');
       expect(mockDel).toHaveBeenCalledWith('v1:claim:123', 'v1:claims:latest');
     });
 
     it('invalidates cache for a block range', async () => {
       await cache.invalidateBlockRange(1000, 1050);
-      
+
       expect(mockSmembers).toHaveBeenCalled();
       expect(mockDel).toHaveBeenCalled();
     });
@@ -125,15 +127,29 @@ describe('ClaimsCache', () => {
     it('invalidates specific affected claims', async () => {
       const invalidateSpy = jest.spyOn(cache, 'invalidateClaim');
       await cache.invalidateForProjectionUpdate(['123', '456']);
-      
+
       expect(invalidateSpy).toHaveBeenCalledTimes(2);
     });
 
     it('invalidates all if no specific claims provided', async () => {
       const invalidateAllSpy = jest.spyOn(cache, 'invalidateAllForReorg');
       await cache.invalidateForProjectionUpdate();
-      
+
       expect(invalidateAllSpy).toHaveBeenCalled();
+    });
+
+    it('invalidates nothing when explicitly told no claims were affected (V2-BE-115)', async () => {
+      const invalidateAllSpy = jest.spyOn(cache, 'invalidateAllForReorg');
+      const invalidateClaimSpy = jest.spyOn(cache, 'invalidateClaim');
+
+      // An empty array is a different signal than "unknown scope": the
+      // caller knows this projection update didn't touch any claim (for
+      // example, a token-balance-only event), so nothing should be
+      // invalidated at all, not even a full flush.
+      await cache.invalidateForProjectionUpdate([]);
+
+      expect(invalidateAllSpy).not.toHaveBeenCalled();
+      expect(invalidateClaimSpy).not.toHaveBeenCalled();
     });
   });
 
@@ -141,14 +157,14 @@ describe('ClaimsCache', () => {
     it('returns null when Redis is unavailable', async () => {
       redisService.getClient.mockReturnValue(null);
       redisService.get.mockResolvedValue(null);
-      
+
       const result = await cache.getClaim('123');
       expect(result).toBeNull();
     });
 
     it('handles JSON parsing errors gracefully', async () => {
       redisService.get.mockResolvedValue('invalid json');
-      
+
       const result = await cache.getClaim('123');
       expect(result).toBeNull();
     });

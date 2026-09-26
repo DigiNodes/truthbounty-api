@@ -16,16 +16,27 @@ export class DeliveryHistoryService {
 
   async createDeliveryRecord(
     notificationId: string, 
-    channel: DeliveryChannel
+    channel: DeliveryChannel,
+    idempotencyKey?: string,
   ): Promise<DeliveryHistory> {
     const record = new DeliveryHistory();
     record.notificationId = notificationId;
     record.channel = channel;
     record.status = DeliveryStatus.PENDING;
     record.retryAttempts = 0;
+    if (idempotencyKey) {
+      record.idempotencyKey = idempotencyKey;
+    }
     record.createdAt = new Date();
     
     return this.deliveryHistoryRepository.save(record);
+  }
+
+  async findByIdempotencyKey(idempotencyKey: string): Promise<DeliveryHistory | null> {
+    if (!idempotencyKey) return null;
+    return this.deliveryHistoryRepository.findOne({
+      where: { idempotencyKey },
+    });
   }
 
   async updateDeliveryStatus(

@@ -15,8 +15,16 @@ describe('BlockchainIndexerService', () => {
   let tokenBalanceRepo: Repository<TokenBalance>;
   let checkpointRepo: Repository<IndexerCheckpoint>;
   let dataSource: DataSource;
+  let claimsCache: jest.Mocked<
+    Pick<ClaimsCache, 'invalidateForProjectionUpdate' | 'invalidateAllForReorg'>
+  >;
 
   beforeEach(async () => {
+    claimsCache = {
+      invalidateForProjectionUpdate: jest.fn(),
+      invalidateAllForReorg: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         BlockchainIndexerService,
@@ -47,10 +55,7 @@ describe('BlockchainIndexerService', () => {
         },
         {
           provide: ClaimsCache,
-          useValue: {
-            invalidateForProjectionUpdate: jest.fn(),
-            invalidateAllForReorg: jest.fn(),
-          },
+          useValue: claimsCache,
         },
       ],
     }).compile();
@@ -116,6 +121,49 @@ describe('BlockchainIndexerService', () => {
         IndexerCheckpoint,
         expect.objectContaining({ lastBlock: 100, id: 1 }),
       );
+    });
+
+    it('should invalidate no claims cache entries for a Transfer event, instead of blanket-flushing (V2-BE-115)', async () => {
+      const event: BlockchainEvent = {
+        txHash: '0x123',
+        logIndex: 0,
+        blockNumber: 100,
+        eventType: 'Transfer',
+        data: { from: '0xa', to: '0xb', amount: '100', token: '0xc' },
+      };
+
+      jest.spyOn(processedEventRepo, 'findOne').mockResolvedValue(null);
+      jest.spyOn(processedEventRepo, 'create').mockReturnValue(event as any);
+
+      const mockQueryRunner = {
+        connect: jest.fn(),
+        startTransaction: jest.fn(),
+        commitTransaction: jest.fn(),
+        rollbackTransaction: jest.fn(),
+        release: jest.fn(),
+        manager: {
+          save: jest.fn().mockResolvedValue({}),
+          update: jest.fn().mockResolvedValue({ affected: 1 }),
+          decrement: jest.fn().mockResolvedValue({ affected: 1 }),
+          increment: jest.fn().mockResolvedValue({ affected: 1 }),
+          findOne: jest.fn().mockResolvedValue({ lastBlock: 99 }),
+        },
+      };
+      jest
+        .spyOn(dataSource, 'createQueryRunner')
+        .mockReturnValue(mockQueryRunner as any);
+
+      await service.processEvent(event);
+
+      // A Transfer only mutates TokenBalance, which the claims cache never
+      // reflects. Passing an empty array (not calling with no arguments)
+      // is what tells ClaimsCache "nothing was affected" rather than
+      // "scope unknown", so it can skip invalidation entirely instead of
+      // flushing the whole cache on every single indexed event.
+      expect(claimsCache.invalidateForProjectionUpdate).toHaveBeenCalledWith(
+        [],
+      );
+      expect(claimsCache.invalidateAllForReorg).not.toHaveBeenCalled();
     });
 
     it('should create checkpoint when none exists', async () => {

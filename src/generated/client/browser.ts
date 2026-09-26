@@ -82,3 +82,8 @@ export type ReportJob = Prisma.ReportJobModel
  * 
  */
 export type MonitoringMetric = Prisma.MonitoringMetricModel
+/**
+ * Model OutboxEvent
+ * 
+ */
+export type OutboxEvent = Prisma.OutboxEventModel

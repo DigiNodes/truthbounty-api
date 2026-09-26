@@ -10,6 +10,7 @@ import { BlockchainController } from './blockchain.controller';
 import { WeightedVoteResolutionService } from './weighted-vote-resolution.service';
 import { SybilResistanceModule } from '../sybil-resistance/sybil-resistance.module';
 import { StartupValidationService } from './startup-validation.service';
+import { DeterministicRpcFailoverService } from './deterministic-rpc-failover.service';
 
 @Module({
   imports: [
@@ -22,8 +23,8 @@ import { StartupValidationService } from './startup-validation.service';
     ReorgDetectorService,
     ReconciliationService,
     EventIndexingService,
-    WeightedVoteResolutionService,
     StartupValidationService,
+    DeterministicRpcFailoverService,
   ],
   controllers: [BlockchainController],
   exports: [
@@ -32,6 +33,7 @@ import { StartupValidationService } from './startup-validation.service';
     ReorgDetectorService,
     ReconciliationService,
     EventIndexingService,
+    DeterministicRpcFailoverService,
   ],
 })
 export class BlockchainModule {}

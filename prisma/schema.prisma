@@ -231,3 +231,42 @@ model MonitoringMetric {
 
   @@index([name, recordedAt])
 }
+
+// ---------------------------------------------------------------------------
+// Transactional Outbox (V2-BE-048)
+// ---------------------------------------------------------------------------
+// OutboxEvent rows are written inside the same DB transaction as any
+// projection change. A background poller claims PENDING rows and relays
+// them to BullMQ, then marks them DISPATCHED.  The processor enforces
+// idempotency via a Redis SETNX guard keyed on idempotencyKey.
+//
+// Security: payload stores only non-sensitive routing metadata (aggregateId,
+// eventType, recipientIds). No private claim text, user PII, or settlement
+// data is persisted here.
+// ---------------------------------------------------------------------------
+model OutboxEvent {
+  id             String   @id @default(uuid())
+  // Domain event type, e.g. "notification.send", "webhook.deliver"
+  eventType      String
+  // Aggregate identifier for the triggering entity (e.g. notificationId)
+  aggregateId    String
+  // Routing metadata only — no private claim or settlement data
+  payload        String   // JSON-encoded OutboxEventPayload
+  // Stable key used by the processor for exactly-once delivery
+  idempotencyKey String   @unique
+  status         String   @default("PENDING") // PENDING | DISPATCHED | DEAD_LETTER
+  // BullMQ job id once dispatched (for observability)
+  jobId          String?
+  retryCount     Int      @default(0)
+  maxRetries     Int      @default(5)
+  lastError      String?
+  scheduledAt    DateTime @default(now())
+  processedAt    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([status, scheduledAt])
+  @@index([aggregateId])
+  @@index([idempotencyKey])
+  @@index([eventType, status])
+}

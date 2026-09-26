@@ -25,7 +25,7 @@ export class WebSocketService implements OnModuleInit {
     });
     
     this.setupConnectionHandlers();
-    const port = Number(process.env.WEBSOCKET_PORT || 3001);
+    const port = Number(process.env.WEBSOCKET_PORT) || 3001;
     this.server.listen(port);
     
     this.logger.log(`WebSocket server initialized on port ${port}`);
@@ -83,7 +83,7 @@ export class WebSocketService implements OnModuleInit {
 
   async isUserOnline(userId: string): Promise<boolean> {
     const sockets = await this.redisService.sMembers(`active_sockets:${userId}`);
-    return sockets && sockets.length > 0;
+    return Array.isArray(sockets) && sockets.length > 0;
   }
 
   async sendToUser(userId: string, event: string, data: any): Promise<number> {

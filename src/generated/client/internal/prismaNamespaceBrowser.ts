@@ -63,7 +63,8 @@ export const ModelName = {
   AnalyticsEvent: 'AnalyticsEvent',
   MetricAggregate: 'MetricAggregate',
   ReportJob: 'ReportJob',
-  MonitoringMetric: 'MonitoringMetric'
+  MonitoringMetric: 'MonitoringMetric',
+  OutboxEvent: 'OutboxEvent'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -254,6 +255,26 @@ export const MonitoringMetricScalarFieldEnum = {
 } as const
 
 export type MonitoringMetricScalarFieldEnum = (typeof MonitoringMetricScalarFieldEnum)[keyof typeof MonitoringMetricScalarFieldEnum]
+
+
+export const OutboxEventScalarFieldEnum = {
+  id: 'id',
+  eventType: 'eventType',
+  aggregateId: 'aggregateId',
+  payload: 'payload',
+  idempotencyKey: 'idempotencyKey',
+  status: 'status',
+  jobId: 'jobId',
+  retryCount: 'retryCount',
+  maxRetries: 'maxRetries',
+  lastError: 'lastError',
+  scheduledAt: 'scheduledAt',
+  processedAt: 'processedAt',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type OutboxEventScalarFieldEnum = (typeof OutboxEventScalarFieldEnum)[keyof typeof OutboxEventScalarFieldEnum]
 
 
 export const SortOrder = {

@@ -1,5 +1,5 @@
 import { Counter, Histogram, Gauge, register } from 'prom-client';
-import { Injectable } from "@nestjs/common";
+import { Injectable } from '@nestjs/common';
 
 @Injectable()
 export class MetricsService {
@@ -28,7 +28,10 @@ export class MetricsService {
   // check call.
   private readonly blockchainLagGauge: Gauge<string>;
   private readonly blockchainLastIndexedBlockGauge: Gauge<string>;
-  private readonly genericCounters = new Map<string, Counter<string>>();
+
+  // Lazily-registered domain counters (outbox, notifications, ...) so that
+  // services can record business events without pre-declaring each metric.
+  private readonly customCounters = new Map<string, Counter<string>>();
 
   constructor() {
     this.requestCounter = new Counter({
@@ -73,6 +76,20 @@ export class MetricsService {
     });
   }
 
+  /**
+   * Increment a named domain counter (created lazily on first use).
+   * Used for business-level events such as outbox dispatches and
+   * notification lifecycle transitions.
+   */
+  incrementCounter(name: string, value = 1): void {
+    let counter = this.customCounters.get(name);
+    if (!counter) {
+      counter = new Counter({ name, help: name });
+      this.customCounters.set(name, counter);
+    }
+    counter.inc(value);
+  }
+
   incrementRequest(method: string, route: string, status: string) {
     this.requestCounter.inc({ method, route, status });
     this.totalRequests += 1;
@@ -87,22 +104,6 @@ export class MetricsService {
     this.latencyHistogram.observe({ method, route, status }, duration);
     this.totalLatencyMs += duration * 1000;
     this.latencySamples += 1;
-  }
-
-  /**
-   * Increments a named generic counter, creating it on first use.
-   * Mirrors requestCounter usage for ad-hoc counters (e.g. notifications).
-   */
-  incrementCounter(name: string, value = 1): void {
-    let counter = this.genericCounters.get(name);
-    if (!counter) {
-      counter = new Counter({
-        name,
-        help: `Generic counter: ${name}`,
-      });
-      this.genericCounters.set(name, counter);
-    }
-    counter.inc(value);
   }
 
   /**
