@@ -206,6 +206,7 @@ export type MetricAggregateGroupByOutputType = {
   _max: MetricAggregateMaxAggregateOutputType | null
 }
 
+type GetMetricAggregateGroupByPayload<T extends MetricAggregateGroupByArgs> = Prisma.PrismaPromise<
 export type GetMetricAggregateGroupByPayload<T extends MetricAggregateGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<MetricAggregateGroupByOutputType, T['by']> &

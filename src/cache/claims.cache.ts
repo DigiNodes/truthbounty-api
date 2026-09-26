@@ -24,38 +24,54 @@ export class ClaimsCache {
         this.logger.log(`Claims cache initialized with version ${this.cacheVersion}, TTL ${this.ttl}s`);
     }
 
-    /**
-     * Generates a VERSIONED key for a specific claim by its ID
-     * Versioning ensures cache key uniqueness across schema changes
-     */
-    private getClaimKey(id: string): string {
-        return `${this.cacheVersion}:claim:${id}`;
-    }
+  constructor(
+    private readonly redisService: RedisService,
+    private readonly configService: ConfigService,
+  ) {
+    // TTL is configurable via environment variable, defaults to 300 seconds (5 minutes) - bounded TTL
+    this.ttl = this.configService.get<number>('CACHE_CLAIMS_TTL', 300);
+    // Versioned cache keys - increment this when cache schema changes
+    this.cacheVersion = this.configService.get<string>('CACHE_VERSION', 'v1');
+    this.logger.log(
+      `Claims cache initialized with version ${this.cacheVersion}, TTL ${this.ttl}s`,
+    );
+  }
 
-    /**
-     * Generates a VERSIONED key for the latest claims list
-     */
-    private getLatestClaimsKey(): string {
-        return `${this.cacheVersion}:claims:latest`;
-    }
+  /**
+   * Generates a VERSIONED key for a specific claim by its ID
+   * Versioning ensures cache key uniqueness across schema changes
+   */
+  private getClaimKey(id: string): string {
+    return `${this.cacheVersion}:claim:${id}`;
+  }
 
-    /**
-     * Generates a VERSIONED key for claims associated with a specific user wallet
-     */
-    private getUserClaimsKey(wallet: string): string {
-        return `${this.cacheVersion}:claims:user:${wallet.toLowerCase()}`;
-    }
+  /**
+   * Generates a VERSIONED key for the latest claims list
+   */
+  private getLatestClaimsKey(): string {
+    return `${this.cacheVersion}:claims:latest`;
+  }
 
-    /**
-     * Generates a content-addressed key for query results to prevent stale cache
-     * This ensures that the same query parameters always produce the same key
-     * while maintaining versioning boundaries
-     */
-    private getQueryKey(namespace: string, params: Record<string, any>): string {
-        const paramsStr = JSON.stringify(params, Object.keys(params).sort());
-        const hash = createHash('sha256').update(paramsStr).digest('hex').slice(0, 16);
-        return `${this.cacheVersion}:${namespace}:${hash}`;
-    }
+  /**
+   * Generates a VERSIONED key for claims associated with a specific user wallet
+   */
+  private getUserClaimsKey(wallet: string): string {
+    return `${this.cacheVersion}:claims:user:${wallet.toLowerCase()}`;
+  }
+
+  /**
+   * Generates a content-addressed key for query results to prevent stale cache
+   * This ensures that the same query parameters always produce the same key
+   * while maintaining versioning boundaries
+   */
+  private getQueryKey(namespace: string, params: Record<string, any>): string {
+    const paramsStr = JSON.stringify(params, Object.keys(params).sort());
+    const hash = createHash('sha256')
+      .update(paramsStr)
+      .digest('hex')
+      .slice(0, 16);
+    return `${this.cacheVersion}:${namespace}:${hash}`;
+  }
 
     /**
      * Retrieves a claim from cache
@@ -84,6 +100,9 @@ export class ClaimsCache {
             throw CacheUnavailableException.forGet(key, error as Error);
         }
     }
+    this.logger.debug(`Cache miss for claim:${id}`);
+    return null;
+  }
 
     /**
      * Stores a claim in cache and tracks the key for future invalidation
@@ -130,6 +149,9 @@ export class ClaimsCache {
             throw CacheUnavailableException.forGet(key, error as Error);
         }
     }
+    this.logger.debug('Cache miss for claims:latest');
+    return null;
+  }
 
     /**
      * Stores the list of latest claims in cache and tracks the key
@@ -175,6 +197,9 @@ export class ClaimsCache {
             throw CacheUnavailableException.forGet(key, error as Error);
         }
     }
+    this.logger.debug(`Cache miss for claims:user:${wallet}`);
+    return null;
+  }
 
     /**
      * Stores user claims in cache and tracks the key
@@ -193,113 +218,145 @@ export class ClaimsCache {
         }
     }
 
-    /**
-     * Track a cache key in our index set for future bulk invalidation
-     * This allows us to invalidate all related cache entries during reorgs
-     */
-    private async trackKey(key: string): Promise<void> {
-        const client = this.redisService.getClient();
-        if (client) {
-            try {
-                await client.sadd(this.indexKey, key);
-                // Set expiry on the index itself to prevent memory leaks
-                await client.expire(this.indexKey, this.ttl * 2);
-            } catch (e) {
-                this.logger.warn(`Failed to track cache key ${key}: ${(e as Error).message}`);
-            }
-        }
+  /**
+   * Track a cache key in our index set for future bulk invalidation
+   * This allows us to invalidate all related cache entries during reorgs
+   */
+  private async trackKey(key: string): Promise<void> {
+    const client = this.redisService.getClient();
+    if (client) {
+      try {
+        await client.sadd(this.indexKey, key);
+        // Set expiry on the index itself to prevent memory leaks
+        await client.expire(this.indexKey, this.ttl * 2);
+      } catch (e) {
+        this.logger.warn(
+          `Failed to track cache key ${key}: ${(e as Error).message}`,
+        );
+      }
+    }
+  }
+
+  /**
+   * Invalidate ALL cached claims - used during chain reorgs or major projection changes
+   * This ensures that after a reorg, we never serve stale cache data that was based on
+   * an invalid blockchain state
+   */
+  async invalidateAllForReorg(): Promise<void> {
+    this.logger.warn('Invalidating ALL claims cache due to chain reorg');
+    const client = this.redisService.getClient();
+    if (!client) return;
+
+    try {
+      // Get all tracked keys
+      const keys = await client.smembers(this.indexKey);
+      if (keys.length > 0) {
+        this.logger.log(`Invalidating ${keys.length} cache keys during reorg`);
+        await client.del(...keys);
+      }
+      // Clear the index
+      await client.del(this.indexKey);
+    } catch (e) {
+      this.logger.error(
+        `Failed to invalidate cache during reorg: ${(e as Error).message}`,
+      );
+    }
+  }
+
+  /**
+   * Invalidate cache for a specific block range that was reorged out
+   * This allows granular invalidation if we know exactly which claims were affected
+   */
+  async invalidateBlockRange(
+    startBlock: number,
+    endBlock: number,
+  ): Promise<void> {
+    this.logger.log(
+      `Invalidating claims cache for blocks ${startBlock}-${endBlock}`,
+    );
+    // In a production implementation, you would track which claims are associated
+    // with which blocks, but for safety, we invalidate everything in case of any reorg
+    // This maintains the invariant that smart contracts are always the source of truth
+    await this.invalidateAllForReorg();
+  }
+
+  /**
+   * Invalidate cache when projections are committed (updated).
+   *
+   * The `affectedClaimIds` argument is what makes this projection-aware
+   * rather than a blanket flush on every write:
+   *   - `undefined` ("caller doesn't know what changed"): fail safe and
+   *     invalidate everything, since serving stale data is worse than an
+   *     extra cache miss. This is the pre-existing safe default.
+   *   - `[]` ("caller knows this projection update did not touch any
+   *     claim", e.g. a token-balance-only event): invalidate nothing.
+   *     Previously this case wasn't distinguished from `undefined` -- an
+   *     empty array still fell through to a full flush -- so any event
+   *     type that didn't (yet) pass explicit claim IDs paid the cost of
+   *     invalidating the entire claims cache regardless of whether
+   *     claims were actually affected.
+   *   - A non-empty array: invalidate exactly those claims.
+   */
+  async invalidateForProjectionUpdate(
+    affectedClaimIds?: string[],
+  ): Promise<void> {
+    if (affectedClaimIds === undefined) {
+      this.logger.debug(
+        'Invalidating cache for projection update with unknown scope; invalidating all claims cache as a safe default',
+      );
+      await this.invalidateAllForReorg();
+      return;
     }
 
-    /**
-     * Invalidate ALL cached claims - used during chain reorgs or major projection changes
-     * This ensures that after a reorg, we never serve stale cache data that was based on
-     * an invalid blockchain state
-     */
-    async invalidateAllForReorg(): Promise<void> {
-        this.logger.warn('Invalidating ALL claims cache due to chain reorg');
-        const client = this.redisService.getClient();
-        if (!client) return;
-        
-        try {
-            // Get all tracked keys
-            const keys = await client.smembers(this.indexKey);
-            if (keys.length > 0) {
-                this.logger.log(`Invalidating ${keys.length} cache keys during reorg`);
-                await client.del(...keys);
-            }
-            // Clear the index
-            await client.del(this.indexKey);
-        } catch (e) {
-            this.logger.error(`Failed to invalidate cache during reorg: ${(e as Error).message}`);
-        }
+    if (affectedClaimIds.length === 0) {
+      this.logger.debug(
+        'Projection update did not affect any claims; no cache invalidation needed',
+      );
+      return;
     }
 
-    /**
-     * Invalidate cache for a specific block range that was reorged out
-     * This allows granular invalidation if we know exactly which claims were affected
-     */
-    async invalidateBlockRange(startBlock: number, endBlock: number): Promise<void> {
-        this.logger.log(`Invalidating claims cache for blocks ${startBlock}-${endBlock}`);
-        // In a production implementation, you would track which claims are associated
-        // with which blocks, but for safety, we invalidate everything in case of any reorg
-        // This maintains the invariant that smart contracts are always the source of truth
-        await this.invalidateAllForReorg();
+    const promises = affectedClaimIds.map((id) => this.invalidateClaim(id));
+    await Promise.all(promises);
+    this.logger.log(`Invalidated ${affectedClaimIds.length} affected claims`);
+  }
+
+  /**
+   * Invalidates claim cache and dependent lists
+   * Should be called on update/delete
+   */
+  async invalidateClaim(id: string, userWallet?: string): Promise<void> {
+    const keysToDelete = [this.getClaimKey(id), this.getLatestClaimsKey()];
+
+    if (userWallet) {
+      keysToDelete.push(this.getUserClaimsKey(userWallet));
     }
 
-    /**
-     * Invalidate cache when projections are committed (updated)
-     * This ensures that any database projection changes immediately invalidate stale cache
-     */
-    async invalidateForProjectionUpdate(affectedClaimIds?: string[]): Promise<void> {
-        this.logger.debug(`Invalidating cache for projection update`);
-        
-        if (affectedClaimIds && affectedClaimIds.length > 0) {
-            // Granular invalidation for specific affected claims
-            const promises = affectedClaimIds.map(id => this.invalidateClaim(id));
-            await Promise.all(promises);
-            this.logger.log(`Invalidated ${affectedClaimIds.length} affected claims`);
-        } else {
-            // If no specific claims identified, invalidate all to be safe
-            await this.invalidateAllForReorg();
-        }
+    // Delete the keys from Redis
+    const promises = keysToDelete.map((key) => this.redisService.del(key));
+
+    // Also remove them from our tracking index
+    const client = this.redisService.getClient();
+    if (client) {
+      try {
+        await client.srem(this.indexKey, ...keysToDelete);
+      } catch (e) {
+        this.logger.warn(
+          `Failed to remove keys from index: ${(e as Error).message}`,
+        );
+      }
     }
 
-    /**
-     * Invalidates claim cache and dependent lists
-     * Should be called on update/delete
-     */
-    async invalidateClaim(id: string, userWallet?: string): Promise<void> {
-        const keysToDelete = [
-            this.getClaimKey(id),
-            this.getLatestClaimsKey(),
-        ];
+    await Promise.all(promises);
+    this.logger.debug(
+      `Invalidated cache for claim:${id} and related lists, deleted ${keysToDelete.length} keys`,
+    );
+  }
 
-        if (userWallet) {
-            keysToDelete.push(this.getUserClaimsKey(userWallet));
-        }
-
-        // Delete the keys from Redis
-        const promises = keysToDelete.map(key => this.redisService.del(key));
-        
-        // Also remove them from our tracking index
-        const client = this.redisService.getClient();
-        if (client) {
-            try {
-                await client.srem(this.indexKey, ...keysToDelete);
-            } catch (e) {
-                this.logger.warn(`Failed to remove keys from index: ${(e as Error).message}`);
-            }
-        }
-
-        await Promise.all(promises);
-        this.logger.debug(`Invalidated cache for claim:${id} and related lists, deleted ${keysToDelete.length} keys`);
-    }
-
-    /**
-     * Invalidates only user-specific claims cache
-     */
-    async invalidateUserClaims(wallet: string): Promise<void> {
-        await this.redisService.del(this.getUserClaimsKey(wallet));
-        this.logger.debug(`Invalidated cache for claims:user:${wallet}`);
-    }
+  /**
+   * Invalidates only user-specific claims cache
+   */
+  async invalidateUserClaims(wallet: string): Promise<void> {
+    await this.redisService.del(this.getUserClaimsKey(wallet));
+    this.logger.debug(`Invalidated cache for claims:user:${wallet}`);
+  }
 }

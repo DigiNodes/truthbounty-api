@@ -24,6 +24,8 @@ export enum EvidenceStatus {
  */
 @Entity('v2_project_evidence')
 @Index(['claimId'])
+@Check('chk_v2_evidence_status', `"status" IN ('active', 'removed')`)
+@Check('chk_v2_evidence_version_positive', `"currentVersion" > 0`)
 @Check('chk_v2_evidence_version_positive', '"currentVersion" > 0')
 @Check('chk_v2_evidence_log_nonneg', '"lastEventLogIndex" >= 0')
 @Check('chk_v2_evidence_block_nonneg', '"lastEventBlockNumber" >= 0')
@@ -56,6 +58,16 @@ export class ProjectEvidence {
 
   @Column({ type: 'int' })
   lastEventLogIndex: number;
+
+  /**
+   * SHA-256 integrity hash of current-state projection fields.
+   * Computed from: evidenceId, claimId, currentVersion, status, contentDigest,
+   * lastEventBlockNumber, lastEventLogIndex.
+   * Excludes: createdAt, updatedAt (backend timestamps), integrityHash itself.
+   * NULL during migration backfill phase; NOT NULL after enforcement.
+   */
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  integrityHash: string | null;
 
   @CreateDateColumn()
   createdAt: Date;

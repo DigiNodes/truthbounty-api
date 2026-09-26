@@ -8,6 +8,33 @@ This document covers the configuration, artifact validation, and deployment oper
 > The backend acts as a high-performance indexer and interface, but smart contracts remain the ultimate authority.
 > Do NOT use or commit production secrets in deployment templates or examples.
 
+## Supported Runtime and Toolchain
+
+The API is built and deployed on exactly one Node major version. The declaration lives in
+`package.json` under `engines`, and the `Node/npm Toolchain` CI job asserts that the runner
+matches it, so drift between the declaration and the pipeline fails the build.
+
+| Component | Supported range | Source of truth |
+| --- | --- | --- |
+| Node.js | `>=20 <21` (Node 20 LTS) | `package.json` → `engines.node` |
+| npm | `>=10 <11` (npm 10) | `package.json` → `engines.npm` |
+| Lockfile format | `lockfileVersion: 3` | `package-lock.json` |
+
+npm 10 is the version bundled with Node 20 and is the version that writes `lockfileVersion: 3`.
+A different npm major must not be used to install: it can rewrite the lockfile, which turns a
+reproducible install into a silent dependency change.
+
+```bash
+# Confirm the local toolchain matches the supported ranges before doing anything else
+node --version   # expect v20.x
+npm --version    # expect 10.x
+```
+
+Install dependencies with `npm ci` only. `npm ci` installs the exact tree recorded in
+`package-lock.json` and fails when `package.json` and the lockfile disagree, which is what
+makes container builds and CI runs reproducible. Use `npm install` only when intentionally
+changing dependencies, and commit the resulting lockfile in the same commit.
+
 ## Pre-Deployment Setup
 
 ### Configuration
@@ -39,10 +66,21 @@ The CI workflow uploads the CycloneDX SBOM as `dependency-sbom-<commit SHA>`. Tr
 ### 2. Database Migrations
 Always run database migrations before spinning up the application to ensure schema consistency. Note that the DB is non-authoritative compared to the chain, but must be in sync with the ORM.
 
+TypeORM is the persistence layer for the application schema. Migrations live in `src/migrations/`
+and are driven by the data source at `src/config/data-source.ts`, which selects PostgreSQL
+when `DATABASE_URL` is set and falls back to SQLite when it is not.
+
 ```bash
 # Run pending migrations
-npx prisma migrate deploy
+npm run migration:run
+
+# Roll back the most recent migration, for example when a bad release shipped one
+npm run migration:revert
 ```
+
+Do not use `npx prisma migrate deploy` for the application schema. It operates on
+`prisma/schema.prisma`, which describes a separate, legacy data set; see
+`PRISMA_INVENTORY.md` for the full picture of the two persistence layers.
 
 ### 3. Application Startup
 Start the application using Docker Compose or your preferred orchestrator (e.g., Kubernetes).

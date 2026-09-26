@@ -157,6 +157,22 @@ export class ClaimsService {
         if (createClaimDto.content && createClaimDto.content.length > 5000) {
             throw new BadRequestException('Claim content exceeds maximum length of 5000 characters');
         }
+
+        // Check if a claim with the same content already exists
+        // This helps prevent duplicates even without idempotency keys
+        const existingClaim = await this.claimRepo.findOne({
+            where: {
+                title: createClaimDto.title,
+                content: createClaimDto.content,
+                source: createClaimDto.source,
+            }
+        });
+
+        if (existingClaim) {
+            this.logger.log(`Duplicate claim detected, returning existing: ${existingClaim.id} - ${existingClaim.title}`);
+            return existingClaim;
+        }
+
         const claim = this.claimRepo.create({
             title: createClaimDto.title,
             content: createClaimDto.content,

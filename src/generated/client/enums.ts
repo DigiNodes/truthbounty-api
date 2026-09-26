@@ -16,3 +16,12 @@ export const UserRole = {
 } as const
 
 export type UserRole = (typeof UserRole)[keyof typeof UserRole]
+
+
+export const BlockConfirmation = {
+  observed: 'observed',
+  safe: 'safe',
+  finalized: 'finalized'
+} as const
+
+export type BlockConfirmation = (typeof BlockConfirmation)[keyof typeof BlockConfirmation]

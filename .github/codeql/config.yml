@@ -1,0 +1,68 @@
+# ---------------------------------------------------------------------------
+# CodeQL configuration for the TruthBounty API (issue #497).
+#
+# Referenced by both:
+#   .github/workflows/ci.yml            (push/pull_request — owned by a
+#                                       parallel PR, not edited here)
+#   .github/workflows/codeql-schedule.yml (cron + workflow_dispatch)
+#
+# CodeQL validates this file against a strict schema. Keys are limited to:
+# name, disable-default-queries, queries (+ include/exclude per query),
+# paths, paths-ignore, packs, and disable-feature-flags. Adding an unknown key
+# makes the action fail closed with a configuration error, so resist the urge
+# to add "just one more option".
+# ---------------------------------------------------------------------------
+
+name: "TruthBounty API CodeQL config"
+
+# Keep the default suite. This is the baseline of correctness/security queries
+# that ship with the analyser; disabling it would silently drop coverage and
+# there is no compensating control in this repository.
+disable-default-queries: false
+
+queries:
+  # Wider analysis than the default suite. `security-extended` adds the
+  # precise, lower-signal/lower-severity variants of security queries (e.g.
+  # the SSRF and injection variants that are usually false positives on an
+  # indexer that legitimately talks to an RPC provider). `security-and-quality`
+  # adds maintainability and reliability queries. Both are additive to the
+  # default suite, not a replacement for it.
+  #
+  # No `exclude` filters are declared here on purpose. A query exclusion is a
+  # blanket suppression by another name, and this repository's suppression
+  # policy (see docs/STATIC_ANALYSIS.md) requires a documented, expiring
+  # justification for any suppressed alert. Alert-level suppression belongs in
+  # the alert itself, where the justification and expiry can be reviewed.
+  - uses: security-extended
+  - uses: security-and-quality
+
+# JavaScript/TypeScript is an interpreted language, so `paths` narrows the set
+# of extracted source files rather than acting as a compiler include path.
+# `src` is the entire shipped application: NestJS modules, services,
+# controllers, entities, and the V2 projectors.
+paths:
+  - src
+
+# Build output and generated artifacts. These are excluded because analysing
+# them produces noise with no security value: `dist` is a transpilation of
+# files already covered by `src`, `src/generated` is the machine-written
+# Prisma client, and the rest is test/coverage output that is never shipped.
+#
+# Note what is NOT here: no `**/*.spec.ts` and no source directory. Test files
+# and application source are both analysed. Narrowing this list to dodge
+# findings would be a coverage regression dressed up as hygiene.
+paths-ignore:
+  - dist
+  - dist/**
+  - build
+  - build/**
+  - coverage
+  - coverage/**
+  - node_modules
+  - node_modules/**
+  # Machine-generated Prisma client — never hand-edited, never a place to fix.
+  - src/generated
+  - src/generated/**
+  # Source maps point back into `dist`, which is already ignored, and analyzing
+  # them double-counts every file.
+  - "**/*.js.map"

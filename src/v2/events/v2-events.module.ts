@@ -10,6 +10,8 @@ import { CanonicalEventsService } from './canonical-events.service';
 import { CanonicalEventQueryService } from './canonical-event-query.service';
 import { IndexerConfigService } from '../../config/indexer-config.service';
 
+import { ReorgRollbackService } from './reorg-rollback.service';
+
 @Module({
   imports: [
     TypeOrmModule.forFeature([
@@ -24,12 +26,14 @@ import { IndexerConfigService } from '../../config/indexer-config.service';
     EventDecoderService,
     CanonicalEventsService,
     CanonicalEventQueryService,
+    ReorgRollbackService,
     IndexerConfigService,
   ],
   exports: [
     CanonicalEventsService,
     CanonicalEventQueryService,
     ArtifactRegistryService,
+    ReorgRollbackService,
     TypeOrmModule,
   ],
 })

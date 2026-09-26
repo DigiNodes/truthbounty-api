@@ -35,6 +35,11 @@ export enum DisputeStatus {
 @Entity('v2_project_dispute')
 @Unique('uq_v2_dispute_event', ['eventTxHash', 'eventLogIndex'])
 @Index(['claimId'])
+@Check('chk_v2_dispute_status', `"status" IN ('raised', 'resolved', 'expired')`)
+@Check(
+  'chk_v2_dispute_data_state',
+  `"dataState" IN ('observed', 'safe', 'finalized')`,
+)
 @Index(['originalRoundId'])
 @Check('chk_v2_dispute_block_nonneg', '"blockNumber" >= 0')
 @Check('chk_v2_dispute_log_nonneg', '"eventLogIndex" >= 0')

@@ -47,6 +47,10 @@ import { V2EventsModule } from './v2/events/v2-events.module';
 import { V2EvidenceModule } from './v2/evidence/v2-evidence.module';
 import { V2VerificationModule } from './v2/verification/v2-verification.module';
 import { V2DisputesModule } from './v2/disputes/v2-disputes.module';
+import { ChainEventsModule } from './v2/chain-events/chain-events.module';
+import { BlockCursorModule } from './v2/block-cursor/block-cursor.module';
+import { V2RewardsModule } from './v2/rewards/v2-rewards.module';
+import { V2RebuildModule } from './v2/rebuild/v2-rebuild.module';
 import { V2ProjectionModule } from './v2/projection/v2-projection.module';
 import { ProfilerModule } from './profiler/profiler.module';
 import { ProfilerInterceptor } from './profiler/profiler.interceptor';
@@ -54,6 +58,8 @@ import { HealthModule } from './health/health.module';
 import { FeatureFlagsModule } from './feature-flags/feature-flags.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { StakingModule } from './staking/staking.module';
+import { IdempotencyModule } from './common/idempotency/idempotency.module';
+import { IdempotencyGuard } from './common/idempotency/idempotency.guard';
 
 // In-memory storage for development (no Redis needed)
 class ThrottlerMemoryStorage {
@@ -272,6 +278,9 @@ async function createThrottlerStorage(
     }),
     FinalityPolicyModule,
     ScheduleModule.forRoot(),
+    // Idempotency Module
+    // Provides idempotency key handling for safe commands
+    IdempotencyModule,
     // PostgreSQL Database Infrastructure (Issue #269)
     // DatabaseModule provides:
     // - PostgreSQL connectivity with connection pooling
@@ -337,6 +346,10 @@ async function createThrottlerStorage(
     V2EvidenceModule,
     V2VerificationModule,
     V2DisputesModule,
+    ChainEventsModule,
+    BlockCursorModule,
+    V2RewardsModule,
+    V2RebuildModule,
     V2ProjectionModule,
     ProfilerModule,
     HealthModule,
@@ -355,6 +368,10 @@ async function createThrottlerStorage(
     {
       provide: APP_GUARD,
       useClass: WalletThrottlerGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: IdempotencyGuard,
     },
     {
       provide: APP_INTERCEPTOR,
