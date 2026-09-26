@@ -44,7 +44,7 @@ export class AnalyticsQueryDto {
   page?: number = 1;
 
   @IsOptional()
-  @Transform(({ value }) => parseInt(value, 10))
+  @Transform(({ value }) => parseInt(String(value), 10))
   @IsNumber()
   limit?: number = 10;
 }

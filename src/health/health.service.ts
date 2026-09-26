@@ -132,7 +132,7 @@ export class HealthService {
 
   async getIndexerHealth(): Promise<IndexerHealthResult> {
     const snapshot = await this.blockchainStateService.getIndexerHealth();
-    const status = snapshot.status as HealthStatus;
+    const status = snapshot.status;
     return {
       status,
       timestamp: new Date().toISOString(),

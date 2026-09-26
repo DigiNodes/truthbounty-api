@@ -42,9 +42,9 @@ import { IpfsModule } from '../ipfs/ipfs.module';
     ClaimResolutionService,
   ],
   exports: [
-    ClaimResolutionService,
     ClaimsService,
     EvidenceService,
+    EvidenceFlagService,
     ClaimProjectorService,
   ],
 })

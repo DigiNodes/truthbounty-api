@@ -1,5 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ConfigService } from '@nestjs/config';
+import { ServiceUnavailableException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { EvidenceProjectorService } from './evidence-projector.service';
 import { EvidenceQueryService } from './evidence-query.service';
@@ -12,6 +14,9 @@ import { ProjectEvidenceVersion } from './entities/project-evidence-version.enti
 import { ProjectorCursor } from '../common/entities/projector-cursor.entity';
 import { CanonicalEvent } from '../events/entities/canonical-event.entity';
 import { CanonicalEventQueryService } from '../events/canonical-event-query.service';
+import { ContractArtifact } from '../events/entities/contract-artifact.entity';
+import { EventQuarantine } from '../events/entities/event-quarantine.entity';
+import { ProjectionReadinessService } from '../common/projection-readiness/projection-readiness.service';
 
 describe('EvidenceProjectorService (integration)', () => {
   let moduleRef: TestingModule;
@@ -38,6 +43,20 @@ describe('EvidenceProjectorService (integration)', () => {
     });
   }
 
+  /**
+   * Move the projector's cursor behind the canonical head, which is exactly
+   * the state the gate exists to catch: canonical events are waiting while
+   * the read model still reflects an older point in the stream.
+   */
+  async function rewindCursorTo(blockNumber: string): Promise<void> {
+    await dataSource
+      .getRepository(ProjectorCursor)
+      .update(
+        { projectorName: 'v2-evidence' },
+        { lastBlockNumber: blockNumber },
+      );
+  }
+
   beforeEach(async () => {
     moduleRef = await Test.createTestingModule({
       imports: [
@@ -51,6 +70,8 @@ describe('EvidenceProjectorService (integration)', () => {
             ProjectEvidence,
             ProjectEvidenceVersion,
             ProjectorCursor,
+            ContractArtifact,
+            EventQuarantine,
           ],
           synchronize: true,
         }),
@@ -59,6 +80,8 @@ describe('EvidenceProjectorService (integration)', () => {
           ProjectEvidenceVersion,
           ProjectorCursor,
           CanonicalEvent,
+          ContractArtifact,
+          EventQuarantine,
         ]),
       ],
       providers: [
@@ -66,6 +89,8 @@ describe('EvidenceProjectorService (integration)', () => {
         EvidenceQueryService,
         EvidenceIntegrityService,
         CanonicalEventQueryService,
+        ProjectionReadinessService,
+        { provide: ConfigService, useValue: { get: () => undefined } },
       ],
     }).compile();
 
@@ -208,6 +233,30 @@ describe('EvidenceProjectorService (integration)', () => {
     );
     expect(secondPage.items).toHaveLength(1);
     expect(secondPage.nextCursor).toBeNull();
+  });
+
+  it('fails closed instead of serving stale evidence when the projection is behind canonical events', async () => {
+    await seedEvent({
+      eventName: 'EvidenceRegistered',
+      txHash: '0x' + '01'.repeat(32),
+      blockNumber: '100',
+      logIndex: 0,
+      payload: { digest: '0xdigest1' },
+    });
+    await seedEvent({
+      eventName: 'EvidenceReplaced',
+      txHash: '0x' + '02'.repeat(32),
+      blockNumber: '200',
+      logIndex: 0,
+      payload: { digest: '0xdigest2' },
+    });
+
+    await projector.processNewEvents();
+    await rewindCursorTo('100');
+
+    await expect(queryService.getEvidence(claimId)).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
   });
 });
 

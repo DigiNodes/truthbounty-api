@@ -343,6 +343,7 @@ async function createThrottlerStorage(
     AiAssistantModule,
     AdminModule,
     V2EventsModule,
+    ProjectionReadinessModule,
     V2EvidenceModule,
     V2VerificationModule,
     V2DisputesModule,

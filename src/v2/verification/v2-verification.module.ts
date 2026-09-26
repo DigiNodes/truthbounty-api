@@ -6,6 +6,7 @@ import { ProjectVerificationRound } from './entities/project-verification-round.
 import { ProjectParticipantPosition } from './entities/project-participant-position.entity';
 import { ProjectorCursor } from '../common/entities/projector-cursor.entity';
 import { IndexingAnomaly } from '../common/entities/indexing-anomaly.entity';
+import { ProjectionReadinessModule } from '../common/projection-readiness/projection-readiness.module';
 import { VerificationProjectorService } from './verification-projector.service';
 import { VerificationQueryService } from './verification-query.service';
 import { VerificationController } from './verification.controller';
@@ -20,6 +21,7 @@ import { VerificationController } from './verification.controller';
       EventCheckpoint,
     ]),
     V2EventsModule,
+    ProjectionReadinessModule,
   ],
   controllers: [VerificationController],
   providers: [VerificationProjectorService, VerificationQueryService],

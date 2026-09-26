@@ -11,7 +11,9 @@ export class AnalyticsController {
   constructor(private readonly analyticsService: AnalyticsService) {}
 
   @Get('protocol')
-  getProtocolStatistics(@Query(new ValidationPipe({ transform: true })) query: AnalyticsQueryDto): Promise<AnalyticsResponse<any>> {
+  getProtocolStatistics(
+    @Query(new ValidationPipe({ transform: true })) query: AnalyticsQueryDto,
+  ): Promise<AnalyticsResponse<any>> {
     return this.analyticsService.getProtocolStatistics(query);
   }
 
@@ -21,28 +23,36 @@ export class AnalyticsController {
   }
 
   @Get('claims')
-  getClaimAnalytics(@Query(new ValidationPipe({ transform: true })) query: AnalyticsQueryDto): Promise<AnalyticsResponse<any>> {
+  getClaimAnalytics(
+    @Query(new ValidationPipe({ transform: true })) query: AnalyticsQueryDto,
+  ): Promise<AnalyticsResponse<any>> {
     return this.analyticsService.getClaimAnalytics(query);
   }
 
   @Get('governance')
-  getGovernanceAnalytics(@Query(new ValidationPipe({ transform: true })) query: AnalyticsQueryDto): Promise<AnalyticsResponse<any>> {
+  getGovernanceAnalytics(
+    @Query(new ValidationPipe({ transform: true })) query: AnalyticsQueryDto,
+  ): Promise<AnalyticsResponse<any>> {
     return this.analyticsService.getGovernanceAnalytics(query);
   }
 
   @Get('rewards')
-  getRewardAnalytics(@Query(new ValidationPipe({ transform: true })) query: AnalyticsQueryDto): Promise<AnalyticsResponse<any>> {
+  getRewardAnalytics(
+    @Query(new ValidationPipe({ transform: true })) query: AnalyticsQueryDto,
+  ): Promise<AnalyticsResponse<any>> {
     return this.analyticsService.getRewardAnalytics(query);
   }
 
   @Get('trends')
-  getTrendReporting(@Query(new ValidationPipe({ transform: true })) query: AnalyticsQueryDto): Promise<AnalyticsResponse<any>> {
+  getTrendReporting(
+    @Query(new ValidationPipe({ transform: true })) query: AnalyticsQueryDto,
+  ): Promise<AnalyticsResponse<any>> {
     return this.analyticsService.getTrendReporting(query);
   }
 
   @Get('monitoring')
   getMonitoringMetrics(): Promise<AnalyticsResponse<any>> {
-    return this.analyticsService.getMonitoringMetrics();
+    return Promise.resolve(this.analyticsService.getMonitoringMetrics());
   }
 
   @Get('reports/export')
@@ -52,7 +62,10 @@ export class AnalyticsController {
   ): Promise<void> {
     const csv = await this.analyticsService.generateCsvReport(query);
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename="analytics-report-${Date.now()}.csv"`);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="analytics-report-${Date.now()}.csv"`,
+    );
     res.send(csv);
   }
 }
