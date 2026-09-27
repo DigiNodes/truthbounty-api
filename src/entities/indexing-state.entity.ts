@@ -55,15 +55,17 @@ export class IndexingState {
   lastFinalizedBlockNumber: number | null;
 
   /**
-   * Current processing status
+   * Current processing status.
+   * `dead_letter` — event failed past maxRetryAttempts and has been permanently
+   * parked; the dead-letter counter in IndexerHealthSnapshot is incremented.
    */
   @Column({
     type: 'varchar',
     length: 50,
     default: 'idle',
-    enum: ['idle', 'indexing', 'backfilling', 'error'],
+    enum: ['idle', 'indexing', 'backfilling', 'error', 'dead_letter'],
   })
-  status: 'idle' | 'indexing' | 'backfilling' | 'error';
+  status: 'idle' | 'indexing' | 'backfilling' | 'error' | 'dead_letter';
 
   /**
    * Error message if status is 'error'
