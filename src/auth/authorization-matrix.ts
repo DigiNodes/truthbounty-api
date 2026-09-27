@@ -96,6 +96,14 @@
  * ├─────────────────────────────────────────────────┼──────────────────────────────────────────┤
  * │ GET    /metrics                                 │ Bearer METRICS_TOKEN                     │
  * ├─────────────────────────────────────────────────┼──────────────────────────────────────────┤
+ * │ GET    /admin/jobs/metrics                      │ ADMIN(auditor)                           │
+ * │ GET    /admin/jobs/metrics/:queue               │ ADMIN(auditor)                           │
+ * │ POST   /admin/jobs/enqueue                      │ ADMIN(administrator)                     │
+ * │ POST   /admin/jobs/retry/:queue                 │ ADMIN(administrator)                     │
+ * │ POST   /admin/jobs/cancel/:queue                │ ADMIN(administrator)                     │
+ * │ POST   /admin/jobs/pause/:queue                 │ ADMIN(administrator)                     │
+ * │ POST   /admin/jobs/resume/:queue                │ ADMIN(administrator)                     │
+ * ├─────────────────────────────────────────────────┼──────────────────────────────────────────┤
  * │ GET    /v2/events/*                             │ PUBLIC (read-only chain projections)     │
  * │ GET    /v2/evidence/*                           │ PUBLIC (read-only chain projections)     │
  * │ GET    /v2/verification/*                       │ PUBLIC (read-only chain projections)     │
