@@ -90,7 +90,7 @@
  * │ GET    /audit/*                                 │ ADMIN(auditor)                           │
  * │ POST   /audit/export                            │ ADMIN(auditor)                           │
  * │ POST   /audit/legal-hold/*                      │ ADMIN(administrator)                     │
- * │ PATCH  /audit/legal-hold/*/remove               │ ADMIN(administrator)                     │
+ * │ PATCH  /audit/legal-hold/:id/remove             │ ADMIN(administrator)                     │
  * ├─────────────────────────────────────────────────┼──────────────────────────────────────────┤
  * │ GET    /analytics/*                             │ ROLE(moderator,admin) or ADMIN(auditor)  │
  * ├─────────────────────────────────────────────────┼──────────────────────────────────────────┤

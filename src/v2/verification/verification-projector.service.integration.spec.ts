@@ -14,6 +14,7 @@ import {
   IndexingAnomalyKind,
 } from '../common/entities/indexing-anomaly.entity';
 import { CanonicalEvent } from '../events/entities/canonical-event.entity';
+import { EventCheckpoint } from '../events/entities/event-checkpoint.entity';
 import { CanonicalEventQueryService } from '../events/canonical-event-query.service';
 
 describe('VerificationProjectorService (integration)', () => {
@@ -51,6 +52,7 @@ describe('VerificationProjectorService (integration)', () => {
           driver: require('sqlite3'),
           entities: [
             CanonicalEvent,
+            EventCheckpoint,
             ProjectVerificationRound,
             ProjectParticipantPosition,
             ProjectorCursor,
@@ -64,6 +66,7 @@ describe('VerificationProjectorService (integration)', () => {
           ProjectorCursor,
           IndexingAnomaly,
           CanonicalEvent,
+          EventCheckpoint,
         ]),
       ],
       providers: [
@@ -100,12 +103,13 @@ describe('VerificationProjectorService (integration)', () => {
 
     await projector.processNewEvents();
 
-    const { first, appeal } = await queryService.listRounds(claimId);
-    expect(first).toHaveLength(1);
-    expect(appeal).toHaveLength(1);
-    expect(first[0].roundId).toBe(firstRoundId);
-    expect(appeal[0].roundId).toBe(appealRoundId);
-    expect(first[0].status).toBe(RoundStatus.OPEN);
+    const { firstInstanceRounds: first, appealRounds: appeal } =
+      await queryService.listRounds(claimId);
+    expect(first.items).toHaveLength(1);
+    expect(appeal.items).toHaveLength(1);
+    expect(first.items[0].roundId).toBe(firstRoundId);
+    expect(appeal.items[0].roundId).toBe(appealRoundId);
+    expect(first.items[0].status).toBe(RoundStatus.OPEN);
   });
 
   it('projects a participant position with stake/reputation/weight verbatim, never recomputed', async () => {
@@ -133,10 +137,10 @@ describe('VerificationProjectorService (integration)', () => {
     await projector.processNewEvents();
 
     const positions = await queryService.listPositions(firstRoundId);
-    expect(positions).toHaveLength(1);
-    expect(positions[0].stake).toBe('1000000000000000000');
-    expect(positions[0].effectiveWeight).toBe('850');
-    expect(positions[0].position).toBe('support');
+    expect(positions.items).toHaveLength(1);
+    expect(positions.items[0].stake).toBe('1000000000000000000');
+    expect(positions.items[0].effectiveWeight).toBe('850');
+    expect(positions.items[0].position).toBe('support');
   });
 
   it('detects and records a duplicate position for the same participant/round instead of overwriting it', async () => {
@@ -168,8 +172,8 @@ describe('VerificationProjectorService (integration)', () => {
     expect(summary.anomalies).toBe(1);
 
     const positions = await queryService.listPositions(firstRoundId);
-    expect(positions).toHaveLength(1);
-    expect(positions[0].stake).toBe('100'); // first-committed position wins, not overwritten
+    expect(positions.items).toHaveLength(1);
+    expect(positions.items[0].stake).toBe('100'); // first-committed position wins, not overwritten
 
     const anomalies = await dataSource.getRepository(IndexingAnomaly).find();
     expect(anomalies).toHaveLength(1);

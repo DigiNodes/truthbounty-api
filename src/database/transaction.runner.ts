@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, EntityManager, QueryRunner } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 
 /**
  * Callback signature for transactional operations.

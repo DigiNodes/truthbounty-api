@@ -1,6 +1,6 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DeepPartial } from 'typeorm';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { ConfigService } from '@nestjs/config';
@@ -45,7 +45,7 @@ export class NotificationService {
       read: false,
       createdAt: new Date(),
       updatedAt: new Date(),
-    } as any);
+    } as unknown as DeepPartial<Notification>);
 
     const savedNotification = await this.notificationRepo.save(notification);
 
@@ -67,7 +67,7 @@ export class NotificationService {
       queuedAt: new Date(),
       createdAt: new Date(),
       updatedAt: new Date(),
-    } as any);
+    } as unknown as DeepPartial<NotificationDelivery>);
 
     await this.deliveryRepo.save(delivery);
 
@@ -132,7 +132,7 @@ export class NotificationService {
       notificationsEnabled: true,
       createdAt: new Date(),
       updatedAt: new Date(),
-    } as any);
+    } as unknown as DeepPartial<UserNotificationPreference>);
 
     return this.preferencesRepo.save(preferences);
   }

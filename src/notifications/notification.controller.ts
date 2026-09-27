@@ -25,7 +25,6 @@ import { UpdateNotificationPreferencesDto } from './dto/update-notification-pref
 import { QueryNotificationsDto } from './dto/query-notifications.dto';
 import { NotificationResponseDto } from './dto/notification-response.dto';
 import { Notification } from './entities/notification.entity';
-import { NotificationTemplate } from './entities/notification-template.entity';
 import { UserNotificationPreference } from './entities/user-notification-preference.entity';
 import { NotificationDelivery } from './entities/notification-delivery.entity';
 import { NotificationType } from './enums/notification-type.enum';
@@ -56,7 +55,7 @@ export class NotificationController {
     @Param('userId') userId: string,
     @Query() query: QueryNotificationsDto,
   ): Promise<{ notifications: Notification[]; total: number }> {
-    return this.notificationService.getUserNotifications(userId, query);
+    return this.notificationService.getUserNotifications(userId, query as unknown as Record<string, unknown>);
   }
 
   @Get(':userId/unread-count')
@@ -139,7 +138,7 @@ export class NotificationController {
   async getPreferences(
     @Param('userId') userId: string,
   ): Promise<UserNotificationPreference> {
-    return this.notificationService.getPreferences(userId);
+    return this.notificationService.getOrCreatePreferences(userId);
   }
 
   @Patch('preferences/:userId')
@@ -150,7 +149,7 @@ export class NotificationController {
     @Param('userId') userId: string,
     @Body() dto: UpdateNotificationPreferencesDto,
   ): Promise<UserNotificationPreference> {
-    return this.notificationService.updatePreferences(userId, dto);
+    return this.notificationService.updatePreferences(userId, dto as unknown as Partial<UserNotificationPreference>);
   }
 
   @Get('admin/metrics')

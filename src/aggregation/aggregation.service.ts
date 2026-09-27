@@ -21,6 +21,7 @@ export class AggregationService {
         claimId,
         status: ClaimStatus.INCONCLUSIVE,
         confidence: 0,
+        timestamp: new Date(),
         metadata: {
           trueWeight: 0,
           falseWeight: 0,
@@ -72,6 +73,7 @@ export class AggregationService {
       claimId,
       status,
       confidence,
+      timestamp: new Date(),
       metadata: {
         trueWeight,
         falseWeight,
@@ -110,6 +112,7 @@ export class AggregationService {
       claimId,
       status: ClaimStatus.INCONCLUSIVE,
       confidence: 0,
+      timestamp: new Date(),
       metadata: {
         trueWeight,
         falseWeight,

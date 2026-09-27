@@ -6,14 +6,13 @@ import {
 } from '@nestjs/common';
 import { RedisService } from '../redis/redis.service';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, IsNull, Not, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import { Stake } from '../staking/entities/stake.entity';
 import { Wallet } from '../entities/wallet.entity';
-import { Claim, ClaimState } from '../claims/entities/claim.entity';
+import { Claim } from '../claims/entities/claim.entity';
 import { User } from '../entities/user.entity';
 import { AggregationService } from '../aggregation/aggregation.service';
 import {
-  ClaimStatus,
   VerificationVerdict,
 } from '../aggregation/aggregation.types';
 import { ClaimsCache } from '../cache/claims.cache';

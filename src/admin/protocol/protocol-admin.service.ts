@@ -10,7 +10,7 @@ import { Repository, DataSource } from 'typeorm';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 
-import { Admin, AdminRole } from '../entities/admin.entity';
+import { Admin } from '../entities/admin.entity';
 import { AuditLog } from '../../audit/entities/audit-log.entity';
 import { AuditTrailService } from '../../audit/services/audit-trail.service';
 import { FeatureFlagsService } from '../../feature-flags/feature-flags.service';
@@ -58,7 +58,7 @@ interface EmergencyState {
   expiresAt?: number;
 }
 
-interface MaintenanceSchedule {
+export interface MaintenanceSchedule {
   id: string;
   description: string;
   startTime: string;

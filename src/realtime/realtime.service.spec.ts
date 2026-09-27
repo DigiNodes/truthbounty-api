@@ -1,6 +1,5 @@
 import { ProjectionEvent } from './entities/projection-event.entity';
 import { RealtimeService } from './realtime.service';
-import { RealtimeBusService } from './realtime-bus.service';
 import { RealtimeEnvelopeType, ProjectionEventType } from './realtime.enums';
 
 describe('RealtimeService', () => {

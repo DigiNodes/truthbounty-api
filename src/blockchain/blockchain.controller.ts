@@ -1,9 +1,10 @@
 import { Controller, Get, Post, Body, Param } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
+import { ApiTags } from '@nestjs/swagger';
 import { EventIndexingService } from './event-indexing.service';
 import { ReconciliationService } from './reconciliation.service';
 import { BlockchainStateService } from './state.service';
-import { BlockInfo } from './types';
+import { WeightedVoteResolutionService } from './weighted-vote-resolution.service';
+import { BlockInfo, ResolutionConfig, VerificationVote } from './types';
 
 @ApiTags('blockchain')
 @Controller('api/v1/blockchain')
@@ -12,6 +13,7 @@ export class BlockchainController {
     private eventIndexing: EventIndexingService,
     private reconciliation: ReconciliationService,
     private stateService: BlockchainStateService,
+    private voteResolver: WeightedVoteResolutionService,
   ) {}
 
   /**

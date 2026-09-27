@@ -1,5 +1,5 @@
 import { Controller, Get, Post, Body, Logger } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { ApiTags } from '@nestjs/swagger';
 import { EventIndexerService } from './event-indexer.service';
 
 interface BackfillRequest {

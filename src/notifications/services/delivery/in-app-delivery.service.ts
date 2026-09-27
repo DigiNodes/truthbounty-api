@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { BaseDeliveryService, DeliveryResult } from './base-delivery.service';
-import { DeliveryChannel, DeliveryStatus } from '../../enums/notification-type.enum';
+import { DeliveryChannel } from '../../enums/notification-type.enum';
 import { NotificationDelivery } from '../../entities/notification-delivery.entity';
 
 @Injectable()

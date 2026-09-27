@@ -123,10 +123,10 @@ describe('JobsService', () => {
 
   describe('enqueue', () => {
     it('should enqueue a job with default options', async () => {
-      const job = await service.enqueue(JobName.COMPUTE_SCORES, {});
+      const job = await service.enqueue(JobName.CLEANUP_SYBIL_HISTORY, {});
       expect(job).not.toBeNull();
       expect(queueMock.add).toHaveBeenCalledWith(
-        JobName.COMPUTE_SCORES,
+        JobName.CLEANUP_SYBIL_HISTORY,
         {},
         expect.objectContaining({
           priority: JobPriority.NORMAL,
@@ -175,34 +175,28 @@ describe('JobsService', () => {
   });
 
   describe('JobsProcessor', () => {
-    it('should invoke runComputeScores when processing compute-scores job', async () => {
-      const runComputeScoresSpy = jest
-        .spyOn(service, 'runComputeScores')
-        .mockResolvedValue({ processed: 0, updated: 0, errors: 0 });
-
+    it('should throw for legacy compute-scores job (removed in V2)', async () => {
       const mockJob = {
         id: '1',
-        name: JobName.COMPUTE_SCORES,
+        name: 'compute-scores',
         data: {},
       } as Job;
 
-      await processor.process(mockJob);
-      expect(runComputeScoresSpy).toHaveBeenCalled();
+      await expect(processor.process(mockJob)).rejects.toThrow(
+        'Unknown job name: compute-scores',
+      );
     });
 
-    it('should invoke runComputeReputation when processing compute-reputation job', async () => {
-      const runComputeReputationSpy = jest
-        .spyOn(service, 'runComputeReputation')
-        .mockResolvedValue({ processed: 0, updated: 0, errors: 0 });
-
+    it('should throw for legacy compute-reputation job (removed in V2)', async () => {
       const mockJob = {
         id: '2',
-        name: JobName.COMPUTE_REPUTATION,
+        name: 'compute-reputation',
         data: {},
       } as Job;
 
-      await processor.process(mockJob);
-      expect(runComputeReputationSpy).toHaveBeenCalled();
+      await expect(processor.process(mockJob)).rejects.toThrow(
+        'Unknown job name: compute-reputation',
+      );
     });
 
     it('should invoke cleanupSybilHistory when processing cleanup-sybil-history job', async () => {

@@ -1,6 +1,5 @@
-import { IsString, IsNotEmpty, IsOptional, IsEnum, IsArray, ValidateNested, IsObject } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsEnum, IsArray } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
 import { IncidentClassification, IncidentSeverity, IncidentStatus } from '../entities/incident.entity';
 
 export class CreateIncidentDto {

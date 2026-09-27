@@ -1,8 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { DataSource } from 'typeorm';
 import { BlockchainIndexerService } from './blockchain-indexer.service';
 import { BlockchainStateService } from './state.service';
+import { ClaimsCache } from '../cache/claims.cache';
 import { ProcessedEvent } from './entities/processed-event.entity';
 import { TokenBalance } from './entities/token-balance.entity';
 import { IndexerCheckpoint } from './entities/indexer-checkpoint.entity';
@@ -68,6 +69,13 @@ describe('BlockchainIndexerService - Checkpoint Commit Behavior', () => {
           useValue: {
             setProjectionHead: jest.fn(),
             recordReplay: jest.fn(),
+          },
+        },
+        {
+          provide: ClaimsCache,
+          useValue: {
+            invalidateForProjectionUpdate: jest.fn(),
+            invalidateAllForReorg: jest.fn(),
           },
         },
       ],

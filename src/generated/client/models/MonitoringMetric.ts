@@ -188,7 +188,6 @@ export type MonitoringMetricGroupByOutputType = {
   _max: MonitoringMetricMaxAggregateOutputType | null
 }
 
-type GetMonitoringMetricGroupByPayload<T extends MonitoringMetricGroupByArgs> = Prisma.PrismaPromise<
 export type GetMonitoringMetricGroupByPayload<T extends MonitoringMetricGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<MonitoringMetricGroupByOutputType, T['by']> &

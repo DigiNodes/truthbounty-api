@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
+import { Repository } from 'typeorm';
 import { Notification } from '../entities/notification.entity';
 import { NotificationPreference } from '../entities/notification-preference.entity';
 import { DeliveryHistoryService } from './delivery-history.service';
@@ -158,7 +158,7 @@ export class NotificationsService {
   private shouldSendNotification(preferences: any, event: NotificationEvent): boolean {
     const category = this.mapEventTypeToCategory(event.eventType);
     
-    if (!preferences.settings.categories[category]) {
+    if (!preferences.settings?.categories?.[category]) {
       return false;
     }
     
@@ -199,7 +199,7 @@ export class NotificationsService {
     return categoryMap[eventType] || NotificationCategory.SYSTEM_UPDATE;
   }
 
-  private createNotificationFromEvent(event: NotificationEvent, recipientId: string): Partial<Notification> {
+  private createNotificationFromEvent(event: NotificationEvent, recipientId: string): Partial<Notification> & { priority?: NotificationPriority; sourceEvent?: NotificationEvent } {
     const category = this.mapEventTypeToCategory(event.eventType);
     const { title, message, priority = NotificationPriority.MEDIUM } = this.extractNotificationContent(event);
     
@@ -207,7 +207,7 @@ export class NotificationsService {
       userId: recipientId,
       title,
       message,
-      category,
+      category: category as unknown as Notification['category'],
       priority,
       metadata: event.payload,
       sourceEvent: event,
@@ -275,8 +275,8 @@ export class NotificationsService {
     preferences: NotificationPreference,
     tx: Parameters<Parameters<PrismaService['$transaction']>[0]>[0],
   ) {
-    const enabledChannels = preferences.settings.enabledChannels;
-    
+    const enabledChannels = preferences.settings?.enabledChannels ?? [];
+
     for (const channel of enabledChannels) {
       await this.deliveryHistoryService.createDeliveryRecord(notification.id, channel);
 

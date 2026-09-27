@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { BlockchainStateService } from './state.service';
 import { ReorgDetectorService } from './reorg-detector.service';
-import { ReorgEvent, PendingEvent, BlockInfo } from './types';
+import { ReorgEvent } from './types';
 
 /**
  * Handles reconciliation and rollback of state after reorg detection

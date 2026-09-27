@@ -64,9 +64,6 @@ export const ModelName = {
   MetricAggregate: 'MetricAggregate',
   ReportJob: 'ReportJob',
   MonitoringMetric: 'MonitoringMetric',
-  ChainEvent: 'ChainEvent',
-  BlockCursor: 'BlockCursor',
-  BlockCursorAncestor: 'BlockCursorAncestor'
   OutboxEvent: 'OutboxEvent'
 } as const
 
@@ -260,52 +257,6 @@ export const MonitoringMetricScalarFieldEnum = {
 export type MonitoringMetricScalarFieldEnum = (typeof MonitoringMetricScalarFieldEnum)[keyof typeof MonitoringMetricScalarFieldEnum]
 
 
-export const ChainEventScalarFieldEnum = {
-  id: 'id',
-  chainId: 'chainId',
-  contractAddress: 'contractAddress',
-  eventName: 'eventName',
-  blockNumber: 'blockNumber',
-  blockHash: 'blockHash',
-  txHash: 'txHash',
-  logIndex: 'logIndex',
-  blockTimestamp: 'blockTimestamp',
-  payload: 'payload',
-  rawArgs: 'rawArgs',
-  ingestedAt: 'ingestedAt'
-} as const
-
-export type ChainEventScalarFieldEnum = (typeof ChainEventScalarFieldEnum)[keyof typeof ChainEventScalarFieldEnum]
-
-
-export const BlockCursorScalarFieldEnum = {
-  id: 'id',
-  chainId: 'chainId',
-  source: 'source',
-  processedHeight: 'processedHeight',
-  processedHash: 'processedHash',
-  safeHeight: 'safeHeight',
-  safeHash: 'safeHash',
-  finalizedHeight: 'finalizedHeight',
-  finalizedHash: 'finalizedHash',
-  updatedAt: 'updatedAt'
-} as const
-
-export type BlockCursorScalarFieldEnum = (typeof BlockCursorScalarFieldEnum)[keyof typeof BlockCursorScalarFieldEnum]
-
-
-export const BlockCursorAncestorScalarFieldEnum = {
-  id: 'id',
-  cursorId: 'cursorId',
-  height: 'height',
-  hash: 'hash',
-  parentHash: 'parentHash',
-  isCanonical: 'isCanonical',
-  confirmation: 'confirmation',
-  recordedAt: 'recordedAt'
-} as const
-
-export type BlockCursorAncestorScalarFieldEnum = (typeof BlockCursorAncestorScalarFieldEnum)[keyof typeof BlockCursorAncestorScalarFieldEnum]
 export const OutboxEventScalarFieldEnum = {
   id: 'id',
   eventType: 'eventType',
@@ -340,13 +291,6 @@ export const NullableJsonNullValueInput = {
 } as const
 
 export type NullableJsonNullValueInput = (typeof NullableJsonNullValueInput)[keyof typeof NullableJsonNullValueInput]
-
-
-export const JsonNullValueInput = {
-  JsonNull: JsonNull
-} as const
-
-export type JsonNullValueInput = (typeof JsonNullValueInput)[keyof typeof JsonNullValueInput]
 
 
 export const NullsOrder = {

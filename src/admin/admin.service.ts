@@ -1,7 +1,7 @@
 import { Injectable, ConflictException, NotFoundException, Logger, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Admin, AdminRole, AdminRoleHierarchy } from './entities/admin.entity';
+import { Admin, AdminRole } from './entities/admin.entity';
 import { CreateAdminDto, UpdateAdminRoleDto, UpdateAdminStatusDto } from './dto/admin.dto';
 
 @Injectable()

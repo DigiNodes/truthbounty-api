@@ -13,6 +13,7 @@ import {
   IndexingAnomalyKind,
 } from '../common/entities/indexing-anomaly.entity';
 import { CanonicalEvent } from '../events/entities/canonical-event.entity';
+import { EventCheckpoint } from '../events/entities/event-checkpoint.entity';
 import { CanonicalEventQueryService } from '../events/canonical-event-query.service';
 
 describe('DisputesProjectorService (integration)', () => {
@@ -50,6 +51,7 @@ describe('DisputesProjectorService (integration)', () => {
           driver: require('sqlite3'),
           entities: [
             CanonicalEvent,
+            EventCheckpoint,
             ProjectDispute,
             ProjectorCursor,
             IndexingAnomaly,
@@ -61,6 +63,7 @@ describe('DisputesProjectorService (integration)', () => {
           ProjectorCursor,
           IndexingAnomaly,
           CanonicalEvent,
+          EventCheckpoint,
         ]),
       ],
       providers: [

@@ -289,7 +289,7 @@ describe('ClaimsService', () => {
       const resolvedAt = new Date();
 
       jest.spyOn(service, 'findOne').mockResolvedValue(claim);
-      jest.spyOn(claimRepo, 'save').mockResolvedValue({ ...claim, resolvedVerdict: verdict, resolvedAt, confidenceScore });
+      jest.spyOn(claimRepo, 'save').mockResolvedValue({ ...claim, resolvedVerdict: verdict, resolvedAt, confidenceScore } as unknown as Claim);
       jest.spyOn(claimsCache, 'invalidateClaim').mockResolvedValue(undefined);
       jest.spyOn(auditTrailService, 'log').mockResolvedValue(undefined);
 
@@ -352,7 +352,7 @@ describe('ClaimsService', () => {
       const confidenceScore = 0.65;
 
       jest.spyOn(service, 'findOne').mockResolvedValue(claim);
-      jest.spyOn(claimRepo, 'save').mockResolvedValue({ ...claim, resolvedVerdict: verdict, resolvedAt: new Date(), confidenceScore });
+      jest.spyOn(claimRepo, 'save').mockResolvedValue({ ...claim, resolvedVerdict: verdict, resolvedAt: new Date(), confidenceScore } as unknown as Claim);
       jest.spyOn(claimsCache, 'invalidateClaim').mockResolvedValue(undefined);
       jest.spyOn(auditTrailService, 'log').mockResolvedValue(undefined);
 
@@ -374,7 +374,7 @@ describe('ClaimsService', () => {
       const userId = 'user-123';
 
       jest.spyOn(service, 'findOne').mockResolvedValue(claim);
-      jest.spyOn(claimRepo, 'save').mockResolvedValue({ ...claim, resolvedVerdict: verdict, resolvedAt: new Date(), confidenceScore });
+      jest.spyOn(claimRepo, 'save').mockResolvedValue({ ...claim, resolvedVerdict: verdict, resolvedAt: new Date(), confidenceScore } as unknown as Claim);
       jest.spyOn(claimsCache, 'invalidateClaim').mockResolvedValue(undefined);
       jest.spyOn(auditTrailService, 'log').mockResolvedValue(undefined);
 
@@ -446,10 +446,10 @@ describe('ClaimsService', () => {
 
   describe('finalizeClaim', () => {
     it('should finalize a claim', async () => {
-      const claim = ClaimFactory.createClaim({ finalized: false });
+      const claim = ClaimFactory.createClaim({ resolvedVerdict: true, confidenceScore: 0.9, resolvedAt: new Date(), finalized: false });
 
       jest.spyOn(service, 'findOne').mockResolvedValue(claim);
-      jest.spyOn(claimRepo, 'save').mockResolvedValue({ ...claim, finalized: true });
+      jest.spyOn(claimRepo, 'save').mockResolvedValue({ ...claim, finalized: true } as unknown as Claim);
       jest.spyOn(claimsCache, 'invalidateClaim').mockResolvedValue(undefined);
       jest.spyOn(auditTrailService, 'log').mockResolvedValue(undefined);
 
@@ -462,10 +462,10 @@ describe('ClaimsService', () => {
     });
 
     it('should invalidate claims:latest cache when finalizing a claim', async () => {
-      const claim = ClaimFactory.createClaim({ finalized: false });
+      const claim = ClaimFactory.createClaim({ resolvedVerdict: true, confidenceScore: 0.9, resolvedAt: new Date(), finalized: false });
 
       jest.spyOn(service, 'findOne').mockResolvedValue(claim);
-      jest.spyOn(claimRepo, 'save').mockResolvedValue({ ...claim, finalized: true });
+      jest.spyOn(claimRepo, 'save').mockResolvedValue({ ...claim, finalized: true } as unknown as Claim);
       jest.spyOn(claimsCache, 'invalidateClaim').mockResolvedValue(undefined);
       jest.spyOn(auditTrailService, 'log').mockResolvedValue(undefined);
 
@@ -481,11 +481,11 @@ describe('ClaimsService', () => {
     });
 
     it('should log audit trail when finalizing a claim', async () => {
-      const claim = ClaimFactory.createClaim({ finalized: false });
+      const claim = ClaimFactory.createClaim({ resolvedVerdict: true, confidenceScore: 0.9, resolvedAt: new Date(), finalized: false });
       const userId = 'user-123';
 
       jest.spyOn(service, 'findOne').mockResolvedValue(claim);
-      jest.spyOn(claimRepo, 'save').mockResolvedValue({ ...claim, finalized: true });
+      jest.spyOn(claimRepo, 'save').mockResolvedValue({ ...claim, finalized: true } as unknown as Claim);
       jest.spyOn(claimsCache, 'invalidateClaim').mockResolvedValue(undefined);
       jest.spyOn(auditTrailService, 'log').mockResolvedValue(undefined);
 

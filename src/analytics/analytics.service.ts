@@ -325,7 +325,7 @@ export class AnalyticsService {
           break;
         case 'quarter':
           const quarter = Math.floor(dt.getMonth() / 3);
-          key = `${dt.getFullYear()}-Q&#x2F;${quarter + 1}`;
+          key = `${dt.getFullYear()}-Q/${quarter + 1}`;
           break;
         case 'year':
           key = dt.getFullYear().toString();

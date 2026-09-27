@@ -4,6 +4,7 @@ import { IdentityService } from './identity.service';
 import { LinkWalletDto } from './dto/link-wallet.dto';
 import { SybilResistanceService } from '../sybil-resistance/sybil-resistance.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { ThrottleByWallet } from '../common/decorators/throttle-by-wallet.decorator';
 
 /**
  * IdentityController — authorization aligned with the V2 API Authorization Matrix.
@@ -59,6 +60,7 @@ export class IdentityController {
 
   @Post('users/:id/wallets')
   @UseGuards(JwtAuthGuard)
+  @ThrottleByWallet('auth')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Link a wallet to a user' })
   @ApiParam({ name: 'id', description: 'User ID' })
@@ -70,6 +72,7 @@ export class IdentityController {
 
   @Delete('users/:id/wallets/:chain/:address')
   @UseGuards(JwtAuthGuard)
+  @ThrottleByWallet('auth')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Unlink a wallet from a user' })
   @ApiParam({ name: 'id', description: 'User ID' })

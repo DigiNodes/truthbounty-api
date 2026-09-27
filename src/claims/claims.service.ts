@@ -11,7 +11,6 @@ import { AuditActionType, AuditEntityType } from '../audit/entities/audit-log.en
 import { AuditLog } from '../audit/decorators/audit-log.decorator';
 import {
   assertResolvedAtInvariant,
-  buildResolvedFields,
 } from './claim-resolution.invariant';
 import { CacheUnavailableException } from '../cache/exceptions/cache-unavailable.exception';
 
