@@ -31,6 +31,8 @@ export interface RetryPolicy {
     type: 'exponential' | 'fixed';
     delay: number;
   };
+  jitterEnabled?: boolean;
+  jitterRatio?: number;
 }
 
 export interface QueueMetrics {
@@ -56,4 +58,6 @@ export const DEFAULT_RETRY_POLICY: RetryPolicy = {
     type: 'exponential',
     delay: 2000,
   },
+  jitterEnabled: true,
+  jitterRatio: 0.3,
 };

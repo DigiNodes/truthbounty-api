@@ -7,10 +7,12 @@ import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { SiweService } from './services/siwe.service';
 import { TokenService } from './services/token.service';
+import { AuthorizationPolicyService } from './authorization-policy.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { OptionalJwtAuthGuard } from './optional-jwt-auth.guard';
 import { AdminGuard } from './guards/admin.guard';
+import { RolesGuard } from './guards/roles.guard';
 import { ServiceAuthGuard } from './guards/service-auth.guard';
 
 @Module({
@@ -33,19 +35,23 @@ import { ServiceAuthGuard } from './guards/service-auth.guard';
     AuthService,
     SiweService,
     TokenService,
+    AuthorizationPolicyService,
     JwtStrategy,
     JwtAuthGuard,
     OptionalJwtAuthGuard,
     AdminGuard,
+    RolesGuard,
     ServiceAuthGuard,
   ],
   exports: [
     AuthService,
     SiweService,
     TokenService,
+    AuthorizationPolicyService,
     JwtAuthGuard,
     OptionalJwtAuthGuard,
     AdminGuard,
+    RolesGuard,
     ServiceAuthGuard,
     PassportModule,
   ],

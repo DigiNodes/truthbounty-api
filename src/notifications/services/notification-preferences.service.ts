@@ -37,6 +37,21 @@ export class NotificationPreferencesService {
     updateDto: UpdatePreferencesDto
   ): Promise<NotificationPreference> {
     const preferences = await this.getUserPreferences(userId);
+
+    if (!preferences.settings) {
+      preferences.settings = {
+        enabledChannels: [],
+        categories: {},
+        emailPreferences: {
+          digestEnabled: false,
+          digestFrequency: 'daily',
+        },
+        governanceAlerts: true,
+        stakingAlerts: true,
+        rewardNotifications: true,
+        securityAlerts: true,
+      };
+    }
     
     if (updateDto.enabledChannels) {
       preferences.settings.enabledChannels = updateDto.enabledChannels;

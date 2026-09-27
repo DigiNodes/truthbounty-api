@@ -53,7 +53,37 @@ export type Conversation = Prisma.ConversationModel
  */
 export type Message = Prisma.MessageModel
 /**
+ * Model ContextDocument
+ * 
+ */
+export type ContextDocument = Prisma.ContextDocumentModel
+/**
  * Model AiUsageMetric
  * 
  */
 export type AiUsageMetric = Prisma.AiUsageMetricModel
+/**
+ * Model AnalyticsEvent
+ * 
+ */
+export type AnalyticsEvent = Prisma.AnalyticsEventModel
+/**
+ * Model MetricAggregate
+ * 
+ */
+export type MetricAggregate = Prisma.MetricAggregateModel
+/**
+ * Model ReportJob
+ * 
+ */
+export type ReportJob = Prisma.ReportJobModel
+/**
+ * Model MonitoringMetric
+ * 
+ */
+export type MonitoringMetric = Prisma.MonitoringMetricModel
+/**
+ * Model OutboxEvent
+ * 
+ */
+export type OutboxEvent = Prisma.OutboxEventModel

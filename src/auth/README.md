@@ -214,18 +214,13 @@ async customEndpoint(@Request() req) {
 - Check if the token has expired
 - Verify the token format: `Bearer <token>`
 
-**401 Unauthorized: Signature verification failed**
-- Ensure the signature matches the address
-- Verify the message hasn't been tampered with
-- Check if the challenge has expired
-
-**401 Unauthorized: Challenge expired**
-- Challenges expire after 5 minutes
-- Request a new challenge and sign it
-
-**401 Unauthorized: No challenge found**
-- You must request a challenge before logging in
-- Each challenge is single-use
+**401 Unauthorized: Invalid credentials**
+- Constant-shape response (issue-416): bad signature, address mismatch,
+  missing/expired challenge, and invalid nonce all return the same
+  `401 { code: AUTH_UNAUTHORIZED, message: "Invalid credentials" }` to
+  prevent timing/enumeration oracles. See `docs/auth-timing-side-channels.md`.
+  Challenges expire after 5 minutes; each challenge is single-use. Request a
+  new challenge and sign it.
 
 ## Best Practices
 

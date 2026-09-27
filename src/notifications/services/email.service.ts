@@ -34,7 +34,7 @@ export class EmailService {
     this.logger.debug(`Preparing to send email to ${recipientEmail} for notification ${notification.id}`);
     
     if (!this.smtpConfigured) {
-      this.logger.info(`[SIMULATED] Email would be sent to ${recipientEmail}: ${notification.title}`);
+      this.logger.log(`[SIMULATED] Email would be sent to ${recipientEmail}: ${notification.title}`);
       return {
         success: true,
         status: DeliveryStatus.DELIVERED,

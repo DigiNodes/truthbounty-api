@@ -1,5 +1,6 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { json, urlencoded } from 'express';
 import { Logger } from 'nestjs-pino';
 
 export function createGlobalValidationPipe() {
@@ -25,6 +26,9 @@ export function configureApp(app: INestApplication) {
   } else {
     httpAdapter.set('trust proxy', false);
   }
+
+  httpAdapter.use(json({ limit: '100kb' }));
+  httpAdapter.use(urlencoded({ extended: true, limit: '100kb' }));
 
   app.useGlobalPipes(createGlobalValidationPipe());
 

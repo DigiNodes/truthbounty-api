@@ -1,4 +1,10 @@
-import { Entity, PrimaryColumn, Column, UpdateDateColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryColumn,
+  Column,
+  UpdateDateColumn,
+  Check,
+} from 'typeorm';
 
 /**
  * Tracks how far a given V2 projector (evidence, verification, disputes...)
@@ -11,6 +17,9 @@ import { Entity, PrimaryColumn, Column, UpdateDateColumn } from 'typeorm';
  * idempotency mechanism.
  */
 @Entity('v2_projector_cursors')
+@Check('chk_v2_cursor_block_nonneg', '"lastBlockNumber" >= 0')
+@Check('chk_v2_cursor_log_gte_neg1', '"lastLogIndex" >= -1')
+@Check('chk_v2_cursor_name_present', 'length("projectorName") > 0')
 export class ProjectorCursor {
   @PrimaryColumn({ type: 'varchar', length: 64 })
   projectorName: string;

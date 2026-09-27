@@ -59,7 +59,7 @@ export class NotificationGateway
       if (!this.userSockets.has(userId)) {
         this.userSockets.set(userId, new Set());
       }
-      this.userSockets.get(userId).add(client.id);
+      this.userSockets.get(userId)?.add(client.id);
 
       this.logger.log(`Client ${client.id} authenticated for user ${userId}`);
 
@@ -112,7 +112,7 @@ export class NotificationGateway
 
   isUserOnline(userId: string): boolean {
     const userSocketSet = this.userSockets.get(userId);
-    return userSocketSet && userSocketSet.size > 0;
+    return !!userSocketSet && userSocketSet.size > 0;
   }
 
   getConnectedUsersCount(): number {

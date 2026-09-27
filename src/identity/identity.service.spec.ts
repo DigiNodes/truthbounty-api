@@ -16,6 +16,10 @@ import { verifyMessage } from 'ethers';
 
 jest.mock('ethers', () => ({
   verifyMessage: jest.fn(),
+  // Identity passthrough: the specs use short placeholder addresses (e.g. '0x123')
+  // that real EIP-55 checksumming would reject. The service's timing-safe,
+  // case-insensitive comparison is exercised with the raw values instead.
+  getAddress: jest.fn((address: string) => address),
 }));
 
 describe('IdentityService', () => {
@@ -203,7 +207,7 @@ describe('IdentityService', () => {
           userId: mockUser.id,
         },
       });
-      expect(result).toEqual(createdWallet);
+      expect(result).toEqual({ wallet: createdWallet, alreadyLinked: false });
     });
 
     it('should throw BadRequestException for invalid signature', async () => {
@@ -242,7 +246,7 @@ describe('IdentityService', () => {
 
       const result = await service.linkWallet(mockUser.id, mockLinkWalletDto);
 
-      expect(result).toEqual(existingWallet);
+      expect(result).toEqual({ wallet: existingWallet, alreadyLinked: true });
       expect(mockTransaction.wallet.create).not.toHaveBeenCalled();
     });
 
@@ -282,7 +286,7 @@ describe('IdentityService', () => {
 
       const result = await service.linkWallet(mockUser.id, mockLinkWalletDto);
 
-      expect(result).toEqual(newWallet);
+      expect(result).toEqual({ wallet: newWallet, alreadyLinked: false });
       expect(mockTransaction.wallet.create).toHaveBeenCalled();
     });
 
@@ -346,7 +350,7 @@ describe('IdentityService', () => {
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('should throw BadRequestException if wallet belongs to different user', async () => {
+    it('should throw NotFoundException (constant-shape) if wallet belongs to different user', async () => {
       const wallet = {
         id: 'wallet-123',
         address: '0x123',
@@ -356,9 +360,11 @@ describe('IdentityService', () => {
       };
       prisma.wallet.findUnique.mockResolvedValue(wallet);
 
+      // issue-416: not-found and not-owned collapse to the same shape so
+      // ownership cannot be enumerated.
       await expect(
         service.unlinkWallet(mockUser.id, '0x123', 'ETH'),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow(NotFoundException);
     });
   });
 

@@ -10,6 +10,8 @@ describe('AuditRetentionService', () => {
   beforeEach(() => {
     auditTrailService = {
       deleteOldLogs: jest.fn(),
+      scrubAgedPii: jest.fn(),
+      anonymizeUserTelemetry: jest.fn(),
     } as unknown as jest.Mocked<AuditTrailService>;
 
     configService = {
@@ -17,26 +19,63 @@ describe('AuditRetentionService', () => {
     } as unknown as jest.Mocked<ConfigService>;
   });
 
-  it('should use configured retention days and purge old audit logs', async () => {
-    (configService.get as jest.Mock).mockImplementation((key: string) => {
-      if (key === 'AUDIT_LOG_RETENTION_DAYS') return '30';
-      return undefined;
+  describe('Configuration Defaults and Parsing', () => {
+    it('uses configured retention and PII days', async () => {
+      (configService.get as jest.Mock).mockImplementation((key: string) => {
+        if (key === 'AUDIT_LOG_RETENTION_DAYS') return '90';
+        if (key === 'AUDIT_PII_RETENTION_DAYS') return '14';
+        return undefined;
+      });
+      auditTrailService.deleteOldLogs.mockResolvedValue(10);
+      auditTrailService.scrubAgedPii.mockResolvedValue(5);
+
+      service = new AuditRetentionService(auditTrailService, configService);
+
+      const result = await service.enforceRetentionAndPrivacyPolicies();
+
+      expect(result.purgedLogsCount).toBe(10);
+      expect(result.scrubbedPiiCount).toBe(5);
+      expect(result.retentionDays).toBe(90);
+      expect(result.piiRetentionDays).toBe(14);
+      expect(auditTrailService.deleteOldLogs).toHaveBeenCalledWith(90);
+      expect(auditTrailService.scrubAgedPii).toHaveBeenCalledWith(14);
     });
-    auditTrailService.deleteOldLogs.mockResolvedValue(8);
 
-    service = new AuditRetentionService(auditTrailService, configService);
+    it('defaults to 365 days for log retention and 30 days for PII when unconfigured', async () => {
+      (configService.get as jest.Mock).mockReturnValue(undefined);
+      auditTrailService.deleteOldLogs.mockResolvedValue(0);
+      auditTrailService.scrubAgedPii.mockResolvedValue(0);
 
-    await expect(service.purgeOldAuditLogs()).resolves.toBe(8);
-    expect(auditTrailService.deleteOldLogs).toHaveBeenCalledWith(30);
+      service = new AuditRetentionService(auditTrailService, configService);
+
+      const result = await service.enforceRetentionAndPrivacyPolicies();
+
+      expect(result.retentionDays).toBe(365);
+      expect(result.piiRetentionDays).toBe(30);
+      expect(auditTrailService.deleteOldLogs).toHaveBeenCalledWith(365);
+      expect(auditTrailService.scrubAgedPii).toHaveBeenCalledWith(30);
+    });
   });
 
-  it('should default to 365 days when configuration is missing or invalid', async () => {
-    (configService.get as jest.Mock).mockReturnValue(undefined);
-    auditTrailService.deleteOldLogs.mockResolvedValue(0);
+  describe('Independent Execution Tasks', () => {
+    it('purges old audit logs independently', async () => {
+      (configService.get as jest.Mock).mockReturnValue(undefined);
+      auditTrailService.deleteOldLogs.mockResolvedValue(12);
 
-    service = new AuditRetentionService(auditTrailService, configService);
+      service = new AuditRetentionService(auditTrailService, configService);
 
-    await expect(service.purgeOldAuditLogs()).resolves.toBe(0);
-    expect(auditTrailService.deleteOldLogs).toHaveBeenCalledWith(365);
+      await expect(service.purgeOldAuditLogs()).resolves.toBe(12);
+      expect(auditTrailService.deleteOldLogs).toHaveBeenCalledWith(365);
+    });
+
+    it('scrubs old PII independently', async () => {
+      (configService.get as jest.Mock).mockReturnValue(undefined);
+      auditTrailService.scrubAgedPii.mockResolvedValue(25);
+
+      service = new AuditRetentionService(auditTrailService, configService);
+
+      await expect(service.scrubOldPii()).resolves.toBe(25);
+      expect(auditTrailService.scrubAgedPii).toHaveBeenCalledWith(30);
+    });
   });
 });

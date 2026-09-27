@@ -41,6 +41,9 @@ export class DeliveryHistory {
   @Column({ type: 'jsonb', nullable: true })
   metadata: Record<string, any>;
 
+  @Column({ nullable: true, unique: true })
+  idempotencyKey: string;
+
   @CreateDateColumn()
   createdAt: Date;
 }

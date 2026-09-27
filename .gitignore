@@ -18,6 +18,7 @@ lerna-debug.log*
 # Tests
 /coverage
 /.nyc_output
+/artifacts
 
 # IDEs and editors
 /.idea
@@ -64,4 +65,3 @@ pids
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 .qodo
 
-/generated/prisma

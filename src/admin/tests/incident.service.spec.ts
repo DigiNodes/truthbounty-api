@@ -170,14 +170,8 @@ describe('IncidentService', () => {
 
   describe('addNote', () => {
     it('should add an investigation note', async () => {
-      const incidentWithNote = {
-        ...mockIncident,
-        investigationNotes: [
-          { author: 'admin-1', content: 'Initial analysis', createdAt: expect.any(String) },
-        ],
-      };
-      incidentRepo.findOneBy.mockResolvedValue(incidentWithNote);
-      incidentRepo.save.mockResolvedValue(incidentWithNote);
+      incidentRepo.findOneBy.mockResolvedValue({ ...mockIncident, investigationNotes: [] });
+      incidentRepo.save.mockImplementation(async (incident: any) => incident);
 
       const result = await service.addNote('inc-1', { content: 'Initial analysis' }, mockAdmin);
 

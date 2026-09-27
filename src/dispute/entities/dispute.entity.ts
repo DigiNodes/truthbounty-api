@@ -4,8 +4,6 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
-  ManyToOne,
-  JoinColumn,
   Index,
 } from 'typeorm';
 
@@ -14,6 +12,7 @@ export enum DisputeStatus {
   REVIEWING = 'REVIEWING',
   RESOLVED = 'RESOLVED',
   REJECTED = 'REJECTED',
+  EXPIRED = 'EXPIRED',
 }
 
 export enum DisputeOutcome {

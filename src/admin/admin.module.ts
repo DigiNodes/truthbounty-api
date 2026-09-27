@@ -17,7 +17,7 @@ import { DashboardController } from './dashboard/dashboard.controller';
 import { RolesGuard } from './guards/roles.guard';
 import { AdminGuard } from './guards/admin.guard';
 import { JobsModule } from '../jobs/jobs.module';
-import { NotificationModule } from '../notifications/notifications.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { RedisModule } from '../redis/redis.module';
 import { MetricsModule } from '../metrics/metrics.module';
 import { ProtocolAdminService } from './protocol/protocol-admin.service';
@@ -31,7 +31,7 @@ import { QueueName } from '../jobs/jobs.types';
     FeatureFlagsModule,
     JobsModule,
     RedisModule,
-    NotificationModule,
+    NotificationsModule,
     MetricsModule,
     BullModule.registerQueue(
       { name: QueueName.DEFAULT },

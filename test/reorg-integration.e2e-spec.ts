@@ -3,7 +3,7 @@ import { BlockchainStateService } from '../src/blockchain/state.service';
 import { ReorgDetectorService } from '../src/blockchain/reorg-detector.service';
 import { ReconciliationService } from '../src/blockchain/reconciliation.service';
 import { EventIndexingService } from '../src/blockchain/event-indexing.service';
-import { BlockInfo, PendingEvent } from '../src/blockchain/types';
+import { BlockInfo } from '../src/blockchain/types';
 
 describe('Chain Reorg Handling (Integration Tests)', () => {
   let stateService: BlockchainStateService;

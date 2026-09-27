@@ -24,7 +24,7 @@ export class InAppChannel implements NotificationChannel {
       return true; // Default to enabled if no preferences set
     }
     
-    return preferences.enabledChannels[this.channelType] ?? true;
+    return preferences.enabledChannels?.[this.channelType] ?? true;
   }
 
   async send(notification: Notification): Promise<ChannelDeliveryResult> {

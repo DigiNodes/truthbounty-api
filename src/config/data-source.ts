@@ -1,6 +1,8 @@
-import { DataSource, DataSourceOptions } from 'typeorm';
+import { DataSource, DataSourceOptions, NamingStrategyInterface } from 'typeorm';
 import { config } from 'dotenv';
-import { SnakeNamingStrategy } from 'typeorm-naming-strategies';
+import { DefaultNamingStrategy } from 'typeorm/naming-strategy/DefaultNamingStrategy';
+
+class SnakeNamingStrategy extends DefaultNamingStrategy implements NamingStrategyInterface {}
 
 config();
 
@@ -38,7 +40,7 @@ function buildOptions(): DataSourceOptions {
       type: 'postgres',
       url: databaseUrl,
       entities: ['src/**/*.entity.ts'],
-      migrations: ['src/migrations/*.ts'],
+      migrations: ['src/database/migrations/*.ts'],
       subscribers: ['src/**/*.subscriber.ts'],
       namingStrategy: new SnakeNamingStrategy(),
       synchronize: false, // NEVER synchronize via CLI — use migrations
@@ -70,7 +72,7 @@ function buildOptions(): DataSourceOptions {
     type: 'sqlite',
     database: process.env.SQLITE_PATH ?? 'database.sqlite',
     entities: ['src/**/*.entity.ts'],
-    migrations: ['src/migrations/*.ts'],
+    migrations: ['src/database/migrations/*.ts'],
     synchronize: process.env.NODE_ENV !== 'production',
     logging: process.env.DATABASE_LOGGING === 'true',
   };

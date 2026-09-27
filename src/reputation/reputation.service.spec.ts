@@ -1,12 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, SelectQueryBuilder } from 'typeorm';
 import { ReputationService } from './reputation.service';
 import { ReputationCache } from './reputation.cache';
 import {
   ReputationRecord,
   ReputationEvent,
-  ReputationEventType,
 } from './entities/reputation.entity';
 
 describe('ReputationService', () => {
@@ -107,7 +106,9 @@ describe('ReputationService', () => {
           { walletAddress: '0x2', score: 80, verificationCount: 8, governanceParticipation: 3, rewardTotal: 30 },
         ]),
       };
-      reputationRepo.createQueryBuilder.mockReturnValue(mockQueryBuilder);
+      reputationRepo.createQueryBuilder.mockReturnValue(
+        mockQueryBuilder as unknown as SelectQueryBuilder<ReputationRecord>,
+      );
 
       const result = await service.getLeaderboard('highest', 10);
       expect(result).toHaveLength(2);

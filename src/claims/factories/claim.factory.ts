@@ -27,7 +27,9 @@ export class ClaimFactory {
    */
   static createClaim(overrides: Partial<Claim> = {}): Claim {
     const dto = ClaimFactory.createCreateClaimDto();
-    return {
+    // Real Claim instance (not a plain object) so prototype methods
+    // getCurrentState()/transitionTo() used by the services are available.
+    return Object.assign(new Claim(), {
       id: '00000000-0000-0000-0000-000000000000',
       title: dto.title,
       content: dto.content,
@@ -38,10 +40,9 @@ export class ClaimFactory {
       confidenceScore: null,
       finalized: false,
       createdAt: new Date(),
-      resolvedAt: null,
       evidences: [],
       ...overrides,
-    } as Claim;
+    });
   }
 
   /**

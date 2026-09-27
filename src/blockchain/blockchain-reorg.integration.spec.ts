@@ -5,6 +5,7 @@ import { ProcessedEvent } from './entities/processed-event.entity';
 import { TokenBalance } from './entities/token-balance.entity';
 import { IndexerCheckpoint } from './entities/indexer-checkpoint.entity';
 import { BlockchainEvent } from './interfaces/blockchain-event.interface';
+import { ClaimsCache } from '../cache/claims.cache';
 
 /**
  * End-to-end integration test against a real in-memory SQLite database.
@@ -67,6 +68,10 @@ describe('BlockchainIndexerService (integration: reorg + idempotency)', () => {
       checkpointRepo,
       dataSource,
       new BlockchainStateService(),
+      {
+        invalidateForProjectionUpdate: jest.fn().mockResolvedValue(undefined),
+        invalidateAllForReorg: jest.fn().mockResolvedValue(undefined),
+      } as unknown as ClaimsCache,
     );
   });
 
