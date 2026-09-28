@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import { DataSource } from 'typeorm';
-import * as request from 'supertest';
+import request from 'supertest';
 import { createGlobalValidationPipe } from '../src/bootstrap';
 import { ContextDocument, ContextDocumentCategory } from '../src/ai-assistant/entities/context-document.entity';
 import { ConversationMode } from '../src/ai-assistant/entities/conversation.entity';

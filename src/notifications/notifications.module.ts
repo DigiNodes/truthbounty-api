@@ -8,6 +8,7 @@ import { RedisModule } from '../redis/redis.module';
 import { LoggerModule } from '../logger/logger.module';
 import { MetricsModule } from '../metrics/metrics.module';
 import { AuthModule } from '../auth/auth.module';
+import { OutboxModule } from '../outbox/outbox.module';
 import { NotificationsController } from './controllers/notifications.controller';
 import { InternalNotificationController } from './controllers/internal-notification.controller';
 import { NotificationsService } from './services/notifications.service';
@@ -31,10 +32,12 @@ import { DeliveryHistory } from './entities/delivery-history.entity';
     BullModule.registerQueue(
       {
         name: 'notifications',
-        defaultAttempts: 5,
-        defaultBackoff: {
-          type: 'exponential',
-          delay: 1000,
+        defaultJobOptions: {
+          attempts: 5,
+          backoff: {
+            type: 'exponential',
+            delay: 1000,
+          },
         },
       },
       {
@@ -50,6 +53,7 @@ import { DeliveryHistory } from './entities/delivery-history.entity';
     LoggerModule,
     MetricsModule,
     AuthModule,
+    OutboxModule,
   ],
   controllers: [NotificationsController, InternalNotificationController],
   providers: [
@@ -60,11 +64,13 @@ import { DeliveryHistory } from './entities/delivery-history.entity';
     EmailService,
     WebhookService,
     NotificationProcessor,
+    NotificationGateway,
   ],
   exports: [
     NotificationsService,
     NotificationPreferencesService,
     DeliveryHistoryService,
+    NotificationGateway,
   ],
 })
 export class NotificationsModule {}

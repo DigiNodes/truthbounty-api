@@ -12,7 +12,9 @@ const vote = (
   userId,
   verdict,
   userReputation: reputation,
-  stakeAmount: stake
+  stakeAmount: stake,
+  timestamp: new Date('2024-01-01T00:00:00Z'),
+  eventId: `evt-${userId}`
 });
 
 describe("Reputation & Vote Weight Calculations", () => {

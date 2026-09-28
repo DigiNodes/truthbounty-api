@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { BlockchainStateService } from './state.service';
-import { BlockInfo, PendingEvent, ReorgEvent } from './types';
+import { BlockInfo, PendingEvent } from './types';
 
 describe('BlockchainStateService', () => {
   let service: BlockchainStateService;
@@ -483,7 +483,7 @@ describe('BlockchainStateService', () => {
       expect(state.finalizedBlock).toBe(80);
     });
 
-    it('should compute projection lag from observed head minus finalized cursor', async () => {
+    it('should compute the legacy projection lag from observed head minus finalized cursor', async () => {
       await service.setObservedHead(100);
       await service.setFinalizedBlock(80);
 
@@ -495,6 +495,61 @@ describe('BlockchainStateService', () => {
       await service.setFinalizedBlock(50);
 
       expect(service.getProjectionLag()).toBe(0);
+    });
+
+    it('should report indexer and finality lag as separate values', async () => {
+      await service.setObservedHead(200);
+      await service.setFinalizedBlock(180);
+      await service.setProjectionHead(170);
+
+      const health = await service.getIndexerHealth();
+      expect(health.indexerLagBlocks).toBe(10);
+      expect(health.finalityLagBlocks).toBe(20);
+      expect(health.status).toBe('healthy');
+    });
+
+    it('should remain healthy when both lag values equal their thresholds', async () => {
+      await service.setObservedHead(400);
+      await service.setFinalizedBlock(250);
+      await service.setProjectionHead(100);
+
+      const health = await service.getIndexerHealth();
+      expect(health.indexerLagBlocks).toBe(150);
+      expect(health.finalityLagBlocks).toBe(150);
+      expect(health.status).toBe('healthy');
+    });
+
+    it('should degrade when finalized data exceeds the indexer lag threshold', async () => {
+      await service.setObservedHead(200);
+      await service.setFinalizedBlock(180);
+      await service.setProjectionHead(29);
+
+      const health = await service.getIndexerHealth();
+      expect(health.indexerLagBlocks).toBe(151);
+      expect(health.finalityLagBlocks).toBe(20);
+      expect(health.status).toBe('degraded');
+    });
+
+    it('should fail closed when finality is ahead of the observed head', async () => {
+      await service.setObservedHead(100);
+      await service.setFinalizedBlock(110);
+      await service.setProjectionHead(120);
+
+      const health = await service.getIndexerHealth();
+      expect(health.indexerLagBlocks).toBe(0);
+      expect(health.finalityLagBlocks).toBe(0);
+      expect(health.status).toBe('unhealthy');
+    });
+
+    it('should degrade when finality lag exceeds its threshold independently', async () => {
+      await service.setObservedHead(331);
+      await service.setFinalizedBlock(180);
+      await service.setProjectionHead(180);
+
+      const health = await service.getIndexerHealth();
+      expect(health.indexerLagBlocks).toBe(0);
+      expect(health.finalityLagBlocks).toBe(151);
+      expect(health.status).toBe('degraded');
     });
 
     it('should track monotonic replay and dead-letter counters', async () => {
@@ -521,6 +576,7 @@ describe('BlockchainStateService', () => {
     it('should report healthy when behind thresholds', async () => {
       await service.setObservedHead(100);
       await service.setFinalizedBlock(95);
+      await service.setProjectionHead(95);
 
       const health = await service.getIndexerHealth();
       expect(health.status).toBe('healthy');
@@ -532,6 +588,7 @@ describe('BlockchainStateService', () => {
     it('should report degraded when projection lag exceeds threshold', async () => {
       await service.setObservedHead(500);
       await service.setFinalizedBlock(200);
+      await service.setProjectionHead(190);
 
       const health = await service.getIndexerHealth();
       expect(health.status).toBe('degraded');
@@ -543,6 +600,7 @@ describe('BlockchainStateService', () => {
     it('should report degraded when dead letters exceed threshold', async () => {
       await service.setObservedHead(100);
       await service.setFinalizedBlock(95);
+      await service.setProjectionHead(95);
       await service.recordDeadLetter(200);
 
       const health = await service.getIndexerHealth();
@@ -552,6 +610,7 @@ describe('BlockchainStateService', () => {
     it('should not leak credentials or live RPC endpoints in the snapshot', async () => {
       await service.setObservedHead(100);
       await service.setFinalizedBlock(95);
+      await service.setProjectionHead(95);
       await service.recordRpcFailure(new Error('timeout'));
 
       const health = await service.getIndexerHealth();
@@ -573,6 +632,29 @@ describe('BlockchainStateService', () => {
       const health = await service.getIndexerHealth();
       expect(health.rpcFailureCount).toBe(0);
       expect(health.observedHeadBlock).toBe(0);
+      expect(health.status).toBe('unhealthy');
+    });
+
+    it('should report unhealthy until all lag cursors are observed', async () => {
+      await service.setObservedHead(100);
+      await service.setFinalizedBlock(95);
+
+      const health = await service.getIndexerHealth();
+      expect(health.status).toBe('unhealthy');
+    });
+  });
+
+  describe('lag threshold configuration', () => {
+    it('should reject an invalid indexer lag threshold', () => {
+      const configService = {
+        get: jest.fn((key: string, defaultValue?: unknown) =>
+          key === 'blockchain.indexerLagThresholdBlocks' ? -1 : defaultValue,
+        ),
+      } as unknown as ConfigService;
+
+      expect(() => new BlockchainStateService(configService)).toThrow(
+        'blockchain.indexerLagThresholdBlocks must be a non-negative safe integer',
+      );
     });
   });
 });

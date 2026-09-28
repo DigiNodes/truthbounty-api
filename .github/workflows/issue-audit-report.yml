@@ -1,0 +1,37 @@
+name: V2 Issue Inventory Report
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 4 * * 1"
+  pull_request:
+    paths:
+      - ".github/scripts/issue-audit.mjs"
+      - ".github/workflows/issue-audit-report.yml"
+
+permissions:
+  contents: read
+  issues: read
+
+jobs:
+  audit:
+    name: Issue inventory audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Validate auditor syntax
+        run: node --check .github/scripts/issue-audit.mjs
+      - name: Generate issue inventory report
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ISSUE_PREFIX: V2-BE
+          MAX_TASK: "150"
+        run: node .github/scripts/issue-audit.mjs
+      - uses: actions/upload-artifact@v7
+        with:
+          name: v2-issue-inventory-report
+          path: reports/
+          retention-days: 30

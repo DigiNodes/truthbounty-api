@@ -1,0 +1,4 @@
+# Default ownership for production and governance changes.
+* @dDevAhmed
+/.github/ @dDevAhmed
+/src/ @dDevAhmed

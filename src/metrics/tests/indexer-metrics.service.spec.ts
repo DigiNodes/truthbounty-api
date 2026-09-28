@@ -15,11 +15,15 @@ describe('IndexerMetricsService', () => {
     safeBlock: 88,
     finalizedBlock: 80,
     projectionHeadBlock: 80,
+    indexerLagBlocks: 0,
+    finalityLagBlocks: 20,
     projectionLag: 20,
     rpcFailureCount: 4,
     replayCount: 7,
     deadLetterCount: 1,
     alertThresholds: {
+      indexerLagBlocks: 150,
+      finalityLagBlocks: 150,
       projectionLagBlocks: 150,
       rpcFailureRateWindow: 300000,
       maxDeadLetters: 100,
@@ -44,6 +48,8 @@ describe('IndexerMetricsService', () => {
       'indexer_safe_block',
       'indexer_finalized_block',
       'indexer_projection_head',
+      'indexer_lag_blocks',
+      'indexer_finality_lag_blocks',
       'indexer_projection_lag_blocks',
       'indexer_rpc_failures_total',
       'indexer_replay_count_total',
@@ -61,6 +67,8 @@ describe('IndexerMetricsService', () => {
     const metrics = await register.metrics();
 
     expect(metrics).toContain('indexer_projection_lag_blocks 20');
+    expect(metrics).toContain('indexer_lag_blocks 0');
+    expect(metrics).toContain('indexer_finality_lag_blocks 20');
     expect(metrics).toContain('indexer_rpc_failures_total 4');
     expect(metrics).toContain('indexer_replay_count_total 7');
     expect(metrics).toContain('indexer_dead_letters_total 1');

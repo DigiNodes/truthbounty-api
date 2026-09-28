@@ -4,7 +4,6 @@ import { Repository } from 'typeorm';
 import {
   AuditLog,
   AuditActionType,
-  AuditEntityType,
   AuditSeverity,
   AuditCategory,
 } from '../entities/audit-log.entity';

@@ -1,4 +1,4 @@
-import { UnauthorizedException, InternalServerErrorException, BadRequestException } from '@nestjs/common';
+import { UnauthorizedException, InternalServerErrorException } from '@nestjs/common';
 import { AuthService } from './auth.service';
 
 jest.mock('ethers', () => ({
@@ -192,7 +192,7 @@ describe('AuthService', () => {
           signature: '0xsig',
           message: `Sign in to TruthBounty: ${nonce}`,
         } as any),
-      ).rejects.toThrow('Challenge expired');
+      ).rejects.toThrow('Invalid credentials');
     });
 
     it('rejects stale challenge (Redis TTL desync)', async () => {
@@ -208,7 +208,7 @@ describe('AuthService', () => {
           signature: '0xsig',
           message: `Sign in to TruthBounty: ${nonce}`,
         } as any),
-      ).rejects.toThrow('Challenge expired');
+      ).rejects.toThrow('Invalid credentials');
     });
 
     it('accepts login just inside TTL window', async () => {
@@ -271,13 +271,67 @@ describe('AuthService', () => {
         throw new Error('invalid signature');
       });
 
+      // issue-416: constant-shape — parse failures collapse to generic 401.
       await expect(
         authService.login({
           address: '0xAbCd',
           signature: 'badsig',
           message: 'some message',
         } as any),
-      ).rejects.toThrow('Invalid signature format');
+      ).rejects.toThrow('Invalid credentials');
+    });
+
+    it('returns constant-shape 401 for all login failure modes (no enumeration)', async () => {
+      // address mismatch
+      (verifyMessage as jest.Mock).mockReturnValueOnce('0xDifferentAddress');
+      await expect(
+        authService.login({
+          address: '0xAaBbCc',
+          signature: '0xsig',
+          message: 'Sign in to TruthBounty: NONCE',
+        } as any),
+      ).rejects.toThrow('Invalid credentials');
+
+      // missing challenge
+      (verifyMessage as jest.Mock).mockReturnValueOnce('0xAaBbCc');
+      redisService.get.mockResolvedValueOnce(null);
+      await expect(
+        authService.login({
+          address: '0xAaBbCc',
+          signature: '0xsig',
+          message: 'Sign in to TruthBounty: NONCE',
+        } as any),
+      ).rejects.toThrow('Invalid credentials');
+
+      // invalid nonce
+      (verifyMessage as jest.Mock).mockReturnValueOnce('0xAaBbCc');
+      redisService.get.mockResolvedValueOnce(makeRecord('REALNONCE12345678901234567890', 0));
+      await expect(
+        authService.login({
+          address: '0xAaBbCc',
+          signature: '0xsig',
+          message: 'Sign in to TruthBounty: WRONGNONCE',
+        } as any),
+      ).rejects.toThrow('Invalid credentials');
+    });
+
+    it('prevents replay: concurrent reuse of the same nonce fails closed', async () => {
+      const address = '0xAaBbCc';
+      const nonce = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ123456';
+      (verifyMessage as jest.Mock).mockReturnValue(address);
+      // First use succeeds then nonce deleted; second GET misses.
+      redisService.get
+        .mockResolvedValueOnce(makeRecord(nonce, 0))
+        .mockResolvedValueOnce(null);
+      prisma.wallet.findFirst.mockResolvedValueOnce({ address, user: { id: 'u1' } } as any);
+
+      await expect(
+        authService.login({ address, signature: '0xsig', message: `Sign in to TruthBounty: ${nonce}` } as any),
+      ).resolves.toBeDefined();
+      await expect(
+        authService.login({ address, signature: '0xsig', message: `Sign in to TruthBounty: ${nonce}` } as any),
+      ).rejects.toThrow('Invalid credentials');
+      expect(redisService.del).toHaveBeenCalled();
     });
 
     it('returns token pair when user has no wallet yet (anonymous auth)', async () => {
@@ -345,8 +399,9 @@ describe('AuthService', () => {
     });
 
     it('should reject logout with empty payload', async () => {
-      await expect(authService.logout(null)).rejects.toBeInstanceOf(BadRequestException);
-      await expect(authService.logout({})).rejects.toBeInstanceOf(BadRequestException);
+      // issue-416: constant-shape auth failure (was BadRequest, now generic 401).
+      await expect(authService.logout(null)).rejects.toBeInstanceOf(UnauthorizedException);
+      await expect(authService.logout({})).rejects.toBeInstanceOf(UnauthorizedException);
     });
   });
 

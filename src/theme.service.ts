@@ -14,6 +14,12 @@ export class ThemeService {
   private readonly defaultTheme: Theme = 'system';
   private readonly storageKey = 'truthbounty-theme';
 
+  // Server-side preference store (anonymous + per-user). The frontend may
+  // additionally mirror this in localStorage; the service is the source of
+  // truth for the API so set-then-get round-trips are coherent.
+  private anonymousTheme: Theme = this.defaultTheme;
+  private readonly userThemes = new Map<string, Theme>();
+
   constructor(private configService: ConfigService) {}
 
   /**
@@ -21,14 +27,11 @@ export class ThemeService {
    * Priority: User preference > Default
    */
   getTheme(userId?: string): Theme {
-    // If user ID provided, get from database (future enhancement)
     if (userId) {
       return this.getUserThemeFromStorage(userId);
     }
 
-    // For anonymous users, return default theme
-    // Frontend should handle localStorage persistence
-    return this.defaultTheme;
+    return this.anonymousTheme;
   }
 
   /**
@@ -44,8 +47,9 @@ export class ThemeService {
     if (userId) {
       // Store in database for authenticated users
       this.saveUserThemeToStorage(userId, preference);
+    } else {
+      this.anonymousTheme = theme;
     }
-    // For anonymous users, frontend should handle localStorage
 
     return preference;
   }
@@ -90,8 +94,7 @@ export class ThemeService {
   private getUserThemeFromStorage(userId: string): Theme {
     try {
       // In a real implementation, this would query the database
-      // For now, return default
-      return this.defaultTheme;
+      return this.userThemes.get(userId) ?? this.defaultTheme;
     } catch {
       return this.defaultTheme;
     }
@@ -103,6 +106,7 @@ export class ThemeService {
   private saveUserThemeToStorage(userId: string, preference: ThemePreference): void {
     try {
       // In a real implementation, this would save to database
+      this.userThemes.set(userId, preference.theme);
       console.log(`Theme saved for user ${userId}: ${preference.theme}`);
     } catch (error) {
       console.warn(`Failed to save theme for user ${userId}:`, error);

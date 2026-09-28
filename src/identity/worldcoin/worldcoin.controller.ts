@@ -1,7 +1,6 @@
-import { Controller, Post, Get, Body, Param, HttpCode, HttpStatus, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { WorldcoinService } from './worldcoin.service';
-import { WorldIdVerification } from './entities/world-id-verification.entity';
 import { VerifyWorldcoinDto } from './dto/verify-worldcoin.dto';
 
 @ApiTags('identity/worldcoin')

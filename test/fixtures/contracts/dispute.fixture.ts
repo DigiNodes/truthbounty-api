@@ -100,7 +100,7 @@ export function createMockDispute(overrides: Partial<MockDisputeData> = {}): Dis
     resolvedAt: disputeData.resolvedAt,
     resolutionBlock: disputeData.resolutionBlock,
     votes: [],
-  } as Dispute;
+  } as unknown as Dispute;
 }
 
 /**
@@ -154,7 +154,7 @@ export function createMockDisputes(count: number = 3): Dispute[] {
  * Create multiple votes for a dispute
  */
 export function createMockVotes(dispute: Dispute, count: number = 5): any[] {
-  const votes = [];
+  const votes: any[] = [];
   let totalFor = 0n;
   let totalAgainst = 0n;
   let votesFor = 0;
@@ -162,7 +162,7 @@ export function createMockVotes(dispute: Dispute, count: number = 5): any[] {
 
   for (let i = 0; i < count; i++) {
     const voteType = i < 3 ? VoteType.FOR : VoteType.AGAINST; // 3 for, 2 against
-    const stakeAmount = ((i + 1) * 1000000000000000000n).toString(); // 1, 2, 3, 4, 5 ETH
+    const stakeAmount = (BigInt(i + 1) * 1000000000000000000n).toString(); // 1, 2, 3, 4, 5 ETH
     
     const vote = createMockVote(dispute, {
       vote: voteType,
@@ -181,10 +181,10 @@ export function createMockVotes(dispute: Dispute, count: number = 5): any[] {
   }
 
   // Update dispute totals
-  dispute.totalVotesFor = votesFor.toString();
-  dispute.totalVotesAgainst = votesAgainst.toString();
-  dispute.totalStakeFor = totalFor.toString();
-  dispute.totalStakeAgainst = totalAgainst.toString();
+  (dispute as any).totalVotesFor = votesFor.toString();
+  (dispute as any).totalVotesAgainst = votesAgainst.toString();
+  (dispute as any).totalStakeFor = totalFor.toString();
+  (dispute as any).totalStakeAgainst = totalAgainst.toString();
 
   return votes;
 }

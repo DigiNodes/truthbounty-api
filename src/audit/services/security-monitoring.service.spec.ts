@@ -29,6 +29,8 @@ describe('SecurityMonitoringService', () => {
     correlationId: 'corr-1',
     retentionUntil: null,
     integrityHash: null,
+    previousHash: null,
+    chainSequence: null,
     archived: false,
     user: null,
     createdAt: new Date(),

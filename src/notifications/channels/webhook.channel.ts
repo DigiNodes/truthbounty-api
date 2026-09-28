@@ -25,7 +25,7 @@ export class WebhookChannel implements NotificationChannel {
       return false;
     }
     
-    return preferences.enabledChannels[this.channelType] ?? false && preferences.webhookConfig.enabled;
+    return (preferences.enabledChannels?.[this.channelType] ?? false) && (preferences.webhookConfig?.enabled ?? false);
   }
 
   async send(notification: Notification): Promise<ChannelDeliveryResult> {

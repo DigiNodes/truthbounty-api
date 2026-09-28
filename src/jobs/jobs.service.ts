@@ -6,14 +6,13 @@ import {
 } from '@nestjs/common';
 import { RedisService } from '../redis/redis.service';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, IsNull, Not, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import { Stake } from '../staking/entities/stake.entity';
 import { Wallet } from '../entities/wallet.entity';
-import { Claim, ClaimState } from '../claims/entities/claim.entity';
+import { Claim } from '../claims/entities/claim.entity';
 import { User } from '../entities/user.entity';
 import { AggregationService } from '../aggregation/aggregation.service';
 import {
-  ClaimStatus,
   VerificationVerdict,
 } from '../aggregation/aggregation.types';
 import { ClaimsCache } from '../cache/claims.cache';
@@ -29,6 +28,12 @@ import {
   QueueMetrics,
   QueueName,
 } from './jobs.types';
+import {
+  calculateBackoffWithJitter,
+  classifyError,
+  determineRetryBehavior,
+  formatRetryMetadata,
+} from '../queue/retry-utils';
 
 const SCORE_BATCH_SIZE = 50;
 const REPUTATION_BATCH_SIZE = 100;
@@ -107,6 +112,8 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
     const attempts = options.attempts ?? DEFAULT_RETRY_POLICY.attempts;
     const backoffDelay =
       options.backoffDelay ?? DEFAULT_RETRY_POLICY.backoff.delay;
+    const jitterEnabled = DEFAULT_RETRY_POLICY.jitterEnabled ?? true;
+    const jitterRatio = DEFAULT_RETRY_POLICY.jitterRatio ?? 0.3;
 
     try {
       const job = await queue.add(name, data, {
@@ -121,8 +128,12 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
       this.logger.log(`Enqueued job ${name} (id: ${job.id}) on ${queueName}`);
       return job as Job<T>;
     } catch (error) {
+      const errorClassification = classifyError(error);
       this.logger.error(
         `Failed to enqueue job ${name}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      this.logger.debug(
+        `Enqueue error classification: ${errorClassification}`,
       );
       return null;
     }
@@ -173,14 +184,40 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
 
     const failed = await queue.getFailed();
     let retried = 0;
+    let skipped = 0;
+
     for (const job of failed) {
       try {
+        // Classify the error to determine if retry is appropriate
+        const errorClassification = classifyError(
+          job.failedReason || 'Unknown error',
+        );
+        const retryBehavior = determineRetryBehavior(
+          job.failedReason || 'Unknown error',
+          job.attemptsMade,
+        );
+
+        if (!retryBehavior.shouldRetry) {
+          this.logger.warn(
+            `Skipping non-retryable job ${job.id} (classification: ${errorClassification})`,
+          );
+          skipped++;
+          continue;
+        }
+
         await job.retry();
         retried++;
+        this.logger.debug(
+          `Retrying job ${job.id} with metadata: ${formatRetryMetadata(retryBehavior)}`,
+        );
       } catch (error) {
         this.logger.warn(`Failed to retry job ${job.id}: ${error}`);
       }
     }
+
+    this.logger.info(
+      `Retry summary for ${queueName}: ${retried} retried, ${skipped} skipped`,
+    );
     return retried;
   }
 

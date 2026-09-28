@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -277,7 +277,7 @@ export class SybilResistanceService {
 - Wallet age (${normalizedScores.walletAge.toFixed(2)}) - Account tenure
 - Staking participation (${normalizedScores.staking.toFixed(2)}) - Economic commitment
 - Claim accuracy (${normalizedScores.accuracy.toFixed(2)}) - Verification history
-Final score: ${Number(composite.toFixed(4))} (weighted average)`,
+Final score: ${composite.toFixed(4)} (weighted average)`,
     };
   }
 

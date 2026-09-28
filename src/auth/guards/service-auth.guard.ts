@@ -6,7 +6,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { timingSafeEqual } from 'crypto';
+import { timingSafeEqualUtf8 } from '../../common/utils/timing-safe.util';
 
 /**
  * Service-to-Service Authentication Guard
@@ -63,24 +63,7 @@ export class ServiceAuthGuard implements CanActivate {
   }
 
   private constantTimeEquals(a: string, b: string): boolean {
-    const aBuffer = Buffer.from(a, 'utf8');
-    const bBuffer = Buffer.from(b, 'utf8');
-
-    if (aBuffer.length !== bBuffer.length) {
-      // Use a dummy comparison to avoid leaking length via timing
-      const dummy = Buffer.from(b, 'utf8');
-      try {
-        timingSafeEqual(aBuffer, aBuffer); // This always returns true
-        return false;
-      } catch {
-        return false;
-      }
-    }
-
-    try {
-      return timingSafeEqual(aBuffer, bBuffer);
-    } catch {
-      return false;
-    }
+    // Canonical shared helper: dummy compare on length mismatch, never throws.
+    return timingSafeEqualUtf8(a, b);
   }
 }

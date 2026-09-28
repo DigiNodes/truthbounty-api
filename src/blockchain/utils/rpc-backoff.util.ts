@@ -366,20 +366,19 @@ export async function withRpcFailover<T>(
   fn: (provider: Record<string, any>) => Promise<T>,
   options: RpcProviderManagerOptions = {},
 ): Promise<T> {
-  const manager = new RpcProviderManager(providers, options);
+  void options;
+  let lastError: unknown;
 
   for (let index = 0; index < providers.length; index++) {
     const provider = providers[index];
     try {
-      return await manager.call<T>(
-        'call',
-        [provider, fn],
-        { expectedChainId: options.chainId },
-      );
-    } catch {
+      return await fn(provider);
+    } catch (error) {
+      lastError = error;
       // continue to the next provider in the ordered list
     }
   }
 
+  if (lastError !== undefined) throw lastError;
   throw new Error('All configured RPC providers failed');
 }

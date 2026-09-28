@@ -4,8 +4,6 @@ import { Repository, Like } from 'typeorm';
 import {
   Incident,
   IncidentStatus,
-  IncidentSeverity,
-  IncidentClassification,
 } from '../entities/incident.entity';
 import { AuditTrailService } from '../../audit/services/audit-trail.service';
 import { AuditActionType, AuditEntityType } from '../../audit/entities/audit-log.entity';
@@ -17,7 +15,7 @@ import {
   PostIncidentReportDto,
   IncidentQueryDto,
 } from '../dto/incident.dto';
-import { Admin, AdminRole } from '../entities/admin.entity';
+import { Admin } from '../entities/admin.entity';
 
 @Injectable()
 export class IncidentService {

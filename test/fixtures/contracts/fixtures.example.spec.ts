@@ -25,12 +25,12 @@ import {
   DisputeOutcome,
   VoteType,
 } from './dispute.fixture';
+import { StakingEventType } from '../../../src/staking/types/staking-event.type';
 import {
   CONTRACT_ADDRESSES,
   createTestWallet,
   createMockBlock,
   createMockTransactionReceipt,
-  MOCK_BLOCKCHAIN_CONFIG,
 } from './blockchain.fixture';
 import {
   clearDatabase,
@@ -38,6 +38,8 @@ import {
   mockConsole,
   restoreConsole,
   waitFor,
+  randomHex,
+  randomAddress,
 } from '../../utils/test-helpers';
 
 /**
@@ -72,10 +74,10 @@ describe('Contract Fixtures Example', () => {
       const stake = createMockStake();
       
       expect(stake).toBeDefined();
-      expect(stake.userId).toBeDefined();
+      expect((stake as any).userId).toBeDefined();
       expect(stake.walletAddress).toMatch(/^0x[a-fA-F0-9]{40}$/);
       expect(stake.amount).toBe('1000000000000000000');
-      expect(stake.isActive).toBe(true);
+      expect((stake as any).isActive).toBe(true);
     });
 
     it('should create mock stake with custom values', () => {
@@ -85,27 +87,27 @@ describe('Contract Fixtures Example', () => {
         isActive: false,
       });
       
-      expect(customStake.userId).toBe('user_123');
+      expect((customStake as any).userId).toBe('user_123');
       expect(customStake.amount).toBe('2000000000000000000');
-      expect(customStake.isActive).toBe(false);
+      expect((customStake as any).isActive).toBe(false);
     });
 
     it('should create multiple mock stakes', () => {
       const stakes = createMockStakes(10, 'user_123');
       
       expect(stakes).toHaveLength(10);
-      expect(stakes.every(stake => stake.userId === 'user_123')).toBe(true);
+      expect(stakes.every(stake => (stake as any).userId === 'user_123')).toBe(true);
       expect(stakes.every(stake => stake.amount)).toBeDefined();
     });
 
     it('should create mock stake event', () => {
       const stake = createMockStake();
-      const event = createMockStakeEvent(stake, 'STAKED');
+      const event = createMockStakeEvent(stake, 'STAKED' as unknown as StakingEventType);
       
-      expect(event.stakeId).toBe(stake.id);
-      expect(event.eventType).toBe('STAKED');
+      expect((event as any).stakeId).toBe((stake as any).id);
+      expect((event as any).eventType).toBe('STAKED');
       expect(event.amount).toBe('1000000000000000000');
-      expect(event.transactionHash).toMatch(/^0x[a-fA-F0-9]{64}$/);
+      expect((event as any).transactionHash).toMatch(/^0x[a-fA-F0-9]{64}$/);
     });
 
     it('should create mock staking transaction receipt', () => {
@@ -143,10 +145,10 @@ describe('Contract Fixtures Example', () => {
       const reward = createMockReward();
       
       expect(reward).toBeDefined();
-      expect(reward.title).toBe('Test Reward Distribution');
-      expect(reward.totalAmount).toBe('100000000000000000000');
-      expect(reward.isActive).toBe(true);
-      expect(reward.expiresAt.getTime()).toBeGreaterThan(Date.now());
+      expect((reward as any).title).toBe('Test Reward Distribution');
+      expect((reward as any).totalAmount).toBe('100000000000000000000');
+      expect((reward as any).isActive).toBe(true);
+      expect((reward as any).expiresAt.getTime()).toBeGreaterThan(Date.now());
     });
 
     it('should create mock reward with custom values', () => {
@@ -156,16 +158,16 @@ describe('Contract Fixtures Example', () => {
         isActive: false,
       });
       
-      expect(customReward.title).toBe('Custom Reward');
-      expect(customReward.totalAmount).toBe('500000000000000000000');
-      expect(customReward.isActive).toBe(false);
+      expect((customReward as any).title).toBe('Custom Reward');
+      expect((customReward as any).totalAmount).toBe('500000000000000000000');
+      expect((customReward as any).isActive).toBe(false);
     });
 
     it('should create multiple mock rewards', () => {
       const rewards = createMockRewards(5);
       
       expect(rewards).toHaveLength(5);
-      expect(rewards.map(r => r.title)).toEqual([
+      expect(rewards.map(r => (r as any).title)).toEqual([
         'Test Reward 1',
         'Test Reward 2',
         'Test Reward 3',
@@ -178,9 +180,9 @@ describe('Contract Fixtures Example', () => {
       const reward = createMockReward();
       const distribution = createMockRewardDistribution(reward);
       
-      expect(distribution.rewardId).toBe(reward.id);
-      expect(distribution.amount).toBe('1000000000000000000');
-      expect(distribution.claimed).toBe(false);
+      expect((distribution as any).rewardId).toBe((reward as any).id);
+      expect((distribution as any).amount).toBe('1000000000000000000');
+      expect((distribution as any).claimed).toBe(false);
     });
 
     it('should create mock reward claim', () => {
@@ -188,9 +190,9 @@ describe('Contract Fixtures Example', () => {
       const distribution = createMockRewardDistribution(reward);
       const claim = createMockRewardClaim(distribution, 'user_123');
       
-      expect(claim.distributionId).toBe(distribution.id);
-      expect(claim.userId).toBe('user_123');
-      expect(claim.claimedAmount).toBe(distribution.amount);
+      expect((claim as any).distributionId).toBe((distribution as any).id);
+      expect((claim as any).userId).toBe('user_123');
+      expect((claim as any).claimedAmount).toBe((distribution as any).amount);
     });
 
     it('should create mock rewards transaction receipt', () => {
@@ -229,8 +231,8 @@ describe('Contract Fixtures Example', () => {
       
       expect(dispute).toBeDefined();
       expect(dispute.claimId).toBeDefined();
-      expect(dispute.creatorAddress).toMatch(/^0x[a-fA-F0-9]{40}$/);
-      expect(dispute.evidenceCID).toMatch(/^Qm[a-zA-Z0-9]{44}$/);
+      expect((dispute as any).creatorAddress).toMatch(/^0x[a-fA-F0-9]{40}$/);
+      expect((dispute as any).evidenceCID).toMatch(/^Qm[a-zA-Z0-9]{44}$/);
       expect(dispute.outcome).toBe(DisputeOutcome.PENDING);
     });
 
@@ -243,7 +245,7 @@ describe('Contract Fixtures Example', () => {
       
       expect(customDispute.claimId).toBe('claim_999');
       expect(customDispute.outcome).toBe(DisputeOutcome.APPROVED);
-      expect(customDispute.description).toBe('Custom dispute description');
+      expect((customDispute as any).description).toBe('Custom dispute description');
     });
 
     it('should create multiple mock disputes', () => {
@@ -349,9 +351,9 @@ describe('Contract Fixtures Example', () => {
       expect(testData.disputes).toHaveLength(1);
       
       // Verify data was actually inserted
-      const stakeCount = await prisma.stake.count();
-      const rewardCount = await prisma.reward.count();
-      const disputeCount = await prisma.dispute.count();
+      const stakeCount = await (prisma as any).stake.count();
+      const rewardCount = await (prisma as any).reward.count();
+      const disputeCount = await (prisma as any).dispute.count();
       
       expect(stakeCount).toBe(3);
       expect(rewardCount).toBe(2);
@@ -363,16 +365,16 @@ describe('Contract Fixtures Example', () => {
       await seedTestData(prisma, { stakes: 2, rewards: 1 });
       
       // Verify data exists
-      expect(await prisma.stake.count()).toBeGreaterThan(0);
-      expect(await prisma.reward.count()).toBeGreaterThan(0);
+      expect(await (prisma as any).stake.count()).toBeGreaterThan(0);
+      expect(await (prisma as any).reward.count()).toBeGreaterThan(0);
       
       // Clear database
       await clearDatabase(prisma);
       
       // Verify data is cleared
-      expect(await prisma.stake.count()).toBe(0);
-      expect(await prisma.reward.count()).toBe(0);
-      expect(await prisma.dispute.count()).toBe(0);
+      expect(await (prisma as any).stake.count()).toBe(0);
+      expect(await (prisma as any).reward.count()).toBe(0);
+      expect(await (prisma as any).dispute.count()).toBe(0);
     }, 10000);
   });
 

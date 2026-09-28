@@ -232,7 +232,7 @@ export type AiUsageMetricGroupByOutputType = {
   _max: AiUsageMetricMaxAggregateOutputType | null
 }
 
-type GetAiUsageMetricGroupByPayload<T extends AiUsageMetricGroupByArgs> = Prisma.PrismaPromise<
+export type GetAiUsageMetricGroupByPayload<T extends AiUsageMetricGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<AiUsageMetricGroupByOutputType, T['by']> &
       {
@@ -1128,6 +1128,11 @@ export type AiUsageMetricFindManyArgs<ExtArgs extends runtime.Types.Extensions.I
    * Skip the first `n` AiUsageMetrics.
    */
   skip?: number
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+   * 
+   * Filter by unique combinations of AiUsageMetrics.
+   */
   distinct?: Prisma.AiUsageMetricScalarFieldEnum | Prisma.AiUsageMetricScalarFieldEnum[]
 }
 

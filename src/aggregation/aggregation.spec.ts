@@ -44,13 +44,13 @@ describe('AggregationService', () => {
 
     const result = service.aggregate('claim-1', verifications);
 
-    expect(result.status).toBe(ClaimStatus.INCONCLUSIVE);
+    expect(result.status).toBe(ClaimStatus.INCÓLUSIVE);
   });
 
   it('handles no verifications', () => {
     const result = service.aggregate('claim-1', []);
 
-    expect(result.status).toBe(ClaimStatus.INCONCLUSIVE);
+    expect(result.status).toBe(ClaimStatus.INCÓLUSIVE);
     expect(result.confidence).toBe(0);
   });
 });
