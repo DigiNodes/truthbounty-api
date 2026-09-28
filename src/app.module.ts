@@ -57,6 +57,7 @@ import { RealtimeModule } from './realtime/realtime.module';
 import { StakingModule } from './staking/staking.module';
 import { IdempotencyModule } from './common/idempotency/idempotency.module';
 import { IdempotencyGuard } from './common/idempotency/idempotency.guard';
+import { IndexerModule } from './indexer/indexer.module';
 
 // In-memory storage for development (no Redis needed)
 class ThrottlerMemoryStorage {
@@ -353,6 +354,7 @@ async function createThrottlerStorage(
     FeatureFlagsModule,
     RealtimeModule,
     StakingModule,
+    IndexerModule,
   ],
   controllers: [AppController],
   providers: [
