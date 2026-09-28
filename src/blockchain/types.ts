@@ -101,11 +101,18 @@ export interface IndexerHealthSnapshot {
   safeBlock: number;
   finalizedBlock: number;
   projectionHeadBlock: number;
+  /** Finalized canonical blocks not yet applied to projections (>= 0). */
+  indexerLagBlocks: number;
+  /** Observed head distance from the finalized cursor (>= 0). */
+  finalityLagBlocks: number;
   projectionLag: number;
   rpcFailureCount: number;
   replayCount: number;
   deadLetterCount: number;
   alertThresholds: {
+    indexerLagBlocks: number;
+    finalityLagBlocks: number;
+    /** @deprecated Retained as an alias for finalityLagBlocks. */
     projectionLagBlocks: number;
     rpcFailureRateWindow: number;
     maxDeadLetters: number;
