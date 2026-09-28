@@ -1,17 +1,28 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { Server } from 'socket.io';
+import { Injectable, Logger } from '@nestjs/common';
 import { Notification } from '../entities/notification.entity';
-import { DeliveryResult, DeliveryStatus } from '../interfaces/notification.types';
-import { RedisService } from '../../redis/redis.service';
+import { NotificationGateway } from '../websockets/websocket.gateway';
+import { DeliveryStatus } from '../interfaces/notification.types';
 
 @Injectable()
-export class WebSocketService implements OnModuleInit {
+export class WebSocketService {
   private readonly logger = new Logger(WebSocketService.name);
-  private server: Server;
-  private userSockets: Map<string, Set<string>> = new Map();
 
-  constructor(private readonly redisService: RedisService) {}
+  constructor(private readonly notificationGateway: NotificationGateway) {}
 
+  /**
+   * Broadcasts a notification to a user's connected WebSocket clients.
+   *
+   * If the user is online, the notification is sent immediately.
+   * If the user is offline, the notification is not sent, and the method
+   * returns a status indicating that the delivery should be retried later.
+   */
+  async broadcastNotification(notification: Notification): Promise<{
+    success: boolean;
+    status: DeliveryStatus;
+    deliveredAt?: Date;
+    error?: string;
+  }> {
+    const { userId, id: notificationId } = notification;
   onModuleInit() {
     this.initializeWebSocketServer();
   }
@@ -67,17 +78,15 @@ export class WebSocketService implements OnModuleInit {
     await this.redisService.sAdd(`active_sockets:${userId}`, socketId);
   }
 
-  private async removeUserSocket(socketId: string) {
-    for (const [userId, sockets] of this.userSockets.entries()) {
-      if (sockets.has(socketId)) {
-        sockets.delete(socketId);
-        await this.redisService.sRemove(`active_sockets:${userId}`, socketId);
-        
-        if (sockets.size === 0) {
-          this.userSockets.delete(userId);
-        }
-        break;
-      }
+    if (!this.notificationGateway.isUserOnline(userId)) {
+      this.logger.debug(
+        `User ${userId} is offline. WebSocket notification ${notificationId} will be queued.`,
+      );
+      return {
+        success: false,
+        status: DeliveryStatus.PENDING,
+        error: 'User is not online',
+      };
     }
   }
 
@@ -86,72 +95,40 @@ export class WebSocketService implements OnModuleInit {
     return Array.isArray(sockets) && sockets.length > 0;
   }
 
-  async sendToUser(userId: string, event: string, data: any): Promise<number> {
-    const userRoom = `user:${userId}`;
-    const sockets = await this.server.in(userRoom).allSockets();
-    const recipientCount = sockets.size;
-    
-    this.server.to(userRoom).emit(event, data);
-    this.logger.debug(`Sent ${event} to user ${userId}, ${recipientCount} recipients`);
-    
-    return recipientCount;
-  }
-
-  async broadcastNotification(notification: Notification): Promise<DeliveryResult> {
     try {
-      const isOnline = await this.isUserOnline(notification.userId);
-      
-      if (!isOnline) {
-        return {
-          success: false,
-          status: DeliveryStatus.FAILED,
-          error: 'User is not connected to WebSocket',
-        };
-      }
-      
-      const recipientCount = await this.sendToUser(
-        notification.userId,
-        'notification:new',
-        notification
+      const delivered = this.notificationGateway.sendToUser(
+        userId,
+        notification,
       );
-      
-      if (recipientCount > 0) {
+      if (delivered) {
+        this.logger.log(
+          `Successfully sent notification ${notificationId} to user ${userId} via WebSocket.`,
+        );
         return {
           success: true,
           status: DeliveryStatus.DELIVERED,
           deliveredAt: new Date(),
         };
       } else {
+        this.logger.warn(
+          `Failed to send notification ${notificationId} to user ${userId} via WebSocket.`,
+        );
         return {
           success: false,
           status: DeliveryStatus.FAILED,
-          error: 'No active connections found for user',
+          error: 'Failed to send notification',
         };
       }
     } catch (error) {
-      this.logger.error(`Failed to send WebSocket notification`, error);
+      this.logger.error(
+        `Error sending WebSocket notification ${notificationId} to user ${userId}:`,
+        error,
+      );
       return {
         success: false,
         status: DeliveryStatus.FAILED,
         error: error.message,
       };
     }
-  }
-
-  async broadcastGlobal(event: string, data: any): Promise<void> {
-    this.server.emit(event, data);
-    this.logger.debug(`Broadcast global event ${event} to all connected clients`);
-  }
-
-  getConnectedUsersCount(): number {
-    return this.userSockets.size;
-  }
-
-  getTotalConnections(): number {
-    let total = 0;
-    for (const sockets of this.userSockets.values()) {
-      total += sockets.size;
-    }
-    return total;
   }
 }

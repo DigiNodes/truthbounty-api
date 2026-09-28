@@ -289,9 +289,12 @@ export class EventIndexerService {
     try {
       const contract = this.config.contracts.find(
         (c) => c.address.toLowerCase() === contractAddress.toLowerCase(),
-      );
-      for (const eventConfig of contract?.events ?? []) {
-        await this.indexEventType(contractAddress, eventConfig, currentBlockNumber);
+      )?.events || []) {
+        await this.indexEventType(
+          contractAddress,
+          eventConfig,
+          currentBlockNumber,
+        );
       }
     } catch (error) {
       this.logger.error(`Failed to index contract ${contractAddress}:`, error);
@@ -316,7 +319,9 @@ export class EventIndexerService {
     });
 
     if (!state) {
-      this.logger.debug(`No state found for ${contractAddress}:${eventConfig.name}`);
+      this.logger.debug(
+        `No state found for ${contractAddress}:${eventConfig.name}`,
+      );
       return;
     }
 
@@ -782,7 +787,7 @@ export class EventIndexerService {
         lastScannedBlockNumber: contract.startBlock - 1,
         status: 'idle',
         blockRangePerBatch: this.config.blockRangePerBatch,
-        confirmationsRequired: this.config.confirmationsRequired,
+        confirmationsRequired: this.config.confirmations.finalized,
         maxRetryAttempts: this.config.maxRetryAttempts,
       });
       await this.stateRepository.save(state);
