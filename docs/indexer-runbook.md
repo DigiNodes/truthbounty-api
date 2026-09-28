@@ -16,7 +16,9 @@ and the remediation steps to follow.
 | Safe cursor | `indexer_safe_block` | `safeBlock` | Reorg-unlikely boundary from provider finality tags. |
 | Finalized cursor | `indexer_finalized_block` | `finalizedBlock` | Finality boundary (immutable state). |
 | Projection head | `indexer_projection_head` | `projectionHeadBlock` | Highest block projections (derived state) have advanced to. |
-| Projection lag | `indexer_projection_lag_blocks` | `projectionLag` | `observedHeadBlock - finalizedBlock` (>= 0). |
+| Indexer lag | `indexer_lag_blocks` | `indexerLagBlocks` | `finalizedBlock - projectionHeadBlock` (>= 0): finalized canonical blocks not yet projected. |
+| Finality lag | `indexer_finality_lag_blocks` | `finalityLagBlocks` | `observedHeadBlock - finalizedBlock` (>= 0): distance to provider-reported finality. |
+| Legacy projection lag | `indexer_projection_lag_blocks` | `projectionLag` | Compatibility metric; same value and threshold as finality lag. |
 | RPC failures | `indexer_rpc_failures_total` | `rpcFailureCount` | Cumulative RPC failures (sliding window rate also computed). |
 | Replay count | `indexer_replay_count_total` | `replayCount` | Cumulative event replays after reorg/retry. |
 | Dead letters | `indexer_dead_letters_total` | `deadLetterCount` | Cumulative events failed past max retries. |
@@ -36,10 +38,11 @@ All values are exposed via:
 
 | Alert | Threshold (default) | Config key | Status |
 | ----- | ------------------- | ---------- | ------ |
-| Projection lag | > 150 blocks | `blockchain.projectionLagThresholdBlocks` | degraded |
+| Indexer lag | > 150 blocks | `blockchain.indexerLagThresholdBlocks` | degraded |
+| Finality lag | > 150 blocks | `blockchain.finalityLagThresholdBlocks` (falls back to the legacy `blockchain.projectionLagThresholdBlocks`) | degraded |
 | RPC failures in window | >= 20 in 5 min | `blockchain.rpcFailureLimit` / `blockchain.rpcFailureWindowMs` | degraded |
 | Dead letters | > 100 | `blockchain.maxDeadLetters` | degraded |
-| Missing cursors / state | head or finalized unknown | — | unhealthy |
+| Missing or inconsistent cursors | observed/finalized/projection head unknown, or finalized > observed head | — | unhealthy |
 
 Health status is:
 
@@ -47,22 +50,39 @@ Health status is:
 - `degraded` — one or more thresholds exceeded (service still serving).
 - `unhealthy` — required state (head/finalized/RPC counters) unavailable; readiness fails closed.
 
+The lag signals are operational SLO indicators, not protocol-state inputs. Indexer
+lag measures unapplied finalized events; finality lag measures the gap between the
+provider-observed head and its finalized cursor. Neither signal advances a cursor
+or authorizes a state transition. Configure each threshold as a non-negative safe
+integer; invalid configuration prevents startup. The legacy `projectionLag` field,
+metric, and config key remain available for compatibility and refer to finality lag.
+Until observed, finalized, and projection cursors have been reported, the health
+status is `unhealthy`; zero-valued startup defaults are not treated as observed
+chain data. An impossible finalized-above-observed ordering is also reported as
+`unhealthy`; the lag gauges stay clamped at zero and must not be treated as
+evidence of health.
+
 ## Remediation steps
 
-1. **High projection lag**: the indexer is falling behind the finalized head.
+1. **High indexer lag**: the projection is falling behind finalized canonical data.
    - Verify the RPC provider is responsive (`indexer_rpc_failures_total` and rate).
    - Increase `blockchain.blockRangePerBatch` if `getLogs` batching is throttling.
    - Restart the indexer to resume from the persisted checkpoint.
    - Escalate if lag persists beyond 30 minutes.
-2. **RPC failure burst**: transient throttling or provider outage.
+2. **High finality lag**: the provider's finalized cursor is far behind its observed head.
+   - Compare `indexer_observed_head`, `indexer_finalized_block`, and the provider's
+     Optimism finality-tag responses; do not manually advance the finalized cursor.
+   - Investigate provider health or unexpected chain finalization delay, then use
+     the existing reorg/replay procedure if canonical history changed.
+3. **RPC failure burst**: transient throttling or provider outage.
    - Confirm the provider is reachable and the API key/allowlist is current.
    - The retry/backoff layer absorbs transient 429s; sustained failures indicate a
      provider or network issue.
-3. **Dead letters climbing**: events failing past `maxRetryAttempts`.
+4. **Dead letters climbing**: events failing past `maxRetryAttempts`.
    - Correlate with `processingError` on the affected events.
    - Fix the processing defect, then replay the affected block range (replay will
      re-increment `indexer_replay_count_total`).
-4. **Unhealthy (missing cursors)**: the indexer has not reported head/finalized state.
+5. **Unhealthy (missing cursors)**: the indexer has not reported head/finalized state.
    - Confirm the indexer process is running and the polling loop is active.
    - Check logs for startup or RPC connectivity errors.
 

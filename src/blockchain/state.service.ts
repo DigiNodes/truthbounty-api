@@ -24,10 +24,6 @@ export class BlockchainStateService {
     confirmedDepth: 0,
     pendingEventCount: 0,
     orphanedEventCount: 0,
-    observedHeadBlock: 0,
-    safeBlock: 0,
-    finalizedBlock: 0,
-    projectionHeadBlock: 0,
     rpcFailureCount: 0,
     replayCount: 0,
     deadLetterCount: 0,
@@ -40,7 +36,8 @@ export class BlockchainStateService {
   private readonly maxReorgHistoryEntries: number;
 
   // Alert thresholds (configurable, with safe defaults).
-  private readonly projectionLagThresholdBlocks: number;
+  private readonly indexerLagThresholdBlocks: number;
+  private readonly finalityLagThresholdBlocks: number;
   private readonly rpcFailureWindow: number;
   private readonly rpcFailureLimit: number;
   private readonly maxDeadLetters: number;
@@ -60,11 +57,27 @@ export class BlockchainStateService {
         1000,
       ) ?? 1000;
 
-    this.projectionLagThresholdBlocks =
+    this.indexerLagThresholdBlocks =
       this.configService?.get<number>(
-        'blockchain.projectionLagThresholdBlocks',
+        'blockchain.indexerLagThresholdBlocks',
         150,
       ) ?? 150;
+    this.finalityLagThresholdBlocks =
+      this.configService?.get<number>(
+        'blockchain.finalityLagThresholdBlocks',
+        this.configService?.get<number>(
+          'blockchain.projectionLagThresholdBlocks',
+          150,
+        ) ?? 150,
+      ) ?? 150;
+    for (const [name, threshold] of [
+      ['blockchain.indexerLagThresholdBlocks', this.indexerLagThresholdBlocks],
+      ['blockchain.finalityLagThresholdBlocks', this.finalityLagThresholdBlocks],
+    ] as const) {
+      if (!Number.isSafeInteger(threshold) || threshold < 0) {
+        throw new Error(`${name} must be a non-negative safe integer`);
+      }
+    }
     this.rpcFailureWindow =
       this.configService?.get<number>(
         'blockchain.rpcFailureWindowMs',
@@ -85,7 +98,8 @@ export class BlockchainStateService {
       `Memory limits — blocks: ${this.maxBlocksInMemory}, ` +
         `events: ${this.maxEventsInMemory}, ` +
         `reorg history: ${this.maxReorgHistoryEntries}, ` +
-        `projection lag threshold: ${this.projectionLagThresholdBlocks} blocks`,
+        `indexer lag threshold: ${this.indexerLagThresholdBlocks} blocks, ` +
+        `finality lag threshold: ${this.finalityLagThresholdBlocks} blocks`,
     );
   }
 
@@ -330,17 +344,31 @@ export class BlockchainStateService {
     return lag > 0 ? lag : 0;
   }
 
+  getIndexerLag(): number {
+    const lag =
+      (this.chainState.finalizedBlock ?? 0) -
+      (this.chainState.projectionHeadBlock ?? 0);
+    return lag > 0 ? lag : 0;
+  }
+
+  getFinalityLag(): number {
+    return this.getProjectionLag();
+  }
+
   /**
    * Derive the sanitized indexer health snapshot for health/metrics consumers.
    * Fails closed on incompatible state (missing cursors => unhealthy).
    */
   async getIndexerHealth(): Promise<IndexerHealthSnapshot> {
     const projectionLag = this.getProjectionLag();
+    const indexerLagBlocks = this.getIndexerLag();
+    const finalityLagBlocks = this.getFinalityLag();
     const rpcFailuresInWindow = this.getRpcFailuresInWindow();
 
     let status: IndexerHealthStatus = 'healthy';
     if (
-      projectionLag > this.projectionLagThresholdBlocks ||
+      indexerLagBlocks > this.indexerLagThresholdBlocks ||
+      finalityLagBlocks > this.finalityLagThresholdBlocks ||
       rpcFailuresInWindow >= this.rpcFailureLimit ||
       (this.chainState.deadLetterCount ?? 0) > this.maxDeadLetters
     ) {
@@ -349,7 +377,9 @@ export class BlockchainStateService {
     if (
       this.chainState.observedHeadBlock == null ||
       this.chainState.finalizedBlock == null ||
-      this.chainState.rpcFailureCount == null
+      this.chainState.projectionHeadBlock == null ||
+      this.chainState.rpcFailureCount == null ||
+      this.chainState.finalizedBlock > this.chainState.observedHeadBlock
     ) {
       status = 'unhealthy';
     }
@@ -361,12 +391,16 @@ export class BlockchainStateService {
       safeBlock: this.chainState.safeBlock ?? 0,
       finalizedBlock: this.chainState.finalizedBlock ?? 0,
       projectionHeadBlock: this.chainState.projectionHeadBlock ?? 0,
+      indexerLagBlocks,
+      finalityLagBlocks,
       projectionLag,
       rpcFailureCount: this.chainState.rpcFailureCount ?? 0,
       replayCount: this.chainState.replayCount ?? 0,
       deadLetterCount: this.chainState.deadLetterCount ?? 0,
       alertThresholds: {
-        projectionLagBlocks: this.projectionLagThresholdBlocks,
+        indexerLagBlocks: this.indexerLagThresholdBlocks,
+        finalityLagBlocks: this.finalityLagThresholdBlocks,
+        projectionLagBlocks: this.finalityLagThresholdBlocks,
         rpcFailureRateWindow: this.rpcFailureWindow,
         maxDeadLetters: this.maxDeadLetters,
       },
@@ -403,10 +437,6 @@ export class BlockchainStateService {
       confirmedDepth: 0,
       pendingEventCount: 0,
       orphanedEventCount: 0,
-      observedHeadBlock: 0,
-      safeBlock: 0,
-      finalizedBlock: 0,
-      projectionHeadBlock: 0,
       rpcFailureCount: 0,
       replayCount: 0,
       deadLetterCount: 0,

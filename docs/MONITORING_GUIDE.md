@@ -144,7 +144,9 @@ Optimism/EVM V2 pipeline, backed by the live `BlockchainStateService`:
 - `indexer_safe_block` — safe cursor (reorg-unlikely).
 - `indexer_finalized_block` — finalized cursor (finality boundary).
 - `indexer_projection_head` — highest block projections have advanced to.
-- `indexer_projection_lag_blocks` — projection lag (`observedHead - finalized`).
+- `indexer_lag_blocks` — finalized canonical blocks not yet applied to projections.
+- `indexer_finality_lag_blocks` — observed head distance from the finalized cursor.
+- `indexer_projection_lag_blocks` — legacy finality-lag alias (`observedHead - finalized`).
 - `indexer_rpc_failures_total` — cumulative RPC failures.
 - `indexer_replay_count_total` — cumulative event replays after reorg/retry.
 - `indexer_dead_letters_total` — cumulative dead-lettered events.
