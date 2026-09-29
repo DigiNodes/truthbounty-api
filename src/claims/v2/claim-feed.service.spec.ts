@@ -67,6 +67,11 @@ describe('ClaimFeedService', () => {
 
     service = module.get<ClaimFeedService>(ClaimFeedService);
     claimRepo = module.get<Repository<Claim>>(getRepositoryToken(Claim));
+    // epochExpression() reads the driver type off the repository manager;
+    // the generic Repository mock has no manager, so stub it as sqlite.
+    (claimRepo as any).manager = {
+      connection: { options: { type: 'sqlite' } },
+    };
     indexedEventRepo = module.get<Repository<IndexedEvent>>(getRepositoryToken(IndexedEvent));
     stakeRepo = module.get<Repository<Stake>>(getRepositoryToken(Stake));
     claimsCache = module.get<ClaimsCache>(ClaimsCache);
@@ -162,8 +167,8 @@ describe('ClaimFeedService', () => {
       await service.getFeed({ limit: 20, cursor });
 
       expect(qb.where).toHaveBeenCalledWith(
-        expect.stringContaining(':cursorDate'),
-        { cursorDate: expect.any(Date), cursorId: 'lastid' },
+        expect.stringContaining(':cursorEpoch'),
+        { cursorEpoch: expect.any(String), cursorId: 'lastid' },
       );
     });
 
@@ -265,12 +270,13 @@ describe('ClaimFeedService', () => {
     it('should use cached claim when available', async () => {
       const claim = makeClaim({ id: 'cached-1', title: 'Cached claim' });
       jest.spyOn(claimsCache, 'getClaim').mockResolvedValue(claim);
+      const findOneBySpy = jest.spyOn(claimRepo, 'findOneBy');
       jest.spyOn(indexedEventRepo, 'findOne').mockResolvedValue(null);
 
       const result = await service.getDetail('cached-1');
 
       expect(result.title).toBe('Cached claim');
-      expect(claimRepo.findOneBy).not.toHaveBeenCalled();
+      expect(findOneBySpy).not.toHaveBeenCalled();
     });
 
     it('should throw NotFoundException when claim does not exist', async () => {
@@ -311,6 +317,31 @@ describe('ClaimFeedService', () => {
       expect(result.confirmations.finalized).toBe(true);
       expect(result.confirmations.current).toBe(40);
       expect(result.confirmations.required).toBe(12);
+    });
+
+    it('fetches the latest ClaimCreated event exactly once per feed page, not once per row (N+1 regression guard)', async () => {
+      const claims = Array.from({ length: 10 }, (_, i) =>
+        makeClaim({ id: `id-${i}`, effectiveAt: new Date(2026, 7, 30, 0, i) }),
+      );
+      const qb = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        innerJoin: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue(claims),
+      };
+      jest.spyOn(claimRepo, 'createQueryBuilder').mockReturnValue(qb as any);
+      const findOneSpy = jest.spyOn(indexedEventRepo, 'findOne').mockResolvedValue({
+        confirmations: 5,
+        isFinalized: false,
+      } as IndexedEvent);
+
+      const result = await service.getFeed({ limit: 20 });
+
+      expect(result.data).toHaveLength(10);
+      expect(findOneSpy).toHaveBeenCalledTimes(1);
     });
   });
 });

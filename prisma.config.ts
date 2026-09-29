@@ -9,6 +9,10 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    url: process.env["DATABASE_URL"],
+    // Fall back to the file-backed dev database so `prisma migrate`
+    // commands work out of the box (including in CI, which provides no
+    // DATABASE_URL). Mirrors the runtime fallback in
+    // src/prisma/prisma.service.ts.
+    url: process.env["DATABASE_URL"] ?? "file:./dev.db",
   },
 });

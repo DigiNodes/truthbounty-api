@@ -39,7 +39,7 @@ export class NotificationsProcessor extends WorkerHost {
       }
 
       // Check category preferences
-      if (pref.disabledCategories && pref.disabledCategories.includes(notification.category)) {
+      if (notification.category && pref.disabledCategories && pref.disabledCategories.includes(notification.category)) {
         this.logger.debug(`Notification ${notificationId} skipped due to disabled category ${notification.category}`);
         notification.status = NotificationStatus.DISMISSED;
         await this.notificationRepository.save(notification);
@@ -47,7 +47,7 @@ export class NotificationsProcessor extends WorkerHost {
       }
 
       // Determine delivery channel
-      let channelToUse = notification.channel;
+      let channelToUse = notification.channel as unknown as NotificationChannel | undefined;
       if (!channelToUse) {
         // Fallback to IN_APP if no channel is explicitly provided, or use user's preferred channels
         channelToUse = (pref.enabledChannels && pref.enabledChannels.length > 0) ? pref.enabledChannels[0] as NotificationChannel : NotificationChannel.IN_APP;
@@ -61,7 +61,7 @@ export class NotificationsProcessor extends WorkerHost {
       }
 
       // Update notification with channel if it was missing
-      notification.channel = channelToUse;
+      notification.channel = channelToUse as unknown as typeof notification.channel;
 
       // Simulate quiet hours logic (simplified)
       if (pref.quietHoursEnabled && pref.quietHoursStart && pref.quietHoursEnd) {

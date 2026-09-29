@@ -1,4 +1,4 @@
-import { Controller, Get, Query, Res, UseGuards, ValidationPipe } from '@nestj/common';
+import { Controller, Get, Query, Res, UseGuards, ValidationPipe } from '@nestjs/common';
 import { Response } from 'express';
 import { AnalyticsService } from './analytics.service';
 import { AnalyticsQueryDto } from './dto/analytics-query.dto';
@@ -15,7 +15,7 @@ export class AnalyticsController {
     return this.analyticsService.getProtocolStatistics(query);
   }
 
-  Get('contributors')
+  @Get('contributors')
   getContributorAnalytics(@Query(new ValidationPipe({ transform: true })) query: AnalyticsQueryDto): Promise<AnalyticsResponse<any>> {
     return this.analyticsService.getContributorAnalytics(query);
   }
@@ -47,7 +47,7 @@ export class AnalyticsController {
 
   @Get('reports/export')
   async exportReport(
-    @Euery(new ValidationPipe({ transform: true })) query: AnalyticsQueryDto,
+    @Query(new ValidationPipe({ transform: true })) query: AnalyticsQueryDto,
     @Res() res: Response,
   ): Promise<void> {
     const csv = await this.analyticsService.generateCsvReport(query);

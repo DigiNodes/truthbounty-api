@@ -32,10 +32,12 @@ import { DeliveryHistory } from './entities/delivery-history.entity';
     BullModule.registerQueue(
       {
         name: 'notifications',
-        defaultAttempts: 5,
-        defaultBackoff: {
-          type: 'exponential',
-          delay: 1000,
+        defaultJobOptions: {
+          attempts: 5,
+          backoff: {
+            type: 'exponential',
+            delay: 1000,
+          },
         },
       },
       {
@@ -62,11 +64,13 @@ import { DeliveryHistory } from './entities/delivery-history.entity';
     EmailService,
     WebhookService,
     NotificationProcessor,
+    NotificationGateway,
   ],
   exports: [
     NotificationsService,
     NotificationPreferencesService,
     DeliveryHistoryService,
+    NotificationGateway,
   ],
 })
 export class NotificationsModule {}

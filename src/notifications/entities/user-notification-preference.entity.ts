@@ -10,8 +10,6 @@ import {
 } from 'typeorm';
 import { User } from '../../entities/user.entity';
 import {
-  DeliveryChannel,
-  NotificationType,
   NotificationFrequency,
 } from '../enums/notification-type.enum';
 

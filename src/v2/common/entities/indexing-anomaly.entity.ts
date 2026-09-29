@@ -4,6 +4,8 @@ import {
   Column,
   CreateDateColumn,
   Index,
+  Unique,
+  Check,
 } from 'typeorm';
 
 export enum IndexingAnomalyKind {
@@ -25,6 +27,22 @@ export enum IndexingAnomalyKind {
 @Entity('v2_indexing_anomalies')
 @Index(['sourceModule', 'kind'])
 @Index(['aggregateId'])
+@Unique('uq_v2_anomaly_identity', [
+  'sourceModule',
+  'kind',
+  'aggregateId',
+  'eventTxHash',
+  'eventLogIndex',
+])
+@Check('chk_v2_anomaly_log_nonneg', '"eventLogIndex" >= 0')
+@Check(
+  'chk_v2_anomaly_kind',
+  "\"kind\" IN ('duplicate_event','out_of_order','invalid_transition')",
+)
+@Check(
+  'chk_v2_anomaly_ids_present',
+  'length("sourceModule") > 0 AND length("aggregateId") > 0 AND length("eventTxHash") = 66',
+)
 export class IndexingAnomaly {
   @PrimaryGeneratedColumn('uuid')
   id: string;

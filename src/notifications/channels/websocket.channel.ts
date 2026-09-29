@@ -26,7 +26,7 @@ export class WebSocketChannel implements NotificationChannel {
       return true; // Default to enabled if no preferences set
     }
     
-    return preferences.enabledChannels[this.channelType] ?? true;
+    return preferences.enabledChannels?.[this.channelType] ?? true;
   }
 
   async send(notification: Notification): Promise<ChannelDeliveryResult> {
@@ -34,7 +34,7 @@ export class WebSocketChannel implements NotificationChannel {
       `Sending WebSocket notification ${notification.id} to user ${notification.recipientId}`,
     );
 
-    const delivered = this.gateway.sendToUser(notification.recipientId, notification);
+    const delivered = this.gateway.sendToUser(notification.recipientId ?? notification.userId, notification);
     
     if (delivered) {
       return {

@@ -5,6 +5,12 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { MetricsService } from '../metrics/metrics.service';
+import {
+  classifyError,
+  determineRetryBehavior,
+  ErrorClassification,
+  formatRetryMetadata,
+} from '../queue/retry-utils';
 
 /** Routing-only metadata — no PII, settlement, or claim content */
 export interface OutboxEventPayload {
@@ -160,6 +166,12 @@ export class OutboxService {
         return;
       }
 
+      // Use hardened retry behavior to determine if we should retry and with what delay
+      const retryBehavior = determineRetryBehavior(
+        new Error('Queue dispatch'),
+        event.retryCount,
+      );
+
       const job = await this.queue.add(
         OUTBOX_JOB_NAME,
         {
@@ -171,8 +183,11 @@ export class OutboxService {
         },
         {
           jobId: `outbox-${event.idempotencyKey}`,
-          attempts: 5,
-          backoff: { type: 'exponential', delay: 1000 },
+          attempts: retryBehavior.classification === ErrorClassification.NETWORK ? 5 : 3,
+          backoff: {
+            type: 'exponential',
+            delay: retryBehavior.nextDelayMs || 1000,
+          },
           removeOnComplete: { count: 100 },
           removeOnFail: { count: 500 },
         },
@@ -190,8 +205,12 @@ export class OutboxService {
       this.metricsService.incrementCounter('outbox_events_dispatched_total', 1);
       this.logger.debug(`OutboxEvent ${event.id} dispatched as BullMQ job ${job.id}`);
     } catch (error) {
+      // Classify the error to determine retry behavior
+      const errorClassification = classifyError(error);
+      const retryBehavior = determineRetryBehavior(error, event.retryCount);
+
       const newRetryCount = event.retryCount + 1;
-      const isDead = newRetryCount >= event.maxRetries;
+      const isDead = !retryBehavior.shouldRetry;
 
       await this.prisma.outboxEvent.update({
         where: { id: event.id },
@@ -209,10 +228,16 @@ export class OutboxService {
         this.logger.error(
           `OutboxEvent ${event.id} dead-lettered after ${newRetryCount} retries: ${error?.message}`,
         );
+        this.logger.debug(
+          `Dead-letter metadata: ${formatRetryMetadata(retryBehavior)}`,
+        );
       } else {
         this.metricsService.incrementCounter('outbox_events_relay_failed_total', 1);
         this.logger.warn(
           `OutboxEvent ${event.id} relay failed (attempt ${newRetryCount}/${event.maxRetries}): ${error?.message}`,
+        );
+        this.logger.debug(
+          `Retry metadata: ${formatRetryMetadata(retryBehavior)}`,
         );
       }
     }

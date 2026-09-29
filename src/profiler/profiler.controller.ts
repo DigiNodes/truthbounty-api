@@ -10,7 +10,7 @@ import {
   BadRequestException,
   Header,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { ProfilerService } from './profiler.service';
 import { SamplingConfig, SpanCategory } from './interfaces/profiler.interface';
 

@@ -97,7 +97,7 @@ export function createMockRewardDistribution(
   overrides: Partial<MockRewardDistributionData> = {}
 ): RewardDistribution {
   const defaultData: MockRewardDistributionData = {
-    rewardId: reward.id,
+    rewardId: (reward as any).id,
     recipientAddress: createTestWallet().address,
     amount: '1000000000000000000', // 1 ETH
     claimed: false,
@@ -115,7 +115,7 @@ export function createMockRewardDistribution(
     transactionHash: distributionData.transactionHash,
     createdAt: new Date(),
     updatedAt: new Date(),
-  } as RewardDistribution;
+  } as unknown as RewardDistribution;
 }
 
 /**
@@ -127,9 +127,9 @@ export function createMockRewardClaim(
   overrides: Partial<MockRewardClaimData> = {}
 ): RewardClaim {
   const defaultData: MockRewardClaimData = {
-    distributionId: distribution.id,
+    distributionId: (distribution as any).id,
     userId,
-    claimedAmount: distribution.amount,
+    claimedAmount: (distribution as any).amount,
     claimedAt: new Date(),
     transactionHash: `0x${Math.random().toString(16).substr(2, 64)}`,
     blockNumber: Math.floor(Math.random() * 1000000),
@@ -146,7 +146,7 @@ export function createMockRewardClaim(
     transactionHash: claimData.transactionHash,
     blockNumber: claimData.blockNumber,
     createdAt: new Date(),
-  } as RewardClaim;
+  } as unknown as RewardClaim;
 }
 
 /**
@@ -277,8 +277,8 @@ export function createMockRewardsState(overrides: Partial<MockRewardsState> = {}
     const reward1 = createMockReward({ id: 'reward_1' });
     const reward2 = createMockReward({ id: 'reward_2' });
     
-    state.distributionMap.set(reward1.id, createMockDistributions(reward1, 3));
-    state.distributionMap.set(reward2.id, createMockDistributions(reward2, 2));
+    state.distributionMap.set((reward1 as any).id, createMockDistributions(reward1, 3));
+    state.distributionMap.set((reward2 as any).id, createMockDistributions(reward2, 2));
   }
 
   return state;

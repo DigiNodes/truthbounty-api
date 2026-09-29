@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DeepPartial } from 'typeorm';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { Notification } from './entities/notification.entity';
@@ -22,7 +22,7 @@ export class NotificationsService {
   ) {}
 
   async queueNotification(createDto: CreateNotificationDto): Promise<Notification> {
-    const notification = this.notificationRepository.create(createDto);
+    const notification = this.notificationRepository.create(createDto as unknown as DeepPartial<Notification>);
     notification.status = NotificationStatus.QUEUED;
     const savedNotification = await this.notificationRepository.save(notification);
 

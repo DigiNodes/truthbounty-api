@@ -3,7 +3,6 @@ import { createWriteStream, promises as fsPromises } from 'fs';
 import path from 'path';
 import { pipeline } from 'stream/promises';
 import crypto from 'crypto';
-import os from 'os';
 import { Readable, Transform } from 'stream';
 import { IpfsProvider, IpfsAddResult, IPFS_PROVIDER } from './interfaces';
 import { IpfsConfigService } from './ipfs.config';

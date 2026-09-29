@@ -8,6 +8,9 @@ import { ArtifactRegistryService } from './artifact-registry.service';
 import { EventDecoderService } from './event-decoder.service';
 import { CanonicalEventsService } from './canonical-events.service';
 import { CanonicalEventQueryService } from './canonical-event-query.service';
+import { IndexerConfigService } from '../../config/indexer-config.service';
+
+import { ReorgRollbackService } from './reorg-rollback.service';
 
 @Module({
   imports: [
@@ -23,11 +26,14 @@ import { CanonicalEventQueryService } from './canonical-event-query.service';
     EventDecoderService,
     CanonicalEventsService,
     CanonicalEventQueryService,
+    ReorgRollbackService,
+    IndexerConfigService,
   ],
   exports: [
     CanonicalEventsService,
     CanonicalEventQueryService,
     ArtifactRegistryService,
+    ReorgRollbackService,
     TypeOrmModule,
   ],
 })

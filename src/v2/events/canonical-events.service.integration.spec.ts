@@ -13,6 +13,7 @@ import {
 import { EventCheckpoint } from './entities/event-checkpoint.entity';
 import { RawLog } from './interfaces/canonical-event.interface';
 import { DataSource, Repository } from 'typeorm';
+import * as crypto from 'crypto';
 
 /**
  * Exercises CanonicalEventsService against a real (sqlite, in-memory)
@@ -98,6 +99,7 @@ describe('CanonicalEventsService (integration)', () => {
       chainId: 10,
       contractAddress,
       artifactVersion: 'v1',
+      abiChecksum: crypto.createHash('sha256').update(JSON.stringify(abi)).digest('hex'),
       abi,
       isApproved: true,
     });

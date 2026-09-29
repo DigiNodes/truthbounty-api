@@ -1,6 +1,6 @@
 import { NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
-import { ClaimResolutionService, VoteWeightSummary } from './claim-resolution.service';
-import { Claim, ClaimState } from './entities/claim.entity';
+import { ClaimResolutionService } from './claim-resolution.service';
+import { Claim } from './entities/claim.entity';
 import { ClaimFactory } from './factories/claim.factory';
 
 // ─── Shared stubs ────────────────────────────────────────────────────────────
@@ -256,17 +256,18 @@ describe('ClaimResolutionService.resolveClaim', () => {
 // ------------------------------------------------------------------ //
 describe('ClaimResolutionService.resolveClaim — resolvedAt invariant (BE-219)', () => {
   function makeService() {
-    // Minimal mock repo and cache
-    const mockClaim = {
+    // Real Claim instance (not a plain object) so the service's
+    // claim.transitionTo() state-machine call works.
+    const mockClaim = ClaimFactory.createClaim({
       id: 'claim-001',
       resolvedVerdict: null,
       resolvedAt: null,
       confidenceScore: null,
       finalized: false,
-    };
+    });
 
     const mockRepo: any = {
-      findOneBy: jest.fn().mockResolvedValue({ ...mockClaim }),
+      findOneBy: jest.fn().mockResolvedValue(mockClaim),
       save: jest.fn().mockImplementation(async (c: any) => ({ ...c })),
     };
 
@@ -274,7 +275,15 @@ describe('ClaimResolutionService.resolveClaim — resolvedAt invariant (BE-219)'
       invalidateClaim: jest.fn().mockResolvedValue(undefined),
     };
 
-    return { service: new ClaimResolutionService(mockRepo, mockCache), mockRepo, mockCache };
+    const mockDataSource: any = {
+      transaction: jest
+        .fn()
+        .mockImplementation((cb: (manager: any) => Promise<any>) =>
+          cb({ save: mockRepo.save }),
+        ),
+    };
+
+    return { service: new ClaimResolutionService(mockRepo, mockCache, mockDataSource), mockRepo, mockCache };
   }
 
   it('sets resolvedAt to a non-null Date when a claim is resolved (BE-219)', async () => {
@@ -308,25 +317,25 @@ describe('ClaimResolutionService.resolveClaim — resolvedAt invariant (BE-219)'
   it('sets finalized = true along with resolvedAt (BE-219)', async () => {
     const { service } = makeService();
     const result = await service.resolveClaim('claim-001', { trueWeight: 150, falseWeight: 50 });
-    expect(result.finalized).toBe(true);
+    expect(result.claim.finalized).toBe(true);
     expect(result.resolvedAt).not.toBeNull();
   });
 
   it('throws when claim is not found', async () => {
     const { service, mockRepo } = makeService();
     mockRepo.findOneBy.mockResolvedValue(null);
-    await expect(service.resolveClaim('bad-id', { trueWeight: 100, falseWeight: 50 })).rejects.toThrow('Claim not found');
+    await expect(service.resolveClaim('bad-id', { trueWeight: 100, falseWeight: 50 })).rejects.toThrow('Claim with ID bad-id not found');
   });
 
   it('resolvedVerdict=true when trueWeight > falseWeight', async () => {
     const { service } = makeService();
     const result = await service.resolveClaim('claim-001', { trueWeight: 150, falseWeight: 50 });
-    expect(result.resolvedVerdict).toBe(true);
+    expect(result.claim.resolvedVerdict).toBe(true);
   });
 
   it('resolvedVerdict=false when falseWeight > trueWeight', async () => {
     const { service } = makeService();
     const result = await service.resolveClaim('claim-001', { trueWeight: 50, falseWeight: 150 });
-    expect(result.resolvedVerdict).toBe(false);
+    expect(result.claim.resolvedVerdict).toBe(false);
   });
 });

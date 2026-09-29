@@ -1,4 +1,67 @@
 import { ClaimState, isTransitionAllowed } from '../../domain/claim/claimState';
+import {
+  ClaimLifecycleEventType,
+  EVENT_TYPE_TO_STATE,
+} from '../../domain/claim/canonical-claim-event';
+
+interface ClaimEventLogRecord {
+  processedAt?: Date | null;
+  state?: unknown;
+  updatedAtBlock?: bigint;
+  lastEventLogIndex?: number;
+}
+
+interface ClaimRecord {
+  state: unknown;
+  updatedAtBlock: bigint;
+  lastEventLogIndex: number;
+}
+
+interface DbClient {
+  claimEventLog: {
+    findUnique(args: unknown): Promise<ClaimEventLogRecord | null>;
+    upsert(args: unknown): Promise<unknown>;
+    update(args: unknown): Promise<unknown>;
+  };
+  claimRecord: {
+    findUnique(args: unknown): Promise<ClaimRecord | null>;
+    upsert(args: unknown): Promise<unknown>;
+  };
+}
+
+class InvalidClaimTransitionError extends Error {
+  constructor(claimId: string, from: unknown, to: unknown, txHash: string) {
+    super(
+      `Invalid claim transition for ${claimId}: ${String(from)} -> ${String(to)} (${txHash})`,
+    );
+    this.name = 'InvalidClaimTransitionError';
+  }
+}
+
+function mapEventToState(eventName: string): ClaimState {
+  return EVENT_TYPE_TO_STATE[eventName as ClaimLifecycleEventType];
+}
+
+function buildInitialRecord(evt: CanonicalClaimEvent): Record<string, unknown> {
+  return {
+    id: evt.claimId,
+    state: mapEventToState(evt.eventName),
+    updatedAtBlock: evt.blockNumber,
+    lastEventLogIndex: evt.logIndex,
+    txHash: evt.txHash,
+    payload: evt.payload,
+  };
+}
+
+function buildStateUpdate(evt: CanonicalClaimEvent, nextState: ClaimState): Record<string, unknown> {
+  return {
+    state: nextState,
+    updatedAtBlock: evt.blockNumber,
+    lastEventLogIndex: evt.logIndex,
+    txHash: evt.txHash,
+    payload: evt.payload,
+  };
+}
 
 interface CanonicalClaimEvent {
   claimId: string;

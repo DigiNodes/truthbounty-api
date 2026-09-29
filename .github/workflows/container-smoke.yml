@@ -1,0 +1,189 @@
+name: Container Smoke Build
+
+# Companion to the `Container Vulnerability Scan` job in ci.yml. That job asks
+# "is the shipped image vulnerable?". This workflow asks the reproducibility
+# questions instead: does the image build from a clean checkout with no local
+# cache, does the build actually consume the committed lockfile, and does the
+# resulting image carry what it needs and nothing it must not.
+#
+# The two workflows deliberately build separately. Keeping them apart means a
+# scan result is never attributed to an image this workflow did not build, and
+# vice versa. The cost is one extra image build per run.
+#
+# Runner-stage hardening (non-root USER, HEALTHCHECK, .dockerignore) is owned by
+# issue #498 and is intentionally NOT asserted as a pass/fail gate here.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  container-smoke:
+    name: Container Smoke Build
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Build from a pristine export of the committed tree, with the base image
+      # re-pulled and the layer cache disabled. This is the "clean checkout, no
+      # local cache" requirement: no node_modules, no previous build output and
+      # no uncommitted local file can influence the result.
+      - name: Build the image from a clean checkout
+        run: |
+          set -euo pipefail
+          context="$(mktemp -d)"
+          git archive --format=tar HEAD | tar -x -C "$context"
+          echo "context=$context"
+          ls -1 "$context"
+
+          docker build \
+            --pull \
+            --no-cache \
+            --tag truthbounty-api:smoke \
+            --file "$context/Dockerfile" \
+            "$context"
+
+      - name: Assert the builder stage installs from the committed lockfile
+        run: |
+          set -euo pipefail
+          context="$(mktemp -d)"
+          git archive --format=tar HEAD | tar -x -C "$context"
+
+          # Introduce drift in package.json only, leaving package-lock.json
+          # untouched. A builder stage that honours the lockfile must refuse to
+          # install; a builder stage that re-resolves (`npm install`) will happily
+          # build, which is exactly the drift this gate exists to catch.
+          node -e '
+            const fs = require("fs");
+            const path = process.argv[1];
+            const pkg = JSON.parse(fs.readFileSync(path, "utf8"));
+            pkg.dependencies["socket.io"] = "4.8.0";
+            fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + "\n");
+          ' "$context/package.json"
+
+          output_file="$(mktemp)"
+          if docker build --pull --no-cache --file "$context/Dockerfile" "$context" >"$output_file" 2>&1; then
+            echo "::error::The container build succeeded even though package.json and package-lock.json disagree. The builder stage is not consuming the committed lockfile."
+            exit 1
+          fi
+
+          cat "$output_file"
+          if ! grep -qiE 'out of sync|not in sync|does not satisfy|Invalid: lock file' "$output_file"; then
+            echo "::error::The build failed, but not for a lockfile-drift reason. This step cannot distinguish drift detection from an unrelated build failure; treat it as an unresolved failure rather than a pass."
+            exit 1
+          fi
+
+          echo "Dependency drift is rejected by the container build, as intended."
+
+      - name: Assert the runtime image carries the expected artifacts
+        run: |
+          set -euo pipefail
+          if ! output=$(docker run --rm --entrypoint sh truthbounty-api:smoke -c '
+            for path in /app/dist/main.js /app/node_modules /app/package.json /app/package-lock.json /app/src/generated; do
+              [ -e "$path" ] || { echo "missing expected runtime artifact: $path"; exit 1; }
+            done
+            echo "all expected runtime artifacts present"
+          ' 2>&1); then
+            echo "::error::The shipped image is missing at least one expected runtime artifact."
+            printf '%s\n' "$output"
+            exit 1
+          fi
+          printf '%s\n' "$output"
+
+      - name: Assert dev-only dependencies and credentials are absent from the shipped image
+        run: |
+          set -euo pipefail
+          # `npm prune --production` in the builder stage must have removed
+          # devDependencies, including the Prisma CLI.
+          if ! output=$(docker run --rm --entrypoint sh truthbounty-api:smoke -c '
+            for pkg in typescript @nestjs/cli jest prisma; do
+              [ ! -e "/app/node_modules/$pkg" ] || { echo "dev-only dependency present in the production image: $pkg"; exit 1; }
+            done
+            for pkg in typeorm @nestjs/core @prisma/client; do
+              [ -e "/app/node_modules/$pkg" ] || { echo "runtime dependency missing from the production image: $pkg"; exit 1; }
+            done
+
+            # .dockerignore keeps .env out of the build context, and the runner
+            # stage copies only package*.json, node_modules, dist and
+            # src/generated, so no environment file can reach the shipped image.
+            found=$(find /app -maxdepth 1 -name ".env*" -print)
+            [ -z "$found" ] || { echo "environment file baked into the shipped image: $found"; exit 1; }
+
+            echo "no dev-only dependencies or environment files in the shipped image"
+          ' 2>&1); then
+            echo "::error::The shipped image carries dev-only dependencies or environment files."
+            printf '%s\n' "$output"
+            exit 1
+          fi
+          printf '%s\n' "$output"
+
+          # Known gap, reported rather than failed: `COPY . .` in the builder
+          # stage still pulls tracked env templates such as .env.docker into an
+          # intermediate layer. They are not in the shipped image, but they are
+          # in the builder's layer history. Fixing it means editing .dockerignore
+          # or the builder COPY, both of which issue #498 owns. Reported here so
+          # it is not mistaken for a clean bill of health.
+          docker build --target builder --tag truthbounty-api:builder-smoke .
+          builder_env=$(docker run --rm --entrypoint sh truthbounty-api:builder-smoke -c \
+            'ls -1a /app | grep -E "^\.env" | paste -sd " " -')
+
+          if [ -n "$builder_env" ]; then
+            echo "::warning::The builder stage context contains ${builder_env}. These are not in the shipped image, but they are in the builder layer history. Removing them is owned by issue #498."
+          else
+            echo "The builder stage context contains no .env* files."
+          fi
+
+          {
+            echo "### Builder-stage environment templates"
+            echo
+            echo "\`${builder_env:-none}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Report the image's declared health check
+        run: |
+          set -euo pipefail
+          declared=$(docker inspect --format '{{json .Config.Healthcheck}}' truthbounty-api:smoke)
+          cmd=$(docker inspect --format '{{json .Config.Cmd}}' truthbounty-api:smoke)
+          user=$(docker inspect --format '{{json .Config.User}}' truthbounty-api:smoke)
+
+          echo "Healthcheck: $declared"
+          echo "Cmd:         $cmd"
+          echo "User:        $user"
+
+          {
+            echo "### Container runtime declaration"
+            echo
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| \`Healthcheck\` | \`$declared\` |"
+            echo "| \`Cmd\` | \`$cmd\` |"
+            echo "| \`User\` | \`$user\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$declared" = "null" ]; then
+            echo "::warning::The runner stage declares no HEALTHCHECK. Adding one (and the non-root USER) is owned by issue #498, so this workflow reports the gap instead of gating on it."
+          fi
+
+          # The liveness route the eventual HEALTHCHECK should target must exist
+          # in the source. GET /health/live is served by HealthController, which
+          # is @Public() and requires no dependency, so it is the correct probe.
+          if ! grep -q "@Get('live')" src/health/health.controller.ts; then
+            echo "::error::The documented liveness probe route is missing from src/health/health.controller.ts; a container HEALTHCHECK would have no target."
+            exit 1
+          fi
+          if ! grep -q "@Controller('health')" src/health/health.controller.ts; then
+            echo "::error::The documented liveness probe is not mounted at /health."
+            exit 1
+          fi
+
+          echo "Documented liveness probe GET /health/live is present in the source."

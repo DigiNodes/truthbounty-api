@@ -80,7 +80,7 @@ export class ConfigurationService {
       await this.historyRepo.insert({
         configurationId: existing.id,
         key,
-        value: value as unknown,
+        value: value as any,
         environment: env,
         version: nextVersion,
         createdBy,
@@ -103,7 +103,7 @@ export class ConfigurationService {
     await this.historyRepo.insert({
       configurationId: saved.id,
       key,
-      value: value as unknown,
+      value: value as any,
       environment: env,
       version: 1,
       createdBy,
