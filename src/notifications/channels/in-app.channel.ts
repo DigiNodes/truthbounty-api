@@ -1,49 +1,90 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { NotificationChannel as ChannelType, Notification } from '../entities/notification.entity';
-import { UserNotificationPreferences } from '../entities/notification.entity';
-import { NotificationChannel, ChannelDeliveryResult } from './channel.interface';
+import { NotificationChannel, ChannelDeliveryResult, RenderedNotificationPayload } from './channel.interface';
+import { Notification } from '../entities/notification.entity';
+import { NotificationStatus } from '../enums/notification-status.enum';
 
+/**
+ * InAppChannel
+ * 
+ * Delivers notifications as in-app messages stored in the database.
+ * Users see these in the notification dashboard.
+ * 
+ * Features:
+ * - Instant delivery (no external dependencies)
+ * - Message history tracking
+ * - Read/dismiss status tracking
+ * - No delivery failures (always succeeds)
+ */
 @Injectable()
 export class InAppChannel implements NotificationChannel {
+  readonly channelType = 'IN_APP';
   private readonly logger = new Logger(InAppChannel.name);
-  readonly channelType = ChannelType.IN_APP;
 
   constructor(
-    @InjectRepository(UserNotificationPreferences)
-    private readonly preferencesRepository: Repository<UserNotificationPreferences>,
+    @InjectRepository(Notification)
+    private notificationRepository: Repository<Notification>,
   ) {}
 
   async isEnabled(userId: string): Promise<boolean> {
-    const preferences = await this.preferencesRepository.findOne({
-      where: { userId },
-    });
-    
-    if (!preferences) {
-      return true; // Default to enabled if no preferences set
-    }
-    
-    return preferences.enabledChannels?.[this.channelType] ?? true;
+    // In-app channel is always available
+    return true;
   }
 
-  async send(notification: Notification): Promise<ChannelDeliveryResult> {
-    this.logger.debug(
-      `Sending in-app notification ${notification.id} to user ${notification.recipientId}`,
-    );
-    
-    // In-app notifications are just stored in the database, they're retrieved via API
-    // The WebSocket server will broadcast the new notification to connected clients
-    
-    return {
-      success: true,
-      deliveryTimestamp: new Date(),
-    };
+  async send(payload: RenderedNotificationPayload): Promise<ChannelDeliveryResult> {
+    try {
+      const notification = this.notificationRepository.create({
+        userId: payload.userId,
+        title: payload.rendered.subject || payload.rendered.title || payload.eventType,
+        content: payload.rendered.body,
+        message: payload.rendered.html || payload.rendered.body,
+        metadata: {
+          eventType: payload.eventType,
+          channel: this.channelType,
+          actionUrl: payload.rendered.actionUrl,
+          ...payload.metadata,
+        },
+        status: NotificationStatus.DELIVERED,
+        read: false,
+      });
+
+      const saved = await this.notificationRepository.save(notification);
+
+      this.logger.debug(
+        `In-app notification delivered to ${payload.userId} (id: ${saved.id})`,
+      );
+
+      return {
+        success: true,
+        deliveryTimestamp: new Date(),
+        channelMessageId: saved.id,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to deliver in-app notification to ${payload.userId}: ${error.message}`,
+      );
+
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
   }
 
   async validateConfig(userId: string): Promise<{ valid: boolean; errors: string[] }> {
-    const errors: string[] = [];
-    // In-app channel always has a valid config since it doesn't require any user configuration
-    return { valid: true, errors };
+    // In-app channel has no config requirements
+    return { valid: true, errors: [] };
+  }
+
+  async getMetrics(): Promise<any> {
+    const total = await this.notificationRepository.count();
+    const read = await this.notificationRepository.count({ where: { read: true } });
+
+    return {
+      totalNotifications: total,
+      readNotifications: read,
+      unreadCount: total - read,
+    };
   }
 }
