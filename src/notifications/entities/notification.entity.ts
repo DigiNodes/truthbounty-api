@@ -6,10 +6,7 @@ import {
   UpdateDateColumn,
   Index,
 } from 'typeorm';
-import {
-  NotificationCategory,
-  NotificationPriority,
-} from '../interfaces/notification.types';
+import { NotificationCategory } from '../enums/notification-category.enum';
 import { NotificationStatus } from '../enums/notification-status.enum';
 
 export enum NotificationType {
@@ -64,13 +61,6 @@ export class Notification {
 
   @Column({ type: 'varchar', nullable: true })
   category?: NotificationCategory;
-
-  @Column({
-    type: 'varchar',
-    nullable: true,
-    default: NotificationPriority.MEDIUM,
-  })
-  priority?: NotificationPriority;
 
   @Column({ type: 'varchar', nullable: true })
   channel?: NotificationChannel;
