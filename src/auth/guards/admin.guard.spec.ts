@@ -46,7 +46,9 @@ describe('AdminGuard', () => {
     const context = createMockContext(null);
 
     expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
-    expect(() => guard.canActivate(context)).toThrow('Authentication required for admin access');
+    expect(() => guard.canActivate(context)).toThrow(
+      'Authentication required for admin access',
+    );
   });
 
   it('should allow access for a user with admin role in JWT', () => {
@@ -84,7 +86,9 @@ describe('AdminGuard', () => {
     });
 
     expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
-    expect(() => guard.canActivate(context)).toThrow('Admin privileges required');
+    expect(() => guard.canActivate(context)).toThrow(
+      'Admin privileges required',
+    );
   });
 
   it('should deny access for a user without admin role or admin wallet', () => {

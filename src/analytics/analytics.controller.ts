@@ -1,4 +1,11 @@
-import { Controller, Get, Query, Res, UseGuards, ValidationPipe } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Query,
+  Res,
+  UseGuards,
+  ValidationPipe,
+} from '@nestjs/common';
 import { Response } from 'express';
 import { AnalyticsService } from './analytics.service';
 import { AnalyticsQueryDto } from './dto/analytics-query.dto';
@@ -11,32 +18,44 @@ export class AnalyticsController {
   constructor(private readonly analyticsService: AnalyticsService) {}
 
   @Get('protocol')
-  getProtocolStatistics(@Query(new ValidationPipe({ transform: true })) query: AnalyticsQueryDto): Promise<AnalyticsResponse<any>> {
+  getProtocolStatistics(
+    @Query(new ValidationPipe({ transform: true })) query: AnalyticsQueryDto,
+  ): Promise<AnalyticsResponse<any>> {
     return this.analyticsService.getProtocolStatistics(query);
   }
 
   @Get('contributors')
-  getContributorAnalytics(@Query(new ValidationPipe({ transform: true })) query: AnalyticsQueryDto): Promise<AnalyticsResponse<any>> {
+  getContributorAnalytics(
+    @Query(new ValidationPipe({ transform: true })) query: AnalyticsQueryDto,
+  ): Promise<AnalyticsResponse<any>> {
     return this.analyticsService.getContributorAnalytics(query);
   }
 
   @Get('claims')
-  getClaimAnalytics(@Query(new ValidationPipe({ transform: true })) query: AnalyticsQueryDto): Promise<AnalyticsResponse<any>> {
+  getClaimAnalytics(
+    @Query(new ValidationPipe({ transform: true })) query: AnalyticsQueryDto,
+  ): Promise<AnalyticsResponse<any>> {
     return this.analyticsService.getClaimAnalytics(query);
   }
 
   @Get('governance')
-  getGovernanceAnalytics(@Query(new ValidationPipe({ transform: true })) query: AnalyticsQueryDto): Promise<AnalyticsResponse<any>> {
+  getGovernanceAnalytics(
+    @Query(new ValidationPipe({ transform: true })) query: AnalyticsQueryDto,
+  ): Promise<AnalyticsResponse<any>> {
     return this.analyticsService.getGovernanceAnalytics(query);
   }
 
   @Get('rewards')
-  getRewardAnalytics(@Query(new ValidationPipe({ transform: true })) query: AnalyticsQueryDto): Promise<AnalyticsResponse<any>> {
+  getRewardAnalytics(
+    @Query(new ValidationPipe({ transform: true })) query: AnalyticsQueryDto,
+  ): Promise<AnalyticsResponse<any>> {
     return this.analyticsService.getRewardAnalytics(query);
   }
 
   @Get('trends')
-  getTrendReporting(@Query(new ValidationPipe({ transform: true })) query: AnalyticsQueryDto): Promise<AnalyticsResponse<any>> {
+  getTrendReporting(
+    @Query(new ValidationPipe({ transform: true })) query: AnalyticsQueryDto,
+  ): Promise<AnalyticsResponse<any>> {
     return this.analyticsService.getTrendReporting(query);
   }
 
@@ -52,7 +71,10 @@ export class AnalyticsController {
   ): Promise<void> {
     const csv = await this.analyticsService.generateCsvReport(query);
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename="analytics-report-${Date.now()}.csv"`);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="analytics-report-${Date.now()}.csv"`,
+    );
     res.send(csv);
   }
 }

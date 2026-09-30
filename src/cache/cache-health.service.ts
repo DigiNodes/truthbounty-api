@@ -42,7 +42,7 @@ export class CacheHealthService {
   recordFailure(operation: string, key?: string, error?: Error): void {
     this.failureCount++;
     this.lastFailureTime = new Date();
-    
+
     this.metricsService.incrementCounter('cache_operations_total', {
       operation,
       status: 'failure',
@@ -107,9 +107,11 @@ export class CacheHealthService {
     const previousFailures = this.failureCount;
     this.failureCount = 0;
     this.successCount = 0;
-    
+
     if (previousFailures > 0) {
-      this.logger.debug(`Reset cache failure counters (previous: ${previousFailures})`);
+      this.logger.debug(
+        `Reset cache failure counters (previous: ${previousFailures})`,
+      );
     }
   }
 

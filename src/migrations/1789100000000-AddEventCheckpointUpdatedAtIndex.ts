@@ -7,9 +7,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * query had no supporting index, so it sequentially scanned+sorted
  * v2_event_checkpoints on every request.
  */
-export class AddEventCheckpointUpdatedAtIndex1789100000000
-  implements MigrationInterface
-{
+export class AddEventCheckpointUpdatedAtIndex1789100000000 implements MigrationInterface {
   name = 'AddEventCheckpointUpdatedAtIndex1789100000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
@@ -19,8 +17,6 @@ export class AddEventCheckpointUpdatedAtIndex1789100000000
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(
-      `DROP INDEX "IDX_v2_event_checkpoints_updated_at"`,
-    );
+    await queryRunner.query(`DROP INDEX "IDX_v2_event_checkpoints_updated_at"`);
   }
 }

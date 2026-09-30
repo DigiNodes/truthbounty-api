@@ -1,6 +1,15 @@
-import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, CreateDateColumn } from 'typeorm';
+import {
+  Entity,
+  Column,
+  PrimaryGeneratedColumn,
+  ManyToOne,
+  CreateDateColumn,
+} from 'typeorm';
 import { Notification } from './notification.entity';
-import { DeliveryChannel, DeliveryStatus } from '../interfaces/notification.types';
+import {
+  DeliveryChannel,
+  DeliveryStatus,
+} from '../interfaces/notification.types';
 
 @Entity('delivery_history')
 export class DeliveryHistory {

@@ -2,7 +2,11 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { ProjectionRebuildService } from './projection-rebuild.service';
-import { PROJECTION_REGISTRY, RebuildableProjection, buildDefaultRegistry } from './projection-registry';
+import {
+  PROJECTION_REGISTRY,
+  RebuildableProjection,
+  buildDefaultRegistry,
+} from './projection-registry';
 import { ProjectionRebuildRun } from './entities/projection-rebuild-run.entity';
 import { CanonicalEvent } from '../events/entities/canonical-event.entity';
 import { CanonicalEventQueryService } from '../events/canonical-event-query.service';
@@ -41,10 +45,10 @@ describe('ProjectionRebuildService (integration)', () => {
     moduleRef = await Test.createTestingModule({
       imports: [
         TypeOrmModule.forRoot({
-          type: 'sqlite',
+          type: 'better-sqlite3',
           database: ':memory:',
           // eslint-disable-next-line @typescript-eslint/no-require-imports
-          driver: require('sqlite3'),
+          driver: require('better-sqlite3'),
           entities: [
             CanonicalEvent,
             ProjectorCursor,
@@ -86,7 +90,12 @@ describe('ProjectionRebuildService (integration)', () => {
             disputes: DisputesProjectorService,
             rewards: RewardsProjectorService,
           ) =>
-            buildDefaultRegistry(ds, { evidence, verification, disputes, rewards }),
+            buildDefaultRegistry(ds, {
+              evidence,
+              verification,
+              disputes,
+              rewards,
+            }),
         },
       ],
     }).compile();
@@ -308,9 +317,9 @@ describe('ProjectionRebuildService (integration)', () => {
       expect(
         await dataSource.getRepository(ProjectParticipantPosition).find(),
       ).toHaveLength(1);
-      expect(await dataSource.getRepository(ProjectDispute).find()).toHaveLength(
-        1,
-      );
+      expect(
+        await dataSource.getRepository(ProjectDispute).find(),
+      ).toHaveLength(1);
     });
 
     it('reproduces the same digest from a full reset', async () => {
@@ -453,7 +462,9 @@ describe('ProjectionRebuildService (integration)', () => {
 
     it('records a failed run row when the drain throws', async () => {
       await seedLog();
-      const registry = moduleRef.get(PROJECTION_REGISTRY) as RebuildableProjection[];
+      const registry = moduleRef.get(
+        PROJECTION_REGISTRY,
+      ) as RebuildableProjection[];
       const broken: RebuildableProjection = {
         ...registry[0],
         run: async () => {
@@ -519,7 +530,9 @@ describe('ProjectionRebuildService (integration)', () => {
       });
 
       expect(checkpoint.anomalies).toBeGreaterThan(0);
-      expect(checkpoint.perProjection['v2-rewards'].anomalies).toBeGreaterThan(0);
+      expect(checkpoint.perProjection['v2-rewards'].anomalies).toBeGreaterThan(
+        0,
+      );
       expect(checkpoint.safeToCutover).toBe(false);
       expect(
         await dataSource.getRepository(IndexingAnomaly).find(),

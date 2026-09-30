@@ -18,8 +18,7 @@ export interface RawChainLog {
 }
 
 export type ChainEventIngestOutcome =
-  | { status: 'ingested'; id: string }
-  | { status: 'duplicate' };
+  { status: 'ingested'; id: string } | { status: 'duplicate' };
 
 export interface ChainEventIdentity {
   chainId: number;

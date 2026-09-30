@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { IS_PUBLIC_KEY } from '../../decorators/public.decorator';
 import { ProjectionFreshnessController } from './projection-freshness.controller';
 import { ProjectionFreshnessService } from './projection-freshness.service';
+import { ProjectionFreshness } from './projection-freshness.types';
 
 describe('ProjectionFreshnessController', () => {
   let controller: ProjectionFreshnessController;
@@ -48,9 +49,10 @@ describe('ProjectionFreshnessController', () => {
   });
 
   it('getFreshness delegates by projector name', async () => {
+    // partial double: the assertions below intentionally check delegation only
     service.getFreshness.mockResolvedValue({
       projectorName: 'v2-evidence',
-    });
+    } as unknown as ProjectionFreshness);
 
     await expect(controller.getFreshness('v2-evidence')).resolves.toEqual({
       projectorName: 'v2-evidence',

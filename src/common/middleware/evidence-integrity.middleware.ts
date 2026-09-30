@@ -1,5 +1,5 @@
-import { Injectable, NestMiddleware, Logger } from "@nestjs/common";
-import { verifyCIDIntegrity } from "../../storage/cid-verifier";
+import { Injectable, NestMiddleware, Logger } from '@nestjs/common';
+import { verifyCIDIntegrity } from '../../storage/cid-verifier';
 
 @Injectable()
 export class EvidenceIntegrityMiddleware implements NestMiddleware {
@@ -19,7 +19,7 @@ export class EvidenceIntegrityMiddleware implements NestMiddleware {
       if (!isValid) {
         this.logger.warn(`Evidence hash mismatch detected. CID: ${cid}`);
         res.status(400).json({
-          message: "Evidence integrity verification failed",
+          message: 'Evidence integrity verification failed',
         });
         return;
       }
@@ -31,7 +31,7 @@ export class EvidenceIntegrityMiddleware implements NestMiddleware {
         error instanceof Error ? error.stack : String(error),
       );
       res.status(500).json({
-        message: "Evidence integrity verification encountered an error",
+        message: 'Evidence integrity verification encountered an error',
       });
     }
   }

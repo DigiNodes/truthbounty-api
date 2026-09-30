@@ -2,20 +2,24 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Repository } from 'typeorm';
 import { DisputesQueryService } from './disputes-query.service';
-import { ProjectDispute, DisputeStatus } from './entities/project-dispute.entity';
+import {
+  ProjectDispute,
+  DisputeStatus,
+} from './entities/project-dispute.entity';
 import { EventCheckpoint } from '../events/entities/event-checkpoint.entity';
 import { FinalityPolicyService } from '../../config/finality-policy.service';
 import { DataState } from '../common/data-state.enum';
 
 function buildFinalityPolicy(): FinalityPolicyService {
   const configService = {
-    get: jest.fn((key: string, def?: unknown) =>
-      ({
-        'finalityPolicy.chainId': 10,
-        'finalityPolicy.allowedChainIds': [10, 11155420],
-        'finalityPolicy.safeConfirmations': 1,
-        'finalityPolicy.finalizedConfirmations': 12,
-      })[key] ?? def,
+    get: jest.fn(
+      (key: string, def?: unknown) =>
+        ({
+          'finalityPolicy.chainId': 10,
+          'finalityPolicy.allowedChainIds': [10, 11155420],
+          'finalityPolicy.safeConfirmations': 1,
+          'finalityPolicy.finalizedConfirmations': 12,
+        })[key] ?? def,
     ),
   } as unknown as ConfigService;
   return new FinalityPolicyService(configService);
@@ -64,19 +68,31 @@ describe('DisputesQueryService', () => {
       createQueryBuilder: jest.fn(),
       findOne: jest.fn(),
     } as unknown as Repository<ProjectDispute>;
-    checkpointRepo = { findOne: jest.fn() } as unknown as Repository<EventCheckpoint>;
+    checkpointRepo = {
+      findOne: jest.fn(),
+    } as unknown as Repository<EventCheckpoint>;
     finalityPolicy = buildFinalityPolicy();
-    service = new DisputesQueryService(disputeRepo, checkpointRepo, finalityPolicy);
+    service = new DisputesQueryService(
+      disputeRepo,
+      checkpointRepo,
+      finalityPolicy,
+    );
   });
 
   describe('listForClaim', () => {
     it('throws BadRequestException when claimId is missing', async () => {
-      await expect(service.listForClaim('')).rejects.toThrow(BadRequestException);
+      await expect(service.listForClaim('')).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('throws BadRequestException when limit is out of bounds (boundary)', async () => {
-      await expect(service.listForClaim('claim-1', 0)).rejects.toThrow(BadRequestException);
-      await expect(service.listForClaim('claim-1', 101)).rejects.toThrow(BadRequestException);
+      await expect(service.listForClaim('claim-1', 0)).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(service.listForClaim('claim-1', 101)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('fetches the checkpoint exactly once per call, regardless of row count (N+1 regression guard)', async () => {
@@ -85,10 +101,15 @@ describe('DisputesQueryService', () => {
         makeDispute({ disputeId: 'd2', blockNumber: '90' }),
         makeDispute({ disputeId: 'd3', blockNumber: '200' }),
       ];
-      jest.spyOn(disputeRepo, 'createQueryBuilder').mockReturnValue(queryBuilderMock(disputes) as any);
+      jest
+        .spyOn(disputeRepo, 'createQueryBuilder')
+        .mockReturnValue(queryBuilderMock(disputes) as any);
       const checkpointSpy = jest
         .spyOn(checkpointRepo, 'findOne')
-        .mockResolvedValue({ lastSafeBlock: '150', lastFinalizedBlock: '80' } as EventCheckpoint);
+        .mockResolvedValue({
+          lastSafeBlock: '150',
+          lastFinalizedBlock: '80',
+        } as EventCheckpoint);
 
       const result = await service.listForClaim('claim-1', 20);
 
@@ -114,14 +135,19 @@ describe('DisputesQueryService', () => {
   describe('getByOriginalRound', () => {
     it('throws NotFoundException when the dispute does not exist', async () => {
       jest.spyOn(disputeRepo, 'findOne').mockResolvedValue(null);
-      await expect(service.getByOriginalRound('claim-1', 'round-1')).rejects.toThrow(NotFoundException);
+      await expect(
+        service.getByOriginalRound('claim-1', 'round-1'),
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('returns the dispute with computedDataState', async () => {
-      jest.spyOn(disputeRepo, 'findOne').mockResolvedValue(makeDispute({ blockNumber: '80' }));
       jest
-        .spyOn(checkpointRepo, 'findOne')
-        .mockResolvedValue({ lastSafeBlock: '150', lastFinalizedBlock: '80' } as EventCheckpoint);
+        .spyOn(disputeRepo, 'findOne')
+        .mockResolvedValue(makeDispute({ blockNumber: '80' }));
+      jest.spyOn(checkpointRepo, 'findOne').mockResolvedValue({
+        lastSafeBlock: '150',
+        lastFinalizedBlock: '80',
+      } as EventCheckpoint);
 
       const result = await service.getByOriginalRound('claim-1', 'round-1');
       expect(result.computedDataState).toBe(DataState.FINALIZED);

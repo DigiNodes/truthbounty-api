@@ -1,4 +1,10 @@
-import { IsString, IsNotEmpty, IsOptional, IsUrl, MaxLength } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsUrl,
+  MaxLength,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateClaimDto {
@@ -14,7 +20,8 @@ export class CreateClaimDto {
 
   @ApiProperty({
     description: 'Detailed content/description of the claim',
-    example: 'Recent scientific studies indicate that global temperature rise is exceeding previous climate models...',
+    example:
+      'Recent scientific studies indicate that global temperature rise is exceeding previous climate models...',
     maxLength: 5000,
   })
   @IsString()

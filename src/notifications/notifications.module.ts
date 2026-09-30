@@ -15,6 +15,7 @@ import { NotificationsService } from './services/notifications.service';
 import { NotificationPreferencesService } from './services/notification-preferences.service';
 import { DeliveryHistoryService } from './services/delivery-history.service';
 import { WebSocketService } from './services/websocket.service';
+import { NotificationGateway } from './websockets/websocket.gateway';
 import { EmailService } from './services/email.service';
 import { WebhookService } from './services/webhook.service';
 import { NotificationProcessor } from './services/notification.processor';

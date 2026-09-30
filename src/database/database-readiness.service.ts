@@ -54,7 +54,8 @@ export class DatabaseReadinessService {
           latencyMs,
           hasPendingMigrations: true,
           schemaVersion: null,
-          failureReason: 'Pending database migrations detected. Schema is not synchronized.',
+          failureReason:
+            'Pending database migrations detected. Schema is not synchronized.',
           timestamp,
         };
       }
@@ -71,7 +72,8 @@ export class DatabaseReadinessService {
           latencyMs,
           hasPendingMigrations: false,
           schemaVersion: null,
-          failureReason: 'v2_schema_versions table is missing. Database is not at V2 baseline.',
+          failureReason:
+            'v2_schema_versions table is missing. Database is not at V2 baseline.',
           timestamp,
         };
       }
@@ -102,7 +104,9 @@ export class DatabaseReadinessService {
         timestamp,
       };
     } catch (err: any) {
-      const sanitizedError = this.sanitizeErrorMessage(err?.message || String(err));
+      const sanitizedError = this.sanitizeErrorMessage(
+        err?.message || String(err),
+      );
       this.logger.error(`Database readiness check failed: ${sanitizedError}`);
 
       return {

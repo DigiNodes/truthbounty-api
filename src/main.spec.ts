@@ -27,7 +27,7 @@ describe('bootstrap', () => {
   it('enables shutdown hooks and starts the application', async () => {
     const { NestFactory } = await import('@nestjs/core');
     const { AppModule } = await import('./app.module');
-    // eslint-disable-next-line @typescript-eslint/unbound-method
+
     const createMock = NestFactory.create as jest.Mock;
     createMock.mockResolvedValue(mockApp);
 

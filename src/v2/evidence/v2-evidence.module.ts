@@ -7,7 +7,10 @@ import { ProjectorCursor } from '../common/entities/projector-cursor.entity';
 import { EvidenceProjectorService } from './evidence-projector.service';
 import { EvidenceQueryService } from './evidence-query.service';
 import { EvidenceIntegrityService } from './evidence-integrity.service';
-import { EvidenceController, EvidenceIntegrityController } from './evidence.controller';
+import {
+  EvidenceController,
+  EvidenceIntegrityController,
+} from './evidence.controller';
 
 @Module({
   imports: [

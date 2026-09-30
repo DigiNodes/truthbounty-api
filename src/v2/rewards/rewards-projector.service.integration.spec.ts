@@ -91,10 +91,10 @@ describe('RewardsProjectorService (integration)', () => {
     moduleRef = await Test.createTestingModule({
       imports: [
         TypeOrmModule.forRoot({
-          type: 'sqlite',
+          type: 'better-sqlite3',
           database: ':memory:',
           // eslint-disable-next-line @typescript-eslint/no-require-imports
-          driver: require('sqlite3'),
+          driver: require('better-sqlite3'),
           entities: [
             CanonicalEvent,
             ProjectRewardAllocation,
@@ -514,7 +514,10 @@ describe('RewardsProjectorService (integration)', () => {
       const forClaim = await reconciliation.listForClaim(10, CLAIM_ID);
       expect(forClaim).toHaveLength(2);
 
-      const verifiers = await reconciliation.listByKind(10, AllocationKind.VERIFIER);
+      const verifiers = await reconciliation.listByKind(
+        10,
+        AllocationKind.VERIFIER,
+      );
       expect(verifiers).toHaveLength(2);
     });
   });

@@ -3,7 +3,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { DeliveryHistory } from '../entities/delivery-history.entity';
 import { ListNotificationsDto } from '../dto';
-import { DeliveryStatus, DeliveryChannel } from '../interfaces/notification.types';
+import {
+  DeliveryStatus,
+  DeliveryChannel,
+} from '../interfaces/notification.types';
 
 @Injectable()
 export class DeliveryHistoryService {
@@ -15,7 +18,7 @@ export class DeliveryHistoryService {
   ) {}
 
   async createDeliveryRecord(
-    notificationId: string, 
+    notificationId: string,
     channel: DeliveryChannel,
     idempotencyKey?: string,
   ): Promise<DeliveryHistory> {
@@ -28,11 +31,13 @@ export class DeliveryHistoryService {
       record.idempotencyKey = idempotencyKey;
     }
     record.createdAt = new Date();
-    
+
     return this.deliveryHistoryRepository.save(record);
   }
 
-  async findByIdempotencyKey(idempotencyKey: string): Promise<DeliveryHistory | null> {
+  async findByIdempotencyKey(
+    idempotencyKey: string,
+  ): Promise<DeliveryHistory | null> {
     if (!idempotencyKey) return null;
     return this.deliveryHistoryRepository.findOne({
       where: { idempotencyKey },
@@ -40,61 +45,64 @@ export class DeliveryHistoryService {
   }
 
   async updateDeliveryStatus(
-    recordId: string, 
-    status: DeliveryStatus, 
-    error?: string
+    recordId: string,
+    status: DeliveryStatus,
+    error?: string,
   ): Promise<DeliveryHistory | null> {
     const record = await this.deliveryHistoryRepository.findOne({
       where: { id: recordId },
     });
-    
+
     if (!record) {
       this.logger.error(`Delivery record ${recordId} not found`);
       return null;
     }
-    
+
     record.status = status;
-    
+
     if (status === DeliveryStatus.DELIVERED) {
       record.deliveredAt = new Date();
     }
-    
+
     if (error) {
       record.failureReason = error;
     }
-    
+
     return this.deliveryHistoryRepository.save(record);
   }
 
-  async incrementRetryAttempts(recordId: string): Promise<DeliveryHistory | null> {
+  async incrementRetryAttempts(
+    recordId: string,
+  ): Promise<DeliveryHistory | null> {
     const record = await this.deliveryHistoryRepository.findOne({
       where: { id: recordId },
     });
-    
+
     if (!record) {
       this.logger.error(`Delivery record ${recordId} not found`);
       return null;
     }
-    
+
     record.retryAttempts += 1;
     record.lastRetryAt = new Date();
     record.status = DeliveryStatus.RETRYING;
-    
+
     return this.deliveryHistoryRepository.save(record);
   }
 
   async getUserDeliveryHistory(userId: string, filters: ListNotificationsDto) {
     const { page = 1, limit = 20 } = filters;
-    
-    const queryBuilder = this.deliveryHistoryRepository.createQueryBuilder('history')
+
+    const queryBuilder = this.deliveryHistoryRepository
+      .createQueryBuilder('history')
       .leftJoinAndSelect('history.notification', 'notification')
       .where('notification.userId = :userId', { userId })
       .orderBy('history.createdAt', 'DESC')
       .skip((page - 1) * limit)
       .take(limit);
-    
+
     const [items, total] = await queryBuilder.getManyAndCount();
-    
+
     return {
       items,
       total,
@@ -118,20 +126,23 @@ export class DeliveryHistoryService {
     const retryingDeliveries = await this.deliveryHistoryRepository.count({
       where: { status: DeliveryStatus.RETRYING },
     });
-    
+
     return {
       totalDeliveries,
       successfulDeliveries,
       failedDeliveries,
       pendingDeliveries,
       retryingDeliveries,
-      successRate: totalDeliveries > 0 ? (successfulDeliveries / totalDeliveries) * 100 : 0,
+      successRate:
+        totalDeliveries > 0
+          ? (successfulDeliveries / totalDeliveries) * 100
+          : 0,
     };
   }
 
   async findPendingDeliveryByNotificationAndChannel(
-    notificationId: string, 
-    channel: DeliveryChannel
+    notificationId: string,
+    channel: DeliveryChannel,
   ): Promise<DeliveryHistory | null> {
     return this.deliveryHistoryRepository.findOne({
       where: {

@@ -19,7 +19,9 @@ export class OutboxScheduler {
   @Cron(CronExpression.EVERY_5_SECONDS)
   async handleOutboxCron(): Promise<void> {
     if (this.isProcessing) {
-      this.logger.debug('Previous outbox polling run still active, skipping tick');
+      this.logger.debug(
+        'Previous outbox polling run still active, skipping tick',
+      );
       return;
     }
 
@@ -27,7 +29,10 @@ export class OutboxScheduler {
     try {
       await this.outboxService.processOutbox();
     } catch (error) {
-      this.logger.error(`Error processing outbox: ${error?.message}`, error?.stack);
+      this.logger.error(
+        `Error processing outbox: ${error?.message}`,
+        error?.stack,
+      );
     } finally {
       this.isProcessing = false;
     }

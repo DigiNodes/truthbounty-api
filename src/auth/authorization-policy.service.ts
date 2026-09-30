@@ -1,7 +1,13 @@
-import { Injectable, Logger, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
-import { RedisService } from '../../redis/redis.service';
+import { RedisService } from '../redis/redis.service';
 
 /**
  * Authorization Policy Service
@@ -99,7 +105,10 @@ export interface PolicyRule {
 export class AuthorizationPolicyService {
   private readonly logger = new Logger(AuthorizationPolicyService.name);
   private policies: Map<string, PolicyRule> = new Map();
-  private customEvaluators: Map<string, (context: AuthorizationContext) => Promise<boolean>> = new Map();
+  private customEvaluators: Map<
+    string,
+    (context: AuthorizationContext) => Promise<boolean>
+  > = new Map();
 
   constructor(
     private readonly configService: ConfigService,
@@ -133,7 +142,17 @@ export class AuthorizationPolicyService {
         name: 'Admin Claim Management',
         description: 'Admins can manage all claims',
         resource: ResourceType.CLAIM,
-        actions: [ActionType.CREATE, ActionType.READ, ActionType.UPDATE, ActionType.DELETE, ActionType.LIST, ActionType.MODERATE, ActionType.VERIFY, ActionType.REJECT, ActionType.ESCALATE],
+        actions: [
+          ActionType.CREATE,
+          ActionType.READ,
+          ActionType.UPDATE,
+          ActionType.DELETE,
+          ActionType.LIST,
+          ActionType.MODERATE,
+          ActionType.VERIFY,
+          ActionType.REJECT,
+          ActionType.ESCALATE,
+        ],
         roles: [Role.ADMIN],
         conditions: [],
         effect: 'allow',
@@ -145,7 +164,16 @@ export class AuthorizationPolicyService {
         name: 'Admin Dispute Management',
         description: 'Admins can manage all disputes',
         resource: ResourceType.DISPUTE,
-        actions: [ActionType.CREATE, ActionType.READ, ActionType.UPDATE, ActionType.DELETE, ActionType.LIST, ActionType.MODERATE, ActionType.VERIFY, ActionType.REJECT],
+        actions: [
+          ActionType.CREATE,
+          ActionType.READ,
+          ActionType.UPDATE,
+          ActionType.DELETE,
+          ActionType.LIST,
+          ActionType.MODERATE,
+          ActionType.VERIFY,
+          ActionType.REJECT,
+        ],
         roles: [Role.ADMIN],
         conditions: [],
         effect: 'allow',
@@ -157,7 +185,14 @@ export class AuthorizationPolicyService {
         name: 'Admin User Management',
         description: 'Admins can manage users',
         resource: ResourceType.USER,
-        actions: [ActionType.CREATE, ActionType.READ, ActionType.UPDATE, ActionType.DELETE, ActionType.LIST, ActionType.REVOKE],
+        actions: [
+          ActionType.CREATE,
+          ActionType.READ,
+          ActionType.UPDATE,
+          ActionType.DELETE,
+          ActionType.LIST,
+          ActionType.REVOKE,
+        ],
         roles: [Role.ADMIN],
         conditions: [],
         effect: 'allow',
@@ -169,7 +204,13 @@ export class AuthorizationPolicyService {
         name: 'Admin Configuration',
         description: 'Admins can manage configuration',
         resource: ResourceType.CONFIG,
-        actions: [ActionType.CREATE, ActionType.READ, ActionType.UPDATE, ActionType.DELETE, ActionType.LIST],
+        actions: [
+          ActionType.CREATE,
+          ActionType.READ,
+          ActionType.UPDATE,
+          ActionType.DELETE,
+          ActionType.LIST,
+        ],
         roles: [Role.ADMIN],
         conditions: [],
         effect: 'allow',
@@ -181,7 +222,12 @@ export class AuthorizationPolicyService {
         name: 'Admin Contract Management',
         description: 'Admins can manage contracts',
         resource: ResourceType.CONTRACT,
-        actions: [ActionType.READ, ActionType.UPDATE, ActionType.PAUSE, ActionType.UNPAUSE],
+        actions: [
+          ActionType.READ,
+          ActionType.UPDATE,
+          ActionType.PAUSE,
+          ActionType.UNPAUSE,
+        ],
         roles: [Role.ADMIN],
         conditions: [],
         effect: 'allow',
@@ -207,7 +253,14 @@ export class AuthorizationPolicyService {
         name: 'Moderator Claim Actions',
         description: 'Moderators can moderate claims',
         resource: ResourceType.CLAIM,
-        actions: [ActionType.READ, ActionType.LIST, ActionType.MODERATE, ActionType.VERIFY, ActionType.REJECT, ActionType.ESCALATE],
+        actions: [
+          ActionType.READ,
+          ActionType.LIST,
+          ActionType.MODERATE,
+          ActionType.VERIFY,
+          ActionType.REJECT,
+          ActionType.ESCALATE,
+        ],
         roles: [Role.MODERATOR],
         conditions: [],
         effect: 'allow',
@@ -219,7 +272,13 @@ export class AuthorizationPolicyService {
         name: 'Moderator Dispute Actions',
         description: 'Moderators can moderate disputes',
         resource: ResourceType.DISPUTE,
-        actions: [ActionType.READ, ActionType.LIST, ActionType.MODERATE, ActionType.VERIFY, ActionType.REJECT],
+        actions: [
+          ActionType.READ,
+          ActionType.LIST,
+          ActionType.MODERATE,
+          ActionType.VERIFY,
+          ActionType.REJECT,
+        ],
         roles: [Role.MODERATOR],
         conditions: [],
         effect: 'allow',
@@ -325,7 +384,13 @@ export class AuthorizationPolicyService {
         name: 'User Own Wallets',
         description: 'Users can manage their own wallet linkages',
         resource: ResourceType.WALLET,
-        actions: [ActionType.CREATE, ActionType.READ, ActionType.UPDATE, ActionType.DELETE, ActionType.LIST],
+        actions: [
+          ActionType.CREATE,
+          ActionType.READ,
+          ActionType.UPDATE,
+          ActionType.DELETE,
+          ActionType.LIST,
+        ],
         roles: [Role.USER],
         conditions: [
           { type: 'ownership', field: 'walletAddress', operator: 'equals' },
@@ -342,7 +407,13 @@ export class AuthorizationPolicyService {
         description: 'Only super admins can deploy contracts',
         resource: ResourceType.CONTRACT,
         actions: [ActionType.DEPLOY],
-        roles: [Role.ADMIN, Role.MODERATOR, Role.ANALYST, Role.SUPPORT, Role.USER],
+        roles: [
+          Role.ADMIN,
+          Role.MODERATOR,
+          Role.ANALYST,
+          Role.SUPPORT,
+          Role.USER,
+        ],
         conditions: [],
         effect: 'deny',
         priority: 1000,
@@ -354,7 +425,13 @@ export class AuthorizationPolicyService {
         description: 'Prevent accidental config deletion',
         resource: ResourceType.CONFIG,
         actions: [ActionType.DELETE],
-        roles: [Role.ADMIN, Role.MODERATOR, Role.ANALYST, Role.SUPPORT, Role.USER],
+        roles: [
+          Role.ADMIN,
+          Role.MODERATOR,
+          Role.ANALYST,
+          Role.SUPPORT,
+          Role.USER,
+        ],
         conditions: [],
         effect: 'deny',
         priority: 1000,
@@ -378,13 +455,18 @@ export class AuthorizationPolicyService {
       this.policies.set(policy.id, policy);
     }
 
-    this.logger.log(`Loaded ${this.policies.size} default authorization policies`);
+    this.logger.log(
+      `Loaded ${this.policies.size} default authorization policies`,
+    );
   }
 
   /**
    * Register a custom policy condition evaluator
    */
-  registerCustomEvaluator(name: string, evaluator: (context: AuthorizationContext) => Promise<boolean>): void {
+  registerCustomEvaluator(
+    name: string,
+    evaluator: (context: AuthorizationContext) => Promise<boolean>,
+  ): void {
     this.customEvaluators.set(name, evaluator);
     this.logger.log(`Registered custom evaluator: ${name}`);
   }
@@ -418,7 +500,12 @@ export class AuthorizationPolicyService {
   }> {
     // Get applicable policies sorted by priority (highest first)
     const applicablePolicies = Array.from(this.policies.values())
-      .filter((p) => p.enabled && p.resource === context.resourceType && p.actions.includes(context.action!))
+      .filter(
+        (p) =>
+          p.enabled &&
+          p.resource === context.resourceType &&
+          p.actions.includes(context.action!),
+      )
       .sort((a, b) => b.priority - a.priority);
 
     if (applicablePolicies.length === 0) {
@@ -437,7 +524,10 @@ export class AuthorizationPolicyService {
       }
 
       // Check conditions
-      const conditionsMet = await this.evaluateConditions(policy.conditions, context);
+      const conditionsMet = await this.evaluateConditions(
+        policy.conditions,
+        context,
+      );
       if (!conditionsMet) {
         continue;
       }
@@ -468,7 +558,10 @@ export class AuthorizationPolicyService {
   /**
    * Evaluate policy conditions
    */
-  private async evaluateConditions(conditions: PolicyCondition[], context: AuthorizationContext): Promise<boolean> {
+  private async evaluateConditions(
+    conditions: PolicyCondition[],
+    context: AuthorizationContext,
+  ): Promise<boolean> {
     for (const condition of conditions) {
       const met = await this.evaluateCondition(condition, context);
       if (!met) {
@@ -481,7 +574,10 @@ export class AuthorizationPolicyService {
   /**
    * Evaluate a single condition
    */
-  private async evaluateCondition(condition: PolicyCondition, context: AuthorizationContext): Promise<boolean> {
+  private async evaluateCondition(
+    condition: PolicyCondition,
+    context: AuthorizationContext,
+  ): Promise<boolean> {
     switch (condition.type) {
       case 'ownership':
         return this.evaluateOwnership(condition, context);
@@ -507,11 +603,15 @@ export class AuthorizationPolicyService {
     }
   }
 
-  private evaluateOwnership(condition: PolicyCondition, context: AuthorizationContext): boolean {
+  private evaluateOwnership(
+    condition: PolicyCondition,
+    context: AuthorizationContext,
+  ): boolean {
     if (!condition.field) return false;
 
     const resourceValue = context.metadata?.[condition.field];
-    const userValue = condition.field === 'userId' ? context.userId : context.walletAddress;
+    const userValue =
+      condition.field === 'userId' ? context.userId : context.walletAddress;
 
     if (!resourceValue || !userValue) return false;
 
@@ -519,19 +619,34 @@ export class AuthorizationPolicyService {
       case 'equals':
         return resourceValue.toLowerCase() === userValue.toLowerCase();
       case 'in':
-        return Array.isArray(resourceValue) && resourceValue.some((v: string) => v.toLowerCase() === userValue.toLowerCase());
+        return (
+          Array.isArray(resourceValue) &&
+          resourceValue.some(
+            (v: string) => v.toLowerCase() === userValue.toLowerCase(),
+          )
+        );
       default:
         return resourceValue.toLowerCase() === userValue.toLowerCase();
     }
   }
 
-  private evaluateRole(condition: PolicyCondition, context: AuthorizationContext): boolean {
+  private evaluateRole(
+    condition: PolicyCondition,
+    context: AuthorizationContext,
+  ): boolean {
     if (!condition.value) return false;
-    const requiredRoles = Array.isArray(condition.value) ? condition.value : [condition.value];
-    return requiredRoles.some((role: string) => context.roles.includes(role as Role));
+    const requiredRoles = Array.isArray(condition.value)
+      ? condition.value
+      : [condition.value];
+    return requiredRoles.some((role: string) =>
+      context.roles.includes(role as Role),
+    );
   }
 
-  private evaluateScope(condition: PolicyCondition, context: AuthorizationContext): boolean {
+  private evaluateScope(
+    condition: PolicyCondition,
+    context: AuthorizationContext,
+  ): boolean {
     // Scope-based conditions (e.g., organization, team, project)
     if (!condition.field || !condition.value) return false;
     const scopeValue = context.metadata?.[condition.field];
@@ -539,7 +654,10 @@ export class AuthorizationPolicyService {
     return scopeValue === requiredScope;
   }
 
-  private evaluateTime(condition: PolicyCondition, context: AuthorizationContext): boolean {
+  private evaluateTime(
+    condition: PolicyCondition,
+    context: AuthorizationContext,
+  ): boolean {
     // Time-based conditions (e.g., business hours, maintenance windows)
     const now = new Date();
     const hour = now.getHours();
@@ -550,8 +668,14 @@ export class AuthorizationPolicyService {
 
     if (condition.field === 'maintenanceWindow') {
       // Check if in maintenance window
-      const maintenanceStart = this.configService.get<string>('MAINTENANCE_WINDOW_START', '02:00');
-      const maintenanceEnd = this.configService.get<string>('MAINTENANCE_WINDOW_END', '04:00');
+      const maintenanceStart = this.configService.get<string>(
+        'MAINTENANCE_WINDOW_START',
+        '02:00',
+      );
+      const maintenanceEnd = this.configService.get<string>(
+        'MAINTENANCE_WINDOW_END',
+        '04:00',
+      );
       const [startHour, startMin] = maintenanceStart.split(':').map(Number);
       const [endHour, endMin] = maintenanceEnd.split(':').map(Number);
 
@@ -570,18 +694,29 @@ export class AuthorizationPolicyService {
     return true;
   }
 
-  private evaluateIp(condition: PolicyCondition, context: AuthorizationContext): boolean {
+  private evaluateIp(
+    condition: PolicyCondition,
+    context: AuthorizationContext,
+  ): boolean {
     if (!context.ipAddress || !condition.value) return false;
 
-    const allowedIps = Array.isArray(condition.value) ? condition.value : [condition.value];
+    const allowedIps = Array.isArray(condition.value)
+      ? condition.value
+      : [condition.value];
 
     switch (condition.operator) {
       case 'in':
-        return allowedIps.some((ip: string) => this.ipMatches(context.ipAddress!, ip));
+        return allowedIps.some((ip: string) =>
+          this.ipMatches(context.ipAddress!, ip),
+        );
       case 'not_in':
-        return !allowedIps.some((ip: string) => this.ipMatches(context.ipAddress!, ip));
+        return !allowedIps.some((ip: string) =>
+          this.ipMatches(context.ipAddress!, ip),
+        );
       default:
-        return allowedIps.some((ip: string) => this.ipMatches(context.ipAddress!, ip));
+        return allowedIps.some((ip: string) =>
+          this.ipMatches(context.ipAddress!, ip),
+        );
     }
   }
 
@@ -598,26 +733,38 @@ export class AuthorizationPolicyService {
     const ipParts = ip.split('.').map(Number);
     const rangeParts = rangeIp.split('.').map(Number);
 
-    const ipNum = (ipParts[0] << 24) | (ipParts[1] << 16) | (ipParts[2] << 8) | ipParts[3];
-    const rangeNum = (rangeParts[0] << 24) | (rangeParts[1] << 16) | (rangeParts[2] << 8) | rangeParts[3];
+    const ipNum =
+      (ipParts[0] << 24) | (ipParts[1] << 16) | (ipParts[2] << 8) | ipParts[3];
+    const rangeNum =
+      (rangeParts[0] << 24) |
+      (rangeParts[1] << 16) |
+      (rangeParts[2] << 8) |
+      rangeParts[3];
 
     const mask = ~((1 << (32 - prefix)) - 1);
     return (ipNum & mask) === (rangeNum & mask);
   }
 
-  private async evaluateCustom(condition: PolicyCondition, context: AuthorizationContext): Promise<boolean> {
+  private async evaluateCustom(
+    condition: PolicyCondition,
+    context: AuthorizationContext,
+  ): Promise<boolean> {
     if (!condition.customEvaluator) return false;
 
     const evaluator = this.customEvaluators.get(condition.customEvaluator);
     if (!evaluator) {
-      this.logger.warn(`Custom evaluator not found: ${condition.customEvaluator}`);
+      this.logger.warn(
+        `Custom evaluator not found: ${condition.customEvaluator}`,
+      );
       return false;
     }
 
     try {
       return await evaluator(context);
     } catch (error) {
-      this.logger.error(`Custom evaluator ${condition.customEvaluator} failed: ${error.message}`);
+      this.logger.error(
+        `Custom evaluator ${condition.customEvaluator} failed: ${error.message}`,
+      );
       return false;
     }
   }
@@ -635,7 +782,9 @@ export class AuthorizationPolicyService {
    * Get all policies
    */
   getAllPolicies(): PolicyRule[] {
-    return Array.from(this.policies.values()).sort((a, b) => b.priority - a.priority);
+    return Array.from(this.policies.values()).sort(
+      (a, b) => b.priority - a.priority,
+    );
   }
 
   /**
@@ -651,6 +800,8 @@ export class AuthorizationPolicyService {
  */
 @Injectable()
 export class AuthorizationGuard implements CanActivate {
+  private readonly logger = new Logger(AuthorizationGuard.name);
+
   constructor(
     private readonly policyService: AuthorizationPolicyService,
     private readonly reflector: Reflector,
@@ -665,7 +816,10 @@ export class AuthorizationGuard implements CanActivate {
     }
 
     // Get required permission from route metadata
-    const requiredPermission = this.reflector.get<Permission>('permission', context.getHandler());
+    const requiredPermission = this.reflector.get<Permission>(
+      'permission',
+      context.getHandler(),
+    );
 
     if (!requiredPermission) {
       // No permission required - allow if authenticated
@@ -693,7 +847,7 @@ export class AuthorizationGuard implements CanActivate {
     const result = await this.policyService.authorize(authContext);
 
     if (!result.allowed) {
-      this.policyService.logger.warn(`Authorization denied: ${result.reason}`, {
+      this.logger.warn(`Authorization denied: ${result.reason}`, {
         userId: authContext.userId,
         resource: authContext.resourceType,
         action: authContext.action,
@@ -710,7 +864,11 @@ export class AuthorizationGuard implements CanActivate {
  * Decorator for declaring required permissions
  */
 export const RequirePermission = (permission: Permission) => {
-  return (target: any, propertyKey?: string, descriptor?: PropertyDescriptor) => {
+  return (
+    target: any,
+    propertyKey?: string,
+    descriptor?: PropertyDescriptor,
+  ) => {
     if (descriptor) {
       Reflect.defineMetadata('permission', permission, descriptor.value);
     } else {
@@ -724,7 +882,11 @@ export const RequirePermission = (permission: Permission) => {
  * Decorator for declaring required roles
  */
 export const RequireRoles = (...roles: Role[]) => {
-  return (target: any, propertyKey?: string, descriptor?: PropertyDescriptor) => {
+  return (
+    target: any,
+    propertyKey?: string,
+    descriptor?: PropertyDescriptor,
+  ) => {
     if (descriptor) {
       Reflect.defineMetadata('roles', roles, descriptor.value);
     } else {

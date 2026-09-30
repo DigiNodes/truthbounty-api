@@ -22,7 +22,9 @@ export class CreateV2DisputesTables1769800300000 implements MigrationInterface {
         "updatedAt" TIMESTAMP NOT NULL DEFAULT now()
       )
     `);
-    await queryRunner.query(`CREATE INDEX "idx_v2_project_dispute_claim_id" ON "v2_project_dispute" ("claimId")`);
+    await queryRunner.query(
+      `CREATE INDEX "idx_v2_project_dispute_claim_id" ON "v2_project_dispute" ("claimId")`,
+    );
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {

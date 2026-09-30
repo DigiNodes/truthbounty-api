@@ -11,7 +11,10 @@ import { WebSocketService } from '../src/notifications/services/websocket.servic
 import { EmailService } from '../src/notifications/services/email.service';
 import { WebhookService } from '../src/notifications/services/webhook.service';
 import { getQueueToken } from '@nestjs/bullmq';
-import { DeliveryChannel, DeliveryStatus } from '../src/notifications/interfaces/notification.types';
+import {
+  DeliveryChannel,
+  DeliveryStatus,
+} from '../src/notifications/interfaces/notification.types';
 
 // The real PrismaService pulls in the @libsql native driver adapter, which is not
 // loadable on every developer machine/CI image. This flow is a deterministic
@@ -44,11 +47,16 @@ describe('Outbox & Idempotent Delivery Integration Flow', () => {
     mockPrisma = {
       outboxEvent: {
         create: jest.fn().mockImplementation(({ data }) => {
-          const record = { id: `outbox-${mockOutboxEvents.length + 1}`, ...data };
+          const record = {
+            id: `outbox-${mockOutboxEvents.length + 1}`,
+            ...data,
+          };
           mockOutboxEvents.push(record);
           return Promise.resolve(record);
         }),
-        findMany: jest.fn().mockImplementation(() => Promise.resolve([...mockOutboxEvents])),
+        findMany: jest
+          .fn()
+          .mockImplementation(() => Promise.resolve([...mockOutboxEvents])),
         update: jest.fn().mockImplementation(({ where, data }) => {
           const idx = mockOutboxEvents.findIndex((e) => e.id === where.id);
           if (idx >= 0) {
@@ -56,7 +64,9 @@ describe('Outbox & Idempotent Delivery Integration Flow', () => {
           }
           return Promise.resolve(mockOutboxEvents[idx]);
         }),
-        count: jest.fn().mockImplementation(() => Promise.resolve(mockOutboxEvents.length)),
+        count: jest
+          .fn()
+          .mockImplementation(() => Promise.resolve(mockOutboxEvents.length)),
       },
     };
 
@@ -70,22 +80,26 @@ describe('Outbox & Idempotent Delivery Integration Flow', () => {
     };
 
     const mockDeliveryHistoryService = {
-      findPendingDeliveryByNotificationAndChannel: jest.fn().mockResolvedValue(null),
+      findPendingDeliveryByNotificationAndChannel: jest
+        .fn()
+        .mockResolvedValue(null),
       findByIdempotencyKey: jest.fn().mockImplementation((key: string) => {
         const found = mockDeliveryRecords.find((r) => r.idempotencyKey === key);
         return Promise.resolve(found || null);
       }),
-      createDeliveryRecord: jest.fn().mockImplementation((notifId, channel, key) => {
-        const rec = {
-          id: `hist-${mockDeliveryRecords.length + 1}`,
-          notificationId: notifId,
-          channel,
-          idempotencyKey: key,
-          status: DeliveryStatus.DELIVERED,
-        };
-        mockDeliveryRecords.push(rec);
-        return Promise.resolve(rec);
-      }),
+      createDeliveryRecord: jest
+        .fn()
+        .mockImplementation((notifId, channel, key) => {
+          const rec = {
+            id: `hist-${mockDeliveryRecords.length + 1}`,
+            notificationId: notifId,
+            channel,
+            idempotencyKey: key,
+            status: DeliveryStatus.DELIVERED,
+          };
+          mockDeliveryRecords.push(rec);
+          return Promise.resolve(rec);
+        }),
       updateDeliveryStatus: jest.fn().mockResolvedValue({}),
       incrementRetryAttempts: jest.fn().mockResolvedValue({}),
     };
@@ -98,7 +112,10 @@ describe('Outbox & Idempotent Delivery Integration Flow', () => {
         { provide: getQueueToken('notifications'), useValue: mockQueue },
         { provide: MetricsService, useValue: { incrementCounter: jest.fn() } },
         { provide: RedisService, useValue: mockRedis },
-        { provide: DeliveryHistoryService, useValue: mockDeliveryHistoryService },
+        {
+          provide: DeliveryHistoryService,
+          useValue: mockDeliveryHistoryService,
+        },
         {
           provide: getRepositoryToken(Notification),
           useValue: {
@@ -110,9 +127,18 @@ describe('Outbox & Idempotent Delivery Integration Flow', () => {
             }),
           },
         },
-        { provide: WebSocketService, useValue: { broadcastNotification: jest.fn() } },
-        { provide: EmailService, useValue: { sendNotificationEmail: jest.fn() } },
-        { provide: WebhookService, useValue: { getUserWebhooks: jest.fn().mockResolvedValue([]) } },
+        {
+          provide: WebSocketService,
+          useValue: { broadcastNotification: jest.fn() },
+        },
+        {
+          provide: EmailService,
+          useValue: { sendNotificationEmail: jest.fn() },
+        },
+        {
+          provide: WebhookService,
+          useValue: { getUserWebhooks: jest.fn().mockResolvedValue([]) },
+        },
       ],
     }).compile();
 
@@ -122,10 +148,15 @@ describe('Outbox & Idempotent Delivery Integration Flow', () => {
 
   it('should complete the entire outbox -> queue -> processor flow exactly once', async () => {
     // 1. Transactional write of outbox event
-    const eventId = await outboxService.publishEvent(mockPrisma as any, 'notification.send', 'notif-999', {
-      channel: 'in_app',
-      recipientIds: ['user-888'],
-    });
+    const eventId = await outboxService.publishEvent(
+      mockPrisma as any,
+      'notification.send',
+      'notif-999',
+      {
+        channel: 'in_app',
+        recipientIds: ['user-888'],
+      },
+    );
 
     expect(eventId).toBeDefined();
     expect(mockOutboxEvents[0].status).toBe('PENDING');
@@ -143,12 +174,18 @@ describe('Outbox & Idempotent Delivery Integration Flow', () => {
 
     // 3. Worker processes job first time
     const jobData = mockQueue.add.mock.calls[0][1];
-    const firstResult = await processor.process({ data: jobData, attemptsMade: 0 } as any);
+    const firstResult = await processor.process({
+      data: jobData,
+      attemptsMade: 0,
+    } as any);
     expect(firstResult.status).toBe(DeliveryStatus.DELIVERED);
     expect(firstResult.deduplicated).toBeUndefined();
 
     // 4. Duplicate worker invocation (retry or duplicate message)
-    const secondResult = await processor.process({ data: jobData, attemptsMade: 1 } as any);
+    const secondResult = await processor.process({
+      data: jobData,
+      attemptsMade: 1,
+    } as any);
     expect(secondResult.deduplicated).toBe(true);
     expect(secondResult.status).toBe(DeliveryStatus.DELIVERED);
   });

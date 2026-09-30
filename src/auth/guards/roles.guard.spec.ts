@@ -38,95 +38,115 @@ describe('RolesGuard (app-user plane)', () => {
 
   it('allows the request when no roles are required', () => {
     guard = new RolesGuard(buildReflector(undefined));
-    expect(guard.canActivate(buildContext({ user: { role: 'contributor' } }))).toBe(true);
+    expect(
+      guard.canActivate(buildContext({ user: { role: 'contributor' } })),
+    ).toBe(true);
   });
 
   it('allows the request when roles array is empty', () => {
     guard = new RolesGuard(buildReflector([]));
-    expect(guard.canActivate(buildContext({ user: { role: 'contributor' } }))).toBe(true);
+    expect(
+      guard.canActivate(buildContext({ user: { role: 'contributor' } })),
+    ).toBe(true);
   });
 
   // ── Successful authorization ─────────────────────────────────────────────
 
   it('allows when user role exactly matches the single required role', () => {
     guard = new RolesGuard(buildReflector(['admin']));
-    expect(guard.canActivate(buildContext({ user: { role: 'admin' } }))).toBe(true);
+    expect(guard.canActivate(buildContext({ user: { role: 'admin' } }))).toBe(
+      true,
+    );
   });
 
   it('allows when user role is in a multi-role list — moderator match', () => {
     guard = new RolesGuard(buildReflector(['moderator', 'admin']));
-    expect(guard.canActivate(buildContext({ user: { role: 'moderator' } }))).toBe(true);
+    expect(
+      guard.canActivate(buildContext({ user: { role: 'moderator' } })),
+    ).toBe(true);
   });
 
   it('allows when user role is in a multi-role list — admin match', () => {
     guard = new RolesGuard(buildReflector(['moderator', 'admin']));
-    expect(guard.canActivate(buildContext({ user: { role: 'admin' } }))).toBe(true);
+    expect(guard.canActivate(buildContext({ user: { role: 'admin' } }))).toBe(
+      true,
+    );
   });
 
   it('allows contributor when contributor is the only required role', () => {
     guard = new RolesGuard(buildReflector(['contributor']));
-    expect(guard.canActivate(buildContext({ user: { role: 'contributor' } }))).toBe(true);
+    expect(
+      guard.canActivate(buildContext({ user: { role: 'contributor' } })),
+    ).toBe(true);
   });
 
   // ── Failure-closed: insufficient role ────────────────────────────────────
 
   it('throws ForbiddenException when contributor tries to access a moderator route', () => {
     guard = new RolesGuard(buildReflector(['moderator', 'admin']));
-    expect(() => guard.canActivate(buildContext({ user: { role: 'contributor' } }))).toThrow(
-      ForbiddenException,
-    );
+    expect(() =>
+      guard.canActivate(buildContext({ user: { role: 'contributor' } })),
+    ).toThrow(ForbiddenException);
   });
 
   it('throws ForbiddenException when moderator tries to access an admin-only route', () => {
     guard = new RolesGuard(buildReflector(['admin']));
-    expect(() => guard.canActivate(buildContext({ user: { role: 'moderator' } }))).toThrow(
-      ForbiddenException,
-    );
+    expect(() =>
+      guard.canActivate(buildContext({ user: { role: 'moderator' } })),
+    ).toThrow(ForbiddenException);
   });
 
   it('throws ForbiddenException with a descriptive message', () => {
     guard = new RolesGuard(buildReflector(['admin']));
-    expect(() => guard.canActivate(buildContext({ user: { role: 'contributor' } }))).toThrow(
-      'Access denied. Required role(s): admin',
-    );
+    expect(() =>
+      guard.canActivate(buildContext({ user: { role: 'contributor' } })),
+    ).toThrow('Access denied. Required role(s): admin');
   });
 
   // ── Failure-closed: missing/null identity ────────────────────────────────
 
   it('throws ForbiddenException when request.user is null', () => {
     guard = new RolesGuard(buildReflector(['admin']));
-    expect(() => guard.canActivate(buildContext(null))).toThrow(ForbiddenException);
+    expect(() => guard.canActivate(buildContext(null))).toThrow(
+      ForbiddenException,
+    );
   });
 
   it('throws ForbiddenException when request.user is undefined', () => {
     guard = new RolesGuard(buildReflector(['admin']));
-    expect(() => guard.canActivate(buildContext(undefined))).toThrow(ForbiddenException);
+    expect(() => guard.canActivate(buildContext(undefined))).toThrow(
+      ForbiddenException,
+    );
   });
 
   it('throws ForbiddenException when Prisma user record (user.user) is null', () => {
     guard = new RolesGuard(buildReflector(['admin']));
-    expect(() => guard.canActivate(buildContext({ user: null }))).toThrow(ForbiddenException);
+    expect(() => guard.canActivate(buildContext({ user: null }))).toThrow(
+      ForbiddenException,
+    );
   });
 
   it('throws ForbiddenException when Prisma user record is missing (user.user undefined)', () => {
     guard = new RolesGuard(buildReflector(['admin']));
     // JWT validated but no linked Prisma User record
-    expect(() => guard.canActivate(buildContext({ address: '0xabc', user: undefined }))).toThrow(
-      ForbiddenException,
-    );
+    expect(() =>
+      guard.canActivate(buildContext({ address: '0xabc', user: undefined })),
+    ).toThrow(ForbiddenException);
   });
 
   it('throws ForbiddenException when role field is missing from Prisma user record', () => {
     guard = new RolesGuard(buildReflector(['admin']));
-    expect(() => guard.canActivate(buildContext({ user: {} }))).toThrow(ForbiddenException);
+    expect(() => guard.canActivate(buildContext({ user: {} }))).toThrow(
+      ForbiddenException,
+    );
   });
 
   it('throws ForbiddenException when role is an unknown/invalid value', () => {
     guard = new RolesGuard(buildReflector(['admin']));
     // An unrecognized role must never grant elevated access — fail closed.
-    expect(() => guard.canActivate(buildContext({ user: { role: 'superuser' } }))).toThrow(
-      ForbiddenException,
-    );
+    expect(() =>
+      guard.canActivate(buildContext({ user: { role: 'superuser' } })),
+    ).toThrow(ForbiddenException);
   });
 
   // ── Multi-role list: all miss ─────────────────────────────────────────────

@@ -12,7 +12,9 @@ import { EventIndexerService } from './event-indexer.service';
 import { IndexerConfigService } from '../config';
 
 const mockEventIndexerService = {
-  getStatus: jest.fn().mockResolvedValue({ isRunning: true, indexingStates: [] }),
+  getStatus: jest
+    .fn()
+    .mockResolvedValue({ isRunning: true, indexingStates: [] }),
   stop: jest.fn(),
   start: jest.fn().mockResolvedValue(undefined),
   backfillFromBlock: jest.fn().mockResolvedValue(undefined),
@@ -50,7 +52,9 @@ describe('IndexerController', () => {
     });
 
     it('returns failure on service error', async () => {
-      mockEventIndexerService.getStatus.mockRejectedValueOnce(new Error('fail'));
+      mockEventIndexerService.getStatus.mockRejectedValueOnce(
+        new Error('fail'),
+      );
       const result = await controller.getStatus();
       expect(result.success).toBe(false);
     });
@@ -67,7 +71,9 @@ describe('IndexerController', () => {
     });
 
     it('returns failure when restart throws', async () => {
-      mockEventIndexerService.start.mockRejectedValueOnce(new Error('start failed'));
+      mockEventIndexerService.start.mockRejectedValueOnce(
+        new Error('start failed'),
+      );
       const result = await controller.restart();
       expect(result.success).toBe(false);
     });
@@ -84,7 +90,10 @@ describe('IndexerController', () => {
 
     it('rejects missing blockNumber (null)', async () => {
       await expect(
-        controller.backfill({ contractAddress: '0xcontract', blockNumber: null as any }),
+        controller.backfill({
+          contractAddress: '0xcontract',
+          blockNumber: null as any,
+        }),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
@@ -96,7 +105,10 @@ describe('IndexerController', () => {
 
     it('rejects non-integer blockNumber', async () => {
       await expect(
-        controller.backfill({ contractAddress: '0xcontract', blockNumber: 1.5 }),
+        controller.backfill({
+          contractAddress: '0xcontract',
+          blockNumber: 1.5,
+        }),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
   });
@@ -106,7 +118,9 @@ describe('IndexerController', () => {
   describe('POST /indexer/backfill — fix 2.6 deployment-block validation', () => {
     it('rejects a blockNumber that predates the deployment block with HTTP 400', async () => {
       // Artifact reports deployment at block 500_000.
-      mockEventIndexerService.getDeploymentBlock.mockResolvedValueOnce(500_000n);
+      mockEventIndexerService.getDeploymentBlock.mockResolvedValueOnce(
+        500_000n,
+      );
 
       await expect(
         controller.backfill({
@@ -120,7 +134,9 @@ describe('IndexerController', () => {
     });
 
     it('accepts a blockNumber equal to the deployment block', async () => {
-      mockEventIndexerService.getDeploymentBlock.mockResolvedValueOnce(500_000n);
+      mockEventIndexerService.getDeploymentBlock.mockResolvedValueOnce(
+        500_000n,
+      );
 
       const result = await controller.backfill({
         contractAddress: '0xcontract',
@@ -136,7 +152,9 @@ describe('IndexerController', () => {
     });
 
     it('accepts a blockNumber after the deployment block', async () => {
-      mockEventIndexerService.getDeploymentBlock.mockResolvedValueOnce(500_000n);
+      mockEventIndexerService.getDeploymentBlock.mockResolvedValueOnce(
+        500_000n,
+      );
 
       const result = await controller.backfill({
         contractAddress: '0xcontract',
@@ -175,7 +193,9 @@ describe('IndexerController', () => {
     });
 
     it('error message includes the deployment block and contract address', async () => {
-      mockEventIndexerService.getDeploymentBlock.mockResolvedValueOnce(500_000n);
+      mockEventIndexerService.getDeploymentBlock.mockResolvedValueOnce(
+        500_000n,
+      );
 
       let errorMessage = '';
       try {

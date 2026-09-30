@@ -33,8 +33,8 @@ export function assertForwardBackwardSafe(ids: string[]): string[] {
   const forward = [...ids];
   const backward = [...forward].reverse();
   const restored = [...backward].reverse();
-  if (restored.join("|") !== ids.join("|")) {
-    throw new Error("MIGRATION_ROUNDTRIP_FAILED");
+  if (restored.join('|') !== ids.join('|')) {
+    throw new Error('MIGRATION_ROUNDTRIP_FAILED');
   }
   return restored;
 }

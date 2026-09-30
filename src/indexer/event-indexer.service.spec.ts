@@ -13,11 +13,19 @@ import { BlockchainStateService } from '../blockchain/state.service';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function makeConfig(overrides: Partial<EventIndexerConfig> = {}): EventIndexerConfig {
+function makeConfig(
+  overrides: Partial<EventIndexerConfig> = {},
+): EventIndexerConfig {
   return {
     rpcUrl: 'https://mainnet.optimism.io',
     chainId: 10,
-    confirmationsRequired: 12,
+    confirmations: {
+      safe: 6,
+
+      finalized: 12,
+
+      full: 64,
+    },
     blockRangePerBatch: 500,
     maxRetryAttempts: 3,
     pollingIntervalMs: 12000,
@@ -126,7 +134,16 @@ function buildService(
   };
   (service as any).provider = mockProvider;
 
-  return { service, eventRepository, stateRepository, artifactRepository, dataSource, queryRunner, mockProvider, config };
+  return {
+    service,
+    eventRepository,
+    stateRepository,
+    artifactRepository,
+    dataSource,
+    queryRunner,
+    mockProvider,
+    config,
+  };
 }
 
 // ─── Basic smoke test ─────────────────────────────────────────────────────────
@@ -151,9 +168,12 @@ describe('EventIndexerService — basic', () => {
 // ─── Fix 2.1 — Adaptive range halving ────────────────────────────────────────
 
 describe('Fix 2.1 — adaptive range halving on getLogs range-too-large', () => {
-  const rangeTooLargeError = Object.assign(new Error('Log response size exceeded'), {
-    code: -32005,
-  });
+  const rangeTooLargeError = Object.assign(
+    new Error('Log response size exceeded'),
+    {
+      code: -32005,
+    },
+  );
 
   it('halves the range and retries until the request succeeds', async () => {
     const { service, mockProvider } = buildService({ blockRangePerBatch: 200 });
@@ -181,7 +201,12 @@ describe('Fix 2.1 — adaptive range halving on getLogs range-too-large', () => 
       .mockRejectedValueOnce(rangeTooLargeError)
       .mockResolvedValue([]);
 
-    await (service as any).fetchEventsAdaptive('0xcontract', '0x' + 'a'.repeat(64), 1000, 1199);
+    await (service as any).fetchEventsAdaptive(
+      '0xcontract',
+      '0x' + 'a'.repeat(64),
+      1000,
+      1199,
+    );
 
     expect((service as any).effectiveBatchSize).toBeLessThan(200);
   });
@@ -196,14 +221,23 @@ describe('Fix 2.1 — adaptive range halving on getLogs range-too-large', () => 
     mockProvider.getLogs.mockRejectedValue(rangeTooLargeError);
 
     await expect(
-      (service as any).fetchEventsAdaptive('0xcontract', '0x' + 'a'.repeat(64), 1000, 1001),
+      (service as any).fetchEventsAdaptive(
+        '0xcontract',
+        '0x' + 'a'.repeat(64),
+        1000,
+        1001,
+      ),
     ).rejects.toThrow();
   });
 
   it('accumulates results across multiple sub-ranges', async () => {
     const { service, mockProvider } = buildService({ blockRangePerBatch: 100 });
 
-    const fakeLog = { transactionHash: '0x1', index: 0, blockNumber: 1000 } as unknown as EventLog;
+    const fakeLog = {
+      transactionHash: '0x1',
+      index: 0,
+      blockNumber: 1000,
+    } as unknown as EventLog;
 
     // Range too large on first attempt, then two successful sub-ranges.
     mockProvider.getLogs
@@ -212,7 +246,10 @@ describe('Fix 2.1 — adaptive range halving on getLogs range-too-large', () => 
       .mockResolvedValueOnce([]);
 
     const logs = await (service as any).fetchEventsAdaptive(
-      '0xcontract', '0x' + 'a'.repeat(64), 1000, 1099,
+      '0xcontract',
+      '0x' + 'a'.repeat(64),
+      1000,
+      1099,
     );
 
     expect(logs).toHaveLength(1);
@@ -304,7 +341,13 @@ describe('Fix 2.3 — endBlock capped at provider finalized block', () => {
 
   it('falls back to currentBlockNumber - confirmationsRequired when provider throws', async () => {
     const { service, mockProvider, stateRepository } = buildService({
-      confirmationsRequired: 12,
+      confirmations: {
+        safe: 6,
+
+        finalized: 12,
+
+        full: 64,
+      },
       blockRangePerBatch: 100,
     });
 
@@ -337,7 +380,10 @@ describe('Fix 2.3 — endBlock capped at provider finalized block', () => {
 describe('Fix 2.4 — dead-lettered events call stateService.recordDeadLetter()', () => {
   it('transitions exhausted events to dead_letter and calls recordDeadLetter()', async () => {
     const stateService = makeStateService();
-    const { service, eventRepository, stateRepository } = buildService({}, stateService);
+    const { service, eventRepository, stateRepository } = buildService(
+      {},
+      stateService,
+    );
 
     const exhaustedEvent = {
       id: 'uuid-1',
@@ -379,7 +425,10 @@ describe('Fix 2.4 — dead-lettered events call stateService.recordDeadLetter()'
 
   it('does not re-transition a state already in dead_letter', async () => {
     const stateService = makeStateService();
-    const { service, eventRepository, stateRepository } = buildService({}, stateService);
+    const { service, eventRepository, stateRepository } = buildService(
+      {},
+      stateService,
+    );
 
     const exhaustedEvent = {
       contractAddress: '0xcontract',
@@ -430,7 +479,11 @@ describe('Fix 2.5 — event rows and checkpoint committed in one transaction', (
 
     await (service as any).persistBatch(
       '0xcontract',
-      { name: 'Transfer', signature: '0x' + 'a'.repeat(64), abi: 'event Transfer(address indexed from, address indexed to, uint256 amount)' },
+      {
+        name: 'Transfer',
+        signature: '0x' + 'a'.repeat(64),
+        abi: 'event Transfer(address indexed from, address indexed to, uint256 amount)',
+      },
       [],
       1099,
       200_000,
@@ -466,7 +519,11 @@ describe('Fix 2.5 — event rows and checkpoint committed in one transaction', (
     await expect(
       (service as any).persistBatch(
         '0xcontract',
-        { name: 'Transfer', signature: '0x' + 'a'.repeat(64), abi: 'event Transfer(address indexed from, address indexed to, uint256 amount)' },
+        {
+          name: 'Transfer',
+          signature: '0x' + 'a'.repeat(64),
+          abi: 'event Transfer(address indexed from, address indexed to, uint256 amount)',
+        },
         [fakeLog],
         1099,
         200_000,
@@ -570,10 +627,13 @@ describe('Fix 2.7 — historical blocks <= finalizedBlock are immediately finali
     await (service as any).persistEventInTx(
       manager,
       '0xcontract',
-      { name: 'Transfer', abi: 'event Transfer(address indexed from, address indexed to, uint256 amount)' },
+      {
+        name: 'Transfer',
+        abi: 'event Transfer(address indexed from, address indexed to, uint256 amount)',
+      },
       log,
-      101_000,   // batchEndBlock
-      200_000,   // finalizedBlock — log.blockNumber <= this
+      101_000, // batchEndBlock
+      200_000, // finalizedBlock — log.blockNumber <= this
     );
 
     const saved = manager.save.mock.calls[0][1];
@@ -581,7 +641,9 @@ describe('Fix 2.7 — historical blocks <= finalizedBlock are immediately finali
   });
 
   it('does NOT finalize a live-tip event whose blockNumber > finalizedBlock', async () => {
-    const { service } = buildService({ confirmationsRequired: 12 });
+    const { service } = buildService({
+      confirmations: { safe: 6, finalized: 12, full: 64 },
+    });
 
     const manager = {
       findOne: jest.fn().mockResolvedValue(null),
@@ -609,7 +671,10 @@ describe('Fix 2.7 — historical blocks <= finalizedBlock are immediately finali
     await (service as any).persistEventInTx(
       manager,
       '0xcontract',
-      { name: 'Transfer', abi: 'event Transfer(address indexed from, address indexed to, uint256 amount)' },
+      {
+        name: 'Transfer',
+        abi: 'event Transfer(address indexed from, address indexed to, uint256 amount)',
+      },
       log,
       200_010,
       200_000, // finalizedBlock < log.blockNumber
@@ -649,7 +714,10 @@ describe('Fix 2.7 — historical blocks <= finalizedBlock are immediately finali
     await (service as any).persistEventInTx(
       manager,
       '0xcontract',
-      { name: 'Transfer', abi: 'event Transfer(address indexed from, address indexed to, uint256 amount)' },
+      {
+        name: 'Transfer',
+        abi: 'event Transfer(address indexed from, address indexed to, uint256 amount)',
+      },
       log,
       101_000,
       200_000,
@@ -677,9 +745,7 @@ describe('Fix 2.8 — reconcileReorgs loads events in pages (never all at once)'
       retryAttempts: 0,
     }));
 
-    eventRepository.find
-      .mockResolvedValueOnce(page1)
-      .mockResolvedValueOnce([]);
+    eventRepository.find.mockResolvedValueOnce(page1).mockResolvedValueOnce([]);
 
     await (service as any).reconcileReorgs(200_000);
 
@@ -695,7 +761,9 @@ describe('Fix 2.8 — reconcileReorgs loads events in pages (never all at once)'
   });
 
   it('resets reorg-affected events to isFinalized=false, isProcessed=false, processingError=null', async () => {
-    const { service, eventRepository } = buildService({ confirmationsRequired: 12 });
+    const { service, eventRepository } = buildService({
+      confirmations: { safe: 6, finalized: 12, full: 64 },
+    });
 
     // Event at block 199_995 — only 5 confirmations at head 200_000 → reorg candidate.
     const suspectEvent = {
@@ -726,7 +794,9 @@ describe('Fix 2.8 — reconcileReorgs loads events in pages (never all at once)'
   });
 
   it('does not reset events with sufficient confirmations', async () => {
-    const { service, eventRepository } = buildService({ confirmationsRequired: 12 });
+    const { service, eventRepository } = buildService({
+      confirmations: { safe: 6, finalized: 12, full: 64 },
+    });
 
     // Event at block 100_000 — 100_000 confirmations → fully finalized.
     const finalizedEvent = {
@@ -754,7 +824,9 @@ describe('Fix 2.8 — reconcileReorgs loads events in pages (never all at once)'
 
 describe('Regression 3.1 — live-tip events stored as isFinalized=false', () => {
   it('stores a live-tip event with isFinalized=false when confirmations < required', async () => {
-    const { service } = buildService({ confirmationsRequired: 12 });
+    const { service } = buildService({
+      confirmations: { safe: 6, finalized: 12, full: 64 },
+    });
 
     const manager = {
       findOne: jest.fn().mockResolvedValue(null),
@@ -782,7 +854,10 @@ describe('Regression 3.1 — live-tip events stored as isFinalized=false', () =>
     await (service as any).persistEventInTx(
       manager,
       '0xcontract',
-      { name: 'Transfer', abi: 'event Transfer(address indexed from, address indexed to, uint256 amount)' },
+      {
+        name: 'Transfer',
+        abi: 'event Transfer(address indexed from, address indexed to, uint256 amount)',
+      },
       log,
       200_010,
       200_000, // finalizedBlock — log is above this
@@ -821,7 +896,10 @@ describe('Regression 3.2 — duplicate event delivery is a no-op', () => {
 
     await (service as any).processEvent(
       '0xcontract',
-      { name: 'Transfer', abi: 'event Transfer(address indexed from, address indexed to, uint256 amount)' },
+      {
+        name: 'Transfer',
+        abi: 'event Transfer(address indexed from, address indexed to, uint256 amount)',
+      },
       log,
       101_000,
       200_000,
@@ -838,7 +916,9 @@ describe('Regression 3.4 — transient RPC failure increments rpcFailureCount', 
     const { service, mockProvider } = buildService();
     mockProvider.send.mockRejectedValue(new Error('RPC timeout'));
 
-    await expect((service as any).fetchFinalizedBlockNumber()).rejects.toThrow('RPC timeout');
+    await expect((service as any).fetchFinalizedBlockNumber()).rejects.toThrow(
+      'RPC timeout',
+    );
   });
 });
 
@@ -901,7 +981,11 @@ describe('Boundary conditions', () => {
 
     await (service as any).persistBatch(
       '0xcontract',
-      { name: 'Transfer', signature: '0x', abi: 'event Transfer(address indexed from, address indexed to, uint256 amount)' },
+      {
+        name: 'Transfer',
+        signature: '0x',
+        abi: 'event Transfer(address indexed from, address indexed to, uint256 amount)',
+      },
       [], // no logs
       1099,
       200_000,

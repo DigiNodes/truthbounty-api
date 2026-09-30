@@ -5,7 +5,7 @@ import { readFileSync } from 'fs';
 import { dataSource } from '../../config/data-source';
 import { RebuildCheckpoint } from './rebuild-checkpoint';
 import { ProjectionRebuildService } from './projection-rebuild.service';
-import { ProjectionRebuildModule } from './v2-rebuild.module';
+import { V2RebuildModule } from './v2-rebuild.module';
 
 /**
  * Operator entry point for a projection rebuild.
@@ -105,7 +105,9 @@ function loadCheckpoint(path: string): RebuildCheckpoint {
   const checkpoint = parsed as Partial<RebuildCheckpoint>;
   for (const field of ['fromBlock', 'inputDigest'] as const) {
     if (typeof checkpoint[field] !== 'string') {
-      throw new Error(`${path} is missing required checkpoint field "${field}"`);
+      throw new Error(
+        `${path} is missing required checkpoint field "${field}"`,
+      );
     }
   }
   return checkpoint as RebuildCheckpoint;
@@ -118,7 +120,7 @@ function loadCheckpoint(path: string): RebuildCheckpoint {
  * copy of the connection configuration.
  */
 @Module({
-  imports: [TypeOrmModule.forRoot(dataSource.options), ProjectionRebuildModule],
+  imports: [TypeOrmModule.forRoot(dataSource.options), V2RebuildModule],
 })
 class ProjectionRebuildCliModule {}
 
@@ -175,7 +177,6 @@ async function main(): Promise<void> {
 }
 
 void main().catch((error: unknown) => {
-  // eslint-disable-next-line no-console
   console.error(error instanceof Error ? error.message : String(error));
   process.exit(1);
 });

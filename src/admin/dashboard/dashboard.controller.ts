@@ -1,9 +1,4 @@
-import {
-  Controller,
-  Get,
-  Query,
-  UseGuards,
-} from '@nestjs/common';
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiForbiddenResponse,
@@ -73,9 +68,7 @@ const AUDIT_ROLES = [
 @Controller('admin/dashboard')
 @UseGuards(AdminGuard, RolesGuard)
 export class DashboardController {
-  constructor(
-    private readonly dashboardService: DashboardService,
-  ) {}
+  constructor(private readonly dashboardService: DashboardService) {}
 
   @Get('overview')
   @Roles(...DASHBOARD_ROLES)
@@ -129,8 +122,7 @@ export class DashboardController {
   @Roles(...DASHBOARD_ROLES)
   @ApiOperation({
     summary: 'Get infrastructure health',
-    description:
-      'Returns infrastructure health information and queue status.',
+    description: 'Returns infrastructure health information and queue status.',
   })
   @ApiResponse({
     status: 200,
@@ -257,8 +249,7 @@ export class DashboardController {
   @Roles(...DASHBOARD_ROLES)
   @ApiOperation({
     summary: 'Get background job metrics',
-    description:
-      'Returns background job queue and processing statistics.',
+    description: 'Returns background job queue and processing statistics.',
   })
   @ApiResponse({
     status: 200,
@@ -326,8 +317,7 @@ export class DashboardController {
   @Roles(...AUDIT_ROLES)
   @ApiOperation({
     summary: 'Get audit summary',
-    description:
-      'Returns audit activity for the requested number of days.',
+    description: 'Returns audit activity for the requested number of days.',
   })
   @ApiQuery({
     name: 'days',
@@ -340,16 +330,10 @@ export class DashboardController {
     status: 200,
     description: 'Audit summary retrieved successfully.',
   })
-  async getAuditSummary(
-    @Query('days') days?: string,
-  ) {
+  async getAuditSummary(@Query('days') days?: string) {
     const parsedDays = days === undefined ? 7 : Number(days);
 
-    if (
-      !Number.isInteger(parsedDays) ||
-      parsedDays < 1 ||
-      parsedDays > 365
-    ) {
+    if (!Number.isInteger(parsedDays) || parsedDays < 1 || parsedDays > 365) {
       throw new Error('days must be an integer between 1 and 365');
     }
 

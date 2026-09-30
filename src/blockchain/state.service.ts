@@ -72,7 +72,10 @@ export class BlockchainStateService {
       ) ?? 150;
     for (const [name, threshold] of [
       ['blockchain.indexerLagThresholdBlocks', this.indexerLagThresholdBlocks],
-      ['blockchain.finalityLagThresholdBlocks', this.finalityLagThresholdBlocks],
+      [
+        'blockchain.finalityLagThresholdBlocks',
+        this.finalityLagThresholdBlocks,
+      ],
     ] as const) {
       if (!Number.isSafeInteger(threshold) || threshold < 0) {
         throw new Error(`${name} must be a non-negative safe integer`);

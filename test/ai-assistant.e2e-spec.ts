@@ -3,9 +3,15 @@ import { INestApplication } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import request from 'supertest';
 import { createGlobalValidationPipe } from '../src/bootstrap';
-import { ContextDocument, ContextDocumentCategory } from '../src/ai-assistant/entities/context-document.entity';
+import {
+  ContextDocument,
+  ContextDocumentCategory,
+} from '../src/ai-assistant/entities/context-document.entity';
 import { ConversationMode } from '../src/ai-assistant/entities/conversation.entity';
-import { createAuthenticatedTestUser, TestAuthUser } from './utils/ai-assistant-auth.helper';
+import {
+  createAuthenticatedTestUser,
+  TestAuthUser,
+} from './utils/ai-assistant-auth.helper';
 import { AiAssistantTestModule } from './utils/ai-assistant-test.module';
 import { setupPrismaTestDatabase } from './utils/prisma-test-db.helper';
 
@@ -18,7 +24,8 @@ describe('AI Assistant E2E (ai-assistant.e2e-spec.ts)', () => {
   let admin: TestAuthUser;
   let cleanupPrisma: () => void;
 
-  const authHeader = (user: TestAuthUser) => ['Authorization', `Bearer ${user.accessToken}`] as [string, string];
+  const authHeader = (user: TestAuthUser) =>
+    ['Authorization', `Bearer ${user.accessToken}`] as [string, string];
 
   beforeAll(async () => {
     // Generous throttle limits for this shared-app-instance suite — rate
@@ -51,7 +58,8 @@ describe('AI Assistant E2E (ai-assistant.e2e-spec.ts)', () => {
       contextDocumentRepository.create({
         title: 'Staking Overview',
         category: ContextDocumentCategory.PROTOCOL_DOCS,
-        content: 'Staking locks tokens to back claims and earn rewards for accurate contributors.',
+        content:
+          'Staking locks tokens to back claims and earn rewards for accurate contributors.',
         tags: ['staking'],
       }),
     );
@@ -73,7 +81,11 @@ describe('AI Assistant E2E (ai-assistant.e2e-spec.ts)', () => {
       expect(res.body).toMatchObject({
         success: true,
         error: null,
-        data: { userId: contributor.userId, title: 'My first chat', mode: 'general' },
+        data: {
+          userId: contributor.userId,
+          title: 'My first chat',
+          mode: 'general',
+        },
       });
       expect(res.body.requestId).toEqual(expect.any(String));
       expect(res.body.timestamp).toEqual(expect.any(String));
@@ -83,7 +95,9 @@ describe('AI Assistant E2E (ai-assistant.e2e-spec.ts)', () => {
       // JwtAuthGuard (passport's AuthGuard('jwt')) throws UnauthorizedException
       // for a missing token — distinct from GlobalAuthGuard's ForbiddenException
       // used elsewhere in the app for unauthenticated mutating requests.
-      await request(app.getHttpServer()).get('/ai-assistant/conversations').expect(401);
+      await request(app.getHttpServer())
+        .get('/ai-assistant/conversations')
+        .expect(401);
     });
 
     it('isolates conversations per user — another user cannot read them', async () => {
@@ -115,10 +129,14 @@ describe('AI Assistant E2E (ai-assistant.e2e-spec.ts)', () => {
         .send({ content: 'Tell me about staking rewards' })
         .expect(201);
 
-      expect(res.body.data.userMessage.content).toBe('Tell me about staking rewards');
+      expect(res.body.data.userMessage.content).toBe(
+        'Tell me about staking rewards',
+      );
       expect(res.body.data.assistantMessage.provider).toBe('mock');
       expect(res.body.data.assistantMessage.citations).toEqual(
-        expect.arrayContaining([expect.objectContaining({ title: 'Staking Overview' })]),
+        expect.arrayContaining([
+          expect.objectContaining({ title: 'Staking Overview' }),
+        ]),
       );
       expect(res.body.meta).toEqual({ fallback: false });
     });
@@ -195,7 +213,11 @@ describe('AI Assistant E2E (ai-assistant.e2e-spec.ts)', () => {
       await request(app.getHttpServer())
         .post('/ai-assistant/knowledge-base')
         .set(...authHeader(contributor))
-        .send({ title: 'x', category: ContextDocumentCategory.FAQ, content: 'x' })
+        .send({
+          title: 'x',
+          category: ContextDocumentCategory.FAQ,
+          content: 'x',
+        })
         .expect(403);
     });
 
@@ -203,7 +225,11 @@ describe('AI Assistant E2E (ai-assistant.e2e-spec.ts)', () => {
       await request(app.getHttpServer())
         .post('/ai-assistant/knowledge-base')
         .set(...authHeader(admin))
-        .send({ title: 'Admin doc', category: ContextDocumentCategory.FAQ, content: 'Admin-authored FAQ entry.' })
+        .send({
+          title: 'Admin doc',
+          category: ContextDocumentCategory.FAQ,
+          content: 'Admin-authored FAQ entry.',
+        })
         .expect(201);
     });
 

@@ -278,13 +278,14 @@ export class HealthService {
   }
 
   private async checkQueue(): Promise<void> {
+    // 'paused' is not a valid JobType in bullmq 6 (paused work is reported
+    // under 'waiting'/'prioritized'), so it is deliberately omitted here.
     const counts = await this.jobsQueue.getJobCounts(
       'waiting',
       'active',
       'completed',
       'failed',
       'delayed',
-      'paused',
     );
     this.metricsService.setQueueDepth(this.jobsQueue.name, counts);
   }

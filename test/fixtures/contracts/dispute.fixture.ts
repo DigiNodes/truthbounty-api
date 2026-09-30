@@ -1,5 +1,10 @@
 import { Dispute } from '../../../src/dispute/entities/dispute.entity';
-import { createTestWallet, getContractAddress, createMockLog, createMockTransactionReceipt } from './blockchain.fixture';
+import {
+  createTestWallet,
+  getContractAddress,
+  createMockLog,
+  createMockTransactionReceipt,
+} from './blockchain.fixture';
 
 /**
  * Dispute Contract Test Fixtures
@@ -67,7 +72,9 @@ export interface MockVoteData {
 /**
  * Create mock dispute entity
  */
-export function createMockDispute(overrides: Partial<MockDisputeData> = {}): Dispute {
+export function createMockDispute(
+  overrides: Partial<MockDisputeData> = {},
+): Dispute {
   const defaultData: MockDisputeData = {
     claimId: `claim_${Math.random().toString(36).substr(2, 9)}`,
     creatorAddress: createTestWallet('dispute_creator').address,
@@ -83,7 +90,7 @@ export function createMockDispute(overrides: Partial<MockDisputeData> = {}): Dis
   };
 
   const disputeData = { ...defaultData, ...overrides };
-  
+
   return {
     id: disputeData.id || `dispute_${Math.random().toString(36).substr(2, 9)}`,
     claimId: disputeData.claimId,
@@ -108,8 +115,9 @@ export function createMockDispute(overrides: Partial<MockDisputeData> = {}): Dis
  */
 export function createMockVote(
   dispute: Dispute,
-  overrides: Partial<MockVoteData> = {}
-): any { // Using 'any' to avoid circular dependency issues
+  overrides: Partial<MockVoteData> = {},
+): any {
+  // Using 'any' to avoid circular dependency issues
   const defaultData: MockVoteData = {
     disputeId: dispute.id,
     voterAddress: createTestWallet().address,
@@ -121,7 +129,7 @@ export function createMockVote(
   };
 
   const voteData = { ...defaultData, ...overrides };
-  
+
   return {
     id: voteData.id || `vote_${Math.random().toString(36).substr(2, 9)}`,
     disputeId: voteData.disputeId,
@@ -138,15 +146,18 @@ export function createMockVote(
  * Create multiple mock disputes
  */
 export function createMockDisputes(count: number = 3): Dispute[] {
-  return Array.from({ length: count }, (_, i) => 
+  return Array.from({ length: count }, (_, i) =>
     createMockDispute({
       claimId: `claim_${i + 1}`,
       description: `Dispute for claim ${i + 1}`,
       createdAt: new Date(Date.now() - i * 86400000), // Created 0-2 days ago
-      outcome: i === 0 ? DisputeOutcome.APPROVED : 
-               i === 1 ? DisputeOutcome.REJECTED : 
-               DisputeOutcome.PENDING,
-    })
+      outcome:
+        i === 0
+          ? DisputeOutcome.APPROVED
+          : i === 1
+            ? DisputeOutcome.REJECTED
+            : DisputeOutcome.PENDING,
+    }),
   );
 }
 
@@ -163,14 +174,14 @@ export function createMockVotes(dispute: Dispute, count: number = 5): any[] {
   for (let i = 0; i < count; i++) {
     const voteType = i < 3 ? VoteType.FOR : VoteType.AGAINST; // 3 for, 2 against
     const stakeAmount = (BigInt(i + 1) * 1000000000000000000n).toString(); // 1, 2, 3, 4, 5 ETH
-    
+
     const vote = createMockVote(dispute, {
       vote: voteType,
       stakeAmount,
     });
-    
+
     votes.push(vote);
-    
+
     if (voteType === VoteType.FOR) {
       totalFor += BigInt(stakeAmount);
       votesFor++;
@@ -195,7 +206,7 @@ export function createMockVotes(dispute: Dispute, count: number = 5): any[] {
 export function createMockDisputeEventLog(
   eventType: string,
   params: any,
-  blockNumber: number = 1
+  blockNumber: number = 1,
 ) {
   const contractAddress = getContractAddress('DISPUTE');
   let topics: string[];
@@ -209,30 +220,34 @@ export function createMockDisputeEventLog(
         '0x' + params.creatorAddress.slice(2).padStart(64, '0'),
         '0x' + params.claimId.padStart(64, '0'),
       ];
-      data = '0x' + Buffer.from(params.description).toString('hex').padStart(64, '0');
+      data =
+        '0x' +
+        Buffer.from(params.description).toString('hex').padStart(64, '0');
       break;
-      
+
     case 'VoteCast':
       topics = [
         DISPUTE_EVENT_SIGNATURES.VOTE_CAST,
         '0x' + params.voterAddress.slice(2).padStart(64, '0'),
         '0x' + Number(params.disputeId).toString(16).padStart(64, '0'),
       ];
-      data = '0x' + 
+      data =
+        '0x' +
         Number(params.vote).toString(16).padStart(64, '0') +
         BigInt(params.stakeAmount).toString(16).padStart(64, '0');
       break;
-      
+
     case 'DisputeResolved':
       topics = [
         DISPUTE_EVENT_SIGNATURES.DISPUTE_RESOLVED,
         '0x' + Number(params.disputeId).toString(16).padStart(64, '0'),
       ];
-      data = '0x' + 
+      data =
+        '0x' +
         Number(params.outcome).toString(16).padStart(64, '0') +
         BigInt(params.totalStake).toString(16).padStart(64, '0');
       break;
-      
+
     case 'AppealCreated':
       topics = [
         DISPUTE_EVENT_SIGNATURES.APPEAL_CREATED,
@@ -240,16 +255,18 @@ export function createMockDisputeEventLog(
       ];
       data = '0x' + BigInt(params.appealFee).toString(16).padStart(64, '0');
       break;
-      
+
     case 'EvidenceSubmitted':
       topics = [
         DISPUTE_EVENT_SIGNATURES.EVIDENCE_SUBMITTED,
         '0x' + Number(params.disputeId).toString(16).padStart(64, '0'),
         '0x' + params.submitterAddress.slice(2).padStart(64, '0'),
       ];
-      data = '0x' + Buffer.from(params.evidenceCID).toString('hex').padStart(64, '0');
+      data =
+        '0x' +
+        Buffer.from(params.evidenceCID).toString('hex').padStart(64, '0');
       break;
-      
+
     default:
       throw new Error(`Unknown event type: ${eventType}`);
   }
@@ -264,12 +281,10 @@ export function createMockDisputeTransactionReceipt(
   eventType: string,
   params: any,
   txHash: string,
-  blockNumber: number = 1
+  blockNumber: number = 1,
 ) {
   const receipt = createMockTransactionReceipt(txHash, blockNumber);
-  receipt.logs = [
-    createMockDisputeEventLog(eventType, params, blockNumber)
-  ];
+  receipt.logs = [createMockDisputeEventLog(eventType, params, blockNumber)];
   return receipt;
 }
 
@@ -288,7 +303,9 @@ export interface MockDisputeState {
 /**
  * Create mock dispute contract state
  */
-export function createMockDisputeState(overrides: Partial<MockDisputeState> = {}): MockDisputeState {
+export function createMockDisputeState(
+  overrides: Partial<MockDisputeState> = {},
+): MockDisputeState {
   const defaultState: MockDisputeState = {
     totalDisputes: 15,
     activeDisputes: 8,
@@ -299,11 +316,11 @@ export function createMockDisputeState(overrides: Partial<MockDisputeState> = {}
   };
 
   const state = { ...defaultState, ...overrides };
-  
+
   // Add some default disputes if none provided
   if (state.disputeMap.size === 0) {
     const disputes = createMockDisputes(3);
-    disputes.forEach(dispute => {
+    disputes.forEach((dispute) => {
       state.disputeMap.set(dispute.id, dispute);
       state.voteMap.set(dispute.id, createMockVotes(dispute, 4));
     });

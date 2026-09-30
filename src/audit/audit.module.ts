@@ -7,7 +7,10 @@ import { AuditChainState } from './entities/audit-chain-state.entity';
 import { Admin } from '../admin/entities/admin.entity';
 import { AuditTrailService } from './services/audit-trail.service';
 import { AuditRetentionService } from './services/audit-retention.service';
-import { AuditQueueService, AUDIT_QUEUE_NAME } from './services/audit-queue.service';
+import {
+  AuditQueueService,
+  AUDIT_QUEUE_NAME,
+} from './services/audit-queue.service';
 import { ComplianceService } from './services/compliance.service';
 import { SecurityMonitoringService } from './services/security-monitoring.service';
 import { AuditMetricsService } from './services/audit-metrics.service';

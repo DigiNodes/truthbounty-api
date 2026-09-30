@@ -270,3 +270,81 @@ model OutboxEvent {
   @@index([idempotencyKey])
   @@index([eventType, status])
 }
+
+// ---------------------------------------------------------------------------
+// V2 indexer: block cursor + reorg ancestry
+// Supports src/v2/block-cursor (reorg detection by walking parentHash back to
+// a common ancestor). Heights are BigInt because some EVM chains exceed
+// Number.MAX_SAFE_INTEGER.
+// ---------------------------------------------------------------------------
+
+model BlockCursor {
+  id     String @id @default(uuid())
+  chainId Int
+  // Logical indexer stream, e.g. "canonical-events"
+  source String
+
+  processedHeight BigInt @default(0)
+  processedHash   String @default("")
+  safeHeight      BigInt @default(0)
+  safeHash        String @default("")
+  finalizedHeight BigInt @default(0)
+  finalizedHash   String @default("")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ancestors BlockCursorAncestor[]
+
+  @@unique([chainId, source])
+  @@index([chainId])
+}
+
+model BlockCursorAncestor {
+  id       String @id @default(uuid())
+  cursorId String
+  cursor   BlockCursor @relation(fields: [cursorId], references: [id], onDelete: Cascade)
+
+  height BigInt
+  hash   String
+  parentHash String
+  // observed | safe | finalized (matches ConfirmationLevel in block-cursor.types.ts)
+  confirmation String    @default("observed")
+  // False once this height is known to belong to an orphaned branch
+  isCanonical Boolean   @default(true)
+
+  createdAt DateTime @default(now())
+
+  @@unique([cursorId, height, hash])
+  @@index([cursorId, isCanonical])
+}
+
+// ---------------------------------------------------------------------------
+// V2 indexer: canonical-identity dedup for raw EVM logs.
+// A replay of the same (chainId, blockHash, txHash, logIndex) is rejected;
+// the same log position under a different block hash is retained so reorgs
+// stay diagnosable.
+// ---------------------------------------------------------------------------
+
+model ChainEvent {
+  id              String   @id @default(uuid())
+  chainId         Int
+  contractAddress String
+  eventName       String
+  // Decimal string, never a JS number/float.
+  blockNumber     String
+  blockHash       String
+  txHash          String
+  logIndex        Int
+  blockTimestamp  DateTime?
+  // JSON-encoded RawChainLog.payload
+  payload         String
+  // JSON-encoded RawChainLog.rawArgs
+  rawArgs         String
+
+ingestedAt DateTime @default(now())
+
+  @@unique([chainId, blockHash, txHash, logIndex])
+  @@index([chainId, txHash, logIndex])
+  @@index([eventName, blockNumber])
+}

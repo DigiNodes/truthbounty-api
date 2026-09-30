@@ -49,8 +49,8 @@ export class ChainEventDedupService {
           txHash: log.txHash.toLowerCase(),
           logIndex: log.logIndex,
           blockTimestamp: log.blockTimestamp ?? null,
-          payload: log.payload as Prisma.InputJsonValue,
-          rawArgs: log.rawArgs as Prisma.InputJsonValue,
+          payload: JSON.stringify(log.payload),
+          rawArgs: JSON.stringify(log.rawArgs),
         },
       });
       return { status: 'ingested', id: created.id };

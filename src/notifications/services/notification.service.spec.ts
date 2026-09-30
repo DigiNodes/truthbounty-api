@@ -127,9 +127,15 @@ describe('NotificationService', () => {
     }).compile();
 
     service = module.get<NotificationService>(NotificationService);
-    notificationRepo = module.get<Repository<Notification>>(getRepositoryToken(Notification));
-    deliveryRepo = module.get<Repository<NotificationDelivery>>(getRepositoryToken(NotificationDelivery));
-    preferencesRepo = module.get<Repository<UserNotificationPreference>>(getRepositoryToken(UserNotificationPreference));
+    notificationRepo = module.get<Repository<Notification>>(
+      getRepositoryToken(Notification),
+    );
+    deliveryRepo = module.get<Repository<NotificationDelivery>>(
+      getRepositoryToken(NotificationDelivery),
+    );
+    preferencesRepo = module.get<Repository<UserNotificationPreference>>(
+      getRepositoryToken(UserNotificationPreference),
+    );
   });
 
   it('should be defined', () => {
@@ -138,13 +144,27 @@ describe('NotificationService', () => {
 
   describe('create', () => {
     it('should create a notification and enqueue delivery', async () => {
-      const createSpy = jest.spyOn(notificationRepo, 'create').mockReturnValue(mockNotification as any);
-      const saveSpy = jest.spyOn(notificationRepo, 'save').mockResolvedValue(mockNotification as any);
-      const findOneSpy = jest.spyOn(notificationRepo, 'findOne').mockResolvedValue({ ...mockNotification, deliveries: [] } as any);
-      const deliveryCreateSpy = jest.spyOn(deliveryRepo, 'create').mockReturnValue(mockDelivery as any);
-      const deliverySaveSpy = jest.spyOn(deliveryRepo, 'save').mockResolvedValue(mockDelivery as any);
-      jest.spyOn(preferencesRepo, 'findOne').mockResolvedValue(mockPreferences as any);
-      jest.spyOn(preferencesRepo, 'create').mockReturnValue(mockPreferences as any);
+      const createSpy = jest
+        .spyOn(notificationRepo, 'create')
+        .mockReturnValue(mockNotification as any);
+      const saveSpy = jest
+        .spyOn(notificationRepo, 'save')
+        .mockResolvedValue(mockNotification as any);
+      const findOneSpy = jest
+        .spyOn(notificationRepo, 'findOne')
+        .mockResolvedValue({ ...mockNotification, deliveries: [] } as any);
+      const deliveryCreateSpy = jest
+        .spyOn(deliveryRepo, 'create')
+        .mockReturnValue(mockDelivery as any);
+      const deliverySaveSpy = jest
+        .spyOn(deliveryRepo, 'save')
+        .mockResolvedValue(mockDelivery as any);
+      jest
+        .spyOn(preferencesRepo, 'findOne')
+        .mockResolvedValue(mockPreferences as any);
+      jest
+        .spyOn(preferencesRepo, 'create')
+        .mockReturnValue(mockPreferences as any);
 
       const result = await service.create({
         type: NotificationType.CLAIM_SUBMITTED,
@@ -170,11 +190,19 @@ describe('NotificationService', () => {
         ...mockPreferences,
         notificationsEnabled: false,
       };
-      jest.spyOn(preferencesRepo, 'findOne').mockResolvedValue(userPrefs as any);
+      jest
+        .spyOn(preferencesRepo, 'findOne')
+        .mockResolvedValue(userPrefs as any);
       jest.spyOn(preferencesRepo, 'create').mockReturnValue(userPrefs as any);
-      jest.spyOn(notificationRepo, 'create').mockReturnValue(mockNotification as any);
-      jest.spyOn(notificationRepo, 'save').mockResolvedValue(mockNotification as any);
-      jest.spyOn(notificationRepo, 'findOne').mockResolvedValue({ ...mockNotification, deliveries: [] } as any);
+      jest
+        .spyOn(notificationRepo, 'create')
+        .mockReturnValue(mockNotification as any);
+      jest
+        .spyOn(notificationRepo, 'save')
+        .mockResolvedValue(mockNotification as any);
+      jest
+        .spyOn(notificationRepo, 'findOne')
+        .mockResolvedValue({ ...mockNotification, deliveries: [] } as any);
 
       await service.create({
         type: NotificationType.CLAIM_SUBMITTED,
@@ -195,9 +223,15 @@ describe('NotificationService', () => {
         deliveries: [{ ...mockDelivery }],
       };
 
-      jest.spyOn(notificationRepo, 'findOne').mockResolvedValue(notifWithDeliveries as any);
-      const notifSaveSpy = jest.spyOn(notificationRepo, 'save').mockResolvedValue(notifWithDeliveries as any);
-      const deliverySaveSpy = jest.spyOn(deliveryRepo, 'save').mockResolvedValue(mockDelivery as any);
+      jest
+        .spyOn(notificationRepo, 'findOne')
+        .mockResolvedValue(notifWithDeliveries as any);
+      const notifSaveSpy = jest
+        .spyOn(notificationRepo, 'save')
+        .mockResolvedValue(notifWithDeliveries as any);
+      const deliverySaveSpy = jest
+        .spyOn(deliveryRepo, 'save')
+        .mockResolvedValue(mockDelivery as any);
 
       await service.processDelivery('notif-1');
 
@@ -216,9 +250,15 @@ describe('NotificationService', () => {
         deliveries: [{ ...failDelivery }],
       };
 
-      jest.spyOn(notificationRepo, 'findOne').mockResolvedValue(notifWithDeliveries as any);
-      const deliverySaveSpy = jest.spyOn(deliveryRepo, 'save').mockImplementation(async (d) => d as any);
-      jest.spyOn(notificationRepo, 'save').mockImplementation(async (d) => d as any);
+      jest
+        .spyOn(notificationRepo, 'findOne')
+        .mockResolvedValue(notifWithDeliveries as any);
+      const deliverySaveSpy = jest
+        .spyOn(deliveryRepo, 'save')
+        .mockImplementation(async (d) => d as any);
+      jest
+        .spyOn(notificationRepo, 'save')
+        .mockImplementation(async (d) => d as any);
 
       await service.processDelivery('notif-1');
 
@@ -228,26 +268,38 @@ describe('NotificationService', () => {
 
     it('should handle notification not found gracefully', async () => {
       jest.spyOn(notificationRepo, 'findOne').mockResolvedValue(null);
-      await expect(service.processDelivery('nonexistent')).resolves.not.toThrow();
+      await expect(
+        service.processDelivery('nonexistent'),
+      ).resolves.not.toThrow();
     });
   });
 
   describe('user preferences', () => {
     it('should get or create preferences', async () => {
       jest.spyOn(preferencesRepo, 'findOne').mockResolvedValue(null);
-      const createSpy = jest.spyOn(preferencesRepo, 'create').mockReturnValue(mockPreferences as any);
-      const saveSpy = jest.spyOn(preferencesRepo, 'save').mockResolvedValue(mockPreferences as any);
+      const createSpy = jest
+        .spyOn(preferencesRepo, 'create')
+        .mockReturnValue(mockPreferences as any);
+      const saveSpy = jest
+        .spyOn(preferencesRepo, 'save')
+        .mockResolvedValue(mockPreferences as any);
 
       const result = await service.getOrCreatePreferences('new-user');
 
-      expect(createSpy).toHaveBeenCalledWith(expect.objectContaining({ userId: 'new-user' }));
+      expect(createSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'new-user' }),
+      );
       expect(saveSpy).toHaveBeenCalled();
       expect(result).toBeDefined();
     });
 
     it('should update preferences', async () => {
-      jest.spyOn(preferencesRepo, 'findOne').mockResolvedValue(mockPreferences as any);
-      const saveSpy = jest.spyOn(preferencesRepo, 'save').mockImplementation(async (p) => p as any);
+      jest
+        .spyOn(preferencesRepo, 'findOne')
+        .mockResolvedValue(mockPreferences as any);
+      const saveSpy = jest
+        .spyOn(preferencesRepo, 'save')
+        .mockImplementation(async (p) => p as any);
 
       const result = await service.updatePreferences('user-1', {
         frequency: NotificationFrequency.DAILY,
@@ -266,8 +318,12 @@ describe('NotificationService', () => {
         quietHoursEnd: ['06:00'],
       };
 
-      jest.spyOn(preferencesRepo, 'findOne').mockResolvedValue(quietPrefs as any);
-      jest.spyOn(preferencesRepo, 'save').mockImplementation(async (p) => p as any);
+      jest
+        .spyOn(preferencesRepo, 'findOne')
+        .mockResolvedValue(quietPrefs as any);
+      jest
+        .spyOn(preferencesRepo, 'save')
+        .mockImplementation(async (p) => p as any);
 
       const result = await service.getOrCreatePreferences('user-1');
       expect(result.quietHoursStart).toEqual(['22:00']);
@@ -277,8 +333,14 @@ describe('NotificationService', () => {
 
   describe('markAsRead', () => {
     it('should mark notification as read', async () => {
-      jest.spyOn(notificationRepo, 'findOne').mockResolvedValue(mockNotification as any);
-      const saveSpy = jest.spyOn(notificationRepo, 'save').mockResolvedValue({ ...mockNotification, read: true, readAt: new Date() } as any);
+      jest
+        .spyOn(notificationRepo, 'findOne')
+        .mockResolvedValue(mockNotification as any);
+      const saveSpy = jest.spyOn(notificationRepo, 'save').mockResolvedValue({
+        ...mockNotification,
+        read: true,
+        readAt: new Date(),
+      } as any);
 
       const result = await service.markAsRead('notif-1', 'user-1');
 
@@ -288,13 +350,17 @@ describe('NotificationService', () => {
 
     it('should throw when notification not found', async () => {
       jest.spyOn(notificationRepo, 'findOne').mockResolvedValue(null);
-      await expect(service.markAsRead('nonexistent', 'user-1')).rejects.toThrow('Notification not found');
+      await expect(service.markAsRead('nonexistent', 'user-1')).rejects.toThrow(
+        'Notification not found',
+      );
     });
   });
 
   describe('markAllAsRead', () => {
     it('should mark all unread notifications as read', async () => {
-      jest.spyOn(notificationRepo, 'update').mockResolvedValue({ affected: 5, raw: {}, generatedMaps: [] } as any);
+      jest
+        .spyOn(notificationRepo, 'update')
+        .mockResolvedValue({ affected: 5, raw: {}, generatedMaps: [] } as any);
 
       const count = await service.markAllAsRead('user-1');
 
@@ -304,7 +370,9 @@ describe('NotificationService', () => {
 
   describe('scheduled notifications', () => {
     it('should schedule a notification with a future date', async () => {
-      const createSpy = jest.spyOn(service, 'create').mockResolvedValue(mockNotification as any);
+      const createSpy = jest
+        .spyOn(service, 'create')
+        .mockResolvedValue(mockNotification as any);
       const futureDate = new Date(Date.now() + 86400000).toISOString();
 
       const result = await service.scheduleNotification({
@@ -323,9 +391,15 @@ describe('NotificationService', () => {
   describe('cancelScheduled', () => {
     it('should cancel a pending scheduled notification', async () => {
       const pendingNotif = { ...mockNotification, status: 'PENDING' };
-      jest.spyOn(notificationRepo, 'findOne').mockResolvedValue(pendingNotif as any);
-      const saveSpy = jest.spyOn(notificationRepo, 'save').mockImplementation(async (n) => n as any);
-      jest.spyOn(deliveryRepo, 'update').mockResolvedValue({ affected: 1, raw: {}, generatedMaps: [] } as any);
+      jest
+        .spyOn(notificationRepo, 'findOne')
+        .mockResolvedValue(pendingNotif as any);
+      const saveSpy = jest
+        .spyOn(notificationRepo, 'save')
+        .mockImplementation(async (n) => n as any);
+      jest
+        .spyOn(deliveryRepo, 'update')
+        .mockResolvedValue({ affected: 1, raw: {}, generatedMaps: [] } as any);
 
       const result = await service.cancelScheduled('notif-1', 'user-1');
 
@@ -335,13 +409,17 @@ describe('NotificationService', () => {
 
     it('should throw when notification is not found', async () => {
       jest.spyOn(notificationRepo, 'findOne').mockResolvedValue(null);
-      await expect(service.cancelScheduled('nonexistent', 'user-1')).rejects.toThrow('Notification not found');
+      await expect(
+        service.cancelScheduled('nonexistent', 'user-1'),
+      ).rejects.toThrow('Notification not found');
     });
   });
 
   describe('getUserNotifications', () => {
     it('should return paginated notifications with total count', async () => {
-      jest.spyOn(notificationRepo, 'findAndCount').mockResolvedValue([[mockNotification], 1] as any);
+      jest
+        .spyOn(notificationRepo, 'findAndCount')
+        .mockResolvedValue([[mockNotification], 1] as any);
 
       const result = await service.getUserNotifications('user-1', {});
 

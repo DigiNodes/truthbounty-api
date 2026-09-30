@@ -6,10 +6,7 @@ import { WorldcoinService } from './worldcoin.service';
 import { WorldIdVerification } from './entities/world-id-verification.entity';
 
 @Module({
-  imports: [
-    TypeOrmModule.forFeature([WorldIdVerification]),
-    ConfigModule,
-  ],
+  imports: [TypeOrmModule.forFeature([WorldIdVerification]), ConfigModule],
   controllers: [WorldcoinController],
   providers: [WorldcoinService],
   exports: [WorldcoinService],

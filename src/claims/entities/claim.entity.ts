@@ -1,12 +1,19 @@
-import { Column, Entity, Index, PrimaryGeneratedColumn, CreateDateColumn, OneToMany } from 'typeorm';
+import {
+  Column,
+  Entity,
+  Index,
+  PrimaryGeneratedColumn,
+  CreateDateColumn,
+  OneToMany,
+} from 'typeorm';
 import { Evidence } from './evidence.entity';
 
 /**
  * Claim state machine states
  */
 export enum ClaimState {
-  PENDING = 'PENDING',     // Initial state: no verdict yet
-  RESOLVED = 'RESOLVED',   // Verdict assigned but not finalized
+  PENDING = 'PENDING', // Initial state: no verdict yet
+  RESOLVED = 'RESOLVED', // Verdict assigned but not finalized
   FINALIZED = 'FINALIZED', // Terminal state: verdict is final
 }
 
@@ -90,16 +97,16 @@ export class Claim {
   /**
    * Validate and perform state transition with proper checks
    * Prevents invalid state transitions and ensures data integrity
-   * 
+   *
    * Valid transitions:
    * - PENDING → RESOLVED (requires verdict + confidence)
    * - PENDING → FINALIZED (requires verdict + confidence)
    * - RESOLVED → FINALIZED (no additional data required)
-   * 
+   *
    * Invalid transitions:
    * - FINALIZED → * (finalized claims are immutable)
    * - RESOLVED → PENDING (cannot unresolve)
-   * 
+   *
    * @param targetState - The desired state to transition to
    * @param data - Optional data required for the transition (verdict, confidence)
    * @throws Error if transition is invalid or required data is missing
@@ -110,7 +117,7 @@ export class Claim {
     // Prevent any transitions from FINALIZED state (immutable)
     if (currentState === ClaimState.FINALIZED) {
       throw new Error(
-        `Invalid transition: Cannot transition from FINALIZED state. Claim ${this.id} is immutable.`
+        `Invalid transition: Cannot transition from FINALIZED state. Claim ${this.id} is immutable.`,
       );
     }
 
@@ -119,7 +126,7 @@ export class Claim {
       case ClaimState.PENDING:
         // Cannot transition back to PENDING from any state
         throw new Error(
-          `Invalid transition: Cannot transition to PENDING from ${currentState}. Claims cannot be unresolved.`
+          `Invalid transition: Cannot transition to PENDING from ${currentState}. Claims cannot be unresolved.`,
         );
 
       case ClaimState.RESOLVED:
@@ -127,7 +134,7 @@ export class Claim {
           // PENDING → RESOLVED: requires verdict and confidence
           if (data?.verdict === undefined || data?.confidence === undefined) {
             throw new Error(
-              'Invalid transition: PENDING → RESOLVED requires both verdict and confidence data.'
+              'Invalid transition: PENDING → RESOLVED requires both verdict and confidence data.',
             );
           }
           this.resolvedVerdict = data.verdict;
@@ -158,7 +165,7 @@ export class Claim {
           // PENDING → FINALIZED: requires verdict and confidence
           if (data?.verdict === undefined || data?.confidence === undefined) {
             throw new Error(
-              'Invalid transition: PENDING → FINALIZED requires both verdict and confidence data.'
+              'Invalid transition: PENDING → FINALIZED requires both verdict and confidence data.',
             );
           }
           this.resolvedVerdict = data.verdict;
@@ -191,4 +198,3 @@ export class Claim {
     }
   }
 }
-

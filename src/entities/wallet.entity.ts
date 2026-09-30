@@ -12,7 +12,7 @@ import { User } from './user.entity';
 
 /**
  * Wallet Entity
- * 
+ *
  * Represents a blockchain wallet linked to a user.
  * Users can link multiple wallets across different chains (Ethereum, Optimism, Stellar, etc.)
  * Each (address, chain) combination must be unique across the entire system.

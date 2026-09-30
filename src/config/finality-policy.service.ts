@@ -34,7 +34,9 @@ export class FinalityPolicyService implements OnApplicationBootstrap {
   constructor(private readonly configService: ConfigService) {}
 
   async onApplicationBootstrap(): Promise<void> {
-    if (this.configService.get('FINALITY_POLICY_STARTUP_VALIDATION') === 'false') {
+    if (
+      this.configService.get('FINALITY_POLICY_STARTUP_VALIDATION') === 'false'
+    ) {
       this.logger.warn('Finality policy startup validation disabled by config');
       return;
     }
@@ -52,7 +54,9 @@ export class FinalityPolicyService implements OnApplicationBootstrap {
     const errors: string[] = [];
 
     if (!Number.isInteger(thresholds.chainId) || thresholds.chainId <= 0) {
-      errors.push(`CHAIN_ID must resolve to a positive integer (got "${thresholds.chainId}")`);
+      errors.push(
+        `CHAIN_ID must resolve to a positive integer (got "${thresholds.chainId}")`,
+      );
     } else if (!this.getAllowedChainIds().includes(thresholds.chainId)) {
       errors.push(
         `CHAIN_ID ${thresholds.chainId} is not a recognized Optimism network (allowed: ${this.getAllowedChainIds().join(', ')})`,
@@ -64,9 +68,13 @@ export class FinalityPolicyService implements OnApplicationBootstrap {
       ['FINALITY_FINALIZED_CONFIRMATIONS', thresholds.finalizedConfirmations],
     ] as const) {
       if (!Number.isInteger(value) || value < 0) {
-        errors.push(`${name} must resolve to a non-negative integer (got "${value}")`);
+        errors.push(
+          `${name} must resolve to a non-negative integer (got "${value}")`,
+        );
       } else if (value > MAX_SANE_CONFIRMATIONS) {
-        errors.push(`${name} exceeds the sane upper bound of ${MAX_SANE_CONFIRMATIONS} (got ${value})`);
+        errors.push(
+          `${name} exceeds the sane upper bound of ${MAX_SANE_CONFIRMATIONS} (got ${value})`,
+        );
       }
     }
 
@@ -95,20 +103,32 @@ export class FinalityPolicyService implements OnApplicationBootstrap {
   getThresholds(): FinalityThresholds {
     return {
       chainId: this.configService.get<number>('finalityPolicy.chainId', 10),
-      safeConfirmations: this.configService.get<number>('finalityPolicy.safeConfirmations', 1),
-      finalizedConfirmations: this.configService.get<number>('finalityPolicy.finalizedConfirmations', 12),
+      safeConfirmations: this.configService.get<number>(
+        'finalityPolicy.safeConfirmations',
+        1,
+      ),
+      finalizedConfirmations: this.configService.get<number>(
+        'finalityPolicy.finalizedConfirmations',
+        12,
+      ),
     };
   }
 
   private getAllowedChainIds(): number[] {
-    return this.configService.get<number[]>('finalityPolicy.allowedChainIds', [10, 11155420]);
+    return this.configService.get<number[]>(
+      'finalityPolicy.allowedChainIds',
+      [10, 11155420],
+    );
   }
 
   /**
    * Classify a target block against the current chain head using the
    * validated confirmations thresholds. Pure, deterministic, side-effect-free.
    */
-  classifyByConfirmations(targetBlock: bigint, currentBlock: bigint): DataState {
+  classifyByConfirmations(
+    targetBlock: bigint,
+    currentBlock: bigint,
+  ): DataState {
     if (currentBlock < targetBlock) {
       return DataState.OBSERVED;
     }

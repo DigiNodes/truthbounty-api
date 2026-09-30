@@ -141,8 +141,6 @@ export class BlockchainController {
     return { success: true, message: 'State cleared' };
   }
 
-
-
   /**
    * Get current resolution configuration
    * GET /api/v1/blockchain/config/resolution
@@ -181,15 +179,23 @@ export class BlockchainController {
   async simulateResolution(
     @Body()
     payload: {
-      scenario: 'clear_majority' | 'tie' | 'low_confidence' | 'whale_dominance' | 'insufficient_weight';
+      scenario:
+        | 'clear_majority'
+        | 'tie'
+        | 'low_confidence'
+        | 'whale_dominance'
+        | 'insufficient_weight';
       config?: Partial<ResolutionConfig>;
     },
   ) {
     // Generate test votes based on scenario
     const testVotes = this.generateTestVotes(payload.scenario);
-    
-    const resolution = this.voteResolver.resolveClaim(testVotes, payload.config);
-    
+
+    const resolution = this.voteResolver.resolveClaim(
+      testVotes,
+      payload.config,
+    );
+
     return {
       success: true,
       scenario: payload.scenario,
@@ -201,9 +207,7 @@ export class BlockchainController {
   /**
    * Helper method to generate test votes for simulation
    */
-  private generateTestVotes(
-    scenario: string,
-  ): VerificationVote[] {
+  private generateTestVotes(scenario: string): VerificationVote[] {
     const baseVote = {
       claimId: 'simulation-claim-001',
       timestamp: new Date(),
@@ -213,33 +217,99 @@ export class BlockchainController {
     switch (scenario) {
       case 'clear_majority':
         return [
-          { ...baseVote, userId: 'user1', verdict: 'TRUE', userReputation: 80, stakeAmount: '100' },
-          { ...baseVote, userId: 'user2', verdict: 'TRUE', userReputation: 70, stakeAmount: '75' },
-          { ...baseVote, userId: 'user3', verdict: 'FALSE', userReputation: 60, stakeAmount: '50' },
+          {
+            ...baseVote,
+            userId: 'user1',
+            verdict: 'TRUE',
+            userReputation: 80,
+            stakeAmount: '100',
+          },
+          {
+            ...baseVote,
+            userId: 'user2',
+            verdict: 'TRUE',
+            userReputation: 70,
+            stakeAmount: '75',
+          },
+          {
+            ...baseVote,
+            userId: 'user3',
+            verdict: 'FALSE',
+            userReputation: 60,
+            stakeAmount: '50',
+          },
         ];
 
       case 'tie':
         return [
-          { ...baseVote, userId: 'user1', verdict: 'TRUE', userReputation: 70, stakeAmount: '100' },
-          { ...baseVote, userId: 'user2', verdict: 'FALSE', userReputation: 70, stakeAmount: '100' },
+          {
+            ...baseVote,
+            userId: 'user1',
+            verdict: 'TRUE',
+            userReputation: 70,
+            stakeAmount: '100',
+          },
+          {
+            ...baseVote,
+            userId: 'user2',
+            verdict: 'FALSE',
+            userReputation: 70,
+            stakeAmount: '100',
+          },
         ];
 
       case 'low_confidence':
         return [
-          { ...baseVote, userId: 'user1', verdict: 'TRUE', userReputation: 55, stakeAmount: '50' },
-          { ...baseVote, userId: 'user2', verdict: 'FALSE', userReputation: 54, stakeAmount: '50' },
+          {
+            ...baseVote,
+            userId: 'user1',
+            verdict: 'TRUE',
+            userReputation: 55,
+            stakeAmount: '50',
+          },
+          {
+            ...baseVote,
+            userId: 'user2',
+            verdict: 'FALSE',
+            userReputation: 54,
+            stakeAmount: '50',
+          },
         ];
 
       case 'whale_dominance':
         return [
-          { ...baseVote, userId: 'whale', verdict: 'TRUE', userReputation: 95, stakeAmount: '1000' },
-          { ...baseVote, userId: 'user1', verdict: 'FALSE', userReputation: 30, stakeAmount: '25' },
-          { ...baseVote, userId: 'user2', verdict: 'FALSE', userReputation: 30, stakeAmount: '25' },
+          {
+            ...baseVote,
+            userId: 'whale',
+            verdict: 'TRUE',
+            userReputation: 95,
+            stakeAmount: '1000',
+          },
+          {
+            ...baseVote,
+            userId: 'user1',
+            verdict: 'FALSE',
+            userReputation: 30,
+            stakeAmount: '25',
+          },
+          {
+            ...baseVote,
+            userId: 'user2',
+            verdict: 'FALSE',
+            userReputation: 30,
+            stakeAmount: '25',
+          },
         ];
 
       case 'insufficient_weight':
         return [
-          { ...baseVote, userId: 'user1', verdict: 'TRUE', userReputation: 20, stakeAmount: '10' },
+          {
+            ...baseVote,
+            userId: 'user1',
+            verdict: 'TRUE',
+            userReputation: 20,
+            stakeAmount: '10',
+          },
         ];
 
       default:

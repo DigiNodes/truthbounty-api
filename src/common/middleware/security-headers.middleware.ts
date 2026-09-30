@@ -6,7 +6,10 @@ const logger = new Logger('SecurityHeadersMiddleware');
 export class SecurityHeadersMiddleware implements NestMiddleware {
   use(req: Request, res: Response, next: NextFunction): void {
     // Prevent caching of sensitive data
-    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader(
+      'Cache-Control',
+      'no-store, no-cache, must-revalidate, proxy-revalidate',
+    );
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
     res.setHeader('Surrogate-Control', 'no-store');
@@ -23,7 +26,10 @@ export class SecurityHeadersMiddleware implements NestMiddleware {
     // Strict Transport Security (HSTS)
     // Max age of 1 year, include subdomains, allow preload
     const hstsMaxAge = process.env.HSTS_MAX_AGE || '31536000';
-    res.setHeader('Strict-Transport-Security', `max-age=${hstsMaxAge}; includeSubDomains; preload`);
+    res.setHeader(
+      'Strict-Transport-Security',
+      `max-age=${hstsMaxAge}; includeSubDomains; preload`,
+    );
 
     // Content Security Policy (CSP)
     // Restrict sources to self and trusted CDNs
@@ -36,7 +42,7 @@ export class SecurityHeadersMiddleware implements NestMiddleware {
       "connect-src 'self'",
       "frame-ancestors 'none'",
       "base-uri 'self'",
-      "form-action 'self'"
+      "form-action 'self'",
     ].join('; ');
     res.setHeader('Content-Security-Policy', cspDirectives);
 
@@ -44,7 +50,10 @@ export class SecurityHeadersMiddleware implements NestMiddleware {
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
 
     // Permissions Policy
-    res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
+    res.setHeader(
+      'Permissions-Policy',
+      'geolocation=(), microphone=(), camera=()',
+    );
 
     next();
   }

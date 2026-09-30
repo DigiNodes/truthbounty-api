@@ -40,6 +40,9 @@ export class EvidenceFlagService {
   }
 
   async getFlagsForEvidence(evidenceId: string): Promise<EvidenceFlag[]> {
-    return this.flagRepo.find({ where: { evidenceId }, order: { createdAt: 'ASC' } });
+    return this.flagRepo.find({
+      where: { evidenceId },
+      order: { createdAt: 'ASC' },
+    });
   }
 }

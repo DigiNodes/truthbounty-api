@@ -21,7 +21,9 @@ export interface ProviderNodeState {
 }
 
 export class RpcFailoverExhaustedException extends Error {
-  constructor(public readonly errors: Array<{ endpoint: string; error: string }>) {
+  constructor(
+    public readonly errors: Array<{ endpoint: string; error: string }>,
+  ) {
     super(
       `Deterministic RPC Failover Exhausted: All configured providers failed. Details: ${JSON.stringify(
         errors,
@@ -32,7 +34,11 @@ export class RpcFailoverExhaustedException extends Error {
 }
 
 export class ChainMismatchException extends Error {
-  constructor(expectedChainId: number, actualChainId: number, endpoint: string) {
+  constructor(
+    expectedChainId: number,
+    actualChainId: number,
+    endpoint: string,
+  ) {
     super(
       `Chain ID mismatch on RPC endpoint [${endpoint}]: expected ${expectedChainId}, got ${actualChainId}`,
     );
@@ -57,8 +63,14 @@ export class DeterministicRpcFailoverService implements OnModuleInit {
       'blockchain.fallbackRpcUrls',
       [],
     );
-    this.expectedChainId = this.configService.get<number>('blockchain.chainId', 10);
-    this.timeoutMs = this.configService.get<number>('blockchain.rpcTimeoutMs', 10000);
+    this.expectedChainId = this.configService.get<number>(
+      'blockchain.chainId',
+      10,
+    );
+    this.timeoutMs = this.configService.get<number>(
+      'blockchain.rpcTimeoutMs',
+      10000,
+    );
 
     const allUrls = [primaryUrl, ...fallbackUrls].filter(Boolean);
     this.initProviders(allUrls);
@@ -122,14 +134,21 @@ export class DeterministicRpcFailoverService implements OnModuleInit {
     const network = await Promise.race([
       node.provider.getNetwork(),
       new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Chain verification timeout')), this.timeoutMs),
+        setTimeout(
+          () => reject(new Error('Chain verification timeout')),
+          this.timeoutMs,
+        ),
       ),
     ]);
 
     const actualChainId = Number(network.chainId);
     if (actualChainId !== this.expectedChainId) {
       node.status = ProviderHealthStatus.UNHEALTHY;
-      throw new ChainMismatchException(this.expectedChainId, actualChainId, node.sanitizedUrl);
+      throw new ChainMismatchException(
+        this.expectedChainId,
+        actualChainId,
+        node.sanitizedUrl,
+      );
     }
   }
 
@@ -146,7 +165,10 @@ export class DeterministicRpcFailoverService implements OnModuleInit {
 
     if (orderedNodes.length === 0) {
       throw new RpcFailoverExhaustedException([
-        { endpoint: 'none', error: 'No configured RPC providers are eligible or available' },
+        {
+          endpoint: 'none',
+          error: 'No configured RPC providers are eligible or available',
+        },
       ]);
     }
 
@@ -157,7 +179,10 @@ export class DeterministicRpcFailoverService implements OnModuleInit {
           operation(node.provider),
           new Promise<never>((_, reject) =>
             setTimeout(
-              () => reject(new Error(`RPC request timeout after ${this.timeoutMs}ms`)),
+              () =>
+                reject(
+                  new Error(`RPC request timeout after ${this.timeoutMs}ms`),
+                ),
               this.timeoutMs,
             ),
           ),
@@ -191,29 +216,34 @@ export class DeterministicRpcFailoverService implements OnModuleInit {
   private getOrderedEligibleProviders(): ProviderNodeState[] {
     const now = Date.now();
 
-    return [...this.providers].sort((a, b) => {
-      // Prioritize HEALTHY over DEGRADED, and DEGRADED over UNHEALTHY
-      const statusWeight = {
-        [ProviderHealthStatus.HEALTHY]: 0,
-        [ProviderHealthStatus.DEGRADED]: 1,
-        [ProviderHealthStatus.UNHEALTHY]: 2,
-      };
+    return [...this.providers]
+      .sort((a, b) => {
+        // Prioritize HEALTHY over DEGRADED, and DEGRADED over UNHEALTHY
+        const statusWeight = {
+          [ProviderHealthStatus.HEALTHY]: 0,
+          [ProviderHealthStatus.DEGRADED]: 1,
+          [ProviderHealthStatus.UNHEALTHY]: 2,
+        };
 
-      const weightDiff = statusWeight[a.status] - statusWeight[b.status];
-      if (weightDiff !== 0) return weightDiff;
+        const weightDiff = statusWeight[a.status] - statusWeight[b.status];
+        if (weightDiff !== 0) return weightDiff;
 
-      // Maintain deterministic priority by index
-      return a.index - b.index;
-    }).filter((node) => {
-      if (node.status === ProviderHealthStatus.UNHEALTHY) {
-        // Retry unhealthy node only if cooldown period has elapsed
-        if (node.lastFailureTimestamp && now - node.lastFailureTimestamp > this.cooldownPeriodMs) {
-          return true;
+        // Maintain deterministic priority by index
+        return a.index - b.index;
+      })
+      .filter((node) => {
+        if (node.status === ProviderHealthStatus.UNHEALTHY) {
+          // Retry unhealthy node only if cooldown period has elapsed
+          if (
+            node.lastFailureTimestamp &&
+            now - node.lastFailureTimestamp > this.cooldownPeriodMs
+          ) {
+            return true;
+          }
+          return false;
         }
-        return false;
-      }
-      return true;
-    });
+        return true;
+      });
   }
 
   private recordSuccess(node: ProviderNodeState, latencyMs: number) {
@@ -223,7 +253,11 @@ export class DeterministicRpcFailoverService implements OnModuleInit {
     node.latencyMs = latencyMs;
   }
 
-  private recordFailure(node: ProviderNodeState, error: string, latencyMs: number) {
+  private recordFailure(
+    node: ProviderNodeState,
+    error: string,
+    latencyMs: number,
+  ) {
     node.consecutiveFailures += 1;
     node.lastFailureTimestamp = Date.now();
     node.latencyMs = latencyMs;

@@ -34,7 +34,9 @@ export function configureApp(app: INestApplication) {
 
   const config = new DocumentBuilder()
     .setTitle('TruthBounty API')
-    .setDescription('## Decentralized News Verification Infrastructure\n\nThis API provides endpoints for managing claims, disputes, identity verification, rewards, and blockchain event indexing.\n\n### API Version\n- **Version**: 1.0\n- **Base Path**: `/`\n\n### Authentication\nMost mutating endpoints (POST, PATCH, PUT, DELETE) require authentication using wallet signature-based JWT tokens.\n\n#### Authentication Flow:\n1. Request a challenge: `POST /auth/challenge` with your wallet address\n2. Sign the challenge message with your wallet\n3. Login: `POST /auth/login` with address, signature, and message\n4. Use the returned JWT token in the `Authorization` header as `Bearer <token>`\n\nRead-only endpoints (GET) remain public unless specifically protected.\n\n### Rate Limiting\nSome endpoints are rate-limited using wallet-based throttling.')
+    .setDescription(
+      '## Decentralized News Verification Infrastructure\n\nThis API provides endpoints for managing claims, disputes, identity verification, rewards, and blockchain event indexing.\n\n### API Version\n- **Version**: 1.0\n- **Base Path**: `/`\n\n### Authentication\nMost mutating endpoints (POST, PATCH, PUT, DELETE) require authentication using wallet signature-based JWT tokens.\n\n#### Authentication Flow:\n1. Request a challenge: `POST /auth/challenge` with your wallet address\n2. Sign the challenge message with your wallet\n3. Login: `POST /auth/login` with address, signature, and message\n4. Use the returned JWT token in the `Authorization` header as `Bearer <token>`\n\nRead-only endpoints (GET) remain public unless specifically protected.\n\n### Rate Limiting\nSome endpoints are rate-limited using wallet-based throttling.',
+    )
     .setVersion('1.0')
     .addBearerAuth(
       {
@@ -58,9 +60,15 @@ export function configureApp(app: INestApplication) {
     .addTag('indexer', 'Event indexer management')
     .addTag('rewards', 'Reward management')
     .addTag('leaderboard', 'User leaderboard rankings')
-    .addTag('audit', 'Audit logging, search, compliance reporting, and retention management')
+    .addTag(
+      'audit',
+      'Audit logging, search, compliance reporting, and retention management',
+    )
     .addTag('health', 'Health check endpoints')
-    .addTag('ai-assistant', 'AI assistant conversations, knowledge-base retrieval, and usage analytics')
+    .addTag(
+      'ai-assistant',
+      'AI assistant conversations, knowledge-base retrieval, and usage analytics',
+    )
     .build();
 
   const document = SwaggerModule.createDocument(app, config);

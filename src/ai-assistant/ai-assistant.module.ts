@@ -10,7 +10,12 @@ import { RedisModule } from '../redis/redis.module';
 @Module({
   imports: [PrismaModule, RedisModule],
   controllers: [AiAssistantController],
-  providers: [AiAssistantService, LlmProviderService, RagService, SafetyGuardrailService],
+  providers: [
+    AiAssistantService,
+    LlmProviderService,
+    RagService,
+    SafetyGuardrailService,
+  ],
   exports: [AiAssistantService],
 })
 export class AiAssistantModule {}

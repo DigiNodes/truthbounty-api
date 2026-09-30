@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/unbound-method */
 import { DataSource, Repository } from 'typeorm';
 import { EvidenceService, EvidenceAvailability } from './evidence.service';
 import { Evidence } from './entities/evidence.entity';
@@ -19,13 +18,12 @@ const cidParse = CID.parse as unknown as jest.Mock;
  */
 const buildTestDataSource = (): DataSource => {
   const dataSource = new DataSource({
-    type: 'sqlite',
+    type: 'better-sqlite3',
     database: ':memory:',
     entities: [Claim, Evidence, EvidenceVersion],
     synchronize: true,
   });
-  const supported = (dataSource.driver as any)
-    .supportedDataTypes as string[];
+  const supported = (dataSource.driver as any).supportedDataTypes as string[];
   if (!supported.includes('timestamp')) {
     supported.push('timestamp');
   }

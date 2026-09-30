@@ -1,5 +1,12 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsArray, IsBoolean, IsOptional, IsString, ArrayMinSize, ArrayMaxSize } from 'class-validator';
+import {
+  IsArray,
+  IsBoolean,
+  IsOptional,
+  IsString,
+  ArrayMinSize,
+  ArrayMaxSize,
+} from 'class-validator';
 
 /**
  * Request DTO for batch integrity verification.
@@ -19,7 +26,8 @@ export class VerifyBatchDto {
   evidenceIds: string[];
 
   @ApiProperty({
-    description: 'Include version-level verification (slower but more comprehensive)',
+    description:
+      'Include version-level verification (slower but more comprehensive)',
     example: false,
     required: false,
     default: false,

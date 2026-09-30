@@ -3,7 +3,7 @@ import { SybilResistanceService } from '../sybil-resistance/sybil-resistance.ser
 
 /**
  * Sybil-Resistant Voting Integration Service
- * 
+ *
  * Bridges Sybil resistance scores with verification voting engines.
  * Applies Sybil score multipliers to vote weights for more Sybil-resistant outcomes.
  */
@@ -15,10 +15,10 @@ export class SybilResistantVotingService {
 
   /**
    * Calculate vote weight with Sybil resistance multiplier
-   * 
+   *
    * Final weight = base weight * sybil_score_multiplier
    * Where sybil_score_multiplier = 0.5 + (0.5 * sybil_score)
-   * 
+   *
    * This ensures:
    * - Users with 0 Sybil score get 50% weight reduction
    * - Users with 1.0 Sybil score get full weight
@@ -36,15 +36,15 @@ export class SybilResistantVotingService {
     explanation: string;
   }> {
     const sybilScore = await this.sybilService.getLatestSybilScore(userId);
-    
+
     // Calculate multiplier: ranges from 0.5 to 1.0
-    const multiplier = 0.5 + (0.5 * sybilScore.compositeScore);
+    const multiplier = 0.5 + 0.5 * sybilScore.compositeScore;
     const finalWeight = baseWeight * multiplier;
 
     const explanation = `Vote weight: ${baseWeight.toFixed(2)} base × ${multiplier.toFixed(2)} (Sybil multiplier) = ${finalWeight.toFixed(2)} effective`;
 
     this.logger.debug(
-      `User ${userId}: base=${baseWeight.toFixed(2)}, sybil=${sybilScore.compositeScore.toFixed(2)}, final=${finalWeight.toFixed(2)}`
+      `User ${userId}: base=${baseWeight.toFixed(2)}, sybil=${sybilScore.compositeScore.toFixed(2)}, final=${finalWeight.toFixed(2)}`,
     );
 
     return {
@@ -62,13 +62,15 @@ export class SybilResistantVotingService {
    */
   async calculateSybilWeightedVotes(
     votes: Array<{ userId: string; baseWeight: number }>,
-  ): Promise<Array<{
-    userId: string;
-    baseWeight: number;
-    sybilScore: number;
-    multiplier: number;
-    finalWeight: number;
-  }>> {
+  ): Promise<
+    Array<{
+      userId: string;
+      baseWeight: number;
+      sybilScore: number;
+      multiplier: number;
+      finalWeight: number;
+    }>
+  > {
     const userIds = [...new Set(votes.map((v) => v.userId))];
     const scores = await this.sybilService.getLatestSybilScores(userIds);
 
@@ -140,9 +142,10 @@ export class SybilResistantVotingService {
     }
 
     const weightReduction = originalTotalWeight - sybilAdjustedTotalWeight;
-    const percentageChange = originalTotalWeight > 0
-      ? ((weightReduction / originalTotalWeight) * 100).toFixed(2)
-      : '0';
+    const percentageChange =
+      originalTotalWeight > 0
+        ? ((weightReduction / originalTotalWeight) * 100).toFixed(2)
+        : '0';
 
     return {
       originalTotalWeight,
@@ -217,9 +220,10 @@ export class SybilResistantVotingService {
       }
     }
 
-    const eligibilityRate = userIds.length > 0
-      ? ((eligibleCount / userIds.length) * 100).toFixed(2)
-      : '0';
+    const eligibilityRate =
+      userIds.length > 0
+        ? ((eligibleCount / userIds.length) * 100).toFixed(2)
+        : '0';
 
     return {
       totalUsers: userIds.length,

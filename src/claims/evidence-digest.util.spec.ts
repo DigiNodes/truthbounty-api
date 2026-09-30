@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/unbound-method */
 import { extractCidDigest } from './evidence-digest.util';
 import { CID } from 'multiformats/cid';
 

@@ -30,7 +30,10 @@ export class BlockCursorService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async getCursor(chainId: number, source: string): Promise<CursorState | null> {
+  async getCursor(
+    chainId: number,
+    source: string,
+  ): Promise<CursorState | null> {
     const row = await this.prisma.blockCursor.findUnique({
       where: { chainId_source: { chainId, source } },
     });
@@ -126,7 +129,10 @@ export class BlockCursorService {
       await tx.blockCursor.update({
         where: { id: cursor.id },
         data: {
-          ...(safe && { safeHeight: safe.height, safeHash: safe.hash.toLowerCase() }),
+          ...(safe && {
+            safeHeight: safe.height,
+            safeHash: safe.hash.toLowerCase(),
+          }),
           ...(finalized && {
             finalizedHeight: finalized.height,
             finalizedHash: finalized.hash.toLowerCase(),
@@ -136,7 +142,11 @@ export class BlockCursorService {
 
       if (finalized) {
         await tx.blockCursorAncestor.updateMany({
-          where: { cursorId: cursor.id, height: { lte: finalized.height }, isCanonical: true },
+          where: {
+            cursorId: cursor.id,
+            height: { lte: finalized.height },
+            isCanonical: true,
+          },
           data: { confirmation: 'finalized' },
         });
       } else if (safe) {
@@ -185,7 +195,11 @@ export class BlockCursorService {
       if (candidateHash && candidateHash === entry.hash) {
         return {
           found: true,
-          ancestor: { height: entry.height, hash: entry.hash, parentHash: entry.parentHash },
+          ancestor: {
+            height: entry.height,
+            hash: entry.hash,
+            parentHash: entry.parentHash,
+          },
           orphanedHeights,
         };
       }
@@ -217,7 +231,11 @@ export class BlockCursorService {
 
     await this.prisma.$transaction(async (tx) => {
       await tx.blockCursorAncestor.updateMany({
-        where: { cursorId: cursor.id, height: { gt: ancestor.height }, isCanonical: true },
+        where: {
+          cursorId: cursor.id,
+          height: { gt: ancestor.height },
+          isCanonical: true,
+        },
         data: { isCanonical: false },
       });
 

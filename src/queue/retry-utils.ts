@@ -1,6 +1,6 @@
 /**
  * Retry Utilities - hardened retry mechanism with exponential backoff, jitter, and error classification
- * 
+ *
  * Security invariants:
  * - No PII, secrets, or settlement data in retry metadata
  * - Idempotency preservation through deterministic keys
@@ -78,7 +78,10 @@ export interface ErrorPattern {
 /**
  * Default retry policies by error classification
  */
-export const DEFAULT_RETRY_POLICIES: Record<ErrorClassification, ClassificationRetryPolicy> = {
+export const DEFAULT_RETRY_POLICIES: Record<
+  ErrorClassification,
+  ClassificationRetryPolicy
+> = {
   [ErrorClassification.NETWORK]: {
     maxAttempts: 5,
     initialDelayMs: 1000,
@@ -173,12 +176,7 @@ export const DEFAULT_ERROR_PATTERNS: ErrorPattern[] = [
   },
   {
     classification: ErrorClassification.RATE_LIMIT,
-    patterns: [
-      /rate limit/i,
-      /429/i,
-      /too many requests/i,
-      /quota exceeded/i,
-    ],
+    patterns: [/rate limit/i, /429/i, /too many requests/i, /quota exceeded/i],
   },
   {
     classification: ErrorClassification.DEADLOCK,
@@ -211,12 +209,7 @@ export const DEFAULT_ERROR_PATTERNS: ErrorPattern[] = [
   },
   {
     classification: ErrorClassification.NOT_FOUND,
-    patterns: [
-      /not found/i,
-      /404/i,
-      /does not exist/i,
-      /no such/i,
-    ],
+    patterns: [/not found/i, /404/i, /does not exist/i, /no such/i],
   },
 ];
 
@@ -225,7 +218,7 @@ export const DEFAULT_ERROR_PATTERNS: ErrorPattern[] = [
  */
 export function classifyError(error: Error | string): ErrorClassification {
   const errorMessage = typeof error === 'string' ? error : error.message;
-  
+
   for (const pattern of DEFAULT_ERROR_PATTERNS) {
     for (const regex of pattern.patterns) {
       if (regex.test(errorMessage)) {
@@ -233,7 +226,7 @@ export function classifyError(error: Error | string): ErrorClassification {
       }
     }
   }
-  
+
   // Fail-closed for unknown errors
   return ErrorClassification.UNKNOWN;
 }
@@ -251,17 +244,17 @@ export function calculateBackoffWithJitter(
       policy.maxDelayMs,
     );
   }
-  
+
   const baseDelay = Math.min(
     policy.initialDelayMs * Math.pow(policy.backoffMultiplier, attempt),
     policy.maxDelayMs,
   );
-  
+
   // Add jitter: delay = baseDelay * (1 - jitterRatio/2) + random * baseDelay * jitterRatio
   const jitterRange = baseDelay * policy.jitterRatio;
   const randomJitter = Math.random() * jitterRange;
   const minDelay = baseDelay - jitterRange / 2;
-  
+
   return Math.max(minDelay + randomJitter, 0);
 }
 
@@ -276,7 +269,7 @@ export function determineRetryBehavior(
   const classification = classifyError(error);
   const basePolicy = DEFAULT_RETRY_POLICIES[classification];
   const policy = { ...basePolicy, ...customPolicy };
-  
+
   if (policy.maxAttempts === 0 || currentAttempt >= policy.maxAttempts) {
     return {
       shouldRetry: false,
@@ -286,9 +279,9 @@ export function determineRetryBehavior(
       action: 'dead_letter',
     };
   }
-  
+
   const nextDelayMs = calculateBackoffWithJitter(currentAttempt, policy);
-  
+
   return {
     shouldRetry: true,
     nextDelayMs,

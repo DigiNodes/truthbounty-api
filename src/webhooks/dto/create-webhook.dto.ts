@@ -63,7 +63,8 @@ export class CreateWebhookDto {
   filters?: Record<string, any>;
 
   @ApiPropertyOptional({
-    description: 'Maximum number of retry attempts for failed deliveries (default: 3)',
+    description:
+      'Maximum number of retry attempts for failed deliveries (default: 3)',
     default: 3,
   })
   @IsOptional()

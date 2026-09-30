@@ -83,7 +83,10 @@ export function isRateLimitError(error: unknown): boolean {
   }
 
   // ethers v6 nests the HTTP status under `info`.
-  if (err.info?.responseStatus && String(err.info.responseStatus).includes('429')) {
+  if (
+    err.info?.responseStatus &&
+    String(err.info.responseStatus).includes('429')
+  ) {
     return true;
   }
 
@@ -182,7 +185,12 @@ export async function withRpcBackoff<T>(
         throw error;
       }
 
-      const delayMs = computeDelay(attempt + 1, baseDelayMs, maxDelayMs, jitter);
+      const delayMs = computeDelay(
+        attempt + 1,
+        baseDelayMs,
+        maxDelayMs,
+        jitter,
+      );
       onRetry?.(error, attempt + 1, delayMs);
       await sleep(delayMs);
     }
@@ -226,7 +234,8 @@ export class RpcProviderManager {
     for (let index = 0; index < this.providers.length; index++) {
       const provider = this.providers[index];
       const providerKey = this.getProviderKey(provider, index);
-      const state = this.providerStates.get(providerKey) ?? this.createState(providerKey);
+      const state =
+        this.providerStates.get(providerKey) ?? this.createState(providerKey);
 
       if (state.status === 'open' && Date.now() < state.nextRetryAt) {
         continue;
@@ -254,29 +263,29 @@ export class RpcProviderManager {
           );
         }
 
-        const result = await withRpcBackoff(
-          () => provider[method](...args),
-          {
-            maxRetries: this.options.maxRetries ?? 5,
-            baseDelayMs: this.options.baseDelayMs ?? 250,
-            maxDelayMs: this.options.maxDelayMs ?? 10_000,
-            jitter: this.options.jitter ?? true,
-            isRetryable: this.options.isRetryable ?? isRetryableRpcError,
-            onRetry: (error, attempt, delayMs) => {
-              if (this.options.onRetry) {
-                this.options.onRetry(error, attempt, delayMs);
-              }
-            },
-            sleep: this.options.sleep ?? defaultSleep,
+        const result = await withRpcBackoff(() => provider[method](...args), {
+          maxRetries: this.options.maxRetries ?? 5,
+          baseDelayMs: this.options.baseDelayMs ?? 250,
+          maxDelayMs: this.options.maxDelayMs ?? 10_000,
+          jitter: this.options.jitter ?? true,
+          isRetryable: this.options.isRetryable ?? isRetryableRpcError,
+          onRetry: (error, attempt, delayMs) => {
+            if (this.options.onRetry) {
+              this.options.onRetry(error, attempt, delayMs);
+            }
           },
-        );
+          sleep: this.options.sleep ?? defaultSleep,
+        });
 
         if (
           validation.expectedBlockHash &&
-          result && typeof result === 'object' &&
+          result &&
+          typeof result === 'object' &&
           'hash' in result
         ) {
-          const actualHash = String((result as Record<string, any>).hash ?? '').toLowerCase();
+          const actualHash = String(
+            (result as Record<string, any>).hash ?? '',
+          ).toLowerCase();
           const expectedHash = validation.expectedBlockHash.toLowerCase();
           if (actualHash && actualHash !== expectedHash) {
             throw new Error(
@@ -293,7 +302,9 @@ export class RpcProviderManager {
       }
     }
 
-    throw lastError ?? new Error(`All RPC providers failed for method ${method}`);
+    throw (
+      lastError ?? new Error(`All RPC providers failed for method ${method}`)
+    );
   }
 
   private createState(providerKey: string): ProviderCircuitState {

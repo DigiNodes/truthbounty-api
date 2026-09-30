@@ -15,7 +15,10 @@ export interface FaultEvent {
 }
 
 export interface FaultInjector {
-  inject(kind: FaultKind, metadata?: FaultEvent['metadata']): Promise<FaultEvent>;
+  inject(
+    kind: FaultKind,
+    metadata?: FaultEvent['metadata'],
+  ): Promise<FaultEvent>;
   recover(kind: FaultKind): Promise<FaultEvent>;
 }
 

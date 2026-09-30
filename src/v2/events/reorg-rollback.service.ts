@@ -433,9 +433,7 @@ export class ReorgRollbackService {
   /**
    * Run all known V2 projectors until they have consumed all available canonical events.
    */
-  async reapplyProjectors(
-    batchSize = 100,
-  ): Promise<
+  async reapplyProjectors(batchSize = 100): Promise<
     Record<
       string,
       {
@@ -507,9 +505,7 @@ export class ReorgRollbackService {
    * Rebuilds all projections from genesis (block 0) by resetting cursors and
    * replaying canonical events.
    */
-  async rebuildAllProjections(
-    batchSize = 100,
-  ): Promise<
+  async rebuildAllProjections(batchSize = 100): Promise<
     Record<
       string,
       {

@@ -5,6 +5,7 @@ import { REQUEST } from '@nestjs/core';
 import { Request } from 'express';
 import { randomUUID } from 'crypto';
 import * as crypto from 'crypto';
+import { AuditLog } from '../entities/audit-log.entity';
 
 /**
  * Administrative Audit Log Service
@@ -17,18 +18,18 @@ import * as crypto from 'crypto';
 
 export interface AdminAuditLogInput {
   // Actor identification
-  actorId: string;                    // User ID or service account
+  actorId: string; // User ID or service account
   actorType: 'user' | 'service' | 'system';
-  actorWalletAddress?: string;        // Wallet if authenticated via SIWE
+  actorWalletAddress?: string; // Wallet if authenticated via SIWE
 
   // Action details
   action: AdminActionType;
   actionCategory: AdminActionCategory;
 
   // Target resource
-  targetType: string;                 // e.g., 'claim', 'dispute', 'user', 'config', 'contract'
-  targetId: string;                   // Resource identifier
-  targetDescription?: string;         // Human-readable description
+  targetType: string; // e.g., 'claim', 'dispute', 'user', 'config', 'contract'
+  targetId: string; // Resource identifier
+  targetDescription?: string; // Human-readable description
 
   // Request context
   requestId?: string;
@@ -37,7 +38,7 @@ export interface AdminAuditLogInput {
   userAgent?: string;
 
   // Reason and authorization
-  reason: string;                     // Business justification
+  reason: string; // Business justification
   authorization?: {
     policyId: string;
     policyVersion: string;
@@ -163,7 +164,7 @@ export interface AdminAuditLogRecord {
   metadata?: Record<string, any>;
   severity: AdminAuditSeverity;
   integrityHash: string;
-  previousHash?: string;  // Chain hashes for tamper evidence
+  previousHash?: string; // Chain hashes for tamper evidence
 }
 
 /**
@@ -175,8 +176,11 @@ export class AdminAuditService {
   private previousHash: string | null = null;
 
   constructor(
-    @InjectRepository('admin_audit_logs') // Table name - will need migration
-    private readonly auditRepo: Repository<any>,
+    // There is no AdminAuditLog entity or table yet; AuditLog is the
+    // registered entity for this module. Persistence of admin records is
+    // still commented out below, so this injection is currently unused.
+    @InjectRepository(AuditLog)
+    private readonly auditRepo: Repository<AuditLog>,
     @Inject(REQUEST)
     private readonly request: Request,
   ) {}
@@ -189,8 +193,12 @@ export class AdminAuditService {
     const timestamp = new Date();
 
     // Compute state digests
-    const beforeDigest = input.beforeState ? this.computeDigest(input.beforeState) : undefined;
-    const afterDigest = input.afterState ? this.computeDigest(input.afterState) : undefined;
+    const beforeDigest = input.beforeState
+      ? this.computeDigest(input.beforeState)
+      : undefined;
+    const afterDigest = input.afterState
+      ? this.computeDigest(input.afterState)
+      : undefined;
 
     // Build the record
     const record: AdminAuditLogRecord = {
@@ -219,7 +227,7 @@ export class AdminAuditService {
       metadata: input.metadata,
       severity: input.severity || AdminAuditSeverity.MEDIUM,
       integrityHash: '', // Will be computed
-      previousHash: this.previousHash,
+      previousHash: this.previousHash ?? undefined,
     };
 
     // Compute integrity hash
@@ -244,7 +252,10 @@ export class AdminAuditService {
 
       return eventId;
     } catch (error) {
-      this.logger.error(`Failed to log admin audit: ${error.message}`, error.stack);
+      this.logger.error(
+        `Failed to log admin audit: ${error.message}`,
+        error.stack,
+      );
       throw error;
     }
   }
@@ -289,7 +300,10 @@ export class AdminAuditService {
   /**
    * Verify integrity of audit log chain
    */
-  async verifyIntegrity(fromEventId?: string, toEventId?: string): Promise<{
+  async verifyIntegrity(
+    fromEventId?: string,
+    toEventId?: string,
+  ): Promise<{
     valid: boolean;
     checked: number;
     firstInvalid?: string;
@@ -329,7 +343,11 @@ export class AdminAuditService {
    * Compute integrity hash for tamper evidence
    * Uses chained hashing: hash(previousHash + currentRecord)
    */
-  private computeIntegrityHash(record: Omit<AdminAuditLogRecord, 'integrityHash' | 'previousHash'> & { previousHash?: string }): string {
+  private computeIntegrityHash(
+    record: Omit<AdminAuditLogRecord, 'integrityHash' | 'previousHash'> & {
+      previousHash?: string;
+    },
+  ): string {
     const hashable = {
       eventId: record.eventId,
       timestamp: record.timestamp.toISOString(),
@@ -342,8 +360,12 @@ export class AdminAuditService {
       requestId: record.requestId,
       correlationId: record.correlationId,
       reason: record.reason,
-      beforeDigest: record.beforeState ? this.computeDigest(record.beforeState) : undefined,
-      afterDigest: record.afterState ? this.computeDigest(record.afterState) : undefined,
+      beforeDigest: record.beforeState
+        ? this.computeDigest(record.beforeState)
+        : undefined,
+      afterDigest: record.afterState
+        ? this.computeDigest(record.afterState)
+        : undefined,
       outcome: record.outcome,
       severity: record.severity,
       previousHash: record.previousHash,

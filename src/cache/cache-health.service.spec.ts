@@ -95,7 +95,10 @@ describe('CacheHealthService', () => {
     });
 
     it('should return unhealthy when Redis disconnected', () => {
-      redisService.getStatus.mockReturnValue({ connected: false, enabled: true });
+      redisService.getStatus.mockReturnValue({
+        connected: false,
+        enabled: true,
+      });
 
       const status = service.getHealthStatus();
       expect(status.healthy).toBe(false);
@@ -119,7 +122,10 @@ describe('CacheHealthService', () => {
     });
 
     it('should return false when Redis disconnected', () => {
-      redisService.getStatus.mockReturnValue({ connected: false, enabled: true });
+      redisService.getStatus.mockReturnValue({
+        connected: false,
+        enabled: true,
+      });
 
       expect(service.isCacheHealthy()).toBe(false);
     });

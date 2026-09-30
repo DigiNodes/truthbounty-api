@@ -21,20 +21,31 @@ export class NotificationsService {
     @InjectQueue('notifications') private notificationQueue: Queue,
   ) {}
 
-  async queueNotification(createDto: CreateNotificationDto): Promise<Notification> {
-    const notification = this.notificationRepository.create(createDto as unknown as DeepPartial<Notification>);
+  async queueNotification(
+    createDto: CreateNotificationDto,
+  ): Promise<Notification> {
+    const notification = this.notificationRepository.create(
+      createDto as unknown as DeepPartial<Notification>,
+    );
     notification.status = NotificationStatus.QUEUED;
-    const savedNotification = await this.notificationRepository.save(notification);
+    const savedNotification =
+      await this.notificationRepository.save(notification);
 
-    await this.notificationQueue.add('send', { notificationId: savedNotification.id }, {
-      attempts: 5,
-      backoff: {
-        type: 'exponential',
-        delay: 2000, // 2s, 4s, 8s, 16s
+    await this.notificationQueue.add(
+      'send',
+      { notificationId: savedNotification.id },
+      {
+        attempts: 5,
+        backoff: {
+          type: 'exponential',
+          delay: 2000, // 2s, 4s, 8s, 16s
+        },
       },
-    });
+    );
 
-    this.logger.log(`Queued notification ${savedNotification.id} for user ${savedNotification.userId}`);
+    this.logger.log(
+      `Queued notification ${savedNotification.id} for user ${savedNotification.userId}`,
+    );
     return savedNotification;
   }
 
@@ -47,13 +58,20 @@ export class NotificationsService {
     return pref;
   }
 
-  async updateUserPreferences(userId: string, updateDto: UpdatePreferenceDto): Promise<NotificationPreference> {
+  async updateUserPreferences(
+    userId: string,
+    updateDto: UpdatePreferenceDto,
+  ): Promise<NotificationPreference> {
     const pref = await this.getUserPreferences(userId);
     Object.assign(pref, updateDto);
     return this.preferenceRepository.save(pref);
   }
 
-  async getDeliveryHistory(userId: string, skip = 0, take = 50): Promise<[Notification[], number]> {
+  async getDeliveryHistory(
+    userId: string,
+    skip = 0,
+    take = 50,
+  ): Promise<[Notification[], number]> {
     return this.notificationRepository.findAndCount({
       where: { userId },
       order: { createdAt: 'DESC' },
@@ -64,10 +82,16 @@ export class NotificationsService {
 
   async getMetrics(): Promise<any> {
     const total = await this.notificationRepository.count();
-    const delivered = await this.notificationRepository.count({ where: { status: NotificationStatus.DELIVERED } });
-    const failed = await this.notificationRepository.count({ where: { status: NotificationStatus.FAILED } });
-    const queued = await this.notificationRepository.count({ where: { status: NotificationStatus.QUEUED } });
-    
+    const delivered = await this.notificationRepository.count({
+      where: { status: NotificationStatus.DELIVERED },
+    });
+    const failed = await this.notificationRepository.count({
+      where: { status: NotificationStatus.FAILED },
+    });
+    const queued = await this.notificationRepository.count({
+      where: { status: NotificationStatus.QUEUED },
+    });
+
     return {
       total,
       delivered,
@@ -77,8 +101,13 @@ export class NotificationsService {
     };
   }
 
-  async markAsRead(notificationId: string, userId: string): Promise<Notification> {
-    const notification = await this.notificationRepository.findOne({ where: { id: notificationId, userId } });
+  async markAsRead(
+    notificationId: string,
+    userId: string,
+  ): Promise<Notification> {
+    const notification = await this.notificationRepository.findOne({
+      where: { id: notificationId, userId },
+    });
     if (!notification) {
       throw new NotFoundException('Notification not found');
     }
@@ -87,7 +116,9 @@ export class NotificationsService {
   }
 
   async dismiss(notificationId: string, userId: string): Promise<Notification> {
-    const notification = await this.notificationRepository.findOne({ where: { id: notificationId, userId } });
+    const notification = await this.notificationRepository.findOne({
+      where: { id: notificationId, userId },
+    });
     if (!notification) {
       throw new NotFoundException('Notification not found');
     }

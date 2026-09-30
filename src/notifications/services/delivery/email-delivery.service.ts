@@ -31,16 +31,24 @@ export class EmailDeliveryService extends BaseDeliveryService {
   async deliver(delivery: NotificationDelivery): Promise<DeliveryResult> {
     const destination = delivery.destination;
     if (!destination) {
-      return { success: false, failureReason: 'No email destination configured' };
+      return {
+        success: false,
+        failureReason: 'No email destination configured',
+      };
     }
 
     try {
-      this.logger.debug(`Email delivery to ${destination} for notification ${delivery.notificationId}`);
+      this.logger.debug(
+        `Email delivery to ${destination} for notification ${delivery.notificationId}`,
+      );
 
-      const smtpConfigured = this.transportConfig.host !== 'localhost' || this.transportConfig.user;
+      const smtpConfigured =
+        this.transportConfig.host !== 'localhost' || this.transportConfig.user;
       if (!smtpConfigured) {
         this.logger.warn('SMTP not configured, logging email instead');
-        this.logger.log(`EMAIL TO: ${destination} | Subject: ${delivery.responseData?.subject || 'Notification'} | Body: ${delivery.responseData?.body || ''}`);
+        this.logger.log(
+          `EMAIL TO: ${destination} | Subject: ${delivery.responseData?.subject || 'Notification'} | Body: ${delivery.responseData?.body || ''}`,
+        );
         return {
           success: true,
           deliveredAt: new Date(),
@@ -54,7 +62,9 @@ export class EmailDeliveryService extends BaseDeliveryService {
         responseData: { destination },
       };
     } catch (error) {
-      this.logger.error(`Email delivery failed to ${destination}: ${error.message}`);
+      this.logger.error(
+        `Email delivery failed to ${destination}: ${error.message}`,
+      );
       return {
         success: false,
         failureReason: error.message,

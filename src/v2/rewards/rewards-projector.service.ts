@@ -197,8 +197,8 @@ export class RewardsProjectorService {
       await poolRepo.insert({
         poolId,
         chainId: event.chainId,
-        claimId: event.claimId!,
-        asset: event.asset!.toLowerCase(),
+        claimId: event.claimId,
+        asset: event.asset.toLowerCase(),
         poolAmount: poolAmount.toString(),
         eventTxHash: event.txHash,
         eventLogIndex: event.logIndex,
@@ -260,17 +260,19 @@ export class RewardsProjectorService {
       return 'anomaly';
     }
 
-    const allocationRepo = this.dataSource.getRepository(ProjectRewardAllocation);
+    const allocationRepo = this.dataSource.getRepository(
+      ProjectRewardAllocation,
+    );
     try {
       await allocationRepo.insert({
         allocationId: this.deriveAllocationId(event),
         chainId: event.chainId,
-        claimId: event.claimId!,
+        claimId: event.claimId,
         roundId: event.roundId,
         sourcePoolId,
         kind,
         beneficiary,
-        asset: event.asset!.toLowerCase(),
+        asset: event.asset.toLowerCase(),
         allocatedAmount: amount.toString(),
         claimedAmount: '0',
         lastClaimBlockNumber: null,
@@ -317,7 +319,9 @@ export class RewardsProjectorService {
       return 'anomaly';
     }
 
-    const allocationRepo = this.dataSource.getRepository(ProjectRewardAllocation);
+    const allocationRepo = this.dataSource.getRepository(
+      ProjectRewardAllocation,
+    );
     const allocation = await this.resolveAllocationTarget(event);
 
     if (!allocation) {

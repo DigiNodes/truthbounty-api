@@ -3,8 +3,14 @@ import { INestApplication } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import request from 'supertest';
 import { createGlobalValidationPipe } from '../src/bootstrap';
-import { ContextDocument, ContextDocumentCategory } from '../src/ai-assistant/entities/context-document.entity';
-import { createAuthenticatedTestUser, TestAuthUser } from './utils/ai-assistant-auth.helper';
+import {
+  ContextDocument,
+  ContextDocumentCategory,
+} from '../src/ai-assistant/entities/context-document.entity';
+import {
+  createAuthenticatedTestUser,
+  TestAuthUser,
+} from './utils/ai-assistant-auth.helper';
 import { AiAssistantTestModule } from './utils/ai-assistant-test.module';
 import { setupPrismaTestDatabase } from './utils/prisma-test-db.helper';
 
@@ -16,12 +22,15 @@ describe('AI Assistant monitoring & caching E2E (ai-assistant-metrics.e2e-spec.t
   let cleanupPrisma: () => void;
   let conversationId: string;
 
-  const authHeader = (user: TestAuthUser) => ['Authorization', `Bearer ${user.accessToken}`] as [string, string];
+  const authHeader = (user: TestAuthUser) =>
+    ['Authorization', `Bearer ${user.accessToken}`] as [string, string];
 
   const getMetricValue = (metricsText: string, name: string): number => {
     // Sum all label-combinations for a counter/histogram-count line, e.g.
     // `ai_cache_hits_total{cacheType="context"} 3`
-    const lines = metricsText.split('\n').filter((l) => l.startsWith(name + '{') || l.startsWith(name + ' '));
+    const lines = metricsText
+      .split('\n')
+      .filter((l) => l.startsWith(name + '{') || l.startsWith(name + ' '));
     return lines.reduce((sum, line) => {
       const value = Number(line.trim().split(/\s+/).pop());
       return sum + (Number.isFinite(value) ? value : 0);
@@ -51,7 +60,8 @@ describe('AI Assistant monitoring & caching E2E (ai-assistant-metrics.e2e-spec.t
       contextDocumentRepository.create({
         title: 'Governance Overview',
         category: ContextDocumentCategory.GOVERNANCE,
-        content: 'Governance proposals let contributors vote on protocol parameter changes.',
+        content:
+          'Governance proposals let contributors vote on protocol parameter changes.',
         tags: ['governance'],
       }),
     );
@@ -75,7 +85,9 @@ describe('AI Assistant monitoring & caching E2E (ai-assistant-metrics.e2e-spec.t
       .send({ content: 'How does governance voting work?' })
       .expect(201);
 
-    const metricsRes = await request(app.getHttpServer()).get('/metrics').expect(200);
+    const metricsRes = await request(app.getHttpServer())
+      .get('/metrics')
+      .expect(200);
 
     expect(metricsRes.text).toContain('ai_requests_total');
     expect(metricsRes.text).toContain('ai_request_duration_seconds');
@@ -84,7 +96,9 @@ describe('AI Assistant monitoring & caching E2E (ai-assistant-metrics.e2e-spec.t
   });
 
   it('records a cache miss then a cache hit for a repeated context-retrieval query', async () => {
-    const before = (await request(app.getHttpServer()).get('/metrics').expect(200)).text;
+    const before = (
+      await request(app.getHttpServer()).get('/metrics').expect(200)
+    ).text;
     const missesBefore = getMetricValue(before, 'ai_cache_misses_total');
     const hitsBefore = getMetricValue(before, 'ai_cache_hits_total');
 
@@ -102,7 +116,9 @@ describe('AI Assistant monitoring & caching E2E (ai-assistant-metrics.e2e-spec.t
       .send({ content: 'Tell me about governance proposals' })
       .expect(201);
 
-    const after = (await request(app.getHttpServer()).get('/metrics').expect(200)).text;
+    const after = (
+      await request(app.getHttpServer()).get('/metrics').expect(200)
+    ).text;
     const missesAfter = getMetricValue(after, 'ai_cache_misses_total');
     const hitsAfter = getMetricValue(after, 'ai_cache_hits_total');
 

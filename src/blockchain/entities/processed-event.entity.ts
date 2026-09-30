@@ -26,6 +26,10 @@ export class ProcessedEvent {
   @Column({ name: 'payload', type: 'simple-json', nullable: true })
   payload: Record<string, any> | null;
 
-  @Column({ name: 'processed_at', type: 'datetime', default: () => 'CURRENT_TIMESTAMP' })
+  @Column({
+    name: 'processed_at',
+    type: 'datetime',
+    default: () => 'CURRENT_TIMESTAMP',
+  })
   processedAt: Date;
 }

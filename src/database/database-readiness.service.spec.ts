@@ -31,7 +31,7 @@ describe('DatabaseReadinessService', () => {
   });
 
   it('fails closed when dataSource is not initialized', async () => {
-    mockDataSource.isInitialized = false;
+    (mockDataSource as { isInitialized: boolean }).isInitialized = false;
 
     const report = await service.checkReadiness();
 
@@ -41,7 +41,9 @@ describe('DatabaseReadinessService', () => {
   });
 
   it('fails closed when pending migrations are detected', async () => {
-    (mockDataSource.query as jest.Mock).mockResolvedValueOnce([{ '?column?': 1 }]);
+    (mockDataSource.query as jest.Mock).mockResolvedValueOnce([
+      { '?column?': 1 },
+    ]);
     (mockDataSource.showMigrations as jest.Mock).mockResolvedValueOnce(true); // Pending migrations exist!
 
     const report = await service.checkReadiness();
@@ -49,7 +51,9 @@ describe('DatabaseReadinessService', () => {
     expect(report.ready).toBe(false);
     expect(report.status).toBe('UNHEALTHY');
     expect(report.hasPendingMigrations).toBe(true);
-    expect(report.failureReason).toContain('Pending database migrations detected');
+    expect(report.failureReason).toContain(
+      'Pending database migrations detected',
+    );
   });
 
   it('fails closed when v2_schema_versions table is missing', async () => {
@@ -62,7 +66,9 @@ describe('DatabaseReadinessService', () => {
 
     expect(report.ready).toBe(false);
     expect(report.status).toBe('UNHEALTHY');
-    expect(report.failureReason).toContain('v2_schema_versions table is missing');
+    expect(report.failureReason).toContain(
+      'v2_schema_versions table is missing',
+    );
   });
 
   it('fails closed when schema version does not match V2 baseline', async () => {

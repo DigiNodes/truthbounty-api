@@ -309,7 +309,9 @@ export class EvidenceIntegrityService {
       }
 
       // Check hash chain
-      if (currentVersion.previousVersionHash !== previousVersion.integrityHash) {
+      if (
+        currentVersion.previousVersionHash !== previousVersion.integrityHash
+      ) {
         return {
           valid: false,
           evidenceId,
@@ -387,7 +389,7 @@ export class EvidenceIntegrityService {
     const versionRepo = this.dataSource.getRepository(ProjectEvidenceVersion);
     const record = await versionRepo.findOne({
       where: { evidenceId, version },
-      select: ['integrityHash'],
+      select: { integrityHash: true },
     });
 
     return record?.integrityHash ?? null;

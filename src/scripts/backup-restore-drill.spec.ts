@@ -37,7 +37,10 @@ describe('backup and restore drill', () => {
 
   it('restores, verifies connectivity, and invalidates the isolated cache', async () => {
     const commands: Array<[string, string[]]> = [];
-    const redis = { flushdb: jest.fn().mockResolvedValue('OK'), quit: jest.fn().mockResolvedValue('OK') };
+    const redis = {
+      flushdb: jest.fn().mockResolvedValue('OK'),
+      quit: jest.fn().mockResolvedValue('OK'),
+    };
     await runRestoreDrill(
       {
         backupFile: 'backup.dump',
@@ -47,12 +50,17 @@ describe('backup and restore drill', () => {
       {
         fileAccess: jest.fn().mockResolvedValue(undefined),
         fileStat: jest.fn().mockResolvedValue({ isFile: () => true }),
-        runCommand: jest.fn(async (command, args) => commands.push([command, args])),
+        runCommand: jest.fn(async (command, args) => {
+          commands.push([command, args]);
+        }),
         connectRedis: jest.fn().mockResolvedValue(redis),
       },
     );
 
-    expect(commands.map(([command]) => command)).toEqual(['pg_restore', 'psql']);
+    expect(commands.map(([command]) => command)).toEqual([
+      'pg_restore',
+      'psql',
+    ]);
     expect(commands[0][1]).toContain('--exit-on-error');
     expect(redis.flushdb).toHaveBeenCalledTimes(1);
     expect(redis.quit).toHaveBeenCalledTimes(1);

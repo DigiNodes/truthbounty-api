@@ -15,8 +15,22 @@ describe('AggregationService', () => {
 
   it('resolves simple weighted majority', () => {
     const verifications: Verification[] = [
-      { ...base, id: '1', userId: 'a', verdict: VerificationVerdict.TRUE, stakeAmount: 10, reputationWeight: 1 },
-      { ...base, id: '2', userId: 'b', verdict: VerificationVerdict.FALSE, stakeAmount: 5, reputationWeight: 1 },
+      {
+        ...base,
+        id: '1',
+        userId: 'a',
+        verdict: VerificationVerdict.TRUE,
+        stakeAmount: 10,
+        reputationWeight: 1,
+      },
+      {
+        ...base,
+        id: '2',
+        userId: 'b',
+        verdict: VerificationVerdict.FALSE,
+        stakeAmount: 5,
+        reputationWeight: 1,
+      },
     ];
 
     const result = service.aggregate('claim-1', verifications);
@@ -27,8 +41,22 @@ describe('AggregationService', () => {
 
   it('allows reputation-weighted minority to win', () => {
     const verifications: Verification[] = [
-      { ...base, id: '1', userId: 'a', verdict: VerificationVerdict.FALSE, stakeAmount: 20, reputationWeight: 0.2 },
-      { ...base, id: '2', userId: 'b', verdict: VerificationVerdict.TRUE, stakeAmount: 5, reputationWeight: 2 },
+      {
+        ...base,
+        id: '1',
+        userId: 'a',
+        verdict: VerificationVerdict.FALSE,
+        stakeAmount: 20,
+        reputationWeight: 0.2,
+      },
+      {
+        ...base,
+        id: '2',
+        userId: 'b',
+        verdict: VerificationVerdict.TRUE,
+        stakeAmount: 5,
+        reputationWeight: 2,
+      },
     ];
 
     const result = service.aggregate('claim-1', verifications);
@@ -38,8 +66,22 @@ describe('AggregationService', () => {
 
   it('handles tie as inconclusive', () => {
     const verifications: Verification[] = [
-      { ...base, id: '1', userId: 'a', verdict: VerificationVerdict.TRUE, stakeAmount: 10, reputationWeight: 1 },
-      { ...base, id: '2', userId: 'b', verdict: VerificationVerdict.FALSE, stakeAmount: 10, reputationWeight: 1 },
+      {
+        ...base,
+        id: '1',
+        userId: 'a',
+        verdict: VerificationVerdict.TRUE,
+        stakeAmount: 10,
+        reputationWeight: 1,
+      },
+      {
+        ...base,
+        id: '2',
+        userId: 'b',
+        verdict: VerificationVerdict.FALSE,
+        stakeAmount: 10,
+        reputationWeight: 1,
+      },
     ];
 
     const result = service.aggregate('claim-1', verifications);

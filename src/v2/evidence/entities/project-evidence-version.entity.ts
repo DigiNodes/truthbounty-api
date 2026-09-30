@@ -15,17 +15,11 @@ import {
  * existing one, so version history is always fully reconstructable and a
  * removal never destroys prior versions.
  */
-@Entity('v2_project_evidence_version', {
-  foreignKeys: [
-    {
-      columnNames: ['evidenceId'],
-      referencedTableName: 'v2_project_evidence',
-      referencedColumnNames: ['evidenceId'],
-      onDelete: 'CASCADE',
-      onUpdate: 'CASCADE',
-    },
-  ],
-})
+// NOTE: TypeORM 1 dropped the `foreignKeys` EntityOptions key. The real
+// FK is created in migration 1769800500000-EnforceProtocolProjectionConstraints
+// ("fk_v2_evidence_version_evidence"), which is the enforcement path that
+// matters since these tables are built by migrations, not synchronize.
+@Entity('v2_project_evidence_version')
 @Unique('uq_v2_evidence_version', ['evidenceId', 'version'])
 @Unique('uq_v2_evidence_version_event', ['eventTxHash', 'eventLogIndex'])
 @Index(['evidenceId'])

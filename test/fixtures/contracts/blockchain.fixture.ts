@@ -1,5 +1,5 @@
 import { Wallet, HDNodeWallet } from 'ethers';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID as uuidv4 } from 'node:crypto';
 
 /**
  * Blockchain Test Fixtures
@@ -87,7 +87,10 @@ export function createMockBlock(blockNumber: number = 1): MockBlock {
     number: blockNumber,
     hash: `0x${uuidv4().replace(/-/g, '')}`,
     timestamp: Math.floor(Date.now() / 1000) + blockNumber * 1000,
-    parentHash: blockNumber > 0 ? `0x${uuidv4().replace(/-/g, '')}` : '0x' + '0'.repeat(64),
+    parentHash:
+      blockNumber > 0
+        ? `0x${uuidv4().replace(/-/g, '')}`
+        : '0x' + '0'.repeat(64),
     transactions: [`0x${uuidv4().replace(/-/g, '')}`],
   };
 }
@@ -95,7 +98,10 @@ export function createMockBlock(blockNumber: number = 1): MockBlock {
 /**
  * Generate mock transaction receipt
  */
-export function createMockTransactionReceipt(hash: string, blockNumber: number = 1): MockTransactionReceipt {
+export function createMockTransactionReceipt(
+  hash: string,
+  blockNumber: number = 1,
+): MockTransactionReceipt {
   return {
     transactionHash: hash,
     blockHash: `0x${uuidv4().replace(/-/g, '')}`,

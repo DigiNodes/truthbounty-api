@@ -202,7 +202,9 @@ export class CursorPaginationService {
         ts: Date.now(),
         tb: lastItem.id,
       };
-      const nextCursor = Buffer.from(JSON.stringify(payload)).toString('base64url');
+      const nextCursor = Buffer.from(JSON.stringify(payload)).toString(
+        'base64url',
+      );
       return {
         items: itemsToReturn,
         nextCursor,

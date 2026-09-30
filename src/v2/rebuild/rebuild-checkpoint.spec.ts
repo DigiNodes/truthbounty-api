@@ -75,7 +75,12 @@ describe('rebuild checkpoint determinism', () => {
         initialDigest(),
         identities([
           ...EVENTS,
-          { chainId: 10, txHash: '0xcc', logIndex: 0, eventName: 'DisputeRaised' },
+          {
+            chainId: 10,
+            txHash: '0xcc',
+            logIndex: 0,
+            eventName: 'DisputeRaised',
+          },
         ]),
       );
       expect(extended).not.toBe(base);

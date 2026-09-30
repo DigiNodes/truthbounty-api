@@ -8,7 +8,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
     PinoLoggerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (configService: ConfigService) => makePinoOptions(configService),
+      useFactory: (configService: ConfigService) =>
+        makePinoOptions(configService),
     }),
   ],
 })

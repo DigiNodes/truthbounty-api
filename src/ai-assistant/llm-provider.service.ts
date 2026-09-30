@@ -21,12 +21,14 @@ export class LlmProviderService {
       this.anthropic = new Anthropic({ apiKey: anthropicKey });
     }
 
-    this.defaultProvider = this.configService.get<'openai' | 'anthropic'>('DEFAULT_LLM_PROVIDER') || 'openai';
+    this.defaultProvider =
+      this.configService.get<'openai' | 'anthropic'>('DEFAULT_LLM_PROVIDER') ||
+      'openai';
   }
 
   async generateResponse(
     messages: { role: 'user' | 'assistant' | 'system'; content: string }[],
-    options?: { provider?: 'openai' | 'anthropic' }
+    options?: { provider?: 'openai' | 'anthropic' },
   ): Promise<{ content: string; usage: any; provider: string; model: string }> {
     const provider = options?.provider || this.defaultProvider;
 
@@ -34,7 +36,7 @@ export class LlmProviderService {
       const model = 'gpt-4o-mini';
       const response = await this.openai.chat.completions.create({
         model,
-        messages: messages.map(m => ({ role: m.role, content: m.content })),
+        messages: messages.map((m) => ({ role: m.role, content: m.content })),
       });
       return {
         content: response.choices[0].message.content || '',
@@ -44,11 +46,14 @@ export class LlmProviderService {
       };
     } else if (provider === 'anthropic' && this.anthropic) {
       const model = 'claude-3-haiku-20240307';
-      const systemMessage = messages.find(m => m.role === 'system')?.content;
-      const otherMessages = messages.filter(m => m.role !== 'system').map(m => ({
-        role: m.role === 'assistant' ? 'assistant' as const : 'user' as const,
-        content: m.content
-      }));
+      const systemMessage = messages.find((m) => m.role === 'system')?.content;
+      const otherMessages = messages
+        .filter((m) => m.role !== 'system')
+        .map((m) => ({
+          role:
+            m.role === 'assistant' ? ('assistant' as const) : ('user' as const),
+          content: m.content,
+        }));
 
       const response = await this.anthropic.messages.create({
         model,
@@ -56,14 +61,16 @@ export class LlmProviderService {
         system: systemMessage,
         messages: otherMessages,
       });
-      
-      const content = response.content[0].type === 'text' ? response.content[0].text : '';
+
+      const content =
+        response.content[0].type === 'text' ? response.content[0].text : '';
       return {
         content,
         usage: {
           prompt_tokens: response.usage.input_tokens,
           completion_tokens: response.usage.output_tokens,
-          total_tokens: response.usage.input_tokens + response.usage.output_tokens,
+          total_tokens:
+            response.usage.input_tokens + response.usage.output_tokens,
         },
         provider: 'anthropic',
         model,
@@ -71,7 +78,9 @@ export class LlmProviderService {
     }
 
     // Mock fallback if keys not configured
-    this.logger.warn(`No valid LLM provider configured for ${provider}, using mock response.`);
+    this.logger.warn(
+      `No valid LLM provider configured for ${provider}, using mock response.`,
+    );
     return {
       content: `This is a mock response from the AI Assistant because the API keys for ${provider} are not configured. You said: ${messages[messages.length - 1]?.content}`,
       usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },

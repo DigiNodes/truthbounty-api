@@ -10,7 +10,12 @@ export enum ClaimState {
 // Only transitions the contract can actually emit are legal here.
 const ALLOWED_TRANSITIONS: Record<ClaimState, ClaimState[]> = {
   [ClaimState.Submitted]: [ClaimState.UnderVerification, ClaimState.Expired],
-  [ClaimState.UnderVerification]: [ClaimState.Disputed, ClaimState.Settled, ClaimState.Rejected, ClaimState.Expired],
+  [ClaimState.UnderVerification]: [
+    ClaimState.Disputed,
+    ClaimState.Settled,
+    ClaimState.Rejected,
+    ClaimState.Expired,
+  ],
   [ClaimState.Disputed]: [ClaimState.Settled, ClaimState.Rejected],
   [ClaimState.Settled]: [],
   [ClaimState.Rejected]: [],

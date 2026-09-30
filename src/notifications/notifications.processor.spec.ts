@@ -40,12 +40,24 @@ describe('NotificationsProcessor', () => {
   });
 
   it('should process a notification and mark as DELIVERED', async () => {
-    const notification = { id: '1', userId: 'user-1', status: NotificationStatus.QUEUED, category: 'SYSTEM' };
+    const notification = {
+      id: '1',
+      userId: 'user-1',
+      status: NotificationStatus.QUEUED,
+      category: 'SYSTEM',
+    };
     mockNotificationRepository.findOne.mockResolvedValue(notification);
-    mockPreferenceRepository.findOne.mockResolvedValue({ userId: 'user-1', enabledChannels: ['IN_APP'] });
+    mockPreferenceRepository.findOne.mockResolvedValue({
+      userId: 'user-1',
+      enabledChannels: ['IN_APP'],
+    });
 
-    const job = { data: { notificationId: '1' }, attemptsMade: 0, opts: { attempts: 3 } } as any;
-    
+    const job = {
+      data: { notificationId: '1' },
+      attemptsMade: 0,
+      opts: { attempts: 3 },
+    } as any;
+
     await processor.process(job);
 
     expect(notification.status).toBe(NotificationStatus.DELIVERED);
@@ -53,12 +65,20 @@ describe('NotificationsProcessor', () => {
   });
 
   it('should skip notification if category is disabled', async () => {
-    const notification = { id: '1', userId: 'user-1', status: NotificationStatus.QUEUED, category: 'SYSTEM' };
+    const notification = {
+      id: '1',
+      userId: 'user-1',
+      status: NotificationStatus.QUEUED,
+      category: 'SYSTEM',
+    };
     mockNotificationRepository.findOne.mockResolvedValue(notification);
-    mockPreferenceRepository.findOne.mockResolvedValue({ userId: 'user-1', disabledCategories: ['SYSTEM'] });
+    mockPreferenceRepository.findOne.mockResolvedValue({
+      userId: 'user-1',
+      disabledCategories: ['SYSTEM'],
+    });
 
     const job = { data: { notificationId: '1' } } as any;
-    
+
     await processor.process(job);
 
     expect(notification.status).toBe(NotificationStatus.DISMISSED);

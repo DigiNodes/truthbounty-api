@@ -10,12 +10,13 @@ export class ThemeController {
   @Get()
   @ApiOperation({
     summary: 'Get current theme preference',
-    description: 'Returns the current theme preference for a user or anonymous session'
+    description:
+      'Returns the current theme preference for a user or anonymous session',
   })
   @ApiQuery({
     name: 'userId',
     required: false,
-    description: 'User ID for authenticated users'
+    description: 'User ID for authenticated users',
   })
   @ApiResponse({
     status: 200,
@@ -26,20 +27,23 @@ export class ThemeController {
         theme: {
           type: 'string',
           enum: ['light', 'dark', 'system'],
-          example: 'dark'
+          example: 'dark',
         },
         userId: {
           type: 'string',
-          example: 'user-123'
+          example: 'user-123',
         },
         updatedAt: {
           type: 'string',
-          format: 'date-time'
-        }
-      }
-    }
+          format: 'date-time',
+        },
+      },
+    },
   })
-  getTheme(@Query('userId') userId?: string): { theme: Theme; resolved: 'light' | 'dark' } {
+  getTheme(@Query('userId') userId?: string): {
+    theme: Theme;
+    resolved: 'light' | 'dark';
+  } {
     const theme = this.themeService.getTheme(userId);
     const resolved = this.themeService.getResolvedTheme(userId);
 
@@ -49,60 +53,56 @@ export class ThemeController {
   @Post()
   @ApiOperation({
     summary: 'Set theme preference',
-    description: 'Sets the theme preference for a user or anonymous session'
+    description: 'Sets the theme preference for a user or anonymous session',
   })
   @ApiResponse({
     status: 200,
     description: 'Theme preference updated successfully',
-    type: Object
+    type: Object,
   })
-  setTheme(
-    @Body() body: { theme: Theme; userId?: string }
-  ): ThemePreference {
+  setTheme(@Body() body: { theme: Theme; userId?: string }): ThemePreference {
     return this.themeService.setTheme(body.theme, body.userId);
   }
 
   @Post('toggle')
   @ApiOperation({
     summary: 'Toggle between light and dark themes',
-    description: 'Toggles between light and dark themes, ignoring system preference'
+    description:
+      'Toggles between light and dark themes, ignoring system preference',
   })
   @ApiResponse({
     status: 200,
     description: 'Theme toggled successfully',
-    type: Object
+    type: Object,
   })
-  toggleTheme(
-    @Body() body: { userId?: string }
-  ): ThemePreference {
+  toggleTheme(@Body() body: { userId?: string }): ThemePreference {
     return this.themeService.toggleTheme(body.userId);
   }
 
   @Post('reset')
   @ApiOperation({
     summary: 'Reset to system preference',
-    description: 'Resets theme to follow system preference'
+    description: 'Resets theme to follow system preference',
   })
   @ApiResponse({
     status: 200,
     description: 'Theme reset to system preference',
-    type: Object
+    type: Object,
   })
-  resetToSystem(
-    @Body() body: { userId?: string }
-  ): ThemePreference {
+  resetToSystem(@Body() body: { userId?: string }): ThemePreference {
     return this.themeService.resetToSystem(body.userId);
   }
 
   @Get('resolved')
   @ApiOperation({
     summary: 'Get resolved theme',
-    description: 'Returns the actual theme (light/dark) after resolving system preference'
+    description:
+      'Returns the actual theme (light/dark) after resolving system preference',
   })
   @ApiQuery({
     name: 'userId',
     required: false,
-    description: 'User ID for authenticated users'
+    description: 'User ID for authenticated users',
   })
   @ApiResponse({
     status: 200,
@@ -113,12 +113,14 @@ export class ThemeController {
         theme: {
           type: 'string',
           enum: ['light', 'dark'],
-          example: 'dark'
-        }
-      }
-    }
+          example: 'dark',
+        },
+      },
+    },
   })
-  getResolvedTheme(@Query('userId') userId?: string): { theme: 'light' | 'dark' } {
+  getResolvedTheme(@Query('userId') userId?: string): {
+    theme: 'light' | 'dark';
+  } {
     const theme = this.themeService.getResolvedTheme(userId);
     return { theme };
   }
@@ -126,7 +128,7 @@ export class ThemeController {
   @Get('stats')
   @ApiOperation({
     summary: 'Get theme usage statistics',
-    description: 'Returns statistics on theme preferences (admin endpoint)'
+    description: 'Returns statistics on theme preferences (admin endpoint)',
   })
   @ApiResponse({
     status: 200,
@@ -136,9 +138,9 @@ export class ThemeController {
       properties: {
         light: { type: 'number', example: 150 },
         dark: { type: 'number', example: 200 },
-        system: { type: 'number', example: 50 }
-      }
-    }
+        system: { type: 'number', example: 50 },
+      },
+    },
   })
   getThemeStats(): { light: number; dark: number; system: number } {
     return this.themeService.getThemeStats();

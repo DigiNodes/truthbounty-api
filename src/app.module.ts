@@ -272,7 +272,12 @@ async function createThrottlerStorage(
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [blockchainConfig, throttlerConfig, sybilConfig, finalityPolicyConfig],
+      load: [
+        blockchainConfig,
+        throttlerConfig,
+        sybilConfig,
+        finalityPolicyConfig,
+      ],
       envFilePath: ['.env.local', '.env'],
     }),
     FinalityPolicyModule,

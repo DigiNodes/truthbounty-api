@@ -1,6 +1,11 @@
-import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleInit,
+  OnModuleDestroy,
+} from '@nestjs/common';
 import { AsyncLocalStorage } from 'async_hooks';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID as uuidv4 } from 'node:crypto';
 import {
   Span,
   SpanCategory,
@@ -68,7 +73,9 @@ export class ProfilerService implements OnModuleInit, OnModuleDestroy {
       ...this.samplingConfig,
       ...config,
     };
-    this.logger.log(`Profiler sampling configuration updated: strategy=${this.samplingConfig.strategy}, rate=${this.samplingConfig.defaultSampleRate}`);
+    this.logger.log(
+      `Profiler sampling configuration updated: strategy=${this.samplingConfig.strategy}, rate=${this.samplingConfig.defaultSampleRate}`,
+    );
     return this.getSamplingConfig();
   }
 
@@ -79,7 +86,8 @@ export class ProfilerService implements OnModuleInit, OnModuleDestroy {
 
     // 1. Header-based override check
     if (req && req.headers) {
-      const headerVal = req.headers[this.samplingConfig.headerOverrideKey.toLowerCase()];
+      const headerVal =
+        req.headers[this.samplingConfig.headerOverrideKey.toLowerCase()];
       if (headerVal === 'true' || headerVal === '1') {
         return true;
       }
@@ -96,7 +104,10 @@ export class ProfilerService implements OnModuleInit, OnModuleDestroy {
         return Math.random() < this.samplingConfig.defaultSampleRate;
 
       case 'route-based':
-        if (route && this.samplingConfig.routeSampleRates?.[route] !== undefined) {
+        if (
+          route &&
+          this.samplingConfig.routeSampleRates?.[route] !== undefined
+        ) {
           return Math.random() < this.samplingConfig.routeSampleRates[route];
         }
         return Math.random() < this.samplingConfig.defaultSampleRate;
@@ -107,8 +118,12 @@ export class ProfilerService implements OnModuleInit, OnModuleDestroy {
         let effectiveRate = this.samplingConfig.defaultSampleRate;
         if (latestCpu > this.samplingConfig.targetCpuThresholdPercent) {
           // Scale down sampling linearly when above target CPU threshold
-          const cpuExceedRatio = (latestCpu - this.samplingConfig.targetCpuThresholdPercent) / 20;
-          effectiveRate = Math.max(0.01, effectiveRate / (1 + cpuExceedRatio * 4));
+          const cpuExceedRatio =
+            (latestCpu - this.samplingConfig.targetCpuThresholdPercent) / 20;
+          effectiveRate = Math.max(
+            0.01,
+            effectiveRate / (1 + cpuExceedRatio * 4),
+          );
         }
         return Math.random() < effectiveRate;
       }
@@ -201,13 +216,17 @@ export class ProfilerService implements OnModuleInit, OnModuleDestroy {
     if (metadata?.method) trace.method = metadata.method;
     if (metadata?.status === 'error' || metadata?.errorMessage) {
       trace.rootSpan.status = 'error';
-      trace.rootSpan.errorMessage = metadata.errorMessage || 'Error during execution';
+      trace.rootSpan.errorMessage =
+        metadata.errorMessage || 'Error during execution';
     }
 
     // Calculate memory & CPU deltas
     const memoryAfter = process.memoryUsage().heapUsed;
     const memoryBefore = trace.metadata?.memoryBefore || memoryAfter;
-    trace.memoryDeltaMb = Math.max(0, parseFloat(((memoryAfter - memoryBefore) / (1024 * 1024)).toFixed(3)));
+    trace.memoryDeltaMb = Math.max(
+      0,
+      parseFloat(((memoryAfter - memoryBefore) / (1024 * 1024)).toFixed(3)),
+    );
 
     const cpuBefore = trace.metadata?.cpuBefore;
     if (cpuBefore) {
@@ -220,7 +239,10 @@ export class ProfilerService implements OnModuleInit, OnModuleDestroy {
 
     // Count slow queries inside trace
     trace.slowQueryCount = trace.spans.filter(
-      (s) => s.category === 'db' && s.durationMs && s.durationMs >= this.samplingConfig.slowQueryThresholdMs,
+      (s) =>
+        s.category === 'db' &&
+        s.durationMs &&
+        s.durationMs >= this.samplingConfig.slowQueryThresholdMs,
     ).length;
 
     if (metadata) {
@@ -260,13 +282,20 @@ export class ProfilerService implements OnModuleInit, OnModuleDestroy {
     return span;
   }
 
-  endSpan(spanId: string, status: SpanStatus = 'ok', metadata?: Record<string, any>): Span | null {
+  endSpan(
+    spanId: string,
+    status: SpanStatus = 'ok',
+    metadata?: Record<string, any>,
+  ): Span | null {
     for (const trace of this.traces) {
       const span = trace.spans.find((s) => s.id === spanId);
       if (span) {
         const endTimeMs = Date.now();
         span.endTimeMs = endTimeMs;
-        span.durationMs = metadata?.durationMs !== undefined ? metadata.durationMs : Math.max(0, endTimeMs - span.startTimeMs);
+        span.durationMs =
+          metadata?.durationMs !== undefined
+            ? metadata.durationMs
+            : Math.max(0, endTimeMs - span.startTimeMs);
         span.status = status;
         if (metadata?.errorMessage) span.errorMessage = metadata.errorMessage;
         if (metadata) {
@@ -291,10 +320,14 @@ export class ProfilerService implements OnModuleInit, OnModuleDestroy {
     let result = [...this.traces];
 
     if (filter?.route) {
-      result = result.filter((t) => t.route?.toLowerCase().includes(filter.route!.toLowerCase()));
+      result = result.filter((t) =>
+        t.route?.toLowerCase().includes(filter.route!.toLowerCase()),
+      );
     }
     if (filter?.method) {
-      result = result.filter((t) => t.method?.toUpperCase() === filter.method!.toUpperCase());
+      result = result.filter(
+        (t) => t.method?.toUpperCase() === filter.method!.toUpperCase(),
+      );
     }
     if (filter?.category) {
       result = result.filter((t) => t.category === filter.category);
@@ -318,10 +351,20 @@ export class ProfilerService implements OnModuleInit, OnModuleDestroy {
   getSummary(): Record<string, any> {
     const totalTraces = this.traces.length;
     const completedTraces = this.traces.filter((t) => t.durationMs > 0);
-    const totalDuration = completedTraces.reduce((sum, t) => sum + t.durationMs, 0);
-    const avgDurationMs = completedTraces.length ? totalDuration / completedTraces.length : 0;
-    const errorCount = completedTraces.filter((t) => t.rootSpan.status === 'error' || (t.statusCode && t.statusCode >= 400)).length;
-    const slowQueryTracesCount = completedTraces.filter((t) => t.slowQueryCount > 0).length;
+    const totalDuration = completedTraces.reduce(
+      (sum, t) => sum + t.durationMs,
+      0,
+    );
+    const avgDurationMs = completedTraces.length
+      ? totalDuration / completedTraces.length
+      : 0;
+    const errorCount = completedTraces.filter(
+      (t) =>
+        t.rootSpan.status === 'error' || (t.statusCode && t.statusCode >= 400),
+    ).length;
+    const slowQueryTracesCount = completedTraces.filter(
+      (t) => t.slowQueryCount > 0,
+    ).length;
 
     return {
       service: 'TruthBounty Profiling Service',
@@ -333,15 +376,22 @@ export class ProfilerService implements OnModuleInit, OnModuleDestroy {
         completedTraces: completedTraces.length,
         avgDurationMs: parseFloat(avgDurationMs.toFixed(2)),
         errorCount,
-        errorRate: completedTraces.length ? parseFloat((errorCount / completedTraces.length).toFixed(4)) : 0,
+        errorRate: completedTraces.length
+          ? parseFloat((errorCount / completedTraces.length).toFixed(4))
+          : 0,
         slowQueryTracesCount,
         totalSnapshots: this.snapshots.size,
       },
-      latestResourceSample: this.recentResourceSamples[this.recentResourceSamples.length - 1] || null,
+      latestResourceSample:
+        this.recentResourceSamples[this.recentResourceSamples.length - 1] ||
+        null,
     };
   }
 
-  getLatencyDistributions(filter?: { route?: string; category?: SpanCategory }): LatencyDistribution {
+  getLatencyDistributions(filter?: {
+    route?: string;
+    category?: SpanCategory;
+  }): LatencyDistribution {
     let dataset = this.traces.filter((t) => t.durationMs > 0);
 
     if (filter?.route) {
@@ -370,8 +420,14 @@ export class ProfilerService implements OnModuleInit, OnModuleDestroy {
     const durations = dataset.map((t) => t.durationMs).sort((a, b) => a - b);
     const totalCount = durations.length;
     const sum = durations.reduce((acc, v) => acc + v, 0);
-    const errorCount = dataset.filter((t) => t.rootSpan.status === 'error' || (t.statusCode && t.statusCode >= 400)).length;
-    const slowQueryCount = dataset.reduce((acc, t) => acc + t.slowQueryCount, 0);
+    const errorCount = dataset.filter(
+      (t) =>
+        t.rootSpan.status === 'error' || (t.statusCode && t.statusCode >= 400),
+    ).length;
+    const slowQueryCount = dataset.reduce(
+      (acc, t) => acc + t.slowQueryCount,
+      0,
+    );
 
     const percentile = (p: number) => {
       const idx = Math.ceil((p / 100) * totalCount) - 1;
@@ -412,7 +468,9 @@ export class ProfilerService implements OnModuleInit, OnModuleDestroy {
         durationMs,
         category: span.category,
         children: [],
-        percentage: parseFloat(((durationMs / totalDurationMs) * 100).toFixed(2)),
+        percentage: parseFloat(
+          ((durationMs / totalDurationMs) * 100).toFixed(2),
+        ),
         metadata: span.metadata,
       });
     }
@@ -438,7 +496,10 @@ export class ProfilerService implements OnModuleInit, OnModuleDestroy {
     const completedTraces = this.traces.filter((t) => t.durationMs > 0);
 
     // 1. Slow endpoints
-    const endpointGroup = new Map<string, { route: string; method: string; durations: number[]; errors: number }>();
+    const endpointGroup = new Map<
+      string,
+      { route: string; method: string; durations: number[]; errors: number }
+    >();
     for (const t of completedTraces) {
       const key = `${t.method || 'GET'}:${t.route || t.name}`;
       if (!endpointGroup.has(key)) {
@@ -451,7 +512,10 @@ export class ProfilerService implements OnModuleInit, OnModuleDestroy {
       }
       const item = endpointGroup.get(key)!;
       item.durations.push(t.durationMs);
-      if (t.rootSpan.status === 'error' || (t.statusCode && t.statusCode >= 400)) {
+      if (
+        t.rootSpan.status === 'error' ||
+        (t.statusCode && t.statusCode >= 400)
+      ) {
         item.errors++;
       }
     }
@@ -475,15 +539,27 @@ export class ProfilerService implements OnModuleInit, OnModuleDestroy {
       .slice(0, 10);
 
     // 2. Slow DB queries
-    const queryGroup = new Map<string, { query: string; entity?: string; durations: number[] }>();
+    const queryGroup = new Map<
+      string,
+      { query: string; entity?: string; durations: number[] }
+    >();
     // 3. Slow Redis ops
-    const redisGroup = new Map<string, { command: string; keyPattern?: string; durations: number[] }>();
+    const redisGroup = new Map<
+      string,
+      { command: string; keyPattern?: string; durations: number[] }
+    >();
     // 4. Slow RPC calls
     const rpcGroup = new Map<string, { method: string; durations: number[] }>();
     // 5. Slow Queue jobs
-    const jobGroup = new Map<string, { jobName: string; queueName: string; durations: number[] }>();
+    const jobGroup = new Map<
+      string,
+      { jobName: string; queueName: string; durations: number[] }
+    >();
     // 6. Slow Notifications
-    const notifGroup = new Map<string, { type: string; target?: string; durations: number[] }>();
+    const notifGroup = new Map<
+      string,
+      { type: string; target?: string; durations: number[] }
+    >();
     // 7. CPU Hotspots
     const categoryTimeMap = new Map<SpanCategory, number>();
 
@@ -506,7 +582,11 @@ export class ProfilerService implements OnModuleInit, OnModuleDestroy {
           const cmd = s.metadata?.command || s.name;
           const kp = s.metadata?.keyPattern;
           if (!redisGroup.has(cmd)) {
-            redisGroup.set(cmd, { command: cmd, keyPattern: kp, durations: [] });
+            redisGroup.set(cmd, {
+              command: cmd,
+              keyPattern: kp,
+              durations: [],
+            });
           }
           redisGroup.get(cmd)!.durations.push(duration);
         } else if (s.category === 'blockchain') {
@@ -519,7 +599,11 @@ export class ProfilerService implements OnModuleInit, OnModuleDestroy {
           const job = s.metadata?.jobName || s.name;
           const qName = s.metadata?.queueName || 'default';
           if (!jobGroup.has(job)) {
-            jobGroup.set(job, { jobName: job, queueName: qName, durations: [] });
+            jobGroup.set(job, {
+              jobName: job,
+              queueName: qName,
+              durations: [],
+            });
           }
           jobGroup.get(job)!.durations.push(duration);
         } else if (s.category === 'notification') {
@@ -603,12 +687,15 @@ export class ProfilerService implements OnModuleInit, OnModuleDestroy {
       .sort((a, b) => b.avgDurationMs - a.avgDurationMs)
       .slice(0, 10);
 
-    const totalCategoryTime = Array.from(categoryTimeMap.values()).reduce((sum, v) => sum + v, 0) || 1;
+    const totalCategoryTime =
+      Array.from(categoryTimeMap.values()).reduce((sum, v) => sum + v, 0) || 1;
     const cpuHotspots = Array.from(categoryTimeMap.entries())
       .map(([cat, timeSpentMs]) => ({
         category: cat,
         timeSpentMs: parseFloat(timeSpentMs.toFixed(2)),
-        percentage: parseFloat(((timeSpentMs / totalCategoryTime) * 100).toFixed(2)),
+        percentage: parseFloat(
+          ((timeSpentMs / totalCategoryTime) * 100).toFixed(2),
+        ),
       }))
       .sort((a, b) => b.timeSpentMs - a.timeSpentMs);
 
@@ -631,13 +718,25 @@ export class ProfilerService implements OnModuleInit, OnModuleDestroy {
     const now = new Date().toISOString();
     const completedTraces = this.traces.filter((t) => t.durationMs > 0);
 
-    const windowStart = completedTraces.length ? completedTraces[completedTraces.length - 1].timestamp : now;
-    const windowEnd = completedTraces.length ? completedTraces[0].timestamp : now;
+    const windowStart = completedTraces.length
+      ? completedTraces[completedTraces.length - 1].timestamp
+      : now;
+    const windowEnd = completedTraces.length
+      ? completedTraces[0].timestamp
+      : now;
 
     const latencyDistribution = this.getLatencyDistributions();
 
     // Endpoint metrics rollup
-    const endpointMetrics: Record<string, { avgDurationMs: number; p95DurationMs: number; count: number; errorCount: number }> = {};
+    const endpointMetrics: Record<
+      string,
+      {
+        avgDurationMs: number;
+        p95DurationMs: number;
+        count: number;
+        errorCount: number;
+      }
+    > = {};
     for (const ep of this.generateBottleneckReport().slowEndpoints) {
       endpointMetrics[`${ep.method}:${ep.route}`] = {
         avgDurationMs: ep.avgDurationMs,
@@ -648,7 +747,10 @@ export class ProfilerService implements OnModuleInit, OnModuleDestroy {
     }
 
     // Query metrics rollup
-    const queryMetrics: Record<string, { avgDurationMs: number; maxDurationMs: number; count: number }> = {};
+    const queryMetrics: Record<
+      string,
+      { avgDurationMs: number; maxDurationMs: number; count: number }
+    > = {};
     for (const q of this.generateBottleneckReport().slowQueries) {
       queryMetrics[q.query] = {
         avgDurationMs: q.avgDurationMs,
@@ -660,8 +762,12 @@ export class ProfilerService implements OnModuleInit, OnModuleDestroy {
     // Resource metrics rollup
     const memoryUsage = process.memoryUsage();
     const resourceMetrics = {
-      avgHeapUsedMb: parseFloat((memoryUsage.heapUsed / (1024 * 1024)).toFixed(2)),
-      maxHeapUsedMb: parseFloat((memoryUsage.heapTotal / (1024 * 1024)).toFixed(2)),
+      avgHeapUsedMb: parseFloat(
+        (memoryUsage.heapUsed / (1024 * 1024)).toFixed(2),
+      ),
+      maxHeapUsedMb: parseFloat(
+        (memoryUsage.heapTotal / (1024 * 1024)).toFixed(2),
+      ),
       avgCpuUserMs: 0,
       avgCpuSystemMs: 0,
     };
@@ -685,26 +791,56 @@ export class ProfilerService implements OnModuleInit, OnModuleDestroy {
   }
 
   getHistoricalSnapshots(): HistoricalSnapshot[] {
-    return Array.from(this.snapshots.values()).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+    return Array.from(this.snapshots.values()).sort((a, b) =>
+      a.createdAt < b.createdAt ? 1 : -1,
+    );
   }
 
-  compareHistorical(baselineId: string, targetId: string): Record<string, any> | null {
+  compareHistorical(
+    baselineId: string,
+    targetId: string,
+  ): Record<string, any> | null {
     const baseline = this.snapshots.get(baselineId);
     const target = this.snapshots.get(targetId);
 
     if (!baseline || !target) return null;
 
     const latencyDelta = {
-      p50: parseFloat((target.latencyDistribution.p50 - baseline.latencyDistribution.p50).toFixed(2)),
-      p95: parseFloat((target.latencyDistribution.p95 - baseline.latencyDistribution.p95).toFixed(2)),
-      p99: parseFloat((target.latencyDistribution.p99 - baseline.latencyDistribution.p99).toFixed(2)),
-      mean: parseFloat((target.latencyDistribution.mean - baseline.latencyDistribution.mean).toFixed(2)),
+      p50: parseFloat(
+        (
+          target.latencyDistribution.p50 - baseline.latencyDistribution.p50
+        ).toFixed(2),
+      ),
+      p95: parseFloat(
+        (
+          target.latencyDistribution.p95 - baseline.latencyDistribution.p95
+        ).toFixed(2),
+      ),
+      p99: parseFloat(
+        (
+          target.latencyDistribution.p99 - baseline.latencyDistribution.p99
+        ).toFixed(2),
+      ),
+      mean: parseFloat(
+        (
+          target.latencyDistribution.mean - baseline.latencyDistribution.mean
+        ).toFixed(2),
+      ),
     };
 
-    const memoryDeltaMb = parseFloat((target.resourceMetrics.avgHeapUsedMb - baseline.resourceMetrics.avgHeapUsedMb).toFixed(2));
+    const memoryDeltaMb = parseFloat(
+      (
+        target.resourceMetrics.avgHeapUsedMb -
+        baseline.resourceMetrics.avgHeapUsedMb
+      ).toFixed(2),
+    );
 
     return {
-      baseline: { id: baseline.id, name: baseline.name, createdAt: baseline.createdAt },
+      baseline: {
+        id: baseline.id,
+        name: baseline.name,
+        createdAt: baseline.createdAt,
+      },
       target: { id: target.id, name: target.name, createdAt: target.createdAt },
       latencyDelta,
       memoryDeltaMb,
@@ -713,7 +849,11 @@ export class ProfilerService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  detectRegressions(baselineId: string, targetId: string, thresholdPercent: number = 20): RegressionReport {
+  detectRegressions(
+    baselineId: string,
+    targetId: string,
+    thresholdPercent: number = 20,
+  ): RegressionReport {
     const baseline = this.snapshots.get(baselineId);
     const target = this.snapshots.get(targetId);
 
@@ -726,7 +866,11 @@ export class ProfilerService implements OnModuleInit, OnModuleDestroy {
         baselineSnapshotId: baselineId,
         targetSnapshotId: targetId,
         regressions: [],
-        summary: { totalEvaluated: 0, regressionsFound: 0, maxDegradationPercent: 0 },
+        summary: {
+          totalEvaluated: 0,
+          regressionsFound: 0,
+          maxDegradationPercent: 0,
+        },
       };
     }
 
@@ -737,10 +881,15 @@ export class ProfilerService implements OnModuleInit, OnModuleDestroy {
     totalEvaluated++;
     const latencyBase = baseline.latencyDistribution.p95 || 1;
     const latencyCurr = target.latencyDistribution.p95 || 1;
-    const latencyChangePercent = parseFloat((((latencyCurr - latencyBase) / latencyBase) * 100).toFixed(2));
+    const latencyChangePercent = parseFloat(
+      (((latencyCurr - latencyBase) / latencyBase) * 100).toFixed(2),
+    );
 
     if (latencyChangePercent >= thresholdPercent) {
-      maxDegradationPercent = Math.max(maxDegradationPercent, latencyChangePercent);
+      maxDegradationPercent = Math.max(
+        maxDegradationPercent,
+        latencyChangePercent,
+      );
       regressions.push({
         component: 'System Latency',
         metricName: 'p95LatencyMs',
@@ -759,7 +908,9 @@ export class ProfilerService implements OnModuleInit, OnModuleDestroy {
       if (epBase) {
         const epBaseAvg = epBase.avgDurationMs || 1;
         const epCurrAvg = epCurr.avgDurationMs || 1;
-        const changePct = parseFloat((((epCurrAvg - epBaseAvg) / epBaseAvg) * 100).toFixed(2));
+        const changePct = parseFloat(
+          (((epCurrAvg - epBaseAvg) / epBaseAvg) * 100).toFixed(2),
+        );
 
         if (changePct >= thresholdPercent) {
           maxDegradationPercent = Math.max(maxDegradationPercent, changePct);
@@ -769,7 +920,8 @@ export class ProfilerService implements OnModuleInit, OnModuleDestroy {
             baselineValue: epBaseAvg,
             currentValue: epCurrAvg,
             percentChange: changePct,
-            severity: changePct > 100 ? 'critical' : changePct > 50 ? 'high' : 'medium',
+            severity:
+              changePct > 100 ? 'critical' : changePct > 50 ? 'high' : 'medium',
             description: `Endpoint ${epKey} average latency increased by ${changePct}% (${epBaseAvg}ms -> ${epCurrAvg}ms)`,
           });
         }
@@ -778,7 +930,8 @@ export class ProfilerService implements OnModuleInit, OnModuleDestroy {
 
     return {
       generatedAt: new Date().toISOString(),
-      status: regressions.length > 0 ? 'regressions_detected' : 'no_regressions',
+      status:
+        regressions.length > 0 ? 'regressions_detected' : 'no_regressions',
       baselineSnapshotId: baselineId,
       targetSnapshotId: targetId,
       regressions,
@@ -810,7 +963,9 @@ export class ProfilerService implements OnModuleInit, OnModuleDestroy {
         heapTotalMb: parseFloat((memory.heapTotal / (1024 * 1024)).toFixed(2)),
         heapUsedMb: parseFloat((memory.heapUsed / (1024 * 1024)).toFixed(2)),
         externalMb: parseFloat((memory.external / (1024 * 1024)).toFixed(2)),
-        arrayBuffersMb: parseFloat(((memory.arrayBuffers || 0) / (1024 * 1024)).toFixed(2)),
+        arrayBuffersMb: parseFloat(
+          ((memory.arrayBuffers || 0) / (1024 * 1024)).toFixed(2),
+        ),
       },
       cpu: {
         userTimeUs: cpu.user,
@@ -827,7 +982,8 @@ export class ProfilerService implements OnModuleInit, OnModuleDestroy {
 
   private getLatestCpuPercent(): number {
     if (this.recentResourceSamples.length === 0) return 10;
-    return this.recentResourceSamples[this.recentResourceSamples.length - 1].cpu.cpuPercent;
+    return this.recentResourceSamples[this.recentResourceSamples.length - 1].cpu
+      .cpuPercent;
   }
 
   private calculateCpuPercent(cpu: NodeJS.CpuUsage): number {

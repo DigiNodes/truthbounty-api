@@ -13,7 +13,10 @@ export interface LatencySample {
   statusCode: number;
 }
 
-export function calculatePercentile(samples: number[], percentile: number): number {
+export function calculatePercentile(
+  samples: number[],
+  percentile: number,
+): number {
   if (samples.length === 0) return 0;
   const sorted = [...samples].sort((a, b) => a - b);
   const index = Math.ceil((percentile / 100) * sorted.length) - 1;
@@ -42,7 +45,9 @@ describe('Read-Path Load Budgets (V2-BE-086)', () => {
       const tasks = Array.from({ length: 50 }, async () => {
         const start = performance.now();
         // Simulate fast read operation
-        await new Promise((resolve) => setTimeout(resolve, Math.random() * 15 + 5));
+        await new Promise((resolve) =>
+          setTimeout(resolve, Math.random() * 15 + 5),
+        );
         const duration = performance.now() - start;
         latencies.push(duration);
       });
@@ -61,7 +66,9 @@ describe('Read-Path Load Budgets (V2-BE-086)', () => {
 
       const tasks = Array.from({ length: 50 }, async () => {
         const start = performance.now();
-        await new Promise((resolve) => setTimeout(resolve, Math.random() * 30 + 10));
+        await new Promise((resolve) =>
+          setTimeout(resolve, Math.random() * 30 + 10),
+        );
         const duration = performance.now() - start;
         latencies.push(duration);
       });
@@ -80,7 +87,9 @@ describe('Read-Path Load Budgets (V2-BE-086)', () => {
 
       const tasks = Array.from({ length: 50 }, async () => {
         const start = performance.now();
-        await new Promise((resolve) => setTimeout(resolve, Math.random() * 45 + 15));
+        await new Promise((resolve) =>
+          setTimeout(resolve, Math.random() * 45 + 15),
+        );
         const duration = performance.now() - start;
         latencies.push(duration);
       });

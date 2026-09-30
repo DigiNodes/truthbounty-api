@@ -9,7 +9,10 @@ import { AuditMetricsService } from '../services/audit-metrics.service';
 import { AuditQueueService } from '../services/audit-queue.service';
 import { AdminGuard } from '../../admin/guards/admin.guard';
 import { RolesGuard as AdminRolesGuard } from '../../admin/guards/roles.guard';
-import { AdminRole, AdminRoleHierarchy } from '../../admin/entities/admin.entity';
+import {
+  AdminRole,
+  AdminRoleHierarchy,
+} from '../../admin/entities/admin.entity';
 import { ROLES_KEY } from '../../admin/decorators/roles.decorator';
 
 /**
@@ -29,7 +32,13 @@ describe('AuditController — Authorization Matrix', () => {
   let controller: AuditController;
 
   const mockAuditTrail = {
-    query: jest.fn().mockResolvedValue({ logs: [], page: 1, limit: 20, total: 0, totalPages: 0 }),
+    query: jest.fn().mockResolvedValue({
+      logs: [],
+      page: 1,
+      limit: 20,
+      total: 0,
+      totalPages: 0,
+    }),
     getEntityAuditLogs: jest.fn().mockResolvedValue([]),
     getUserAuditLogs: jest.fn().mockResolvedValue({ logs: [], total: 0 }),
     getActionAuditLogs: jest.fn().mockResolvedValue({ logs: [], total: 0 }),
@@ -45,7 +54,11 @@ describe('AuditController — Authorization Matrix', () => {
   };
 
   const mockCompliance = {
-    exportAuditLogs: jest.fn().mockResolvedValue({ format: 'application/json', filename: 'audit.json', data: [] }),
+    exportAuditLogs: jest.fn().mockResolvedValue({
+      format: 'application/json',
+      filename: 'audit.json',
+      data: [],
+    }),
     generateReport: jest.fn().mockResolvedValue({}),
     getDailyActivity: jest.fn().mockResolvedValue([]),
     getCategorySummary: jest.fn().mockResolvedValue({}),
@@ -59,7 +72,9 @@ describe('AuditController — Authorization Matrix', () => {
     checkPermissionEscalation: jest.fn().mockResolvedValue(null),
   };
 
-  const mockAuditMetrics = { updateStorageMetrics: jest.fn().mockResolvedValue(undefined) };
+  const mockAuditMetrics = {
+    updateStorageMetrics: jest.fn().mockResolvedValue(undefined),
+  };
   const mockAuditQueue = { getQueueStats: jest.fn().mockResolvedValue({}) };
 
   beforeEach(async () => {
@@ -68,7 +83,10 @@ describe('AuditController — Authorization Matrix', () => {
       providers: [
         { provide: AuditTrailService, useValue: mockAuditTrail },
         { provide: ComplianceService, useValue: mockCompliance },
-        { provide: SecurityMonitoringService, useValue: mockSecurityMonitoring },
+        {
+          provide: SecurityMonitoringService,
+          useValue: mockSecurityMonitoring,
+        },
         { provide: AuditMetricsService, useValue: mockAuditMetrics },
         { provide: AuditQueueService, useValue: mockAuditQueue },
       ],
@@ -94,14 +112,30 @@ describe('AuditController — Authorization Matrix', () => {
   });
 
   it('getEntityAuditLogs() delegates to service', async () => {
-    const result = await controller.getEntityAuditLogs('claim' as any, 'entity-1', 'req-1');
-    expect(mockAuditTrail.getEntityAuditLogs).toHaveBeenCalledWith('claim', 'entity-1');
+    const result = await controller.getEntityAuditLogs(
+      'claim' as any,
+      'entity-1',
+      'req-1',
+    );
+    expect(mockAuditTrail.getEntityAuditLogs).toHaveBeenCalledWith(
+      'claim',
+      'entity-1',
+    );
     expect(result.success).toBe(true);
   });
 
   it('getUserAuditLogs() delegates to service with pagination', async () => {
-    const result = await controller.getUserAuditLogs('user-1', '2', '10', 'req-1');
-    expect(mockAuditTrail.getUserAuditLogs).toHaveBeenCalledWith('user-1', 10, 10);
+    const result = await controller.getUserAuditLogs(
+      'user-1',
+      '2',
+      '10',
+      'req-1',
+    );
+    expect(mockAuditTrail.getUserAuditLogs).toHaveBeenCalledWith(
+      'user-1',
+      10,
+      10,
+    );
     expect(result.pagination.page).toBe(2);
   });
 
@@ -113,26 +147,46 @@ describe('AuditController — Authorization Matrix', () => {
 
   it('getSecurityEvents() delegates to securityMonitoringService', async () => {
     const result = await controller.getSecurityEvents('60', 'req-1');
-    expect(mockSecurityMonitoring.getRecentSecurityEvents).toHaveBeenCalledWith(60);
+    expect(mockSecurityMonitoring.getRecentSecurityEvents).toHaveBeenCalledWith(
+      60,
+    );
     expect(result.success).toBe(true);
   });
 
   it('placeLegalHold() delegates to auditTrailService', async () => {
-    const result = await controller.placeLegalHold('claim' as any, 'entity-1', 'req-1');
-    expect(mockAuditTrail.placeLegalHold).toHaveBeenCalledWith('claim', 'entity-1');
+    const result = await controller.placeLegalHold(
+      'claim' as any,
+      'entity-1',
+      'req-1',
+    );
+    expect(mockAuditTrail.placeLegalHold).toHaveBeenCalledWith(
+      'claim',
+      'entity-1',
+    );
     expect(result.data.affected).toBe(5);
   });
 
   it('removeLegalHold() delegates to auditTrailService', async () => {
-    const result = await controller.removeLegalHold('claim' as any, 'entity-1', 'req-1');
-    expect(mockAuditTrail.removeLegalHold).toHaveBeenCalledWith('claim', 'entity-1');
+    const result = await controller.removeLegalHold(
+      'claim' as any,
+      'entity-1',
+      'req-1',
+    );
+    expect(mockAuditTrail.removeLegalHold).toHaveBeenCalledWith(
+      'claim',
+      'entity-1',
+    );
     expect(result.data.affected).toBe(5);
   });
 
   it('checkUserSecurity() aggregates both monitoring checks', async () => {
     const result = await controller.checkUserSecurity('user-1', 'req-1');
-    expect(mockSecurityMonitoring.checkFailedLogins).toHaveBeenCalledWith('user-1');
-    expect(mockSecurityMonitoring.checkPermissionEscalation).toHaveBeenCalledWith('user-1');
+    expect(mockSecurityMonitoring.checkFailedLogins).toHaveBeenCalledWith(
+      'user-1',
+    );
+    expect(
+      mockSecurityMonitoring.checkPermissionEscalation,
+    ).toHaveBeenCalledWith('user-1');
     expect(result.data.hasIncidents).toBe(false);
   });
 
@@ -149,7 +203,9 @@ describe('AuditController — Authorization Matrix', () => {
  * Uses the actual admin/guards/roles.guard implementation with hierarchy checks.
  */
 describe('AuditController — Admin RolesGuard hierarchy enforcement', () => {
-  const buildAdminContext = (admin: { role: AdminRole; isActive: boolean } | undefined) => ({
+  const buildAdminContext = (
+    admin: { role: AdminRole; isActive: boolean } | undefined,
+  ) => ({
     getHandler: () => ({}),
     getClass: () => ({}),
     switchToHttp: () => ({
@@ -168,35 +224,52 @@ describe('AuditController — Admin RolesGuard hierarchy enforcement', () => {
     it('auditor is allowed', () => {
       const guard = new AdminRolesGuard(buildReflector([AdminRole.AUDITOR]));
       expect(
-        guard.canActivate(buildAdminContext({ role: AdminRole.AUDITOR, isActive: true }) as any),
+        guard.canActivate(
+          buildAdminContext({ role: AdminRole.AUDITOR, isActive: true }) as any,
+        ),
       ).toBe(true);
     });
 
     it('moderator passes (hierarchy >= auditor)', () => {
       const guard = new AdminRolesGuard(buildReflector([AdminRole.AUDITOR]));
       expect(
-        guard.canActivate(buildAdminContext({ role: AdminRole.MODERATOR, isActive: true }) as any),
+        guard.canActivate(
+          buildAdminContext({
+            role: AdminRole.MODERATOR,
+            isActive: true,
+          }) as any,
+        ),
       ).toBe(true);
     });
 
     it('super_admin passes everything', () => {
       const guard = new AdminRolesGuard(buildReflector([AdminRole.AUDITOR]));
       expect(
-        guard.canActivate(buildAdminContext({ role: AdminRole.SUPER_ADMIN, isActive: true }) as any),
+        guard.canActivate(
+          buildAdminContext({
+            role: AdminRole.SUPER_ADMIN,
+            isActive: true,
+          }) as any,
+        ),
       ).toBe(true);
     });
 
     it('no admin in request is denied — fail-closed', () => {
       const guard = new AdminRolesGuard(buildReflector([AdminRole.AUDITOR]));
-      expect(() => guard.canActivate(buildAdminContext(undefined) as any)).toThrow(
-        ForbiddenException,
-      );
+      expect(() =>
+        guard.canActivate(buildAdminContext(undefined) as any),
+      ).toThrow(ForbiddenException);
     });
 
     it('deactivated admin is denied — fail-closed', () => {
       const guard = new AdminRolesGuard(buildReflector([AdminRole.AUDITOR]));
       expect(() =>
-        guard.canActivate(buildAdminContext({ role: AdminRole.AUDITOR, isActive: false }) as any),
+        guard.canActivate(
+          buildAdminContext({
+            role: AdminRole.AUDITOR,
+            isActive: false,
+          }) as any,
+        ),
       ).toThrow(ForbiddenException);
     });
   });
@@ -205,25 +278,37 @@ describe('AuditController — Admin RolesGuard hierarchy enforcement', () => {
 
   describe('GET /audit/security/events — minimum SECURITY_ANALYST', () => {
     it('security_analyst is allowed', () => {
-      const guard = new AdminRolesGuard(buildReflector([AdminRole.SECURITY_ANALYST]));
+      const guard = new AdminRolesGuard(
+        buildReflector([AdminRole.SECURITY_ANALYST]),
+      );
       expect(
         guard.canActivate(
-          buildAdminContext({ role: AdminRole.SECURITY_ANALYST, isActive: true }) as any,
+          buildAdminContext({
+            role: AdminRole.SECURITY_ANALYST,
+            isActive: true,
+          }) as any,
         ),
       ).toBe(true);
     });
 
     it('administrator passes (hierarchy > security_analyst)', () => {
-      const guard = new AdminRolesGuard(buildReflector([AdminRole.SECURITY_ANALYST]));
+      const guard = new AdminRolesGuard(
+        buildReflector([AdminRole.SECURITY_ANALYST]),
+      );
       expect(
         guard.canActivate(
-          buildAdminContext({ role: AdminRole.ADMINISTRATOR, isActive: true }) as any,
+          buildAdminContext({
+            role: AdminRole.ADMINISTRATOR,
+            isActive: true,
+          }) as any,
         ),
       ).toBe(true);
     });
 
     it('auditor (hierarchy 30) is denied for security_analyst route (hierarchy 60) — fail-closed', () => {
-      const guard = new AdminRolesGuard(buildReflector([AdminRole.SECURITY_ANALYST]));
+      const guard = new AdminRolesGuard(
+        buildReflector([AdminRole.SECURITY_ANALYST]),
+      );
       // AdminRoleHierarchy[AUDITOR]=30, AdminRoleHierarchy[SECURITY_ANALYST]=60
       expect(AdminRoleHierarchy[AdminRole.AUDITOR]).toBeLessThan(
         AdminRoleHierarchy[AdminRole.SECURITY_ANALYST],
@@ -236,13 +321,18 @@ describe('AuditController — Admin RolesGuard hierarchy enforcement', () => {
     });
 
     it('moderator (hierarchy 50) is denied for security_analyst route (hierarchy 60) — fail-closed', () => {
-      const guard = new AdminRolesGuard(buildReflector([AdminRole.SECURITY_ANALYST]));
+      const guard = new AdminRolesGuard(
+        buildReflector([AdminRole.SECURITY_ANALYST]),
+      );
       expect(AdminRoleHierarchy[AdminRole.MODERATOR]).toBeLessThan(
         AdminRoleHierarchy[AdminRole.SECURITY_ANALYST],
       );
       expect(() =>
         guard.canActivate(
-          buildAdminContext({ role: AdminRole.MODERATOR, isActive: true }) as any,
+          buildAdminContext({
+            role: AdminRole.MODERATOR,
+            isActive: true,
+          }) as any,
         ),
       ).toThrow(ForbiddenException);
     });
@@ -252,25 +342,37 @@ describe('AuditController — Admin RolesGuard hierarchy enforcement', () => {
 
   describe('POST /audit/legal-hold — minimum ADMINISTRATOR', () => {
     it('administrator is allowed', () => {
-      const guard = new AdminRolesGuard(buildReflector([AdminRole.ADMINISTRATOR]));
+      const guard = new AdminRolesGuard(
+        buildReflector([AdminRole.ADMINISTRATOR]),
+      );
       expect(
         guard.canActivate(
-          buildAdminContext({ role: AdminRole.ADMINISTRATOR, isActive: true }) as any,
+          buildAdminContext({
+            role: AdminRole.ADMINISTRATOR,
+            isActive: true,
+          }) as any,
         ),
       ).toBe(true);
     });
 
     it('super_admin is allowed', () => {
-      const guard = new AdminRolesGuard(buildReflector([AdminRole.ADMINISTRATOR]));
+      const guard = new AdminRolesGuard(
+        buildReflector([AdminRole.ADMINISTRATOR]),
+      );
       expect(
         guard.canActivate(
-          buildAdminContext({ role: AdminRole.SUPER_ADMIN, isActive: true }) as any,
+          buildAdminContext({
+            role: AdminRole.SUPER_ADMIN,
+            isActive: true,
+          }) as any,
         ),
       ).toBe(true);
     });
 
     it('auditor is denied legal hold (hierarchy 30 < 80) — fail-closed', () => {
-      const guard = new AdminRolesGuard(buildReflector([AdminRole.ADMINISTRATOR]));
+      const guard = new AdminRolesGuard(
+        buildReflector([AdminRole.ADMINISTRATOR]),
+      );
       expect(() =>
         guard.canActivate(
           buildAdminContext({ role: AdminRole.AUDITOR, isActive: true }) as any,
@@ -279,19 +381,29 @@ describe('AuditController — Admin RolesGuard hierarchy enforcement', () => {
     });
 
     it('security_analyst is denied legal hold (hierarchy 60 < 80) — fail-closed', () => {
-      const guard = new AdminRolesGuard(buildReflector([AdminRole.ADMINISTRATOR]));
+      const guard = new AdminRolesGuard(
+        buildReflector([AdminRole.ADMINISTRATOR]),
+      );
       expect(() =>
         guard.canActivate(
-          buildAdminContext({ role: AdminRole.SECURITY_ANALYST, isActive: true }) as any,
+          buildAdminContext({
+            role: AdminRole.SECURITY_ANALYST,
+            isActive: true,
+          }) as any,
         ),
       ).toThrow(ForbiddenException);
     });
 
     it('moderator is denied legal hold — fail-closed', () => {
-      const guard = new AdminRolesGuard(buildReflector([AdminRole.ADMINISTRATOR]));
+      const guard = new AdminRolesGuard(
+        buildReflector([AdminRole.ADMINISTRATOR]),
+      );
       expect(() =>
         guard.canActivate(
-          buildAdminContext({ role: AdminRole.MODERATOR, isActive: true }) as any,
+          buildAdminContext({
+            role: AdminRole.MODERATOR,
+            isActive: true,
+          }) as any,
         ),
       ).toThrow(ForbiddenException);
     });
@@ -304,16 +416,18 @@ describe('AuditController — Admin RolesGuard hierarchy enforcement', () => {
       const guard = new AdminRolesGuard(buildReflector([AdminRole.AUDITOR]));
       for (const role of Object.values(AdminRole)) {
         expect(() =>
-          guard.canActivate(buildAdminContext({ role, isActive: false }) as any),
+          guard.canActivate(
+            buildAdminContext({ role, isActive: false }) as any,
+          ),
         ).toThrow(ForbiddenException);
       }
     });
 
     it('null admin in request is denied', () => {
       const guard = new AdminRolesGuard(buildReflector([AdminRole.AUDITOR]));
-      expect(() => guard.canActivate(buildAdminContext(undefined) as any)).toThrow(
-        ForbiddenException,
-      );
+      expect(() =>
+        guard.canActivate(buildAdminContext(undefined) as any),
+      ).toThrow(ForbiddenException);
     });
   });
 });
@@ -323,9 +437,13 @@ describe('AuditController — Admin RolesGuard hierarchy enforcement', () => {
  */
 describe('AdminGuard (DB-backed) — fail-closed invariants for audit routes', () => {
   const buildAdminGuard = (foundAdmin: any) => {
-    const adminRepo = { findOne: jest.fn().mockResolvedValue(foundAdmin) } as any;
+    const adminRepo = {
+      findOne: jest.fn().mockResolvedValue(foundAdmin),
+    } as any;
     const reflector = {} as any;
-    const { AdminGuard: Guard } = jest.requireActual('../../admin/guards/admin.guard');
+    const { AdminGuard: Guard } = jest.requireActual(
+      '../../admin/guards/admin.guard',
+    );
     return new Guard(adminRepo, reflector);
   };
 
@@ -339,9 +457,14 @@ describe('AdminGuard (DB-backed) — fail-closed invariants for audit routes', (
 
   it('sets request.admin when active admin found in DB', async () => {
     const admin = {
-      id: 'a1', walletAddress: '0xabc', role: AdminRole.AUDITOR,
-      isActive: true, permissions: null, lastLoginAt: null,
-      createdAt: new Date(), updatedAt: new Date(),
+      id: 'a1',
+      walletAddress: '0xabc',
+      role: AdminRole.AUDITOR,
+      isActive: true,
+      permissions: null,
+      lastLoginAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
     };
     const guard = buildAdminGuard(admin);
     const ctx = makeCtx({ address: '0xabc' }) as any;
@@ -366,8 +489,8 @@ describe('AdminGuard (DB-backed) — fail-closed invariants for audit routes', (
 
   it('throws ForbiddenException when wallet not found in admin_users table', async () => {
     const guard = buildAdminGuard(null);
-    await expect(guard.canActivate(makeCtx({ address: '0xunknown' }) as any)).rejects.toThrow(
-      ForbiddenException,
-    );
+    await expect(
+      guard.canActivate(makeCtx({ address: '0xunknown' }) as any),
+    ).rejects.toThrow(ForbiddenException);
   });
 });

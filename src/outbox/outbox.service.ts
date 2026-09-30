@@ -85,7 +85,11 @@ export class OutboxService {
     aggregateId: string,
     payload: OutboxEventPayload,
   ): Promise<string> {
-    const idempotencyKey = this.buildIdempotencyKey(eventType, aggregateId, payload);
+    const idempotencyKey = this.buildIdempotencyKey(
+      eventType,
+      aggregateId,
+      payload,
+    );
 
     const event = await tx.outboxEvent.create({
       data: {
@@ -139,7 +143,9 @@ export class OutboxService {
       return;
     }
 
-    this.logger.debug(`OutboxService: processing ${pending.length} pending events`);
+    this.logger.debug(
+      `OutboxService: processing ${pending.length} pending events`,
+    );
     this.metricsService.incrementCounter('outbox_batch_processed_total', 1);
 
     for (const event of pending) {
@@ -161,7 +167,9 @@ export class OutboxService {
       try {
         payload = JSON.parse(event.payload) as OutboxEventPayload;
       } catch {
-        this.logger.error(`OutboxEvent ${event.id}: invalid JSON payload — dead-lettering`);
+        this.logger.error(
+          `OutboxEvent ${event.id}: invalid JSON payload — dead-lettering`,
+        );
         await this.deadLetter(event.id, 'Invalid JSON payload');
         return;
       }
@@ -183,7 +191,10 @@ export class OutboxService {
         },
         {
           jobId: `outbox-${event.idempotencyKey}`,
-          attempts: retryBehavior.classification === ErrorClassification.NETWORK ? 5 : 3,
+          attempts:
+            retryBehavior.classification === ErrorClassification.NETWORK
+              ? 5
+              : 3,
           backoff: {
             type: 'exponential',
             delay: retryBehavior.nextDelayMs || 1000,
@@ -203,7 +214,9 @@ export class OutboxService {
       });
 
       this.metricsService.incrementCounter('outbox_events_dispatched_total', 1);
-      this.logger.debug(`OutboxEvent ${event.id} dispatched as BullMQ job ${job.id}`);
+      this.logger.debug(
+        `OutboxEvent ${event.id} dispatched as BullMQ job ${job.id}`,
+      );
     } catch (error) {
       // Classify the error to determine retry behavior
       const errorClassification = classifyError(error);
@@ -216,7 +229,10 @@ export class OutboxService {
         where: { id: event.id },
         data: {
           retryCount: newRetryCount,
-          lastError: String(error?.message ?? 'Unknown dispatch error').slice(0, 500),
+          lastError: String(error?.message ?? 'Unknown dispatch error').slice(
+            0,
+            500,
+          ),
           status: isDead
             ? ('DEAD_LETTER' satisfies OutboxStatus)
             : ('PENDING' satisfies OutboxStatus),
@@ -224,7 +240,10 @@ export class OutboxService {
       });
 
       if (isDead) {
-        this.metricsService.incrementCounter('outbox_events_dead_lettered_total', 1);
+        this.metricsService.incrementCounter(
+          'outbox_events_dead_lettered_total',
+          1,
+        );
         this.logger.error(
           `OutboxEvent ${event.id} dead-lettered after ${newRetryCount} retries: ${error?.message}`,
         );
@@ -232,7 +251,10 @@ export class OutboxService {
           `Dead-letter metadata: ${formatRetryMetadata(retryBehavior)}`,
         );
       } else {
-        this.metricsService.incrementCounter('outbox_events_relay_failed_total', 1);
+        this.metricsService.incrementCounter(
+          'outbox_events_relay_failed_total',
+          1,
+        );
         this.logger.warn(
           `OutboxEvent ${event.id} relay failed (attempt ${newRetryCount}/${event.maxRetries}): ${error?.message}`,
         );
@@ -252,7 +274,10 @@ export class OutboxService {
         processedAt: new Date(),
       },
     });
-    this.metricsService.incrementCounter('outbox_events_dead_lettered_total', 1);
+    this.metricsService.incrementCounter(
+      'outbox_events_dead_lettered_total',
+      1,
+    );
   }
 
   /**

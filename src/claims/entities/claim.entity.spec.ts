@@ -69,7 +69,9 @@ describe('Claim Entity', () => {
           claim.transitionTo(ClaimState.RESOLVED, {
             confidence: 0.85,
           });
-        }).toThrow('PENDING → RESOLVED requires both verdict and confidence data');
+        }).toThrow(
+          'PENDING → RESOLVED requires both verdict and confidence data',
+        );
       });
 
       it('should throw error when transitioning PENDING → RESOLVED without confidence', () => {
@@ -77,13 +79,17 @@ describe('Claim Entity', () => {
           claim.transitionTo(ClaimState.RESOLVED, {
             verdict: true,
           });
-        }).toThrow('PENDING → RESOLVED requires both verdict and confidence data');
+        }).toThrow(
+          'PENDING → RESOLVED requires both verdict and confidence data',
+        );
       });
 
       it('should throw error when transitioning PENDING → RESOLVED without data', () => {
         expect(() => {
           claim.transitionTo(ClaimState.RESOLVED);
-        }).toThrow('PENDING → RESOLVED requires both verdict and confidence data');
+        }).toThrow(
+          'PENDING → RESOLVED requires both verdict and confidence data',
+        );
       });
     });
 
@@ -105,7 +111,9 @@ describe('Claim Entity', () => {
           claim.transitionTo(ClaimState.FINALIZED, {
             confidence: 0.92,
           });
-        }).toThrow('PENDING → FINALIZED requires both verdict and confidence data');
+        }).toThrow(
+          'PENDING → FINALIZED requires both verdict and confidence data',
+        );
       });
 
       it('should throw error when transitioning PENDING → FINALIZED without confidence', () => {
@@ -113,7 +121,9 @@ describe('Claim Entity', () => {
           claim.transitionTo(ClaimState.FINALIZED, {
             verdict: false,
           });
-        }).toThrow('PENDING → FINALIZED requires both verdict and confidence data');
+        }).toThrow(
+          'PENDING → FINALIZED requires both verdict and confidence data',
+        );
       });
     });
 
@@ -243,22 +253,28 @@ describe('Claim Entity', () => {
       it('should throw error when transitioning from FINALIZED to PENDING', () => {
         expect(() => {
           claim.transitionTo(ClaimState.PENDING);
-        }).toThrow('Cannot transition from FINALIZED state. Claim test-claim-id is immutable');
+        }).toThrow(
+          'Cannot transition from FINALIZED state. Claim test-claim-id is immutable',
+        );
       });
 
       it('should throw error when transitioning from FINALIZED to RESOLVED', () => {
         expect(() => {
           claim.transitionTo(ClaimState.RESOLVED, {
             verdict: false,
-            confidence: 0.90,
+            confidence: 0.9,
           });
-        }).toThrow('Cannot transition from FINALIZED state. Claim test-claim-id is immutable');
+        }).toThrow(
+          'Cannot transition from FINALIZED state. Claim test-claim-id is immutable',
+        );
       });
 
       it('should throw error when transitioning from FINALIZED to FINALIZED', () => {
         expect(() => {
           claim.transitionTo(ClaimState.FINALIZED);
-        }).toThrow('Cannot transition from FINALIZED state. Claim test-claim-id is immutable');
+        }).toThrow(
+          'Cannot transition from FINALIZED state. Claim test-claim-id is immutable',
+        );
       });
     });
 
@@ -325,7 +341,7 @@ describe('Claim Entity', () => {
       expect(() => {
         claim.transitionTo(ClaimState.RESOLVED, {
           verdict: false,
-          confidence: 0.90,
+          confidence: 0.9,
         });
       }).toThrow('Cannot transition from FINALIZED state');
     });
@@ -339,7 +355,7 @@ describe('Claim Entity', () => {
 
     it('legacy claim (RESOLVED with null resolvedAt) updates resolvedAt on transition to FINALIZED (BE-219 Audit)', () => {
       claim.resolvedVerdict = true;
-      claim.confidenceScore = 0.80;
+      claim.confidenceScore = 0.8;
       claim.finalized = false;
       claim.resolvedAt = null;
 
@@ -352,48 +368,67 @@ describe('Claim Entity', () => {
 
     it('legacy claim (RESOLVED with null resolvedAt) updates resolvedAt on transition to RESOLVED (BE-219 Audit)', () => {
       claim.resolvedVerdict = true;
-      claim.confidenceScore = 0.80;
+      claim.confidenceScore = 0.8;
       claim.finalized = false;
       claim.resolvedAt = null;
 
-      claim.transitionTo(ClaimState.RESOLVED, { confidence: 0.90 });
+      claim.transitionTo(ClaimState.RESOLVED, { confidence: 0.9 });
 
       expect(claim.resolvedAt).not.toBeNull();
       expect(claim.resolvedAt).toBeInstanceOf(Date);
-      expect(claim.confidenceScore).toBe(0.90);
+      expect(claim.confidenceScore).toBe(0.9);
     });
 
     it('PENDING → RESOLVED sets resolvedAt to a Date', () => {
       const before = new Date();
-      claim.transitionTo(ClaimState.RESOLVED, { verdict: true, confidence: 0.85 });
+      claim.transitionTo(ClaimState.RESOLVED, {
+        verdict: true,
+        confidence: 0.85,
+      });
       const after = new Date();
 
       expect(claim.resolvedAt).toBeInstanceOf(Date);
-      expect(claim.resolvedAt!.getTime()).toBeGreaterThanOrEqual(before.getTime());
+      expect(claim.resolvedAt!.getTime()).toBeGreaterThanOrEqual(
+        before.getTime(),
+      );
       expect(claim.resolvedAt!.getTime()).toBeLessThanOrEqual(after.getTime());
     });
 
     it('PENDING → FINALIZED sets resolvedAt to a Date', () => {
       const before = new Date();
-      claim.transitionTo(ClaimState.FINALIZED, { verdict: false, confidence: 0.92 });
+      claim.transitionTo(ClaimState.FINALIZED, {
+        verdict: false,
+        confidence: 0.92,
+      });
       const after = new Date();
 
       expect(claim.resolvedAt).toBeInstanceOf(Date);
-      expect(claim.resolvedAt!.getTime()).toBeGreaterThanOrEqual(before.getTime());
+      expect(claim.resolvedAt!.getTime()).toBeGreaterThanOrEqual(
+        before.getTime(),
+      );
       expect(claim.resolvedAt!.getTime()).toBeLessThanOrEqual(after.getTime());
     });
 
     it('RESOLVED → RESOLVED does not overwrite the original resolvedAt', () => {
-      claim.transitionTo(ClaimState.RESOLVED, { verdict: true, confidence: 0.80 });
+      claim.transitionTo(ClaimState.RESOLVED, {
+        verdict: true,
+        confidence: 0.8,
+      });
       const firstResolvedAt = claim.resolvedAt!;
 
-      claim.transitionTo(ClaimState.RESOLVED, { verdict: false, confidence: 0.90 });
+      claim.transitionTo(ClaimState.RESOLVED, {
+        verdict: false,
+        confidence: 0.9,
+      });
 
       expect(claim.resolvedAt).toEqual(firstResolvedAt);
     });
 
     it('RESOLVED → FINALIZED preserves the original resolvedAt', () => {
-      claim.transitionTo(ClaimState.RESOLVED, { verdict: true, confidence: 0.75 });
+      claim.transitionTo(ClaimState.RESOLVED, {
+        verdict: true,
+        confidence: 0.75,
+      });
       const firstResolvedAt = claim.resolvedAt!;
 
       claim.transitionTo(ClaimState.FINALIZED);
@@ -403,7 +438,10 @@ describe('Claim Entity', () => {
     });
 
     it('PENDING → RESOLVED → FINALIZED: resolvedAt is set once and preserved', () => {
-      claim.transitionTo(ClaimState.RESOLVED, { verdict: true, confidence: 0.70 });
+      claim.transitionTo(ClaimState.RESOLVED, {
+        verdict: true,
+        confidence: 0.7,
+      });
       const resolvedAtAfterResolution = claim.resolvedAt!;
 
       expect(resolvedAtAfterResolution).toBeInstanceOf(Date);
@@ -414,24 +452,36 @@ describe('Claim Entity', () => {
     });
 
     it('invalid transition from FINALIZED does not modify resolvedAt', () => {
-      claim.transitionTo(ClaimState.FINALIZED, { verdict: true, confidence: 0.85 });
+      claim.transitionTo(ClaimState.FINALIZED, {
+        verdict: true,
+        confidence: 0.85,
+      });
       const resolvedAtSnapshot = claim.resolvedAt!;
 
       expect(() => {
-        claim.transitionTo(ClaimState.RESOLVED, { verdict: false, confidence: 0.50 });
+        claim.transitionTo(ClaimState.RESOLVED, {
+          verdict: false,
+          confidence: 0.5,
+        });
       }).toThrow('Cannot transition from FINALIZED state');
 
       expect(claim.resolvedAt).toEqual(resolvedAtSnapshot);
     });
 
     it('a resolved claim (RESOLVED state) always has a non-null resolvedAt', () => {
-      claim.transitionTo(ClaimState.RESOLVED, { verdict: true, confidence: 0.80 });
+      claim.transitionTo(ClaimState.RESOLVED, {
+        verdict: true,
+        confidence: 0.8,
+      });
       expect(claim.getCurrentState()).toBe(ClaimState.RESOLVED);
       expect(claim.resolvedAt).not.toBeNull();
     });
 
     it('a finalized claim always has a non-null resolvedAt', () => {
-      claim.transitionTo(ClaimState.FINALIZED, { verdict: false, confidence: 0.65 });
+      claim.transitionTo(ClaimState.FINALIZED, {
+        verdict: false,
+        confidence: 0.65,
+      });
       expect(claim.getCurrentState()).toBe(ClaimState.FINALIZED);
       expect(claim.resolvedAt).not.toBeNull();
     });
@@ -443,7 +493,7 @@ describe('Claim Entity', () => {
 
     it('legacy claim (RESOLVED with null resolvedAt) updates resolvedAt on transition to FINALIZED (BE-219 Audit)', () => {
       claim.resolvedVerdict = true;
-      claim.confidenceScore = 0.80;
+      claim.confidenceScore = 0.8;
       claim.finalized = false;
       claim.resolvedAt = null;
 
@@ -456,15 +506,15 @@ describe('Claim Entity', () => {
 
     it('legacy claim (RESOLVED with null resolvedAt) updates resolvedAt on transition to RESOLVED (BE-219 Audit)', () => {
       claim.resolvedVerdict = true;
-      claim.confidenceScore = 0.80;
+      claim.confidenceScore = 0.8;
       claim.finalized = false;
       claim.resolvedAt = null;
 
-      claim.transitionTo(ClaimState.RESOLVED, { confidence: 0.90 });
+      claim.transitionTo(ClaimState.RESOLVED, { confidence: 0.9 });
 
       expect(claim.resolvedAt).not.toBeNull();
       expect(claim.resolvedAt).toBeInstanceOf(Date);
-      expect(claim.confidenceScore).toBe(0.90);
+      expect(claim.confidenceScore).toBe(0.9);
     });
   });
 });

@@ -1,12 +1,33 @@
-import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiParam,
+  ApiQuery,
+} from '@nestjs/swagger';
 import { AdminService } from './admin.service';
 import { AdminGuard } from './guards/admin.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { Roles } from './decorators/roles.decorator';
 import { CurrentAdmin } from './decorators/current-admin.decorator';
 import { Admin, AdminRole } from './entities/admin.entity';
-import { CreateAdminDto, UpdateAdminRoleDto, UpdateAdminStatusDto, AdminLoginDto } from './dto/admin.dto';
+import {
+  CreateAdminDto,
+  UpdateAdminRoleDto,
+  UpdateAdminStatusDto,
+  AdminLoginDto,
+} from './dto/admin.dto';
 
 @ApiTags('admin')
 @ApiBearerAuth()
@@ -37,7 +58,14 @@ export class AdminController {
 
   @Get('auth/profile')
   @UseGuards(AdminGuard, RolesGuard)
-  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMINISTRATOR, AdminRole.MODERATOR, AdminRole.SECURITY_ANALYST, AdminRole.GOVERNANCE_OPERATOR, AdminRole.AUDITOR)
+  @Roles(
+    AdminRole.SUPER_ADMIN,
+    AdminRole.ADMINISTRATOR,
+    AdminRole.MODERATOR,
+    AdminRole.SECURITY_ANALYST,
+    AdminRole.GOVERNANCE_OPERATOR,
+    AdminRole.AUDITOR,
+  )
   @ApiOperation({ summary: 'Get current admin profile' })
   @ApiResponse({ status: 200, description: 'Admin profile' })
   async getProfile(@CurrentAdmin() admin: Admin) {
@@ -56,7 +84,10 @@ export class AdminController {
   @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMINISTRATOR)
   @ApiOperation({ summary: 'Create a new admin (super_admin or admin only)' })
   @ApiResponse({ status: 201, description: 'Admin created' })
-  async createAdmin(@Body() createAdminDto: CreateAdminDto, @CurrentAdmin() admin: Admin) {
+  async createAdmin(
+    @Body() createAdminDto: CreateAdminDto,
+    @CurrentAdmin() admin: Admin,
+  ) {
     return this.adminService.create(createAdminDto, admin);
   }
 

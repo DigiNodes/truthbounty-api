@@ -73,7 +73,9 @@ describe('WorldcoinService', () => {
     repository = module.get(getRepositoryToken(WorldIdVerification));
     configService = module.get(ConfigService);
     prisma = module.get<any>(PrismaService);
-    sybilResistanceService = module.get(SybilResistanceService) as jest.Mocked<SybilResistanceService>;
+    sybilResistanceService = module.get(
+      SybilResistanceService,
+    ) as jest.Mocked<SybilResistanceService>;
     fetchMock = jest.fn();
     global.fetch = fetchMock as typeof fetch;
 
@@ -81,7 +83,8 @@ describe('WorldcoinService', () => {
       const config: Record<string, string> = {
         WORLDCOIN_APP_ID: 'test-app-id',
         WORLDCOIN_ACTION: 'test-action',
-        WORLDCOIN_VERIFY_BASE_URL: 'https://developer.worldcoin.org/api/v2/verify',
+        WORLDCOIN_VERIFY_BASE_URL:
+          'https://developer.worldcoin.org/api/v2/verify',
       };
       return config[key];
     });
@@ -132,7 +135,9 @@ describe('WorldcoinService', () => {
       repository.save.mockResolvedValue(mockVerification);
       prisma.worldIdVerification.create.mockResolvedValue(mockVerification);
       prisma.user.update.mockResolvedValue({});
-      sybilResistanceService.recordSybilScore.mockResolvedValue({ compositeScore: 0.5 });
+      sybilResistanceService.recordSybilScore.mockResolvedValue({
+        compositeScore: 0.5,
+      });
 
       const result = await service.verifyProof(userId, verifyDto);
 
@@ -178,7 +183,9 @@ describe('WorldcoinService', () => {
       repository.save.mockResolvedValue(mockVerification);
       prisma.worldIdVerification.create.mockResolvedValue(mockVerification);
       prisma.user.update.mockResolvedValue({});
-      sybilResistanceService.recordSybilScore.mockResolvedValue({ compositeScore: 0.5 });
+      sybilResistanceService.recordSybilScore.mockResolvedValue({
+        compositeScore: 0.5,
+      });
 
       await service.verifyProof(userId, verifyDto);
 
@@ -199,12 +206,18 @@ describe('WorldcoinService', () => {
       repository.findOne.mockResolvedValue(null);
       prisma.worldIdVerification.findUnique.mockResolvedValue(null);
 
-      const mockVerification = { id: 'ver-1', userId, nullifierHash: verifyDto.proof.nullifier_hash } as unknown as WorldIdVerification;
+      const mockVerification = {
+        id: 'ver-1',
+        userId,
+        nullifierHash: verifyDto.proof.nullifier_hash,
+      } as unknown as WorldIdVerification;
       repository.create.mockReturnValue(mockVerification);
       repository.save.mockResolvedValue(mockVerification);
       prisma.worldIdVerification.create.mockResolvedValue(mockVerification);
       prisma.user.update.mockResolvedValue({});
-      sybilResistanceService.recordSybilScore.mockResolvedValue({ compositeScore: 0.5 });
+      sybilResistanceService.recordSybilScore.mockResolvedValue({
+        compositeScore: 0.5,
+      });
 
       await service.verifyProof(userId, verifyDto);
 
@@ -218,16 +231,23 @@ describe('WorldcoinService', () => {
       repository.findOne.mockResolvedValue(null);
       prisma.worldIdVerification.findUnique.mockResolvedValue(null);
 
-      const mockVerification = { id: 'ver-1', userId } as unknown as WorldIdVerification;
+      const mockVerification = {
+        id: 'ver-1',
+        userId,
+      } as unknown as WorldIdVerification;
       repository.create.mockReturnValue(mockVerification);
       repository.save.mockResolvedValue(mockVerification);
       prisma.worldIdVerification.create.mockResolvedValue(mockVerification);
       prisma.user.update.mockResolvedValue({});
-      sybilResistanceService.recordSybilScore.mockResolvedValue({ compositeScore: 0.5 });
+      sybilResistanceService.recordSybilScore.mockResolvedValue({
+        compositeScore: 0.5,
+      });
 
       await service.verifyProof(userId, verifyDto);
 
-      expect(sybilResistanceService.recordSybilScore).toHaveBeenCalledWith(userId);
+      expect(sybilResistanceService.recordSybilScore).toHaveBeenCalledWith(
+        userId,
+      );
     });
 
     it('should throw ConflictException when nullifier hash exists in TypeORM store', async () => {
@@ -272,7 +292,10 @@ describe('WorldcoinService', () => {
       repository.findOne.mockResolvedValue(null);
 
       await expect(
-        service.verifyProof(userId, { ...verifyDto, action: 'unexpected-action' }),
+        service.verifyProof(userId, {
+          ...verifyDto,
+          action: 'unexpected-action',
+        }),
       ).rejects.toThrow('Invalid Worldcoin proof');
 
       expect(fetchMock).not.toHaveBeenCalled();
@@ -289,7 +312,9 @@ describe('WorldcoinService', () => {
         verifiedAt: new Date(),
       };
 
-      repository.findOne.mockResolvedValue(mockVerification as WorldIdVerification);
+      repository.findOne.mockResolvedValue(
+        mockVerification as WorldIdVerification,
+      );
 
       const result = await service.getVerificationStatus(userId);
 
@@ -304,7 +329,9 @@ describe('WorldcoinService', () => {
   describe('isUserVerified', () => {
     it('should return true when TypeORM store has a verification record', async () => {
       const userId = 'test-user-123';
-      repository.findOne.mockResolvedValue({ id: 'verification-id' } as WorldIdVerification);
+      repository.findOne.mockResolvedValue({
+        id: 'verification-id',
+      } as WorldIdVerification);
       prisma.worldIdVerification.findFirst.mockResolvedValue(null);
 
       const result = await service.isUserVerified(userId);
@@ -315,7 +342,9 @@ describe('WorldcoinService', () => {
     it('should return true when Prisma store has a verification record', async () => {
       const userId = 'test-user-123';
       repository.findOne.mockResolvedValue(null);
-      prisma.worldIdVerification.findFirst.mockResolvedValue({ id: 'prisma-ver' });
+      prisma.worldIdVerification.findFirst.mockResolvedValue({
+        id: 'prisma-ver',
+      });
 
       const result = await service.isUserVerified(userId);
 

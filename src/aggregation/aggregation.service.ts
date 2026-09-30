@@ -12,10 +12,7 @@ export class AggregationService {
    * Aggregate verifications for a single claim.
    * Pure & deterministic.
    */
-  aggregate(
-    claimId: string,
-    verifications: Verification[],
-  ): AggregationResult {
+  aggregate(claimId: string, verifications: Verification[]): AggregationResult {
     if (verifications.length === 0) {
       return {
         claimId,
@@ -46,12 +43,22 @@ export class AggregationService {
     const totalWeight = trueWeight + falseWeight;
 
     if (totalWeight === 0) {
-      return this.inconclusiveResult(claimId, trueWeight, falseWeight, verifications.length);
+      return this.inconclusiveResult(
+        claimId,
+        trueWeight,
+        falseWeight,
+        verifications.length,
+      );
     }
 
     // Tie handling
     if (trueWeight === falseWeight) {
-      return this.inconclusiveResult(claimId, trueWeight, falseWeight, verifications.length);
+      return this.inconclusiveResult(
+        claimId,
+        trueWeight,
+        falseWeight,
+        verifications.length,
+      );
     }
 
     const status =
@@ -66,7 +73,12 @@ export class AggregationService {
 
     // Extremely low confidence safeguard
     if (confidence < 10) {
-      return this.inconclusiveResult(claimId, trueWeight, falseWeight, verifications.length);
+      return this.inconclusiveResult(
+        claimId,
+        trueWeight,
+        falseWeight,
+        verifications.length,
+      );
     }
 
     return {

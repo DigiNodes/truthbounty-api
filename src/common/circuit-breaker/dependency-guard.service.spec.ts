@@ -31,9 +31,12 @@ import {
 // ---------------------------------------------------------------------------
 
 const succeed = () => Promise.resolve('ok');
-const fail = (msg = 'boom') => () => Promise.reject(new Error(msg));
-const slow = (ms: number) =>
-  () => new Promise<string>((resolve) => setTimeout(() => resolve('late'), ms));
+const fail =
+  (msg = 'boom') =>
+  () =>
+    Promise.reject(new Error(msg));
+const slow = (ms: number) => () =>
+  new Promise<string>((resolve) => setTimeout(() => resolve('late'), ms));
 
 async function makeGuard(
   configValues: Record<string, string> = {},
@@ -132,9 +135,9 @@ describe('DependencyGuardService — guard() failure and circuit opening', () =>
 describe('DependencyGuardService — timeout enforcement', () => {
   it('throws DependencyTimeoutError when call exceeds explicit timeoutMs', async () => {
     const svc = await makeGuard();
-    await expect(
-      svc.guard('redis', slow(300), 50),
-    ).rejects.toBeInstanceOf(DependencyTimeoutError);
+    await expect(svc.guard('redis', slow(300), 50)).rejects.toBeInstanceOf(
+      DependencyTimeoutError,
+    );
   });
 
   it('timeoutMs=0 disables the timeout budget entirely', async () => {
@@ -147,9 +150,9 @@ describe('DependencyGuardService — timeout enforcement', () => {
   it('respects env-var override DEPENDENCY_TIMEOUT_<NAME>', async () => {
     // Override redis timeout to 30ms.
     const svc = await makeGuard({ DEPENDENCY_TIMEOUT_REDIS: '30' });
-    await expect(
-      svc.guard('redis', slow(300)),
-    ).rejects.toBeInstanceOf(DependencyTimeoutError);
+    await expect(svc.guard('redis', slow(300))).rejects.toBeInstanceOf(
+      DependencyTimeoutError,
+    );
   });
 });
 

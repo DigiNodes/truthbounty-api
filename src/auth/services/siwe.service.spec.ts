@@ -24,7 +24,9 @@ describe('SiweService', () => {
         statement: 'Sign in to TruthBounty',
       });
 
-      expect(message).toContain('app.truthbounty.com wants you to sign in with your Ethereum account:');
+      expect(message).toContain(
+        'app.truthbounty.com wants you to sign in with your Ethereum account:',
+      );
       expect(message).toContain('0xAbCdEf1234567890aBcDeF1234567890AbCdEf1234');
       expect(message).toContain('Sign in to TruthBounty');
       expect(message).toContain('URI: https://app.truthbounty.com');
@@ -44,7 +46,9 @@ describe('SiweService', () => {
         nonce: 'testnonce',
       });
 
-      expect(message).toContain('test.com wants you to sign in with your Ethereum account:');
+      expect(message).toContain(
+        'test.com wants you to sign in with your Ethereum account:',
+      );
       expect(message).toContain('Nonce: testnonce');
       expect(message).toContain('Chain ID: 5');
     });
@@ -99,7 +103,9 @@ describe('SiweService', () => {
       const parsed = service.parseMessage(raw);
       expect(parsed).not.toBeNull();
       expect(parsed!.domain).toBe('app.truthbounty.com');
-      expect(parsed!.address).toBe('0xabcdef1234567890abcdef1234567890abcdef1234');
+      expect(parsed!.address).toBe(
+        '0xabcdef1234567890abcdef1234567890abcdef1234',
+      );
       expect(parsed!.statement).toBe('Sign in to TruthBounty');
       expect(parsed!.uri).toBe('https://app.truthbounty.com');
       expect(parsed!.version).toBe('1');
@@ -156,7 +162,9 @@ describe('SiweService', () => {
 
       const parsed = service.parseMessage(raw);
       expect(parsed).not.toBeNull();
-      expect(parsed!.statement).toBe('Line one of statement.\nLine two of statement.');
+      expect(parsed!.statement).toBe(
+        'Line one of statement.\nLine two of statement.',
+      );
     });
   });
 

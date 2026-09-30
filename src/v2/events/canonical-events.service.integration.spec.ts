@@ -63,10 +63,10 @@ describe('CanonicalEventsService (integration)', () => {
     moduleRef = await Test.createTestingModule({
       imports: [
         TypeOrmModule.forRoot({
-          type: 'sqlite',
+          type: 'better-sqlite3',
           database: ':memory:',
           // eslint-disable-next-line @typescript-eslint/no-require-imports
-          driver: require('sqlite3'),
+          driver: require('better-sqlite3'),
           entities: [
             CanonicalEvent,
             ContractArtifact,
@@ -99,7 +99,10 @@ describe('CanonicalEventsService (integration)', () => {
       chainId: 10,
       contractAddress,
       artifactVersion: 'v1',
-      abiChecksum: crypto.createHash('sha256').update(JSON.stringify(abi)).digest('hex'),
+      abiChecksum: crypto
+        .createHash('sha256')
+        .update(JSON.stringify(abi))
+        .digest('hex'),
       abi,
       isApproved: true,
     });

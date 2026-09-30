@@ -43,7 +43,8 @@ export class JobProfiler {
       return result;
     } catch (error) {
       const durationMs = Date.now() - startTime;
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       this.profilerService.endTrace(trace.id, {
         durationMs,
         status: 'error',

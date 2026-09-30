@@ -1,4 +1,8 @@
-import { redactSensitiveData, redactObject, generateRequestId } from './redaction.util';
+import {
+  redactSensitiveData,
+  redactObject,
+  generateRequestId,
+} from './redaction.util';
 
 describe('Redaction Utils', () => {
   describe('redactSensitiveData', () => {
@@ -66,10 +70,7 @@ describe('Redaction Utils', () => {
     });
 
     it('should handle arrays', () => {
-      const input = [
-        { password: 'secret1' },
-        { password: 'secret2' },
-      ];
+      const input = [{ password: 'secret1' }, { password: 'secret2' }];
       const result = redactObject(input);
       expect(result[0].password).toBe('[REDACTED]');
       expect(result[1].password).toBe('[REDACTED]');
@@ -84,7 +85,9 @@ describe('Redaction Utils', () => {
   describe('generateRequestId', () => {
     it('should generate a valid UUID', () => {
       const id = generateRequestId();
-      expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+      expect(id).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+      );
     });
 
     it('should generate unique IDs', () => {

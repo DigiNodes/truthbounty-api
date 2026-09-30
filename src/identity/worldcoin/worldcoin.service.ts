@@ -1,4 +1,9 @@
-import { Injectable, ConflictException, BadRequestException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  ConflictException,
+  BadRequestException,
+  Logger,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -33,23 +38,28 @@ export class WorldcoinService {
     private readonly sybilResistanceService: SybilResistanceService,
   ) {}
 
-  async verifyProof(userId: string, verifyDto: VerifyWorldcoinProofDto): Promise<WorldIdVerification> {
+  async verifyProof(
+    userId: string,
+    verifyDto: VerifyWorldcoinProofDto,
+  ): Promise<WorldIdVerification> {
     const { proof, action, signal } = verifyDto;
 
     // Verify the proof with Worldcoin
     const isValid = await this.verifyWorldcoinProof(proof, action, signal);
-    
+
     if (!isValid) {
       throw new BadRequestException('Invalid Worldcoin proof');
     }
 
     // Check if nullifier hash has already been used (prevent duplicate verification)
-    const existingVerificationTypeORM = await this.worldIdVerificationRepository.findOne({
-      where: { nullifierHash: proof.nullifier_hash },
-    });
-    const existingVerificationPrisma = await this.prisma.worldIdVerification.findUnique({
-      where: { nullifierHash: proof.nullifier_hash },
-    });
+    const existingVerificationTypeORM =
+      await this.worldIdVerificationRepository.findOne({
+        where: { nullifierHash: proof.nullifier_hash },
+      });
+    const existingVerificationPrisma =
+      await this.prisma.worldIdVerification.findUnique({
+        where: { nullifierHash: proof.nullifier_hash },
+      });
 
     if (existingVerificationTypeORM || existingVerificationPrisma) {
       throw new ConflictException('This Worldcoin proof has already been used');
@@ -65,7 +75,8 @@ export class WorldcoinService {
       merkleRoot: proof.merkle_root,
       proof: proof.proof,
     });
-    const savedVerification = await this.worldIdVerificationRepository.save(verificationTypeORM);
+    const savedVerification =
+      await this.worldIdVerificationRepository.save(verificationTypeORM);
 
     // Save to Prisma as well
     await this.prisma.worldIdVerification.create({
@@ -73,7 +84,8 @@ export class WorldcoinService {
         userId,
         nullifierHash: proof.nullifier_hash,
         verificationLevel: proof.verification_level,
-        worldcoinAppId: this.configService.get<string>('WORLDCOIN_APP_ID') || '',
+        worldcoinAppId:
+          this.configService.get<string>('WORLDCOIN_APP_ID') || '',
         worldcoinAction: action,
         merkleRoot: proof.merkle_root,
         proof: proof.proof,
@@ -110,7 +122,9 @@ export class WorldcoinService {
       }
 
       if (action !== expectedAction) {
-        this.logger.warn(`Worldcoin action mismatch: received ${action}, expected ${expectedAction}`);
+        this.logger.warn(
+          `Worldcoin action mismatch: received ${action}, expected ${expectedAction}`,
+        );
         return false;
       }
 
@@ -127,7 +141,9 @@ export class WorldcoinService {
       });
 
       if (!response.ok) {
-        this.logger.warn(`Worldcoin verification request failed with status ${response.status}`);
+        this.logger.warn(
+          `Worldcoin verification request failed with status ${response.status}`,
+        );
         return false;
       }
 
@@ -140,14 +156,18 @@ export class WorldcoinService {
     }
   }
 
-  async getVerificationStatus(userId: string): Promise<WorldIdVerification | null> {
+  async getVerificationStatus(
+    userId: string,
+  ): Promise<WorldIdVerification | null> {
     return await this.worldIdVerificationRepository.findOne({
       where: { userId },
       order: { verifiedAt: 'DESC' },
     });
   }
 
-  async getVerificationByNullifierHash(nullifierHash: string): Promise<WorldIdVerification | null> {
+  async getVerificationByNullifierHash(
+    nullifierHash: string,
+  ): Promise<WorldIdVerification | null> {
     return await this.worldIdVerificationRepository.findOne({
       where: { nullifierHash },
     });

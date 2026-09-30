@@ -2,11 +2,11 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class V2Baseline1725000000000 implements MigrationInterface {
-    name = 'V2Baseline1725000000000';
+  name = 'V2Baseline1725000000000';
 
-    public async up(queryRunner: QueryRunner): Promise<void> {
-        // 1. Audit tables
-        await queryRunner.query(`
+  public async up(queryRunner: QueryRunner): Promise<void> {
+    // 1. Audit tables
+    await queryRunner.query(`
             CREATE TABLE "v2_audit_logs" (
                 "id" SERIAL PRIMARY KEY,
                 "actor" VARCHAR(42) NOT NULL,
@@ -16,8 +16,8 @@ export class V2Baseline1725000000000 implements MigrationInterface {
             );
         `);
 
-        // 2. Cursor tables for indexer sync
-        await queryRunner.query(`
+    // 2. Cursor tables for indexer sync
+    await queryRunner.query(`
             CREATE TABLE "v2_indexer_cursors" (
                 "id" SERIAL PRIMARY KEY,
                 "chain_id" INT NOT NULL,
@@ -29,8 +29,8 @@ export class V2Baseline1725000000000 implements MigrationInterface {
             );
         `);
 
-        // 3. Projection tables for event-derived state
-        await queryRunner.query(`
+    // 3. Projection tables for event-derived state
+    await queryRunner.query(`
             CREATE TABLE "v2_projections" (
                 "id" SERIAL PRIMARY KEY,
                 "entity_type" VARCHAR(50) NOT NULL,
@@ -42,8 +42,8 @@ export class V2Baseline1725000000000 implements MigrationInterface {
             );
         `);
 
-        // 4. Auth tables
-        await queryRunner.query(`
+    // 4. Auth tables
+    await queryRunner.query(`
             CREATE TABLE "v2_auth_nonces" (
                 "id" SERIAL PRIMARY KEY,
                 "wallet_address" VARCHAR(42) NOT NULL,
@@ -54,21 +54,21 @@ export class V2Baseline1725000000000 implements MigrationInterface {
             );
         `);
 
-        // 5. Schema version metadata table
-        await queryRunner.query(`
+    // 5. Schema version metadata table
+    await queryRunner.query(`
             CREATE TABLE "v2_schema_versions" (
                 "version" INT PRIMARY KEY,
                 "applied_at" TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             );
             INSERT INTO "v2_schema_versions" ("version") VALUES (2);
         `);
-    }
+  }
 
-    public async down(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`DROP TABLE "v2_schema_versions";`);
-        await queryRunner.query(`DROP TABLE "v2_auth_nonces";`);
-        await queryRunner.query(`DROP TABLE "v2_projections";`);
-        await queryRunner.query(`DROP TABLE "v2_indexer_cursors";`);
-        await queryRunner.query(`DROP TABLE "v2_audit_logs";`);
-    }
+  public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`DROP TABLE "v2_schema_versions";`);
+    await queryRunner.query(`DROP TABLE "v2_auth_nonces";`);
+    await queryRunner.query(`DROP TABLE "v2_projections";`);
+    await queryRunner.query(`DROP TABLE "v2_indexer_cursors";`);
+    await queryRunner.query(`DROP TABLE "v2_audit_logs";`);
+  }
 }

@@ -7,7 +7,10 @@ import { IndexedEvent, IndexingState } from '../entities';
 import { ContractArtifact } from '../v2/events/entities/contract-artifact.entity';
 import { EventIndexerConfig } from '../config';
 import { serializeBigInts } from '../common/utils/bigint-serialization.util';
-import { withRpcBackoff, isRetryableRpcError } from '../blockchain/utils/rpc-backoff.util';
+import {
+  withRpcBackoff,
+  isRetryableRpcError,
+} from '../blockchain/utils/rpc-backoff.util';
 import { BlockchainStateService } from '../blockchain/state.service';
 
 /**
@@ -77,7 +80,8 @@ export class EventIndexerService {
     this.provider = new ethers.JsonRpcProvider(config.rpcUrl);
     this.effectiveBatchSize = config.blockRangePerBatch;
     this.minBatchSizeFloor = config.minBatchSizeFloor ?? 1;
-    this.adaptiveFillThresholdBlocks = config.adaptiveFillThresholdBlocks ?? 10_000;
+    this.adaptiveFillThresholdBlocks =
+      config.adaptiveFillThresholdBlocks ?? 10_000;
   }
 
   // ─── Public lifecycle ────────────────────────────────────────────────────────
@@ -142,7 +146,10 @@ export class EventIndexerService {
    * (`IndexerController.backfill`) before this method is called, so here we
    * only perform the cursor reset and emit the structured log.
    */
-  async backfillFromBlock(contractAddress: string, blockNumber: number): Promise<void> {
+  async backfillFromBlock(
+    contractAddress: string,
+    blockNumber: number,
+  ): Promise<void> {
     const state = await this.stateRepository.findOne({
       where: {
         chainId: this.config.chainId,
@@ -151,7 +158,9 @@ export class EventIndexerService {
     });
 
     if (!state) {
-      throw new Error(`No indexing state found for contract ${contractAddress}`);
+      throw new Error(
+        `No indexing state found for contract ${contractAddress}`,
+      );
     }
 
     // Reset effective batch size so each new backfill pass starts fresh.
@@ -184,9 +193,15 @@ export class EventIndexerService {
       // Run high-throughput backfill immediately, without waiting for the
       // normal poll interval. The loop re-enters standard polling once the gap
       // is below the threshold.
-      await this.runAdaptiveBackfill(contractAddress, blockNumber, finalizedBlock);
+      await this.runAdaptiveBackfill(
+        contractAddress,
+        blockNumber,
+        finalizedBlock,
+      );
     } else {
-      this.logger.log(`Backfilling from block ${blockNumber} for ${contractAddress}`);
+      this.logger.log(
+        `Backfilling from block ${blockNumber} for ${contractAddress}`,
+      );
     }
   }
 
@@ -253,9 +268,14 @@ export class EventIndexerService {
 
     while (cursor <= finalizedBlock && this.isIndexing) {
       for (const contract of this.config.contracts) {
-        if (contract.address.toLowerCase() !== contractAddress.toLowerCase()) continue;
+        if (contract.address.toLowerCase() !== contractAddress.toLowerCase())
+          continue;
         for (const eventConfig of contract.events) {
-          await this.indexEventType(contractAddress, eventConfig, finalizedBlock);
+          await this.indexEventType(
+            contractAddress,
+            eventConfig,
+            finalizedBlock,
+          );
         }
       }
 
@@ -289,7 +309,8 @@ export class EventIndexerService {
     try {
       const contract = this.config.contracts.find(
         (c) => c.address.toLowerCase() === contractAddress.toLowerCase(),
-      )?.events || []) {
+      );
+      for (const eventConfig of contract?.events ?? []) {
         await this.indexEventType(
           contractAddress,
           eventConfig,
@@ -326,7 +347,7 @@ export class EventIndexerService {
     }
 
     // Fix 1.3: cap endBlock at the provider-reported finalized block, not at
-    // currentBlockNumber - confirmationsRequired, so the cursor never advances
+    // currentBlockNumber - confirmations.finalized, so the cursor never advances
     // past canonical finality.
     let providerFinalizedBlock: number;
     try {
@@ -335,8 +356,9 @@ export class EventIndexerService {
       await this.stateService?.setObservedHead(currentBlockNumber);
     } catch {
       // Fail closed: if we cannot determine the finalized block we conservatively
-      // use currentBlockNumber - confirmationsRequired.
-      providerFinalizedBlock = currentBlockNumber - this.config.confirmationsRequired;
+      // use currentBlockNumber - confirmations.finalized.
+      providerFinalizedBlock =
+        currentBlockNumber - this.config.confirmations.finalized;
     }
 
     const startBlock = state.lastProcessedBlockNumber + 1;
@@ -393,7 +415,10 @@ export class EventIndexerService {
   private async fetchFinalizedBlockNumber(): Promise<number> {
     const block = await withRpcBackoff(
       () =>
-        this.provider.send('eth_getBlockByNumber', ['finalized', false]) as Promise<{
+        this.provider.send('eth_getBlockByNumber', [
+          'finalized',
+          false,
+        ]) as Promise<{
           number: string;
         }>,
     );
@@ -442,7 +467,10 @@ export class EventIndexerService {
 
         // Advance window.
         currentFrom = currentTo + 1;
-        currentTo = Math.min(currentFrom + this.effectiveBatchSize - 1, toBlock);
+        currentTo = Math.min(
+          currentFrom + this.effectiveBatchSize - 1,
+          toBlock,
+        );
       } catch (err) {
         if (isRangeTooLargeError(err)) {
           const rangeSize = currentTo - currentFrom + 1;
@@ -575,17 +603,18 @@ export class EventIndexerService {
 
     const iface = new ethers.Interface([eventConfig.abi]);
     const parsed = iface.parseLog({
-      topics: log.topics as string[],
+      topics: log.topics,
       data: log.data,
     });
 
     // Fix 1.7: historical finalized blocks skip the confirmation count check.
     const isHistoricallyFinalized = log.blockNumber <= finalizedBlock;
     const confirmations = isHistoricallyFinalized
-      ? this.config.confirmationsRequired
+      ? this.config.confirmations.finalized
       : Math.max(0, batchEndBlock - log.blockNumber);
     const isFinalized =
-      isHistoricallyFinalized || confirmations >= this.config.confirmationsRequired;
+      isHistoricallyFinalized ||
+      confirmations >= this.config.confirmations.finalized;
 
     const event = manager.create(IndexedEvent, {
       eventType: eventConfig.name,
@@ -628,17 +657,18 @@ export class EventIndexerService {
 
       const iface = new ethers.Interface([eventConfig.abi]);
       const parsed = iface.parseLog({
-        topics: log.topics as string[],
+        topics: log.topics,
         data: log.data,
       });
 
       // Fix 1.7: historical finalized blocks are immediately finalized.
       const isHistoricallyFinalized = log.blockNumber <= finalizedBlock;
       const confirmations = isHistoricallyFinalized
-        ? this.config.confirmationsRequired
+        ? this.config.confirmations.finalized
         : Math.max(0, batchEndBlock - log.blockNumber);
       const isFinalized =
-        isHistoricallyFinalized || confirmations >= this.config.confirmationsRequired;
+        isHistoricallyFinalized ||
+        confirmations >= this.config.confirmations.finalized;
 
       const event = this.eventRepository.create({
         eventType: eventConfig.name,
@@ -689,7 +719,7 @@ export class EventIndexerService {
 
         for (const event of page) {
           const confirmations = currentBlockNumber - event.blockNumber;
-          if (confirmations < this.config.confirmationsRequired) {
+          if (confirmations < this.config.confirmations.finalized) {
             this.logger.warn(
               `Potential reorg detected for event ${event.transactionHash}:${event.logIndex}`,
             );

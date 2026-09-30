@@ -15,7 +15,9 @@ export class WebhookDeliveryService extends BaseDeliveryService {
     }
 
     try {
-      this.logger.debug(`Webhook delivery to ${webhookUrl} for notification ${delivery.notificationId}`);
+      this.logger.debug(
+        `Webhook delivery to ${webhookUrl} for notification ${delivery.notificationId}`,
+      );
 
       const response = await fetch(webhookUrl, {
         method: 'POST',
@@ -50,7 +52,9 @@ export class WebhookDeliveryService extends BaseDeliveryService {
         responseData: { statusCode: response.status, body: responseBody },
       };
     } catch (error) {
-      this.logger.error(`Webhook delivery failed to ${webhookUrl}: ${error.message}`);
+      this.logger.error(
+        `Webhook delivery failed to ${webhookUrl}: ${error.message}`,
+      );
       return {
         success: false,
         failureReason: error.message,

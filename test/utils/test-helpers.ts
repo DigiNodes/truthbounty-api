@@ -37,7 +37,9 @@ export async function clearDatabase(prisma: PrismaService): Promise<void> {
     .join(', ');
 
   try {
-    await prisma.$executeRawUnsafe(`TRUNCATE TABLE ${tables} RESTART IDENTITY CASCADE;`);
+    await prisma.$executeRawUnsafe(
+      `TRUNCATE TABLE ${tables} RESTART IDENTITY CASCADE;`,
+    );
   } catch (error) {
     console.error('Error clearing database:', error);
   }
@@ -52,14 +54,14 @@ export async function seedTestData(
     stakes?: number;
     rewards?: number;
     disputes?: number;
-  } = {}
+  } = {},
 ): Promise<{
   stakes: Stake[];
   rewards: Reward[];
   disputes: Dispute[];
 }> {
   const { stakes = 5, rewards = 3, disputes = 2 } = options;
-  
+
   // Create mock data
   const mockStakes = createMockStakes(stakes);
   const mockRewards = createMockRewards(rewards);
@@ -67,7 +69,7 @@ export async function seedTestData(
 
   // Insert into database
   const createdStakes = await Promise.all(
-    mockStakes.map(stake => 
+    mockStakes.map((stake) =>
       (prisma as any).stake.create({
         data: {
           userId: (stake as any).userId,
@@ -78,12 +80,12 @@ export async function seedTestData(
           isActive: (stake as any).isActive,
           totalRewards: (stake as any).totalRewards,
         },
-      })
-    )
+      }),
+    ),
   );
 
   const createdRewards = await Promise.all(
-    mockRewards.map(reward => 
+    mockRewards.map((reward) =>
       (prisma as any).reward.create({
         data: {
           title: (reward as any).title,
@@ -95,12 +97,12 @@ export async function seedTestData(
           expiresAt: (reward as any).expiresAt,
           isActive: (reward as any).isActive,
         },
-      })
-    )
+      }),
+    ),
   );
 
   const createdDisputes = await Promise.all(
-    mockDisputes.map(dispute => 
+    mockDisputes.map((dispute) =>
       (prisma as any).dispute.create({
         data: {
           claimId: dispute.claimId,
@@ -117,8 +119,8 @@ export async function seedTestData(
           resolvedAt: dispute.resolvedAt,
           resolutionBlock: (dispute as any).resolutionBlock,
         },
-      })
-    )
+      }),
+    ),
   );
 
   return {
@@ -132,25 +134,31 @@ export async function seedTestData(
  * Wait for a specified time
  */
 export function waitFor(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
  * Generate random hex string
  */
 export function randomHex(length: number = 32): string {
-  return '0x' + Array.from({ length }, () => 
-    Math.floor(Math.random() * 16).toString(16)
-  ).join('');
+  return (
+    '0x' +
+    Array.from({ length }, () =>
+      Math.floor(Math.random() * 16).toString(16),
+    ).join('')
+  );
 }
 
 /**
  * Generate random address
  */
 export function randomAddress(): string {
-  return '0x' + Array.from({ length: 40 }, () => 
-    Math.floor(Math.random() * 16).toString(16)
-  ).join('');
+  return (
+    '0x' +
+    Array.from({ length: 40 }, () =>
+      Math.floor(Math.random() * 16).toString(16),
+    ).join('')
+  );
 }
 
 /**

@@ -504,7 +504,7 @@ describe('EvidenceIntegrityService', () => {
       expect(result).toBe('previous_hash'.padEnd(64, '0'));
       expect(versionRepo.findOne).toHaveBeenCalledWith({
         where: { evidenceId: '0x123', version: 1 },
-        select: ['integrityHash'],
+        select: { integrityHash: true },
       });
     });
 

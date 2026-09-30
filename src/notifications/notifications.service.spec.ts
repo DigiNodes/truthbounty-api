@@ -16,7 +16,11 @@ describe('NotificationsService', () => {
   beforeEach(async () => {
     mockNotificationRepository = {
       create: jest.fn().mockImplementation((dto) => dto),
-      save: jest.fn().mockImplementation((entity) => Promise.resolve({ id: '1', ...entity })),
+      save: jest
+        .fn()
+        .mockImplementation((entity) =>
+          Promise.resolve({ id: '1', ...entity }),
+        ),
       findOne: jest.fn(),
       findAndCount: jest.fn(),
       count: jest.fn(),
@@ -24,7 +28,11 @@ describe('NotificationsService', () => {
 
     mockPreferenceRepository = {
       create: jest.fn().mockImplementation((dto) => dto),
-      save: jest.fn().mockImplementation((entity) => Promise.resolve({ id: '1', ...entity })),
+      save: jest
+        .fn()
+        .mockImplementation((entity) =>
+          Promise.resolve({ id: '1', ...entity }),
+        ),
       findOne: jest.fn(),
     };
 
@@ -66,7 +74,11 @@ describe('NotificationsService', () => {
     expect(result.userId).toEqual('user-1');
     expect(result.status).toEqual(NotificationStatus.QUEUED);
     expect(mockNotificationRepository.save).toHaveBeenCalled();
-    expect(mockQueue.add).toHaveBeenCalledWith('send', { notificationId: '1' }, expect.any(Object));
+    expect(mockQueue.add).toHaveBeenCalledWith(
+      'send',
+      { notificationId: '1' },
+      expect.any(Object),
+    );
   });
 
   it('should return default preferences if not found', async () => {

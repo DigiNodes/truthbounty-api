@@ -60,7 +60,11 @@ export class AdminGuard implements CanActivate {
     }
 
     // Check if user has admin role from JWT
-    if (user.roles && Array.isArray(user.roles) && user.roles.includes('admin')) {
+    if (
+      user.roles &&
+      Array.isArray(user.roles) &&
+      user.roles.includes('admin')
+    ) {
       return true;
     }
 

@@ -104,16 +104,19 @@ export class SybilResistanceService {
    * Gather all signals for a user
    */
   private async gatherSignals(
-    user: { id: string, worldcoinVerified?: boolean } | null,
+    user: { id: string; worldcoinVerified?: boolean } | null,
     wallets: Array<{ address?: string; linkedAt: Date }>,
   ): Promise<SybilSignals> {
-
     // Calculate wallet age (use oldest linked wallet)
-    const oldestWalletAgeMs = wallets.length > 0
-      ? Date.now() - new Date(wallets.reduce((oldest, w) => 
-          new Date(w.linkedAt) < new Date(oldest.linkedAt) ? w : oldest
-        ).linkedAt).getTime()
-      : 0;
+    const oldestWalletAgeMs =
+      wallets.length > 0
+        ? Date.now() -
+          new Date(
+            wallets.reduce((oldest, w) =>
+              new Date(w.linkedAt) < new Date(oldest.linkedAt) ? w : oldest,
+            ).linkedAt,
+          ).getTime()
+        : 0;
 
     // Check for actual verification records (not just the user's boolean, to avoid stale data)
     let worldcoinVerified = false;
@@ -147,12 +150,18 @@ export class SybilResistanceService {
         const depositEvents = await this.stakeEventRepo
           .createQueryBuilder('se')
           .select('SUM(se.amount::numeric)', 'total')
-          .where('se.walletAddress IN (:...addresses)', { addresses: walletAddresses })
-          .andWhere('se.type = :type', { type: StakingEventType.STAKE_DEPOSITED })
+          .where('se.walletAddress IN (:...addresses)', {
+            addresses: walletAddresses,
+          })
+          .andWhere('se.type = :type', {
+            type: StakingEventType.STAKE_DEPOSITED,
+          })
           .getRawOne<{ total: string | null }>();
 
         if (depositEvents?.total) {
-          totalHistoricalStake = BigInt(Math.floor(Number(depositEvents.total)));
+          totalHistoricalStake = BigInt(
+            Math.floor(Number(depositEvents.total)),
+          );
         }
       }
     }
@@ -181,13 +190,13 @@ export class SybilResistanceService {
     accuracy: number;
   } {
     // Worldcoin: binary (0 or 1)
-    const worldcoinScore = this.clampScore(signals.worldcoinVerified ? 1.0 : 0.0);
+    const worldcoinScore = this.clampScore(
+      signals.worldcoinVerified ? 1.0 : 0.0,
+    );
 
     // Wallet Age: smooth sigmoid-like scaling using fixed point math
     const walletAgeScore = this.clampScore(
-      Number(
-        this.calculateFixedPointSigmoid(signals.oldestWalletAgeMs),
-      ),
+      Number(this.calculateFixedPointSigmoid(signals.oldestWalletAgeMs)),
     );
 
     // Staking: logarithmic scaling to avoid whales dominating
@@ -234,7 +243,9 @@ export class SybilResistanceService {
    */
   private calculateFixedPointSigmoid(ageMs: number): number {
     const ageScore = BigInt(Math.max(0, ageMs));
-    const x = ageScore * this.FIXED_POINT_SCALE / BigInt(this.WALLET_AGE_THRESHOLD_MS);
+    const x =
+      (ageScore * this.FIXED_POINT_SCALE) /
+      BigInt(this.WALLET_AGE_THRESHOLD_MS);
     // Use a simple fixed-point approximation: x / (1 + x)
     const scaled = (x * this.FIXED_POINT_SCALE) / (this.FIXED_POINT_SCALE + x);
     return Number(scaled) / Number(this.FIXED_POINT_SCALE);
@@ -285,7 +296,8 @@ Final score: ${composite.toFixed(4)} (weighted average)`,
    * Store a Sybil score snapshot
    */
   async recordSybilScore(userId: string): Promise<any> {
-    const { score: compositeScore, details } = await this.computeSybilScore(userId);
+    const { score: compositeScore, details } =
+      await this.computeSybilScore(userId);
 
     // Persist SybilScore without the potentially large `explanation` text
     const detailsCopy: any = { ...details };
@@ -374,7 +386,10 @@ Final score: ${composite.toFixed(4)} (weighted average)`,
   /**
    * Get all Sybil score history for a user
    */
-  async getSybilScoreHistory(userId: string, limit: number = 10): Promise<any[]> {
+  async getSybilScoreHistory(
+    userId: string,
+    limit: number = 10,
+  ): Promise<any[]> {
     return this.prisma.sybilScore.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
@@ -385,12 +400,14 @@ Final score: ${composite.toFixed(4)} (weighted average)`,
   /**
    * Batch recalculate Sybil scores for verification purposes
    */
-  async recalculateAllScores(): Promise<Array<{
-    userId: string;
-    success: boolean;
-    score?: number;
-    error?: string;
-  }>> {
+  async recalculateAllScores(): Promise<
+    Array<{
+      userId: string;
+      success: boolean;
+      score?: number;
+      error?: string;
+    }>
+  > {
     const users = await this.prisma.user.findMany();
     const results: Array<{
       userId: string;
@@ -402,7 +419,11 @@ Final score: ${composite.toFixed(4)} (weighted average)`,
     for (const user of users) {
       try {
         const scoreRecord = await this.recordSybilScore(user.id);
-        results.push({ userId: user.id, success: true, score: scoreRecord.compositeScore });
+        results.push({
+          userId: user.id,
+          success: true,
+          score: scoreRecord.compositeScore,
+        });
       } catch (error) {
         results.push({
           userId: user.id,
@@ -445,11 +466,15 @@ Final score: ${composite.toFixed(4)} (weighted average)`,
     const score = await this.getLatestSybilScore(userId);
 
     // Parse calculation details and, if explanation was stored separately, load it
-    let details = score.calculationDetails ? JSON.parse(score.calculationDetails) : null;
+    const details = score.calculationDetails
+      ? JSON.parse(score.calculationDetails)
+      : null;
     if (details && !details.explanation) {
       // try to load explanation from separate table
       try {
-        const expl = await this.prisma.sybilExplanation.findFirst({ where: { sybilScoreId: score.id } });
+        const expl = await this.prisma.sybilExplanation.findFirst({
+          where: { sybilScoreId: score.id },
+        });
         if (expl && expl.explanation) {
           details.explanation = expl.explanation;
         }

@@ -60,7 +60,9 @@ export class AddEvidenceIntegrityHashes1727164800000 implements MigrationInterfa
   public async down(queryRunner: QueryRunner): Promise<void> {
     // Drop indexes
     await queryRunner.query(`DROP INDEX IF EXISTS "idx_v2_evidence_integrity"`);
-    await queryRunner.query(`DROP INDEX IF EXISTS "idx_v2_evidence_version_integrity"`);
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS "idx_v2_evidence_version_integrity"`,
+    );
 
     // Remove columns
     await queryRunner.query(`

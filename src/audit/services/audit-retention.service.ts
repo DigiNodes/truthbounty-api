@@ -25,12 +25,18 @@ export class AuditRetentionService {
     this.piiDaysToKeep = this.resolvePiiRetentionDays();
   }
 
-  @Cron(process.env.AUDIT_LOG_RETENTION_CRON || CronExpression.EVERY_DAY_AT_MIDNIGHT, {
-    name: 'audit-log-retention',
-    timeZone: 'UTC',
-  })
+  @Cron(
+    process.env.AUDIT_LOG_RETENTION_CRON ||
+      CronExpression.EVERY_DAY_AT_MIDNIGHT,
+    {
+      name: 'audit-log-retention',
+      timeZone: 'UTC',
+    },
+  )
   async enforceRetentionAndPrivacyPolicies(): Promise<RetentionExecutionResult> {
-    this.logger.log('Starting scheduled data retention and privacy controls execution');
+    this.logger.log(
+      'Starting scheduled data retention and privacy controls execution',
+    );
 
     const purgedLogsCount = await this.purgeOldAuditLogs();
     const scrubbedPiiCount = await this.scrubOldPii();

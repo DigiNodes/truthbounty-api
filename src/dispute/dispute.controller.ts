@@ -8,15 +8,17 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { DisputeService } from './dispute.service';
 import { CreateDisputeDto } from './dto/create-dispute.dto';
 import { RejectDisputeDto } from './dto/reject-dispute.dto';
 import { ResolveDisputeDto } from './dto/resolve-dispute.dto';
-import {
-  DisputeStatus,
-  DisputeTrigger,
-} from './entities/dispute.entity';
+import { DisputeStatus, DisputeTrigger } from './entities/dispute.entity';
 import { Idempotent } from '../common/idempotency';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';

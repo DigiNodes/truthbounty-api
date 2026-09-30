@@ -5,8 +5,8 @@ import { RedisModule } from '../redis/redis.module';
 
 @Global()
 @Module({
-    imports: [RedisModule],
-    providers: [ClaimsCache, CacheHealthService],
-    exports: [ClaimsCache, CacheHealthService],
+  imports: [RedisModule],
+  providers: [ClaimsCache, CacheHealthService],
+  exports: [ClaimsCache, CacheHealthService],
 })
-export class CacheModule { }
+export class CacheModule {}

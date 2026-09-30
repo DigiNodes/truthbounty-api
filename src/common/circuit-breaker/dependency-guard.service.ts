@@ -65,9 +65,7 @@ export class DependencyGuardService {
   private readonly logger = new Logger(DependencyGuardService.name);
   private readonly breakers = new Map<string, CircuitBreaker>();
 
-  constructor(
-    @Optional() private readonly configService?: ConfigService,
-  ) {
+  constructor(@Optional() private readonly configService?: ConfigService) {
     // Register the canonical set of dependency circuits at construction time.
     const deps = ['database', 'redis', 'rpc', 'ipfs', 'queue'];
     for (const dep of deps) {
@@ -96,9 +94,7 @@ export class DependencyGuardService {
       name,
       failureThreshold: threshold,
       successThreshold:
-        opts.successThreshold ??
-        DEFAULT_BREAKER_OPTIONS.successThreshold ??
-        2,
+        opts.successThreshold ?? DEFAULT_BREAKER_OPTIONS.successThreshold ?? 2,
       resetMs,
       onStateChange: (n, from, to) => {
         const level = to === 'OPEN' ? 'error' : 'warn';
@@ -139,9 +135,9 @@ export class DependencyGuardService {
     const effectiveTimeout =
       timeoutMs !== undefined
         ? timeoutMs
-        : this.configEnvNum(
+        : (this.configEnvNum(
             `DEPENDENCY_TIMEOUT_${dependencyName.toUpperCase()}`,
-          ) ?? DEFAULT_TIMEOUTS[dependencyName];
+          ) ?? DEFAULT_TIMEOUTS[dependencyName]);
 
     // timeoutMs=0 means no timeout.
     const boundFn =
@@ -173,7 +169,9 @@ export class DependencyGuardService {
   reset(name: string): void {
     const breaker = this.breakers.get(name);
     if (!breaker) {
-      this.logger.warn(`[CircuitBreaker] reset called for unknown circuit "${name}"`);
+      this.logger.warn(
+        `[CircuitBreaker] reset called for unknown circuit "${name}"`,
+      );
       return;
     }
     this.logger.warn(`[CircuitBreaker] manual reset of circuit "${name}"`);

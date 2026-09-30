@@ -1,4 +1,9 @@
-import { Injectable, Logger, BadRequestException, InternalServerErrorException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  BadRequestException,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RedisService } from '../../redis/redis.service';
 
@@ -20,17 +25,28 @@ export class IdempotencyService {
     private readonly configService: ConfigService,
     private readonly redisService: RedisService,
   ) {
-    this.idempotencyEnabled = this.configService.get<boolean>('IDEMPOTENCY_ENABLED', true);
-    this.idempotencyTTL = this.configService.get<number>('IDEMPOTENCY_TTL', 24 * 60 * 60); // 24 hours default
-    this.idempotencyKeyLength = this.configService.get<number>('IDEMPOTENCY_KEY_LENGTH', 32);
+    this.idempotencyEnabled = this.configService.get<boolean>(
+      'IDEMPOTENCY_ENABLED',
+      true,
+    );
+    this.idempotencyTTL = this.configService.get<number>(
+      'IDEMPOTENCY_TTL',
+      24 * 60 * 60,
+    ); // 24 hours default
+    this.idempotencyKeyLength = this.configService.get<number>(
+      'IDEMPOTENCY_KEY_LENGTH',
+      32,
+    );
   }
 
   /**
    * Generate a random idempotency key
    */
   generateKey(): string {
-    return Array.from(crypto.getRandomValues(new Uint8Array(this.idempotencyKeyLength)))
-      .map(b => b.toString(16).padStart(2, '0'))
+    return Array.from(
+      crypto.getRandomValues(new Uint8Array(this.idempotencyKeyLength)),
+    )
+      .map((b) => b.toString(16).padStart(2, '0'))
       .join('');
   }
 
@@ -48,7 +64,11 @@ export class IdempotencyService {
   /**
    * Store a response for an idempotency key
    */
-  async storeResponse(key: string, response: any, status: number): Promise<void> {
+  async storeResponse(
+    key: string,
+    response: any,
+    status: number,
+  ): Promise<void> {
     if (!this.idempotencyEnabled) return;
 
     try {
@@ -63,13 +83,18 @@ export class IdempotencyService {
       await this.redisService.set(
         `idempotency:${key}`,
         JSON.stringify(storedResponse),
-        this.idempotencyTTL
+        this.idempotencyTTL,
       );
 
       this.logger.debug(`Stored response for idempotency key: ${key}`);
     } catch (error) {
-      this.logger.error(`Failed to store response for idempotency key: ${key}`, error);
-      throw new InternalServerErrorException('Failed to store idempotency response');
+      this.logger.error(
+        `Failed to store response for idempotency key: ${key}`,
+        error,
+      );
+      throw new InternalServerErrorException(
+        'Failed to store idempotency response',
+      );
     }
   }
 
@@ -93,7 +118,10 @@ export class IdempotencyService {
 
       return response;
     } catch (error) {
-      this.logger.error(`Failed to retrieve response for idempotency key: ${key}`, error);
+      this.logger.error(
+        `Failed to retrieve response for idempotency key: ${key}`,
+        error,
+      );
       return null;
     }
   }

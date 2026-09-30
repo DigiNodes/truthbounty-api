@@ -10,7 +10,10 @@ import { LinkWalletDto } from './dto/link-wallet.dto';
 import { verifyMessage, getAddress } from 'ethers';
 import { Prisma, User, Wallet } from '../generated/client/client';
 import { AuditTrailService } from '../audit/services/audit-trail.service';
-import { AuditActionType, AuditEntityType } from '../audit/entities/audit-log.entity';
+import {
+  AuditActionType,
+  AuditEntityType,
+} from '../audit/entities/audit-log.entity';
 import {
   constantTimeAddressEqual,
   timingSafeEqualUtf8,
@@ -59,13 +62,18 @@ export class IdentityService {
     return user;
   }
 
-  async linkWallet(userId: string, dto: LinkWalletDto): Promise<LinkWalletResult> {
+  async linkWallet(
+    userId: string,
+    dto: LinkWalletDto,
+  ): Promise<LinkWalletResult> {
     const { address, chain, signature, message } = dto;
     const normalizedAddress = this.normalizeAddress(address);
     this.verifySignature(message, signature, normalizedAddress);
 
     return this.prisma.$transaction(async (tx) => {
-      const existingWallet = await tx.wallet.findFirst({ where: { address: normalizedAddress } });
+      const existingWallet = await tx.wallet.findFirst({
+        where: { address: normalizedAddress },
+      });
 
       if (existingWallet) {
         if (!constantTimeAddressEqual(existingWallet.userId, userId)) {
@@ -92,12 +100,18 @@ export class IdentityService {
         data: { address: normalizedAddress, chain, userId },
       });
 
-      this.logger.log(`Wallet ${normalizedAddress} (${chain}) linked to user ${userId}`);
+      this.logger.log(
+        `Wallet ${normalizedAddress} (${chain}) linked to user ${userId}`,
+      );
       return { wallet, alreadyLinked: false };
     });
   }
 
-  async unlinkWallet(userId: string, address: string, chain: string): Promise<Wallet> {
+  async unlinkWallet(
+    userId: string,
+    address: string,
+    chain: string,
+  ): Promise<Wallet> {
     const normalizedAddress = this.normalizeAddress(address);
     const wallet = await this.prisma.wallet.findUnique({
       where: { address_chain: { address: normalizedAddress, chain } },
@@ -133,7 +147,9 @@ export class IdentityService {
       description: 'Wallet unlinked',
     });
 
-    this.logger.log(`Wallet ${normalizedAddress} (${chain}) unlinked from user ${userId}`);
+    this.logger.log(
+      `Wallet ${normalizedAddress} (${chain}) unlinked from user ${userId}`,
+    );
     return deleted;
   }
 
@@ -163,7 +179,11 @@ export class IdentityService {
     }
   }
 
-  private verifySignature(message: string, signature: string, expectedAddress: string): void {
+  private verifySignature(
+    message: string,
+    signature: string,
+    expectedAddress: string,
+  ): void {
     let recovered: string;
     try {
       recovered = verifyMessage(message, signature);

@@ -24,11 +24,10 @@ export class SiweService {
   private readonly NONCE_TTL_MS: number;
 
   constructor(private readonly configService: ConfigService) {
-    this.NONCE_TTL_MS =
-      parseInt(
-        configService.get<string>('AUTH_NONCE_TTL_MS', String(5 * 60 * 1000)),
-        10,
-      );
+    this.NONCE_TTL_MS = parseInt(
+      configService.get<string>('AUTH_NONCE_TTL_MS', String(5 * 60 * 1000)),
+      10,
+    );
   }
 
   /**
@@ -94,7 +93,9 @@ export class SiweService {
       const lines = rawMessage.split('\n');
 
       // Check if this is a SIWE-formatted message
-      if (rawMessage.includes('wants you to sign in with your Ethereum account')) {
+      if (
+        rawMessage.includes('wants you to sign in with your Ethereum account')
+      ) {
         return this.parseSiweFormat(lines, rawMessage);
       }
 
@@ -266,7 +267,10 @@ export class SiweService {
 
   // ── Private helpers ──────────────────────────────────────────────────────
 
-  private parseSiweFormat(lines: string[], rawMessage: string): ParsedSiweMessage | null {
+  private parseSiweFormat(
+    lines: string[],
+    rawMessage: string,
+  ): ParsedSiweMessage | null {
     const result: Partial<ParsedSiweMessage> = {
       version: '1',
       chainId: 1,
@@ -336,7 +340,12 @@ export class SiweService {
     }
 
     // Ensure required fields exist
-    if (!result.domain || !result.address || !result.nonce || !result.issuedAt) {
+    if (
+      !result.domain ||
+      !result.address ||
+      !result.nonce ||
+      !result.issuedAt
+    ) {
       return null;
     }
 

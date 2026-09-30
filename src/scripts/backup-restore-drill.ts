@@ -16,12 +16,17 @@ export interface RestoreDrillOptions {
 
 export interface RestoreDrillDependencies {
   runCommand?: (command: string, args: string[]) => Promise<void>;
-  connectRedis?: (url: string) => Promise<{ flushdb: () => Promise<string>; quit: () => Promise<string> }>;
+  connectRedis?: (
+    url: string,
+  ) => Promise<{ flushdb: () => Promise<string>; quit: () => Promise<string> }>;
   fileAccess?: typeof access;
   fileStat?: typeof stat;
 }
 
-export function parseRestoreDrillArgs(args: string[], env = process.env): RestoreDrillOptions {
+export function parseRestoreDrillArgs(
+  args: string[],
+  env = process.env,
+): RestoreDrillOptions {
   const values = new Map<string, string>();
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
@@ -37,7 +42,8 @@ export function parseRestoreDrillArgs(args: string[], env = process.env): Restor
   }
 
   const backupFile = values.get('file');
-  const targetDatabaseUrl = values.get('target-url') ?? env.RESTORE_DRILL_DATABASE_URL;
+  const targetDatabaseUrl =
+    values.get('target-url') ?? env.RESTORE_DRILL_DATABASE_URL;
   const targetRedisUrl = values.get('redis-url') ?? env.RESTORE_DRILL_REDIS_URL;
   if (!backupFile || !targetDatabaseUrl || !targetRedisUrl) {
     throw new Error(
@@ -65,23 +71,37 @@ export async function runRestoreDrill(
   dependencies: RestoreDrillDependencies = {},
 ): Promise<void> {
   assertIsPostgresUrl('target-url', options.targetDatabaseUrl);
-  if (options.productionDatabaseUrl && options.targetDatabaseUrl === options.productionDatabaseUrl) {
-    throw new Error('Refusing to restore into DATABASE_URL; provide an isolated drill database');
+  if (
+    options.productionDatabaseUrl &&
+    options.targetDatabaseUrl === options.productionDatabaseUrl
+  ) {
+    throw new Error(
+      'Refusing to restore into DATABASE_URL; provide an isolated drill database',
+    );
   }
-  if (options.productionRedisUrl && options.targetRedisUrl === options.productionRedisUrl) {
-    throw new Error('Refusing to flush REDIS_URL; provide an isolated drill Redis instance');
+  if (
+    options.productionRedisUrl &&
+    options.targetRedisUrl === options.productionRedisUrl
+  ) {
+    throw new Error(
+      'Refusing to flush REDIS_URL; provide an isolated drill Redis instance',
+    );
   }
 
   const fileAccess = dependencies.fileAccess ?? access;
   const fileStat = dependencies.fileStat ?? stat;
   await fileAccess(options.backupFile, constants.R_OK);
   if (!(await fileStat(options.backupFile)).isFile()) {
-    throw new Error(`Backup artifact is not a regular file: ${options.backupFile}`);
+    throw new Error(
+      `Backup artifact is not a regular file: ${options.backupFile}`,
+    );
   }
 
-  const runCommand = dependencies.runCommand ?? (async (command, args) => {
-    await execFile(command, args, { maxBuffer: 1024 * 1024 });
-  });
+  const runCommand =
+    dependencies.runCommand ??
+    (async (command, args) => {
+      await execFile(command, args, { maxBuffer: 1024 * 1024 });
+    });
   await runCommand('pg_restore', [
     '--exit-on-error',
     '--clean',
@@ -99,14 +119,19 @@ export async function runRestoreDrill(
     'SELECT 1',
   ]);
 
-  const connectRedis = dependencies.connectRedis ?? (async (url: string) => {
-    const client = new Redis(url, { lazyConnect: true, maxRetriesPerRequest: 1 });
-    await client.connect();
-    return {
-      flushdb: () => client.flushdb(),
-      quit: () => client.quit(),
-    };
-  });
+  const connectRedis =
+    dependencies.connectRedis ??
+    (async (url: string) => {
+      const client = new Redis(url, {
+        lazyConnect: true,
+        maxRetriesPerRequest: 1,
+      });
+      await client.connect();
+      return {
+        flushdb: () => client.flushdb(),
+        quit: () => client.quit(),
+      };
+    });
   const redis = await connectRedis(options.targetRedisUrl);
   try {
     await redis.flushdb();
@@ -117,12 +142,16 @@ export async function runRestoreDrill(
 
 async function main(): Promise<void> {
   await runRestoreDrill(parseRestoreDrillArgs(process.argv.slice(2)));
-  console.log('Restore drill completed: PostgreSQL restored and isolated Redis cache invalidated.');
+  console.log(
+    'Restore drill completed: PostgreSQL restored and isolated Redis cache invalidated.',
+  );
 }
 
 if (require.main === module) {
   main().catch((error: unknown) => {
-    console.error(`Restore drill failed: ${error instanceof Error ? error.message : String(error)}`);
+    console.error(
+      `Restore drill failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
     process.exitCode = 1;
   });
 }

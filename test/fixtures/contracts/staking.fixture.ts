@@ -1,7 +1,12 @@
 import { Stake } from '../../../src/staking/entities/stake.entity';
 import { StakeEvent } from '../../../src/staking/entities/stake-event.entity';
 import { StakingEventType } from '../../../src/staking/types/staking-event.type';
-import { createTestWallet, getContractAddress, createMockLog, createMockTransactionReceipt } from './blockchain.fixture';
+import {
+  createTestWallet,
+  getContractAddress,
+  createMockLog,
+  createMockTransactionReceipt,
+} from './blockchain.fixture';
 
 /**
  * Staking Contract Test Fixtures
@@ -57,7 +62,7 @@ export function createMockStake(overrides: Partial<MockStakeData> = {}): Stake {
   };
 
   const stakeData = { ...defaultData, ...overrides };
-  
+
   return {
     id: stakeData.id || `stake_${Math.random().toString(36).substr(2, 9)}`,
     userId: stakeData.userId,
@@ -78,8 +83,8 @@ export function createMockStake(overrides: Partial<MockStakeData> = {}): Stake {
  */
 export function createMockStakeEvent(
   stake: Stake,
-  eventType: StakingEventType = ('STAKED' as unknown as StakingEventType),
-  overrides: Partial<MockStakeEventData> = {}
+  eventType: StakingEventType = 'STAKED' as unknown as StakingEventType,
+  overrides: Partial<MockStakeEventData> = {},
 ): StakeEvent {
   const defaultData: MockStakeEventData = {
     stakeId: (stake as any).id,
@@ -91,7 +96,7 @@ export function createMockStakeEvent(
   };
 
   const eventData = { ...defaultData, ...overrides };
-  
+
   return {
     id: eventData.id || `event_${Math.random().toString(36).substr(2, 9)}`,
     stakeId: eventData.stakeId,
@@ -108,12 +113,12 @@ export function createMockStakeEvent(
  * Create multiple mock stakes
  */
 export function createMockStakes(count: number = 5, userId?: string): Stake[] {
-  return Array.from({ length: count }, (_, i) => 
+  return Array.from({ length: count }, (_, i) =>
     createMockStake({
       userId: userId || `user_${Math.random().toString(36).substr(2, 9)}`,
       amount: (1 + i * 0.5).toString() + '000000000000000000', // 1, 1.5, 2, 2.5, 3 ETH
       stakedAt: new Date(Date.now() - (count - i) * 86400000), // Staked 1-5 days ago
-    })
+    }),
   );
 }
 
@@ -125,7 +130,7 @@ export function createMockStakingEventLog(
   walletAddress: string,
   amount: string,
   totalStaked: string = '0',
-  blockNumber: number = 1
+  blockNumber: number = 1,
 ) {
   const contractAddress = getContractAddress('STAKING');
   let topics: string[] = [];
@@ -137,31 +142,34 @@ export function createMockStakingEventLog(
         STAKING_EVENT_SIGNATURES.STAKED,
         '0x' + walletAddress.padStart(64, '0'),
       ];
-      data = '0x' + 
+      data =
+        '0x' +
         BigInt(amount).toString(16).padStart(64, '0') +
         BigInt(totalStaked).toString(16).padStart(64, '0');
       break;
-      
+
     case 'UNSTAKED':
       topics = [
         STAKING_EVENT_SIGNATURES.UNSTAKED,
         '0x' + walletAddress.padStart(64, '0'),
       ];
-      data = '0x' + 
+      data =
+        '0x' +
         BigInt(amount).toString(16).padStart(64, '0') +
         BigInt(totalStaked).toString(16).padStart(64, '0');
       break;
-      
+
     case 'SLASHED':
       topics = [
         STAKING_EVENT_SIGNATURES.SLASHED,
         '0x' + walletAddress.padStart(64, '0'),
       ];
-      data = '0x' + 
+      data =
+        '0x' +
         BigInt(amount).toString(16).padStart(64, '0') +
         BigInt(totalStaked).toString(16).padStart(64, '0');
       break;
-      
+
     case 'REWARDS_CLAIMED':
       topics = [
         STAKING_EVENT_SIGNATURES.REWARDS_CLAIMED,
@@ -182,11 +190,17 @@ export function createMockStakingTransactionReceipt(
   walletAddress: string,
   amount: string,
   txHash: string,
-  blockNumber: number = 1
+  blockNumber: number = 1,
 ) {
   const receipt = createMockTransactionReceipt(txHash, blockNumber);
   receipt.logs = [
-    createMockStakingEventLog(eventType, walletAddress, amount, '1000000000000000000', blockNumber)
+    createMockStakingEventLog(
+      eventType,
+      walletAddress,
+      amount,
+      '1000000000000000000',
+      blockNumber,
+    ),
   ];
   return receipt;
 }
@@ -205,7 +219,9 @@ export interface MockStakingState {
 /**
  * Create mock staking contract state
  */
-export function createMockStakingState(overrides: Partial<MockStakingState> = {}): MockStakingState {
+export function createMockStakingState(
+  overrides: Partial<MockStakingState> = {},
+): MockStakingState {
   const defaultState: MockStakingState = {
     totalStaked: '1000000000000000000000', // 1000 ETH
     rewardRate: '1000000000000000', // 0.001 ETH per second
@@ -215,7 +231,7 @@ export function createMockStakingState(overrides: Partial<MockStakingState> = {}
   };
 
   const state = { ...defaultState, ...overrides };
-  
+
   // Add some default user stakes if none provided
   if (state.userStakes.size === 0) {
     const wallet1 = createTestWallet('user1');

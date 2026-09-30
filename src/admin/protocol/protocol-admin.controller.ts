@@ -44,9 +44,7 @@ import { ProtocolConfigDto, OperationalStatsResponse } from './dto/config.dto';
 @UseGuards(AdminGuard, RolesGuard)
 @Controller('admin/protocol')
 export class ProtocolAdminController {
-  constructor(
-    private readonly protocolAdminService: ProtocolAdminService,
-  ) {}
+  constructor(private readonly protocolAdminService: ProtocolAdminService) {}
 
   // ──────────────────────────────────────────────
   //  SYSTEM STATUS
@@ -200,10 +198,7 @@ export class ProtocolAdminController {
     @Query('queueName') queueName?: string,
     @CurrentAdmin() admin?: Admin,
   ): Promise<{ retried: number }> {
-    return this.protocolAdminService.retryFailedJobs(
-      queueName,
-      admin?.id,
-    );
+    return this.protocolAdminService.retryFailedJobs(queueName, admin?.id);
   }
 
   // ──────────────────────────────────────────────
@@ -260,9 +255,7 @@ export class ProtocolAdminController {
     required: false,
     description: 'Environment scope',
   })
-  async listConfig(
-    @Query('environment') environment?: string,
-  ) {
+  async listConfig(@Query('environment') environment?: string) {
     return this.protocolAdminService.listAllConfig(environment);
   }
 
@@ -310,9 +303,7 @@ export class ProtocolAdminController {
     required: false,
     description: 'Environment scope',
   })
-  async listFeatureFlags(
-    @Query('environment') environment?: string,
-  ) {
+  async listFeatureFlags(@Query('environment') environment?: string) {
     return this.protocolAdminService.listFeatureFlags(environment);
   }
 
@@ -370,11 +361,7 @@ export class ProtocolAdminController {
   }
 
   @Get('audit-logs/admin')
-  @Roles(
-    AdminRole.SUPER_ADMIN,
-    AdminRole.ADMINISTRATOR,
-    AdminRole.AUDITOR,
-  )
+  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMINISTRATOR, AdminRole.AUDITOR)
   @ApiOperation({ summary: 'Get administrative action audit logs' })
   @ApiQuery({
     name: 'limit',

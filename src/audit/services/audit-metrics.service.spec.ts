@@ -91,10 +91,14 @@ describe('AuditMetricsService', () => {
 
       const mockQueryBuilder = {
         orderBy: jest.fn().mockReturnThis(),
-        getOne: jest.fn().mockResolvedValue({ createdAt: new Date('2024-01-01') }),
+        getOne: jest
+          .fn()
+          .mockResolvedValue({ createdAt: new Date('2024-01-01') }),
       } as any;
 
-      (repository.createQueryBuilder as jest.Mock).mockReturnValue(mockQueryBuilder);
+      (repository.createQueryBuilder as jest.Mock).mockReturnValue(
+        mockQueryBuilder,
+      );
 
       await expect(service.updateStorageMetrics()).resolves.toBeUndefined();
     });

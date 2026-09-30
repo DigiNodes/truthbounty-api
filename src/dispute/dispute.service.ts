@@ -175,7 +175,8 @@ export class DisputeService {
     if (recentDispute) {
       const elapsed = Date.now() - recentDispute.createdAt.getTime();
       const remainingHours = (
-        this.config.DISPUTE_COOLDOWN_HOURS - elapsed / 3_600_000
+        this.config.DISPUTE_COOLDOWN_HOURS -
+        elapsed / 3_600_000
       ).toFixed(1);
       throw new BadRequestException(
         `Dispute cooldown active for claim ${claimId}. ${remainingHours}h remaining.`,
@@ -277,9 +278,12 @@ export class DisputeService {
    */
   async expireDispute(disputeId: string): Promise<Dispute> {
     return this.dataSource.transaction(async (manager) => {
-      const dispute = await manager.findOne(Dispute, { where: { id: disputeId } });
+      const dispute = await manager.findOne(Dispute, {
+        where: { id: disputeId },
+      });
 
-      if (!dispute) throw new NotFoundException(`Dispute ${disputeId} not found`);
+      if (!dispute)
+        throw new NotFoundException(`Dispute ${disputeId} not found`);
 
       if (!RESOLVABLE_STATUSES.includes(dispute.status)) {
         throw new BadRequestException(

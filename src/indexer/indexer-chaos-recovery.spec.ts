@@ -33,12 +33,14 @@ import {
 // Test doubles
 // ---------------------------------------------------------------------------
 
-function makeEventRepo(overrides: Partial<{
-  findOne: jest.Mock;
-  create: jest.Mock;
-  save: jest.Mock;
-  find: jest.Mock;
-}> = {}) {
+function makeEventRepo(
+  overrides: Partial<{
+    findOne: jest.Mock;
+    create: jest.Mock;
+    save: jest.Mock;
+    find: jest.Mock;
+  }> = {},
+) {
   return {
     findOne: jest.fn().mockResolvedValue(null),
     create: jest.fn((x) => x),
@@ -48,12 +50,14 @@ function makeEventRepo(overrides: Partial<{
   };
 }
 
-function makeStateRepo(overrides: Partial<{
-  findOne: jest.Mock;
-  save: jest.Mock;
-  find: jest.Mock;
-  create: jest.Mock;
-}> = {}) {
+function makeStateRepo(
+  overrides: Partial<{
+    findOne: jest.Mock;
+    save: jest.Mock;
+    find: jest.Mock;
+    create: jest.Mock;
+  }> = {},
+) {
   return {
     findOne: jest.fn().mockResolvedValue(null),
     save: jest.fn().mockResolvedValue({}),
@@ -66,7 +70,13 @@ function makeStateRepo(overrides: Partial<{
 const BASE_CONFIG: EventIndexerConfig = {
   rpcUrl: 'https://mainnet.optimism.io',
   chainId: 10,
-  confirmationsRequired: 12,
+  confirmations: {
+    safe: 6,
+
+    finalized: 12,
+
+    full: 64,
+  },
   blockRangePerBatch: 100,
   maxRetryAttempts: 3,
   pollingIntervalMs: 12_000,
@@ -99,7 +109,11 @@ function makeIndexer(
   const eventRepo = makeEventRepo(eventRepoOverrides as any);
   const stateRepo = makeStateRepo(stateRepoOverrides as any);
   const config = { ...BASE_CONFIG, ...configOverrides };
-  const service = new EventIndexerService(config, eventRepo as any, stateRepo as any);
+  const service = new EventIndexerService(
+    config,
+    eventRepo as any,
+    stateRepo as any,
+  );
   return { service, eventRepo, stateRepo };
 }
 
@@ -107,13 +121,15 @@ function makeIndexer(
 // RPC failure-mode helpers
 // ---------------------------------------------------------------------------
 
-function makeProvider(overrides: Partial<{
-  getBlockNumber: jest.Mock;
-  getLogs: jest.Mock;
-  getBlock: jest.Mock;
-  getCode: jest.Mock;
-  getNetwork: jest.Mock;
-}> = {}) {
+function makeProvider(
+  overrides: Partial<{
+    getBlockNumber: jest.Mock;
+    getLogs: jest.Mock;
+    getBlock: jest.Mock;
+    getCode: jest.Mock;
+    getNetwork: jest.Mock;
+  }> = {},
+) {
   return {
     getBlockNumber: jest.fn().mockResolvedValue(2_000),
     getLogs: jest.fn().mockResolvedValue([]),
@@ -456,7 +472,9 @@ describe('EventIndexerService — finality guard (stale data)', () => {
 
     const saved = eventRepo.create.mock.calls[0][0];
     expect(saved.isFinalized).toBe(false);
-    expect(saved.confirmations).toBeLessThan(BASE_CONFIG.confirmationsRequired);
+    expect(saved.confirmations).toBeLessThan(
+      BASE_CONFIG.confirmations.finalized,
+    );
   });
 
   it('persists events with isFinalized=true when confirmations meet the threshold', async () => {
@@ -508,10 +526,7 @@ describe('EventIndexerService — degraded database', () => {
     // indexContract calls indexEventType which calls stateRepository.findOne.
     // Neither should propagate the error — the loop catches and logs.
     await expect(
-      (service as any).indexContract(
-        BASE_CONFIG.contracts[0].address,
-        2_000,
-      ),
+      (service as any).indexContract(BASE_CONFIG.contracts[0].address, 2_000),
     ).resolves.toBeUndefined();
   });
 
@@ -519,9 +534,7 @@ describe('EventIndexerService — degraded database', () => {
     const { service, eventRepo } = makeIndexer();
     eventRepo.find.mockRejectedValue(new Error('Postgres timeout'));
 
-    await expect(
-      (service as any).retryFailedEvents(),
-    ).resolves.toBeUndefined();
+    await expect((service as any).retryFailedEvents()).resolves.toBeUndefined();
   });
 });
 
@@ -661,14 +674,22 @@ describe('rpc-backoff utilities — failure classification', () => {
 // ---------------------------------------------------------------------------
 
 describe('RpcProviderManager — circuit breaker', () => {
-  function makeMockProvider(name: string, behaviour: 'succeed' | 'fail' | 'rate-limit') {
+  function makeMockProvider(
+    name: string,
+    behaviour: 'succeed' | 'fail' | 'rate-limit',
+  ) {
     return {
       name,
       getNetwork: jest.fn().mockResolvedValue({ chainId: BigInt(10) }),
       call: jest.fn().mockImplementation(async () => {
         if (behaviour === 'succeed') return 'ok';
-        if (behaviour === 'rate-limit') throw Object.assign(new Error('429 Too Many Requests'), { status: 429 });
-        throw Object.assign(new Error('SERVER_ERROR'), { code: 'SERVER_ERROR' });
+        if (behaviour === 'rate-limit')
+          throw Object.assign(new Error('429 Too Many Requests'), {
+            status: 429,
+          });
+        throw Object.assign(new Error('SERVER_ERROR'), {
+          code: 'SERVER_ERROR',
+        });
       }),
     };
   }
@@ -701,11 +722,15 @@ describe('RpcProviderManager — circuit breaker', () => {
     const manager = new RpcProviderManager([provider], {
       chainId: 10,
       circuitBreakerThreshold: 1,
-      circuitBreakerResetMs: 1,   // 1ms reset for test speed
+      circuitBreakerResetMs: 1, // 1ms reset for test speed
       maxRetries: 0,
     });
 
-    try { await manager.call('call', []); } catch { /* expected */ }
+    try {
+      await manager.call('call', []);
+    } catch {
+      /* expected */
+    }
 
     // Wait for the circuit to reset.
     await new Promise((r) => setTimeout(r, 10));

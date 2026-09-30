@@ -1,8 +1,18 @@
-import { Injectable, ConflictException, NotFoundException, Logger, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  ConflictException,
+  NotFoundException,
+  Logger,
+  ForbiddenException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Admin, AdminRole } from './entities/admin.entity';
-import { CreateAdminDto, UpdateAdminRoleDto, UpdateAdminStatusDto } from './dto/admin.dto';
+import {
+  CreateAdminDto,
+  UpdateAdminRoleDto,
+  UpdateAdminStatusDto,
+} from './dto/admin.dto';
 
 @Injectable()
 export class AdminService {
@@ -13,7 +23,10 @@ export class AdminService {
     private readonly adminRepo: Repository<Admin>,
   ) {}
 
-  async create(createAdminDto: CreateAdminDto, requestedBy: Admin): Promise<Admin> {
+  async create(
+    createAdminDto: CreateAdminDto,
+    requestedBy: Admin,
+  ): Promise<Admin> {
     if (!this.canManageAdmins(requestedBy.role)) {
       throw new ForbiddenException('Insufficient permissions to create admins');
     }
@@ -23,7 +36,9 @@ export class AdminService {
     });
 
     if (existing) {
-      throw new ConflictException('Admin with this wallet address already exists');
+      throw new ConflictException(
+        'Admin with this wallet address already exists',
+      );
     }
 
     const admin = this.adminRepo.create({
@@ -37,7 +52,10 @@ export class AdminService {
     return saved;
   }
 
-  async findAll(page = 1, limit = 20): Promise<{ data: Admin[]; total: number; page: number; limit: number }> {
+  async findAll(
+    page = 1,
+    limit = 20,
+  ): Promise<{ data: Admin[]; total: number; page: number; limit: number }> {
     const [data, total] = await this.adminRepo.findAndCount({
       skip: (page - 1) * limit,
       take: limit,
@@ -61,14 +79,23 @@ export class AdminService {
     });
   }
 
-  async updateRole(id: string, updateRoleDto: UpdateAdminRoleDto, requestedBy: Admin): Promise<Admin> {
+  async updateRole(
+    id: string,
+    updateRoleDto: UpdateAdminRoleDto,
+    requestedBy: Admin,
+  ): Promise<Admin> {
     if (!this.canManageAdmins(requestedBy.role)) {
-      throw new ForbiddenException('Insufficient permissions to update admin roles');
+      throw new ForbiddenException(
+        'Insufficient permissions to update admin roles',
+      );
     }
 
     const admin = await this.findById(id);
 
-    if (admin.role === AdminRole.SUPER_ADMIN && requestedBy.role !== AdminRole.SUPER_ADMIN) {
+    if (
+      admin.role === AdminRole.SUPER_ADMIN &&
+      requestedBy.role !== AdminRole.SUPER_ADMIN
+    ) {
       throw new ForbiddenException('Cannot modify a super admin');
     }
 
@@ -78,20 +105,31 @@ export class AdminService {
     return saved;
   }
 
-  async updateStatus(id: string, updateStatusDto: UpdateAdminStatusDto, requestedBy: Admin): Promise<Admin> {
+  async updateStatus(
+    id: string,
+    updateStatusDto: UpdateAdminStatusDto,
+    requestedBy: Admin,
+  ): Promise<Admin> {
     if (!this.canManageAdmins(requestedBy.role)) {
-      throw new ForbiddenException('Insufficient permissions to update admin status');
+      throw new ForbiddenException(
+        'Insufficient permissions to update admin status',
+      );
     }
 
     const admin = await this.findById(id);
 
-    if (admin.role === AdminRole.SUPER_ADMIN && requestedBy.role !== AdminRole.SUPER_ADMIN) {
+    if (
+      admin.role === AdminRole.SUPER_ADMIN &&
+      requestedBy.role !== AdminRole.SUPER_ADMIN
+    ) {
       throw new ForbiddenException('Cannot modify a super admin');
     }
 
     admin.isActive = updateStatusDto.isActive;
     const saved = await this.adminRepo.save(admin);
-    this.logger.log(`Admin ${id} status updated to ${updateStatusDto.isActive}`);
+    this.logger.log(
+      `Admin ${id} status updated to ${updateStatusDto.isActive}`,
+    );
     return saved;
   }
 

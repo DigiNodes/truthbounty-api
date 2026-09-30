@@ -9,9 +9,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * convention already used by `v2_project_participant_position.stake` and
  * `v2_canonical_events.amount`, and it is what keeps a 256-bit `uint256` exact.
  */
-export class CreateV2RewardAllocationTables1788100000000
-  implements MigrationInterface
-{
+export class CreateV2RewardAllocationTables1788100000000 implements MigrationInterface {
   name = 'CreateV2RewardAllocationTables1788100000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

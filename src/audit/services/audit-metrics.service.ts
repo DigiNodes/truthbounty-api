@@ -127,7 +127,8 @@ export class AuditMetricsService implements OnModuleInit {
         .getOne();
 
       if (oldest) {
-        const ageDays = (Date.now() - oldest.createdAt.getTime()) / (1000 * 60 * 60 * 24);
+        const ageDays =
+          (Date.now() - oldest.createdAt.getTime()) / (1000 * 60 * 60 * 24);
         this.auditOldestRecord.set(ageDays);
       }
     } catch (error) {

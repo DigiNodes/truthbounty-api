@@ -19,9 +19,13 @@ export class IndexerConfigService {
    */
   getEventIndexerConfig(): EventIndexerConfig {
     return {
-      rpcUrl: this.configService.get('blockchain.rpcUrl'),
-      chainId: this.configService.get('blockchain.chainId'),
-      confirmations: this.configService.get('blockchain.confirmations'),
+      rpcUrl: this.configService.get<string>('blockchain.rpcUrl', ''),
+      chainId: this.configService.get<number>('blockchain.chainId', 10),
+      confirmations: this.configService.get('blockchain.confirmations', {
+        safe: 6,
+        finalized: 12,
+        full: 64,
+      }),
       blockRangePerBatch: parseInt(
         this.configService.get('BLOCK_RANGE_PER_BATCH', '5000'),
         10,

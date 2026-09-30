@@ -75,8 +75,16 @@ describe('CanonicalEventQueryService', () => {
     };
     repo.createQueryBuilder.mockReturnValue(qb as never);
 
-    await service.findAfter(['EvidenceRegistered'], { blockNumber: 100n, logIndex: 8 }, 25);
-    await service.findAfter(['EvidenceRegistered'], { blockNumber: 200, logIndex: 3 }, 25);
+    await service.findAfter(
+      ['EvidenceRegistered'],
+      { blockNumber: 100n, logIndex: 8 },
+      25,
+    );
+    await service.findAfter(
+      ['EvidenceRegistered'],
+      { blockNumber: 200, logIndex: 3 },
+      25,
+    );
 
     expect(qb.andWhere).toHaveBeenNthCalledWith(
       1,

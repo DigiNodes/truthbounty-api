@@ -1,19 +1,19 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { 
-  VerificationVote, 
-  WeightedVote, 
-  VoteAggregation, 
-  ClaimResolution, 
+import {
+  VerificationVote,
+  WeightedVote,
+  VoteAggregation,
+  ClaimResolution,
   ResolutionConfig,
-  Verdict
+  Verdict,
 } from './types';
 
 /**
  * Weighted Vote Resolution Service
- * 
+ *
  * Implements reputation-weighted voting for claim resolution in TruthBounty protocol.
  * Converts individual verification votes into authoritative claim outcomes.
- * 
+ *
  * Key Features:
  * - Reputation-based vote weighting
  * - Deterministic resolution logic
@@ -26,10 +26,10 @@ export class WeightedVoteResolutionService {
 
   // Default configuration - can be overridden
   private readonly defaultConfig: ResolutionConfig = {
-    minTotalWeight: 100,        // Minimum total weight required
-    confidenceThreshold: 0.6,   // 60% confidence minimum
-    maxReputationShare: 0.4,    // No single user can contribute >40%
-    tieThreshold: 0.05          // 5% margin for tie detection
+    minTotalWeight: 100, // Minimum total weight required
+    confidenceThreshold: 0.6, // 60% confidence minimum
+    maxReputationShare: 0.4, // No single user can contribute >40%
+    tieThreshold: 0.05, // 5% margin for tie detection
   };
 
   /**
@@ -38,56 +38,63 @@ export class WeightedVoteResolutionService {
    * @param config Optional resolution configuration
    * @returns Claim resolution result with confidence metrics
    */
-  resolveClaim(votes: VerificationVote[], config?: Partial<ResolutionConfig>): ClaimResolution {
+  resolveClaim(
+    votes: VerificationVote[],
+    config?: Partial<ResolutionConfig>,
+  ): ClaimResolution {
     const effectiveConfig = { ...this.defaultConfig, ...config };
-    
+
     if (votes.length === 0) {
-      return this.createUnresolvedResult('unknown', 'No votes submitted', effectiveConfig);
+      return this.createUnresolvedResult(
+        'unknown',
+        'No votes submitted',
+        effectiveConfig,
+      );
     }
 
     // Step 1: Calculate weights for all votes
     const weightedVotes = this.calculateVoteWeights(votes, effectiveConfig);
-    
+
     // Step 2: Aggregate votes by verdict
     const aggregation = this.aggregateVotes(weightedVotes);
-    
+
     // Step 3: Apply resolution logic
     return this.determineResolution(aggregation, effectiveConfig);
   }
 
   /**
    * Calculate individual vote weights based on reputation and stake
-   * 
+   *
    * Weight Formula:
    * weight = baseReputation + sqrt(stakeAmount) * stakeMultiplier
-   * 
+   *
    * Where:
    * - baseReputation: Linear reputation component (primary signal)
    * - stakeAmount: Square root scaling to prevent whale dominance
    * - stakeMultiplier: Configurable modifier (default: 0.1)
-   * 
+   *
    * @param votes Raw verification votes
    * @param config Resolution configuration
    * @returns Votes with calculated weights
    */
   private calculateVoteWeights(
-    votes: VerificationVote[], 
-    config: ResolutionConfig
+    votes: VerificationVote[],
+    config: ResolutionConfig,
   ): WeightedVote[] {
-    return votes.map(vote => {
+    return votes.map((vote) => {
       // Convert reputation to weight (1-100 scale)
       const reputationWeight = Math.max(1, Math.min(100, vote.userReputation));
-      
+
       // Stake component with square root scaling to prevent whale dominance
       const stakeAmountNum = parseFloat(vote.stakeAmount) || 0;
       const stakeWeight = Math.sqrt(Math.max(0, stakeAmountNum)) * 0.1; // 0.1 multiplier
-      
+
       // Total weight combines both factors
       const totalWeight = reputationWeight + stakeWeight;
-      
+
       return {
         ...vote,
-        weight: totalWeight
+        weight: totalWeight,
       };
     });
   }
@@ -104,9 +111,9 @@ export class WeightedVoteResolutionService {
 
     const claimId = weightedVotes[0].claimId;
     const verdictWeights: Record<Verdict, number> = {
-      'TRUE': 0,
-      'FALSE': 0,
-      'UNSURE': 0
+      TRUE: 0,
+      FALSE: 0,
+      UNSURE: 0,
     };
 
     let totalWeight = 0;
@@ -122,7 +129,7 @@ export class WeightedVoteResolutionService {
       totalWeight,
       verdictWeights,
       voterCount: weightedVotes.length,
-      votes: weightedVotes
+      votes: weightedVotes,
     };
   }
 
@@ -133,24 +140,25 @@ export class WeightedVoteResolutionService {
    * @returns Final claim resolution
    */
   private determineResolution(
-    aggregation: VoteAggregation, 
-    config: ResolutionConfig
+    aggregation: VoteAggregation,
+    config: ResolutionConfig,
   ): ClaimResolution {
     const { verdictWeights, totalWeight, voterCount } = aggregation;
-    
+
     // Safety checks
     if (totalWeight < config.minTotalWeight) {
       return this.createUnresolvedResult(
         aggregation.claimId,
         `Insufficient total weight (${totalWeight} < ${config.minTotalWeight})`,
-        config
+        config,
       );
     }
 
     // Sort verdicts by weight (descending)
-    const sortedVerdicts = Object.entries(verdictWeights)
-      .sort(([,a], [,b]) => b - a) as [Verdict, number][];
-    
+    const sortedVerdicts = Object.entries(verdictWeights).sort(
+      ([, a], [, b]) => b - a,
+    ) as [Verdict, number][];
+
     const [dominantVerdict, dominantWeight] = sortedVerdicts[0];
     const [, secondWeight] = sortedVerdicts[1] || ['', 0];
 
@@ -160,14 +168,14 @@ export class WeightedVoteResolutionService {
       return this.createUnresolvedResult(
         aggregation.claimId,
         `Single verifier dominance (${(maxIndividualShare * 100).toFixed(1)}% share)`,
-        config
+        config,
       );
     }
 
     // Calculate resolution metrics
     const resolutionMargin = dominantWeight - secondWeight;
-    const isTie = resolutionMargin < (totalWeight * config.tieThreshold);
-    
+    const isTie = resolutionMargin < totalWeight * config.tieThreshold;
+
     // Determine confidence score
     const confidenceScore = totalWeight > 0 ? dominantWeight / totalWeight : 0;
     const isLowConfidence = confidenceScore < config.confidenceThreshold;
@@ -200,18 +208,18 @@ export class WeightedVoteResolutionService {
         dominantVerdictWeight: dominantWeight,
         secondVerdictWeight: secondWeight,
         isTie,
-        isLowConfidence
-      }
+        isLowConfidence,
+      },
     };
 
     this.logger.log(
       `Claim ${aggregation.claimId} resolved as ${resolvedVerdict} ` +
-      `(confidence: ${(confidenceScore * 100).toFixed(1)}%, margin: ${resolutionMargin.toFixed(2)})`
+        `(confidence: ${(confidenceScore * 100).toFixed(1)}%, margin: ${resolutionMargin.toFixed(2)})`,
     );
 
     if (resolvedVerdict === 'UNRESOLVED') {
       this.logger.warn(
-        `Claim ${aggregation.claimId} unresolved: ${resolutionReason}`
+        `Claim ${aggregation.claimId} unresolved: ${resolutionReason}`,
       );
     }
 
@@ -243,7 +251,7 @@ export class WeightedVoteResolutionService {
   private createUnresolvedResult(
     claimId: string,
     reason: string,
-    config: ResolutionConfig
+    config: ResolutionConfig,
   ): ClaimResolution {
     return {
       claimId,
@@ -252,14 +260,14 @@ export class WeightedVoteResolutionService {
       resolutionMargin: 0,
       totalWeight: 0,
       voterCount: 0,
-      verdictDistribution: { 'TRUE': 0, 'FALSE': 0, 'UNSURE': 0 },
+      verdictDistribution: { TRUE: 0, FALSE: 0, UNSURE: 0 },
       metadata: {
         timestamp: new Date(),
         dominantVerdictWeight: 0,
         secondVerdictWeight: 0,
         isTie: false,
-        isLowConfidence: true
-      }
+        isLowConfidence: true,
+      },
     };
   }
 
@@ -293,7 +301,9 @@ export class WeightedVoteResolutionService {
     const claimId = votes[0].claimId;
     for (let i = 1; i < votes.length; i++) {
       if (votes[i].claimId !== claimId) {
-        errors.push(`Inconsistent claim ID: expected ${claimId}, got ${votes[i].claimId}`);
+        errors.push(
+          `Inconsistent claim ID: expected ${claimId}, got ${votes[i].claimId}`,
+        );
       }
     }
 
@@ -306,7 +316,9 @@ export class WeightedVoteResolutionService {
         errors.push(`Vote ${index}: Invalid verdict ${vote.verdict}`);
       }
       if (vote.userReputation < 0 || vote.userReputation > 100) {
-        errors.push(`Vote ${index}: Invalid reputation ${vote.userReputation} (must be 0-100)`);
+        errors.push(
+          `Vote ${index}: Invalid reputation ${vote.userReputation} (must be 0-100)`,
+        );
       }
       if (parseFloat(vote.stakeAmount) < 0) {
         errors.push(`Vote ${index}: Negative stake amount`);

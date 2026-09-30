@@ -95,7 +95,9 @@ describe('RewardsController — RolesGuard enforcement for write routes', () => 
   });
 
   const buildReflector = (roles: string[]) =>
-    ({ getAllAndOverride: jest.fn().mockReturnValue(roles) }) as unknown as Reflector;
+    ({
+      getAllAndOverride: jest.fn().mockReturnValue(roles),
+    }) as unknown as Reflector;
 
   it('admin is allowed on write routes', () => {
     const guard = new RolesGuard(buildReflector(['admin']));

@@ -32,7 +32,8 @@ describe('ClaimFeedService', () => {
       evidences: [],
       getCurrentState() {
         if (this.finalized) return 'FINALIZED' as any;
-        if (this.resolvedVerdict !== null && this.confidenceScore !== null) return 'RESOLVED' as any;
+        if (this.resolvedVerdict !== null && this.confidenceScore !== null)
+          return 'RESOLVED' as any;
         return 'PENDING' as any;
       },
       ...overrides,
@@ -70,9 +71,11 @@ describe('ClaimFeedService', () => {
     // epochExpression() reads the driver type off the repository manager;
     // the generic Repository mock has no manager, so stub it as sqlite.
     (claimRepo as any).manager = {
-      connection: { options: { type: 'sqlite' } },
+      connection: { options: { type: 'better-sqlite3' } },
     };
-    indexedEventRepo = module.get<Repository<IndexedEvent>>(getRepositoryToken(IndexedEvent));
+    indexedEventRepo = module.get<Repository<IndexedEvent>>(
+      getRepositoryToken(IndexedEvent),
+    );
     stakeRepo = module.get<Repository<Stake>>(getRepositoryToken(Stake));
     claimsCache = module.get<ClaimsCache>(ClaimsCache);
   });
@@ -94,7 +97,14 @@ describe('ClaimFeedService', () => {
       };
       jest.spyOn(claimRepo, 'createQueryBuilder').mockReturnValue(qb as any);
 
-      const result = await service.getFeed({ limit: 20, cursor: undefined, state: undefined, creator: undefined, from: undefined, to: undefined });
+      const result = await service.getFeed({
+        limit: 20,
+        cursor: undefined,
+        state: undefined,
+        creator: undefined,
+        from: undefined,
+        to: undefined,
+      });
 
       expect(result.data).toEqual([]);
       expect(result.pagination.nextCursor).toBeNull();
@@ -102,8 +112,14 @@ describe('ClaimFeedService', () => {
     });
 
     it('should return a paginated feed ordered by effectiveAt DESC', async () => {
-      const claim1 = makeClaim({ id: 'a1', effectiveAt: new Date('2026-08-30T12:00:00Z') });
-      const claim2 = makeClaim({ id: 'a2', effectiveAt: new Date('2026-08-29T12:00:00Z') });
+      const claim1 = makeClaim({
+        id: 'a1',
+        effectiveAt: new Date('2026-08-30T12:00:00Z'),
+      });
+      const claim2 = makeClaim({
+        id: 'a2',
+        effectiveAt: new Date('2026-08-29T12:00:00Z'),
+      });
 
       const qb = {
         where: jest.fn().mockReturnThis(),
@@ -161,8 +177,13 @@ describe('ClaimFeedService', () => {
       };
       jest.spyOn(claimRepo, 'createQueryBuilder').mockReturnValue(qb as any);
 
-      const cursorPayload = { effectiveAt: '2026-08-30T12:00:00.000Z', id: 'lastid' };
-      const cursor = Buffer.from(JSON.stringify(cursorPayload)).toString('base64url');
+      const cursorPayload = {
+        effectiveAt: '2026-08-30T12:00:00.000Z',
+        id: 'lastid',
+      };
+      const cursor = Buffer.from(JSON.stringify(cursorPayload)).toString(
+        'base64url',
+      );
 
       await service.getFeed({ limit: 20, cursor });
 
@@ -184,7 +205,9 @@ describe('ClaimFeedService', () => {
       };
       jest.spyOn(claimRepo, 'createQueryBuilder').mockReturnValue(qb as any);
 
-      await expect(service.getFeed({ limit: 20, cursor: '!!!not-valid!!' })).rejects.toThrow(BadRequestException);
+      await expect(
+        service.getFeed({ limit: 20, cursor: '!!!not-valid!!' }),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('should apply state filter for RESOLVED', async () => {
@@ -236,7 +259,11 @@ describe('ClaimFeedService', () => {
       };
       jest.spyOn(claimRepo, 'createQueryBuilder').mockReturnValue(qb as any);
 
-      await service.getFeed({ limit: 20, from: '2026-08-01T00:00:00Z', to: '2026-08-31T00:00:00Z' });
+      await service.getFeed({
+        limit: 20,
+        from: '2026-08-01T00:00:00Z',
+        to: '2026-08-31T00:00:00Z',
+      });
 
       expect(qb.andWhere).toHaveBeenCalledTimes(2);
     });
@@ -283,7 +310,9 @@ describe('ClaimFeedService', () => {
       jest.spyOn(claimsCache, 'getClaim').mockResolvedValue(null);
       jest.spyOn(claimRepo, 'findOneBy').mockResolvedValue(null);
 
-      await expect(service.getDetail('missing')).rejects.toThrow(NotFoundException);
+      await expect(service.getDetail('missing')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -333,10 +362,12 @@ describe('ClaimFeedService', () => {
         getMany: jest.fn().mockResolvedValue(claims),
       };
       jest.spyOn(claimRepo, 'createQueryBuilder').mockReturnValue(qb as any);
-      const findOneSpy = jest.spyOn(indexedEventRepo, 'findOne').mockResolvedValue({
-        confirmations: 5,
-        isFinalized: false,
-      } as IndexedEvent);
+      const findOneSpy = jest
+        .spyOn(indexedEventRepo, 'findOne')
+        .mockResolvedValue({
+          confirmations: 5,
+          isFinalized: false,
+        } as IndexedEvent);
 
       const result = await service.getFeed({ limit: 20 });
 

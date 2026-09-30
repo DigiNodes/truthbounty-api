@@ -81,7 +81,9 @@ export class ProjectionFreshnessService {
   private async collectProjectorNames(): Promise<string[]> {
     const names = new Set<string>(KNOWN_PROJECTORS as readonly string[]);
     try {
-      const cursors = await this.cursorRepo.find({ select: ['projectorName'] });
+      const cursors = await this.cursorRepo.find({
+        select: { projectorName: true },
+      });
       for (const cursor of cursors) {
         if (
           typeof cursor.projectorName === 'string' &&

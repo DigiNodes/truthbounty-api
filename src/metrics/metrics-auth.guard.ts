@@ -1,4 +1,9 @@
-import { Injectable, CanActivate, ExecutionContext, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  CanActivate,
+  ExecutionContext,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
 
@@ -17,7 +22,7 @@ export class MetricsAuthGuard implements CanActivate {
 
     // Check for Bearer token in Authorization header
     const authHeader = request.headers.authorization;
-    
+
     if (!authHeader) {
       throw new UnauthorizedException('Missing authorization header');
     }
@@ -25,7 +30,9 @@ export class MetricsAuthGuard implements CanActivate {
     const [scheme, token] = authHeader.split(' ');
 
     if (scheme !== 'Bearer' || !token) {
-      throw new UnauthorizedException('Invalid authorization scheme. Use Bearer token');
+      throw new UnauthorizedException(
+        'Invalid authorization scheme. Use Bearer token',
+      );
     }
 
     if (token !== metricsToken) {

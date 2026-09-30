@@ -7,12 +7,7 @@ import { AuthModule } from '../auth/auth.module';
 import { AuditModule } from '../audit/audit.module';
 
 @Module({
-  imports: [
-    PrismaModule,
-    RedisModule,
-    AuthModule,
-    AuditModule,
-  ],
+  imports: [PrismaModule, RedisModule, AuthModule, AuditModule],
   controllers: [AnalyticsController],
   providers: [AnalyticsService],
   exports: [AnalyticsService],

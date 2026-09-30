@@ -77,15 +77,24 @@ export class ArtifactRegistryService {
       .createHash('sha256')
       .update(JSON.stringify(row.abi))
       .digest('hex');
-    if (!/^[a-f0-9]{64}$/.test(row.abiChecksum) || row.abiChecksum !== checksum) {
+    if (
+      !/^[a-f0-9]{64}$/.test(row.abiChecksum) ||
+      row.abiChecksum !== checksum
+    ) {
       this.logInvalidArtifact(row, 'ABI checksum mismatch');
       return null;
     }
 
     try {
       const iface = new Interface(row.abi as never[]);
-      if (iface.fragments.length !== row.abi.length || iface.fragments.length === 0) {
-        this.logInvalidArtifact(row, 'ABI is empty or contains invalid fragments');
+      if (
+        iface.fragments.length !== row.abi.length ||
+        iface.fragments.length === 0
+      ) {
+        this.logInvalidArtifact(
+          row,
+          'ABI is empty or contains invalid fragments',
+        );
         return null;
       }
 
@@ -112,10 +121,7 @@ export class ArtifactRegistryService {
     return /^0x[a-fA-F0-9]{40}$/.test(address);
   }
 
-  private logInvalidArtifact(
-    artifact: ContractArtifact,
-    reason: string,
-  ): void {
+  private logInvalidArtifact(artifact: ContractArtifact, reason: string): void {
     // Invalid rows are treated as absent by callers; the warning preserves an
     // actionable signal without allowing unverified ABI data into the index.
     this.logger.warn(

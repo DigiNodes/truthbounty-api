@@ -22,20 +22,26 @@ describe('DisputeController — Authorization Matrix', () => {
 
   const mockDisputeService: Partial<DisputeService> = {
     createDispute: jest.fn().mockResolvedValue({ id: 'dispute-1' }),
-    startReview: jest.fn().mockResolvedValue({ id: 'dispute-1', status: 'reviewing' }),
-    resolveDispute: jest.fn().mockResolvedValue({ id: 'dispute-1', status: 'resolved' }),
-    rejectDispute: jest.fn().mockResolvedValue({ id: 'dispute-1', status: 'rejected' }),
+    startReview: jest
+      .fn()
+      .mockResolvedValue({ id: 'dispute-1', status: 'reviewing' }),
+    resolveDispute: jest
+      .fn()
+      .mockResolvedValue({ id: 'dispute-1', status: 'resolved' }),
+    rejectDispute: jest
+      .fn()
+      .mockResolvedValue({ id: 'dispute-1', status: 'rejected' }),
     getDisputeByClaimId: jest.fn().mockResolvedValue(null),
     getExpiredDisputes: jest.fn().mockResolvedValue([]),
-    findAll: jest.fn().mockResolvedValue({ items: [], total: 0, limit: 50, offset: 0 }),
+    findAll: jest
+      .fn()
+      .mockResolvedValue({ items: [], total: 0, limit: 50, offset: 0 }),
   };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [DisputeController],
-      providers: [
-        { provide: DisputeService, useValue: mockDisputeService },
-      ],
+      providers: [{ provide: DisputeService, useValue: mockDisputeService }],
     })
       // Override guards so we can inject controlled user state
       .overrideGuard(JwtAuthGuard)
@@ -65,7 +71,9 @@ describe('DisputeController — Authorization Matrix', () => {
 
   it('getByClaimId() calls service and returns dispute', async () => {
     const result = await controller.getByClaimId('claim-abc');
-    expect(mockDisputeService.getDisputeByClaimId).toHaveBeenCalledWith('claim-abc');
+    expect(mockDisputeService.getDisputeByClaimId).toHaveBeenCalledWith(
+      'claim-abc',
+    );
     expect(result).toBeNull();
   });
 
@@ -91,7 +99,7 @@ describe('DisputeController — Authorization Matrix', () => {
   });
 
   it('resolve() calls service with dispute id and dto', async () => {
-    const dto = { outcome: DisputeOutcome.VALID, finalConfidence: 0.8 };
+    const dto = { outcome: DisputeOutcome.CONFIRMED, finalConfidence: 0.8 };
     const result = await controller.resolve('dispute-1', dto as any);
     expect(mockDisputeService.resolveDispute).toHaveBeenCalledWith({
       disputeId: 'dispute-1',
@@ -129,7 +137,9 @@ describe('DisputeController — RolesGuard enforcement', () => {
   });
 
   const buildReflector = (roles: string[] | undefined) =>
-    ({ getAllAndOverride: jest.fn().mockReturnValue(roles) }) as unknown as Reflector;
+    ({
+      getAllAndOverride: jest.fn().mockReturnValue(roles),
+    }) as unknown as Reflector;
 
   it('contributor is denied access to state-transition routes', () => {
     const guard = new RolesGuard(buildReflector(['moderator', 'admin']));

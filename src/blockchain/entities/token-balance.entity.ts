@@ -15,6 +15,10 @@ export class TokenBalance {
   @Column({ type: 'decimal', precision: 36, scale: 18, default: 0 })
   balance: string;
 
-  @Column({ name: 'last_updated', type: 'datetime', default: () => 'CURRENT_TIMESTAMP' })
+  @Column({
+    name: 'last_updated',
+    type: 'datetime',
+    default: () => 'CURRENT_TIMESTAMP',
+  })
   lastUpdated: Date;
 }

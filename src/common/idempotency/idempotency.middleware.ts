@@ -4,9 +4,7 @@ import { IdempotencyService } from './idempotency.service';
 
 @Injectable()
 export class IdempotencyMiddleware implements NestMiddleware {
-  constructor(
-    private readonly idempotencyService: IdempotencyService,
-  ) {}
+  constructor(private readonly idempotencyService: IdempotencyService) {}
 
   async use(req: Request, res: Response, next: NextFunction) {
     // Only apply to POST, PUT, PATCH, and DELETE requests
@@ -31,13 +29,15 @@ export class IdempotencyMiddleware implements NestMiddleware {
     if (!this.idempotencyService.validateKey(idempotencyKey)) {
       return res.status(400).json({
         error: 'Invalid idempotency key',
-        message: 'The idempotency key must be a hexadecimal string of at least 32 characters',
+        message:
+          'The idempotency key must be a hexadecimal string of at least 32 characters',
       });
     }
 
     try {
       // Check if we have a stored response for this key
-      const storedResponse = await this.idempotencyService.getResponse(idempotencyKey);
+      const storedResponse =
+        await this.idempotencyService.getResponse(idempotencyKey);
 
       if (storedResponse) {
         // Log the duplicate request
@@ -52,11 +52,15 @@ export class IdempotencyMiddleware implements NestMiddleware {
       const originalJson = res.json;
 
       // Override res.json to capture the response
-      res.json = function(data) {
+      res.json = function (data) {
         // Store the response before sending it
         (async () => {
           try {
-            await this.idempotencyService.storeResponse(idempotencyKey, data, res.statusCode);
+            await this.idempotencyService.storeResponse(
+              idempotencyKey,
+              data,
+              res.statusCode,
+            );
           } catch (error) {
             console.error('Failed to store idempotency response:', error);
           }
@@ -67,11 +71,15 @@ export class IdempotencyMiddleware implements NestMiddleware {
       }.bind(this);
 
       // Override res.send to capture the response (in case json isn't used)
-      res.send = function(data) {
+      res.send = function (data) {
         // Store the response before sending it
         (async () => {
           try {
-            await this.idempotencyService.storeResponse(idempotencyKey, data, res.statusCode);
+            await this.idempotencyService.storeResponse(
+              idempotencyKey,
+              data,
+              res.statusCode,
+            );
           } catch (error) {
             console.error('Failed to store idempotency response:', error);
           }

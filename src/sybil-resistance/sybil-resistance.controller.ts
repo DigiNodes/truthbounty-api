@@ -1,11 +1,20 @@
-import { Controller, Get, Post, Param, Body, BadRequestException } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Param,
+  Body,
+  BadRequestException,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { SybilResistanceService } from './sybil-resistance.service';
 
 @ApiTags('sybil')
 @Controller('sybil')
 export class SybilResistanceController {
-  constructor(private readonly sybilResistanceService: SybilResistanceService) {}
+  constructor(
+    private readonly sybilResistanceService: SybilResistanceService,
+  ) {}
 
   /**
    * Compute and store a new Sybil score for a user
@@ -62,7 +71,10 @@ export class SybilResistanceController {
     if (!userId || userId.trim() === '') {
       throw new BadRequestException('User ID is required');
     }
-    return this.sybilResistanceService.setWorldcoinVerified(userId, body.verified);
+    return this.sybilResistanceService.setWorldcoinVerified(
+      userId,
+      body.verified,
+    );
   }
 
   /**

@@ -1,7 +1,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { ComplianceService } from './compliance.service';
-import { AuditLog, AuditActionType, AuditEntityType, AuditSeverity, AuditCategory } from '../entities/audit-log.entity';
+import {
+  AuditLog,
+  AuditActionType,
+  AuditEntityType,
+  AuditSeverity,
+  AuditCategory,
+} from '../entities/audit-log.entity';
 import { Repository } from 'typeorm';
 
 describe('ComplianceService', () => {
@@ -68,7 +74,9 @@ describe('ComplianceService', () => {
         getMany: jest.fn().mockResolvedValue([mockAuditLog()]),
       } as any;
 
-      (repository.createQueryBuilder as jest.Mock).mockReturnValue(mockQueryBuilder);
+      (repository.createQueryBuilder as jest.Mock).mockReturnValue(
+        mockQueryBuilder,
+      );
 
       const report = await service.generateReport({});
 
@@ -87,7 +95,9 @@ describe('ComplianceService', () => {
         getMany: jest.fn().mockResolvedValue([mockAuditLog()]),
       } as any;
 
-      (repository.createQueryBuilder as jest.Mock).mockReturnValue(mockQueryBuilder);
+      (repository.createQueryBuilder as jest.Mock).mockReturnValue(
+        mockQueryBuilder,
+      );
 
       const report = await service.generateReport({ type: 'admin-activity' });
 
@@ -103,7 +113,9 @@ describe('ComplianceService', () => {
         getMany: jest.fn().mockResolvedValue([mockAuditLog()]),
       } as any;
 
-      (repository.createQueryBuilder as jest.Mock).mockReturnValue(mockQueryBuilder);
+      (repository.createQueryBuilder as jest.Mock).mockReturnValue(
+        mockQueryBuilder,
+      );
 
       const report = await service.generateReport({ type: 'login-history' });
 
@@ -118,9 +130,13 @@ describe('ComplianceService', () => {
         getMany: jest.fn().mockResolvedValue([mockAuditLog()]),
       } as any;
 
-      (repository.createQueryBuilder as jest.Mock).mockReturnValue(mockQueryBuilder);
+      (repository.createQueryBuilder as jest.Mock).mockReturnValue(
+        mockQueryBuilder,
+      );
 
-      const report = await service.generateReport({ type: 'security-incidents' });
+      const report = await service.generateReport({
+        type: 'security-incidents',
+      });
 
       expect(report.type).toBe('security-incidents');
     });
@@ -133,7 +149,9 @@ describe('ComplianceService', () => {
         getMany: jest.fn().mockResolvedValue([]),
       } as any;
 
-      (repository.createQueryBuilder as jest.Mock).mockReturnValue(mockQueryBuilder);
+      (repository.createQueryBuilder as jest.Mock).mockReturnValue(
+        mockQueryBuilder,
+      );
 
       await service.generateReport({
         startDate: '2024-01-01',
@@ -187,7 +205,9 @@ describe('ComplianceService', () => {
         ]),
       } as any;
 
-      (repository.createQueryBuilder as jest.Mock).mockReturnValue(mockQueryBuilder);
+      (repository.createQueryBuilder as jest.Mock).mockReturnValue(
+        mockQueryBuilder,
+      );
 
       const summary = await service.getCategorySummary(30);
 
@@ -212,7 +232,9 @@ describe('ComplianceService', () => {
         ]),
       } as any;
 
-      (repository.createQueryBuilder as jest.Mock).mockReturnValue(mockQueryBuilder);
+      (repository.createQueryBuilder as jest.Mock).mockReturnValue(
+        mockQueryBuilder,
+      );
 
       const activity = await service.getDailyActivity(7);
 

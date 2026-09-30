@@ -9,9 +9,7 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { User } from '../../entities/user.entity';
-import {
-  NotificationFrequency,
-} from '../enums/notification-type.enum';
+import { NotificationFrequency } from '../enums/notification-type.enum';
 
 @Entity('user_notification_preferences')
 @Index(['userId'])

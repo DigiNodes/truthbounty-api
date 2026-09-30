@@ -1,6 +1,17 @@
-import { IsOptional, IsString, IsBoolean, IsInt, Min, Max, IsEnum } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  IsBoolean,
+  IsInt,
+  Min,
+  Max,
+  IsEnum,
+} from 'class-validator';
 import { Type } from 'class-transformer';
-import { NotificationCategory, NotificationPriority } from '../interfaces/notification.types';
+import {
+  NotificationCategory,
+  NotificationPriority,
+} from '../interfaces/notification.types';
 
 export class ListNotificationsDto {
   @IsOptional()

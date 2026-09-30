@@ -9,7 +9,14 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { ProjectStakeService } from './project-stake.service';
 import { CreateStakeLockDto } from './dto/create-stake-lock.dto';
 import { CreateStakeWithdrawalDto } from './dto/create-stake-withdrawal.dto';
@@ -38,7 +45,9 @@ export class StakingController {
   // ── READ (public) ─────────────────────────────────────────────────────────
 
   @Get(':claimId/entitlement')
-  @ApiOperation({ summary: 'Current entitlement breakdown for a wallet+project claim' })
+  @ApiOperation({
+    summary: 'Current entitlement breakdown for a wallet+project claim',
+  })
   @ApiParam({ name: 'claimId', description: 'Claim ID' })
   @ApiQuery({ name: 'walletAddress', required: true })
   @ApiResponse({ status: 200, description: 'Entitlement breakdown' })

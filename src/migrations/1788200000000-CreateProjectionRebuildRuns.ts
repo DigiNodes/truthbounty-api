@@ -12,9 +12,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * documented cutover procedure — an operator action — can make a rebuilt read
  * model live.
  */
-export class CreateProjectionRebuildRuns1788200000000
-  implements MigrationInterface
-{
+export class CreateProjectionRebuildRuns1788200000000 implements MigrationInterface {
   name = 'CreateProjectionRebuildRuns1788200000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

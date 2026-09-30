@@ -1,4 +1,13 @@
-import { Controller, Get, Post, Body, Param, Query, HttpStatus, HttpCode } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Query,
+  HttpStatus,
+  HttpCode,
+} from '@nestjs/common';
 import { ApiOperation, ApiTags, ApiResponse } from '@nestjs/swagger';
 import { EvidenceQueryService } from './evidence-query.service';
 import { EvidenceIntegrityService } from './evidence-integrity.service';
@@ -64,11 +73,12 @@ export class EvidenceController {
       evidenceId: evidence.evidenceId,
       claimId,
       currentVersion: evidence.currentVersion,
-      integrityStatus: result.evidenceValid && result.versionsValid && result.chainValid
-        ? 'valid'
-        : result.evidenceValid && result.versionsValid && !result.chainValid
-          ? 'chain_broken'
-          : 'invalid',
+      integrityStatus:
+        result.evidenceValid && result.versionsValid && result.chainValid
+          ? 'valid'
+          : result.evidenceValid && result.versionsValid && !result.chainValid
+            ? 'chain_broken'
+            : 'invalid',
       currentStateIntegrity: {
         valid: result.evidenceResult.valid,
         hash: result.evidenceResult.integrityHash,

@@ -20,7 +20,7 @@ interface NotificationJobData {
 @Processor('notifications')
 export class NotificationProcessor extends WorkerHost {
   private readonly logger = new Logger(NotificationProcessor.name);
-  
+
   // Map of channel types to their implementations
   private readonly channelMap: Map<string, NotificationChannel> = new Map();
 
@@ -49,7 +49,7 @@ export class NotificationProcessor extends WorkerHost {
 
   async processDelivery(job: Job<NotificationJobData>) {
     const { notificationId, channel: channelType, retryCount } = job.data;
-    
+
     this.logger.debug(
       `Processing delivery job for notification ${notificationId} via ${channelType}, attempt ${retryCount + 1}`,
     );
@@ -95,7 +95,9 @@ export class NotificationProcessor extends WorkerHost {
 
     try {
       // Check if channel is enabled for this user
-      const isEnabled = await channel.isEnabled(notification.recipientId ?? notification.userId);
+      const isEnabled = await channel.isEnabled(
+        notification.recipientId ?? notification.userId,
+      );
       if (!isEnabled) {
         this.logger.debug(
           `Channel ${channelType} is disabled for user ${notification.recipientId}, skipping delivery`,
@@ -138,7 +140,7 @@ export class NotificationProcessor extends WorkerHost {
 
   async processDeadLetter(job: Job<NotificationJobData>) {
     const { notificationId, channel: channelType } = job.data;
-    
+
     this.logger.warn(
       `Moving notification ${notificationId} to dead letter queue for channel ${channelType}`,
     );

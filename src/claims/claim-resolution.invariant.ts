@@ -12,9 +12,13 @@ import { Claim } from './entities/claim.entity';
  *   (a) resolvedVerdict is set but resolvedAt is null  → "resolved without timestamp"
  *   (b) resolvedAt is set but resolvedVerdict is null  → "timestamp without verdict"
  */
-export function assertResolvedAtInvariant(claim: Pick<Claim, 'resolvedVerdict' | 'resolvedAt'>): void {
-  const hasVerdict = claim.resolvedVerdict !== null && claim.resolvedVerdict !== undefined;
-  const hasTimestamp = claim.resolvedAt !== null && claim.resolvedAt !== undefined;
+export function assertResolvedAtInvariant(
+  claim: Pick<Claim, 'resolvedVerdict' | 'resolvedAt'>,
+): void {
+  const hasVerdict =
+    claim.resolvedVerdict !== null && claim.resolvedVerdict !== undefined;
+  const hasTimestamp =
+    claim.resolvedAt !== null && claim.resolvedAt !== undefined;
 
   if (hasVerdict && !hasTimestamp) {
     throw new BadRequestException(
@@ -36,7 +40,10 @@ export function assertResolvedAtInvariant(claim: Pick<Claim, 'resolvedVerdict' |
  * Always use this when marking a claim as resolved — never assign
  * resolvedVerdict or resolvedAt individually at call sites.
  */
-export function buildResolvedFields(verdict: boolean, now: Date = new Date()): {
+export function buildResolvedFields(
+  verdict: boolean,
+  now: Date = new Date(),
+): {
   resolvedVerdict: boolean;
   resolvedAt: Date;
 } {

@@ -111,13 +111,14 @@ export class TokenService {
     private readonly redisService: RedisService,
   ) {
     // Parse access token TTL from JWT_EXPIRATION env (default: 15 min)
-    const accessTtlRaw =
-      configService.get<string>('JWT_EXPIRATION', '15m');
+    const accessTtlRaw = configService.get<string>('JWT_EXPIRATION', '15m');
     this.ACCESS_TOKEN_TTL_SECONDS = this.parseTtlToSeconds(accessTtlRaw);
 
     // Refresh token TTL (default: 7 days)
-    const refreshTtlRaw =
-      configService.get<string>('REFRESH_TOKEN_EXPIRATION', '7d');
+    const refreshTtlRaw = configService.get<string>(
+      'REFRESH_TOKEN_EXPIRATION',
+      '7d',
+    );
     this.REFRESH_TOKEN_TTL_SECONDS = this.parseTtlToSeconds(refreshTtlRaw);
   }
 
@@ -174,7 +175,11 @@ export class TokenService {
     );
 
     // Track session in user's session list
-    await this.addSessionToUserList(address.toLowerCase(), refreshJti, sessionData);
+    await this.addSessionToUserList(
+      address.toLowerCase(),
+      refreshJti,
+      sessionData,
+    );
 
     // Enforce concurrent session limit
     await this.enforceSessionLimit(address.toLowerCase());
@@ -245,7 +250,9 @@ export class TokenService {
 
     // Check if session was revoked
     if (storedData.revokedAt) {
-      throw new UnauthorizedException(`Session revoked: ${storedData.revocationReason}`);
+      throw new UnauthorizedException(
+        `Session revoked: ${storedData.revocationReason}`,
+      );
     }
 
     // Update last activity
@@ -286,7 +293,11 @@ export class TokenService {
     try {
       const sessionData: SessionMetadata = JSON.parse(raw);
       sessionData.lastActivityAt = Date.now();
-      await this.redisService.set(refreshKey, JSON.stringify(sessionData), this.REFRESH_TOKEN_TTL_SECONDS);
+      await this.redisService.set(
+        refreshKey,
+        JSON.stringify(sessionData),
+        this.REFRESH_TOKEN_TTL_SECONDS,
+      );
     } catch {
       // Ignore parse errors
     }
@@ -295,7 +306,10 @@ export class TokenService {
   /**
    * Get all active sessions for a user
    */
-  async getUserSessions(address: string, currentJti?: string): Promise<SessionListItem[]> {
+  async getUserSessions(
+    address: string,
+    currentJti?: string,
+  ): Promise<SessionListItem[]> {
     const userSessionsKey = `${this.USER_SESSIONS_PREFIX}${address.toLowerCase()}`;
     const raw = await this.redisService.get(userSessionsKey);
 
@@ -362,10 +376,17 @@ export class TokenService {
       sessionData.revocationReason = reason;
 
       // Update in Redis
-      await this.redisService.set(sessionKey, JSON.stringify(sessionData), this.REFRESH_TOKEN_TTL_SECONDS);
+      await this.redisService.set(
+        sessionKey,
+        JSON.stringify(sessionData),
+        this.REFRESH_TOKEN_TTL_SECONDS,
+      );
 
       // Blacklist the associated access token
-      await this.blacklistToken(sessionData.accessJti, this.ACCESS_TOKEN_TTL_SECONDS);
+      await this.blacklistToken(
+        sessionData.accessJti,
+        this.ACCESS_TOKEN_TTL_SECONDS,
+      );
 
       // Log revocation
       this.logger.log(`Session revoked: ${jti} for ${address} — ${reason}`, {
@@ -385,7 +406,11 @@ export class TokenService {
   /**
    * Revoke all sessions for a user except the current one
    */
-  async revokeOtherSessions(address: string, currentJti: string, reason = 'User requested revocation of other sessions'): Promise<number> {
+  async revokeOtherSessions(
+    address: string,
+    currentJti: string,
+    reason = 'User requested revocation of other sessions',
+  ): Promise<number> {
     const sessions = await this.getUserSessions(address, currentJti);
     let revokedCount = 0;
 
@@ -437,7 +462,10 @@ export class TokenService {
   /**
    * Revoke all refresh tokens for a specific address.
    */
-  async revokeAllUserTokens(address: string, reason = 'Administrative revocation'): Promise<void> {
+  async revokeAllUserTokens(
+    address: string,
+    reason = 'Administrative revocation',
+  ): Promise<void> {
     const userSessionsKey = `${this.USER_SESSIONS_PREFIX}${address.toLowerCase()}`;
     const raw = await this.redisService.get(userSessionsKey);
 
@@ -477,7 +505,11 @@ export class TokenService {
   /**
    * Logout from a specific session only
    */
-  async logoutSession(payload: TokenPayload, refreshTokenRaw: string, reason = 'User logout from session'): Promise<void> {
+  async logoutSession(
+    payload: TokenPayload,
+    refreshTokenRaw: string,
+    reason = 'User logout from session',
+  ): Promise<void> {
     // Blacklist the access token
     if (payload.jti) {
       const remainingTtl = payload.exp
@@ -524,8 +556,10 @@ export class TokenService {
     const revoked = sessions.filter((s) => s.revokedAt);
 
     const createdTimes = sessions.map((s) => s.createdAt);
-    const oldest = createdTimes.length > 0 ? new Date(Math.min(...createdTimes)) : undefined;
-    const newest = createdTimes.length > 0 ? new Date(Math.max(...createdTimes)) : undefined;
+    const oldest =
+      createdTimes.length > 0 ? new Date(Math.min(...createdTimes)) : undefined;
+    const newest =
+      createdTimes.length > 0 ? new Date(Math.max(...createdTimes)) : undefined;
 
     return {
       totalSessions: sessions.length,
@@ -548,7 +582,11 @@ export class TokenService {
 
   // ── Private helpers ──────────────────────────────────────────────────────
 
-  private async addSessionToUserList(address: string, jti: string, sessionData: SessionMetadata): Promise<void> {
+  private async addSessionToUserList(
+    address: string,
+    jti: string,
+    sessionData: SessionMetadata,
+  ): Promise<void> {
     const userSessionsKey = `${this.USER_SESSIONS_PREFIX}${address}`;
     const raw = await this.redisService.get(userSessionsKey);
     const sessionList: string[] = raw ? JSON.parse(raw) : [];
@@ -595,7 +633,9 @@ export class TokenService {
         });
       }
 
-      this.logger.warn(`Enforced session limit for ${address}: revoked ${toRevoke.length} oldest sessions`);
+      this.logger.warn(
+        `Enforced session limit for ${address}: revoked ${toRevoke.length} oldest sessions`,
+      );
     }
   }
 

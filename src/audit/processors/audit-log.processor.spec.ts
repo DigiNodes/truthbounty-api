@@ -4,17 +4,23 @@ import { AuditActionType, AuditEntityType } from '../entities/audit-log.entity';
 
 describe('AuditLogProcessor', () => {
   let processor: AuditLogProcessor;
-  let auditTrailService: jest.Mocked<Pick<AuditTrailService, 'persistChainedRecord'>>;
+  let auditTrailService: jest.Mocked<
+    Pick<AuditTrailService, 'persistChainedRecord'>
+  >;
 
   beforeEach(() => {
     auditTrailService = {
       persistChainedRecord: jest.fn(),
     };
-    processor = new AuditLogProcessor(auditTrailService as unknown as AuditTrailService);
+    processor = new AuditLogProcessor(
+      auditTrailService as unknown as AuditTrailService,
+    );
   });
 
   it('delegates to the atomic chained write path used by log()/logBatch()', async () => {
-    (auditTrailService.persistChainedRecord as jest.Mock).mockResolvedValue({ id: 'audit-1' });
+    (auditTrailService.persistChainedRecord as jest.Mock).mockResolvedValue({
+      id: 'audit-1',
+    });
 
     const job = {
       id: 'job-1',
@@ -41,7 +47,9 @@ describe('AuditLogProcessor', () => {
   });
 
   it('rethrows on failure so BullMQ retries the job, instead of swallowing it', async () => {
-    (auditTrailService.persistChainedRecord as jest.Mock).mockRejectedValue(new Error('DB down'));
+    (auditTrailService.persistChainedRecord as jest.Mock).mockRejectedValue(
+      new Error('DB down'),
+    );
 
     const job = {
       id: 'job-2',

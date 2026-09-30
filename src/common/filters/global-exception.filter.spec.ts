@@ -33,12 +33,15 @@ describe('GlobalExceptionFilter', () => {
 
       const mockHost = {
         switchToHttp: () => ({
-            getResponse: () => mockResponse,
-            getRequest: () => mockRequest,
-          }),
+          getResponse: () => mockResponse,
+          getRequest: () => mockRequest,
+        }),
       } as unknown as ArgumentsHost;
 
-      const exception = new HttpException('Bad Request', HttpStatus.BAD_REQUEST);
+      const exception = new HttpException(
+        'Bad Request',
+        HttpStatus.BAD_REQUEST,
+      );
 
       filter.catch(exception, mockHost);
 
@@ -65,16 +68,18 @@ describe('GlobalExceptionFilter', () => {
 
       const mockHost = {
         switchToHttp: () => ({
-            getResponse: () => mockResponse,
-            getRequest: () => mockRequest,
-          }),
+          getResponse: () => mockResponse,
+          getRequest: () => mockRequest,
+        }),
       } as unknown as ArgumentsHost;
 
       const exception = new Error('Something went wrong');
 
       filter.catch(exception, mockHost);
 
-      expect(mockResponse.status).toHaveBeenCalledWith(HttpStatus.INTERNAL_SERVER_ERROR);
+      expect(mockResponse.status).toHaveBeenCalledWith(
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
       expect(mockResponse.json).toHaveBeenCalledWith(
         expect.objectContaining({
           statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
@@ -97,16 +102,20 @@ describe('GlobalExceptionFilter', () => {
 
       const mockHost = {
         switchToHttp: () => ({
-            getResponse: () => mockResponse,
-            getRequest: () => mockRequest,
-          }),
+          getResponse: () => mockResponse,
+          getRequest: () => mockRequest,
+        }),
       } as unknown as ArgumentsHost;
 
-      const exception = new HttpException({ message: 'password=secret123' }, HttpStatus.BAD_REQUEST);
+      const exception = new HttpException(
+        { message: 'password=secret123' },
+        HttpStatus.BAD_REQUEST,
+      );
 
       filter.catch(exception, mockHost);
 
-      const calledWith = mockResponse.json.mock.calls[0][0];
+      const calledWith = (mockResponse.json as unknown as jest.Mock).mock
+        .calls[0][0];
       expect(calledWith.message).not.toContain('secret123');
       expect(calledWith.message).toContain('[REDACTED]');
     });
@@ -123,16 +132,17 @@ describe('GlobalExceptionFilter', () => {
 
       const mockHost = {
         switchToHttp: () => ({
-            getResponse: () => mockResponse,
-            getRequest: () => mockRequest,
-          }),
+          getResponse: () => mockResponse,
+          getRequest: () => mockRequest,
+        }),
       } as unknown as ArgumentsHost;
 
       const exception = new HttpException('Test', HttpStatus.BAD_REQUEST);
 
       filter.catch(exception, mockHost);
 
-      const calledWith = mockResponse.json.mock.calls[0][0];
+      const calledWith = (mockResponse.json as unknown as jest.Mock).mock
+        .calls[0][0];
       expect(calledWith.requestId).toBeDefined();
       expect(calledWith.timestamp).toBeDefined();
     });

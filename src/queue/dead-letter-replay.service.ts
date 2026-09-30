@@ -1,8 +1,17 @@
-import { Injectable, Logger, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { MetricsService } from '../metrics/metrics.service';
 import { OutboxService, OutboxStatus } from '../outbox/outbox.service';
-import { ErrorClassification, classifyError, determineRetryBehavior } from './retry-utils';
+import {
+  ErrorClassification,
+  classifyError,
+  determineRetryBehavior,
+} from './retry-utils';
 
 /**
  * Safe replay options for dead-letter items
@@ -51,15 +60,15 @@ export interface DeadLetterStats {
   /** Age distribution (hours) */
   ageDistribution: {
     recent: number; // < 1 hour
-    short: number;  // 1-24 hours
+    short: number; // 1-24 hours
     medium: number; // 24-168 hours (1 week)
-    old: number;    // > 1 week
+    old: number; // > 1 week
   };
 }
 
 /**
  * DeadLetterReplayService - safe replay tooling for dead-lettered queue items
- * 
+ *
  * Security invariants:
  * - Requires explicit authorization for replay operations
  * - Preserves idempotency through deterministic keys
@@ -82,7 +91,7 @@ export class DeadLetterReplayService {
    */
   async getDeadLetterStats(): Promise<DeadLetterStats> {
     const deadLetters = await this.prisma.outboxEvent.findMany({
-      where: { status: 'DEAD_LETTER' as OutboxStatus },
+      where: { status: 'DEAD_LETTER' },
       select: {
         id: true,
         eventType: true,
@@ -100,13 +109,15 @@ export class DeadLetterReplayService {
     for (const item of deadLetters) {
       // Classification analysis
       const classification = classifyError(item.lastError || 'Unknown error');
-      byClassification[classification] = (byClassification[classification] || 0) + 1;
+      byClassification[classification] =
+        (byClassification[classification] || 0) + 1;
 
       // Event type analysis
       byEventType[item.eventType] = (byEventType[item.eventType] || 0) + 1;
 
       // Age analysis
-      const ageHours = (now.getTime() - item.createdAt.getTime()) / (1000 * 60 * 60);
+      const ageHours =
+        (now.getTime() - item.createdAt.getTime()) / (1000 * 60 * 60);
       if (ageHours < 1) ageDistribution.recent++;
       else if (ageHours < 24) ageDistribution.short++;
       else if (ageHours < 168) ageDistribution.medium++;
@@ -124,8 +135,13 @@ export class DeadLetterReplayService {
   /**
    * Replay a specific dead-letter item by ID
    */
-  async replayById(id: string, options: ReplayOptions = {}): Promise<ReplayResult> {
-    this.logger.log(`Replay requested for dead-letter item ${id} by ${options.requestedBy || 'system'}`);
+  async replayById(
+    id: string,
+    options: ReplayOptions = {},
+  ): Promise<ReplayResult> {
+    this.logger.log(
+      `Replay requested for dead-letter item ${id} by ${options.requestedBy || 'system'}`,
+    );
 
     const item = await this.prisma.outboxEvent.findUnique({
       where: { id },
@@ -136,7 +152,9 @@ export class DeadLetterReplayService {
     }
 
     if (item.status !== 'DEAD_LETTER') {
-      throw new Error(`Item ${id} is not in DEAD_LETTER status (current: ${item.status})`);
+      throw new Error(
+        `Item ${id} is not in DEAD_LETTER status (current: ${item.status})`,
+      );
     }
 
     return this.replayItem(item, options);
@@ -145,18 +163,25 @@ export class DeadLetterReplayService {
   /**
    * Replay multiple dead-letter items by IDs
    */
-  async replayByIds(ids: string[], options: ReplayOptions = {}): Promise<ReplayResult> {
-    this.logger.log(`Batch replay requested for ${ids.length} items by ${options.requestedBy || 'system'}`);
+  async replayByIds(
+    ids: string[],
+    options: ReplayOptions = {},
+  ): Promise<ReplayResult> {
+    this.logger.log(
+      `Batch replay requested for ${ids.length} items by ${options.requestedBy || 'system'}`,
+    );
 
     const items = await this.prisma.outboxEvent.findMany({
       where: {
         id: { in: ids },
-        status: 'DEAD_LETTER' as OutboxStatus,
+        status: 'DEAD_LETTER',
       },
     });
 
     if (items.length === 0) {
-      throw new NotFoundException('No valid dead-letter items found for the provided IDs');
+      throw new NotFoundException(
+        'No valid dead-letter items found for the provided IDs',
+      );
     }
 
     const result: ReplayResult = {
@@ -180,19 +205,26 @@ export class DeadLetterReplayService {
   /**
    * Replay dead-letter items by event type
    */
-  async replayByEventType(eventType: string, options: ReplayOptions = {}): Promise<ReplayResult> {
-    this.logger.log(`Replay requested for event type ${eventType} by ${options.requestedBy || 'system'}`);
+  async replayByEventType(
+    eventType: string,
+    options: ReplayOptions = {},
+  ): Promise<ReplayResult> {
+    this.logger.log(
+      `Replay requested for event type ${eventType} by ${options.requestedBy || 'system'}`,
+    );
 
     const items = await this.prisma.outboxEvent.findMany({
       where: {
         eventType,
-        status: 'DEAD_LETTER' as OutboxStatus,
+        status: 'DEAD_LETTER',
       },
       take: 100, // Safety limit for batch operations
     });
 
     if (items.length === 0) {
-      throw new NotFoundException(`No dead-letter items found for event type ${eventType}`);
+      throw new NotFoundException(
+        `No dead-letter items found for event type ${eventType}`,
+      );
     }
 
     const result: ReplayResult = {
@@ -225,16 +257,19 @@ export class DeadLetterReplayService {
     );
 
     const allDeadLetters = await this.prisma.outboxEvent.findMany({
-      where: { status: 'DEAD_LETTER' as OutboxStatus },
+      where: { status: 'DEAD_LETTER' },
       select: { id: true, lastError: true },
     });
 
-    const matchingItems = allDeadLetters.filter((item) =>
-      classifyError(item.lastError || 'Unknown error') === classification,
+    const matchingItems = allDeadLetters.filter(
+      (item) =>
+        classifyError(item.lastError || 'Unknown error') === classification,
     );
 
     if (matchingItems.length === 0) {
-      throw new NotFoundException(`No dead-letter items found for classification ${classification}`);
+      throw new NotFoundException(
+        `No dead-letter items found for classification ${classification}`,
+      );
     }
 
     const result: ReplayResult = {
@@ -276,7 +311,10 @@ export class DeadLetterReplayService {
 
     try {
       const classification = classifyError(item.lastError || 'Unknown error');
-      const retryBehavior = determineRetryBehavior(item.lastError || 'Unknown error', item.retryCount);
+      const retryBehavior = determineRetryBehavior(
+        item.lastError || 'Unknown error',
+        item.retryCount,
+      );
 
       // Safety check: don't replay non-retryable errors unless forced
       if (!retryBehavior.shouldRetry && !options.force) {
@@ -286,7 +324,9 @@ export class DeadLetterReplayService {
           reason: `Non-retryable error classification: ${classification}`,
           classification,
         });
-        this.logger.warn(`Skipping non-retryable item ${item.id} (classification: ${classification})`);
+        this.logger.warn(
+          `Skipping non-retryable item ${item.id} (classification: ${classification})`,
+        );
         return result;
       }
 
@@ -294,12 +334,14 @@ export class DeadLetterReplayService {
       await this.prisma.outboxEvent.update({
         where: { id: item.id },
         data: {
-          status: 'PENDING' as OutboxStatus,
+          status: 'PENDING',
           retryCount: 0,
           lastError: null,
           jobId: null,
           processedAt: null,
-          scheduledAt: options.delayMs ? new Date(Date.now() + options.delayMs) : new Date(),
+          scheduledAt: options.delayMs
+            ? new Date(Date.now() + options.delayMs)
+            : new Date(),
         },
       });
 
@@ -325,8 +367,13 @@ export class DeadLetterReplayService {
         id: item.id,
         reason: error instanceof Error ? error.message : 'Unknown error',
       });
-      this.logger.error(`Failed to replay dead-letter item ${item.id}: ${error}`);
-      this.metricsService.incrementCounter('dead_letter_replay_failed_total', 1);
+      this.logger.error(
+        `Failed to replay dead-letter item ${item.id}: ${error}`,
+      );
+      this.metricsService.incrementCounter(
+        'dead_letter_replay_failed_total',
+        1,
+      );
     }
 
     return result;
@@ -336,7 +383,9 @@ export class DeadLetterReplayService {
    * Permanently delete a dead-letter item (use with caution)
    */
   async deleteDeadLetter(id: string, requestedBy?: string): Promise<void> {
-    this.logger.warn(`Delete requested for dead-letter item ${id} by ${requestedBy || 'system'}`);
+    this.logger.warn(
+      `Delete requested for dead-letter item ${id} by ${requestedBy || 'system'}`,
+    );
 
     const item = await this.prisma.outboxEvent.findUnique({
       where: { id },
@@ -347,7 +396,9 @@ export class DeadLetterReplayService {
     }
 
     if (item.status !== 'DEAD_LETTER') {
-      throw new Error(`Item ${id} is not in DEAD_LETTER status (current: ${item.status})`);
+      throw new Error(
+        `Item ${id} is not in DEAD_LETTER status (current: ${item.status})`,
+      );
     }
 
     await this.prisma.outboxEvent.delete({
@@ -389,9 +440,10 @@ export class DeadLetterReplayService {
     return {
       ...item,
       classification,
-      isRetryable: classification !== ErrorClassification.VALIDATION &&
-                   classification !== ErrorClassification.AUTHORIZATION &&
-                   classification !== ErrorClassification.NOT_FOUND,
+      isRetryable:
+        classification !== ErrorClassification.VALIDATION &&
+        classification !== ErrorClassification.AUTHORIZATION &&
+        classification !== ErrorClassification.NOT_FOUND,
     };
   }
 }

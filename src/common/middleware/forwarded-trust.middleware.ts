@@ -19,7 +19,9 @@ export class ForwardedTrustMiddleware implements NestMiddleware {
 
     // Validate X-Forwarded-Proto
     if (xForwardedProto) {
-      const proto = Array.isArray(xForwardedProto) ? xForwardedProto[0] : xForwardedProto;
+      const proto = Array.isArray(xForwardedProto)
+        ? xForwardedProto[0]
+        : xForwardedProto;
       if (proto !== 'https') {
         logger.warn(`Non-HTTPS protocol forwarded: ${proto}`);
         // Fail closed: reject non-HTTPS forwarded requests
@@ -30,7 +32,9 @@ export class ForwardedTrustMiddleware implements NestMiddleware {
 
     // Validate X-Forwarded-For
     if (xForwardedFor) {
-      const ips = Array.isArray(xForwardedFor) ? xForwardedFor[0] : xForwardedFor;
+      const ips = Array.isArray(xForwardedFor)
+        ? xForwardedFor[0]
+        : xForwardedFor;
       const ipList = ips.split(',').map((ip) => ip.trim());
 
       // Check if the number of hops exceeds the limit
@@ -49,8 +53,11 @@ export class ForwardedTrustMiddleware implements NestMiddleware {
       }
 
       // Set the client IP to the first IP in the chain (original client)
-      req.ip = ipList[0];
-      req.ips = ipList.slice(0, -1); // Exclude the immediate proxy
+      // express 5 types req.ip/req.ips as readonly getters; the override is
+      // intentional (trust-proxy is disabled and we resolve the chain ourselves).
+      const mutable = req as unknown as { ip: string; ips: string[] };
+      mutable.ip = ipList[0];
+      mutable.ips = ipList.slice(0, -1); // Exclude the immediate proxy
     }
 
     next();

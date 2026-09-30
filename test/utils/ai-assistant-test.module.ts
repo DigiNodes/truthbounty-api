@@ -38,9 +38,11 @@ import { AiAssistantModule } from '../../src/ai-assistant/ai-assistant.module';
       envFilePath: ['.env.local', '.env'],
     }),
     TypeOrmModule.forRoot({
-      type: 'sqlite',
+      type: 'better-sqlite3',
       database: process.env.AI_E2E_DATABASE || ':memory:',
-      entities: [__dirname + '/../../src/ai-assistant/entities/*.entity{.ts,.js}'],
+      entities: [
+        __dirname + '/../../src/ai-assistant/entities/*.entity{.ts,.js}',
+      ],
       synchronize: true,
       logging: false,
     }),

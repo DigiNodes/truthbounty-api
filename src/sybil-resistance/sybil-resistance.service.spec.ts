@@ -82,10 +82,10 @@ describe('SybilResistanceService', () => {
               findMany: jest.fn(),
               deleteMany: jest.fn(),
             },
-              sybilExplanation: {
-                create: jest.fn(),
-                findFirst: jest.fn(),
-              },
+            sybilExplanation: {
+              create: jest.fn(),
+              findFirst: jest.fn(),
+            },
           },
         },
         {
@@ -98,7 +98,8 @@ describe('SybilResistanceService', () => {
           provide: ConfigService,
           useValue: {
             get: jest.fn((key: string, defaultValue?: any) => {
-              if (key === 'sybil.minClaimsForAccuracyScore') return defaultValue ?? 5;
+              if (key === 'sybil.minClaimsForAccuracyScore')
+                return defaultValue ?? 5;
               return defaultValue;
             }),
           },
@@ -119,7 +120,9 @@ describe('SybilResistanceService', () => {
   describe('computeSybilScore', () => {
     it('should compute a Sybil score deterministically', async () => {
       jest.spyOn(prisma.user, 'findUnique').mockResolvedValueOnce(mockUser);
-      jest.spyOn(prisma.worldIdVerification, 'findFirst').mockResolvedValueOnce(null);
+      jest
+        .spyOn(prisma.worldIdVerification, 'findFirst')
+        .mockResolvedValueOnce(null);
 
       const { score, details } = await service.computeSybilScore(mockUserId);
 
@@ -143,13 +146,21 @@ describe('SybilResistanceService', () => {
       const unverifiedUser: any = { ...mockUser, worldcoinVerified: false };
       const verifiedUser: any = { ...mockUser, worldcoinVerified: true };
 
-      jest.spyOn(prisma.user, 'findUnique').mockResolvedValueOnce(unverifiedUser);
-      jest.spyOn(prisma.worldIdVerification, 'findFirst').mockResolvedValueOnce(null);
-      const { score: unverifiedScore } = await service.computeSybilScore(mockUserId);
+      jest
+        .spyOn(prisma.user, 'findUnique')
+        .mockResolvedValueOnce(unverifiedUser);
+      jest
+        .spyOn(prisma.worldIdVerification, 'findFirst')
+        .mockResolvedValueOnce(null);
+      const { score: unverifiedScore } =
+        await service.computeSybilScore(mockUserId);
 
       jest.spyOn(prisma.user, 'findUnique').mockResolvedValueOnce(verifiedUser);
-      jest.spyOn(prisma.worldIdVerification, 'findFirst').mockResolvedValueOnce({ id: 'v1', verifiedAt: new Date() });
-      const { score: verifiedScore } = await service.computeSybilScore(mockUserId);
+      jest
+        .spyOn(prisma.worldIdVerification, 'findFirst')
+        .mockResolvedValueOnce({ id: 'v1', verifiedAt: new Date() });
+      const { score: verifiedScore } =
+        await service.computeSybilScore(mockUserId);
 
       expect(verifiedScore).toBeGreaterThanOrEqual(unverifiedScore);
     });
@@ -175,12 +186,20 @@ describe('SybilResistanceService', () => {
         ],
       };
 
-      jest.spyOn(prisma.user, 'findUnique').mockResolvedValueOnce(newWalletUser);
-      jest.spyOn(prisma.worldIdVerification, 'findFirst').mockResolvedValueOnce(null);
+      jest
+        .spyOn(prisma.user, 'findUnique')
+        .mockResolvedValueOnce(newWalletUser);
+      jest
+        .spyOn(prisma.worldIdVerification, 'findFirst')
+        .mockResolvedValueOnce(null);
       const { score: newScore } = await service.computeSybilScore(mockUserId);
 
-      jest.spyOn(prisma.user, 'findUnique').mockResolvedValueOnce(oldWalletUser);
-      jest.spyOn(prisma.worldIdVerification, 'findFirst').mockResolvedValueOnce(null);
+      jest
+        .spyOn(prisma.user, 'findUnique')
+        .mockResolvedValueOnce(oldWalletUser);
+      jest
+        .spyOn(prisma.worldIdVerification, 'findFirst')
+        .mockResolvedValueOnce(null);
       const { score: oldScore } = await service.computeSybilScore(mockUserId);
 
       expect(oldScore).toBeGreaterThan(newScore);
@@ -188,7 +207,9 @@ describe('SybilResistanceService', () => {
 
     it('should include calculation details for explainability', async () => {
       jest.spyOn(prisma.user, 'findUnique').mockResolvedValueOnce(mockUser);
-      jest.spyOn(prisma.worldIdVerification, 'findFirst').mockResolvedValueOnce(null);
+      jest
+        .spyOn(prisma.worldIdVerification, 'findFirst')
+        .mockResolvedValueOnce(null);
 
       const { details } = await service.computeSybilScore(mockUserId);
 
@@ -208,7 +229,9 @@ describe('SybilResistanceService', () => {
   describe('recordSybilScore', () => {
     it('should store a Sybil score snapshot', async () => {
       jest.spyOn(prisma.user, 'findUnique').mockResolvedValueOnce(mockUser);
-      jest.spyOn(prisma.worldIdVerification, 'findFirst').mockResolvedValueOnce(null);
+      jest
+        .spyOn(prisma.worldIdVerification, 'findFirst')
+        .mockResolvedValueOnce(null);
       const mockScoreRecord = {
         id: 'score-1',
         userId: mockUserId,
@@ -222,14 +245,22 @@ describe('SybilResistanceService', () => {
         updatedAt: new Date(),
       };
 
-      jest.spyOn(prisma.sybilScore, 'create').mockResolvedValueOnce(mockScoreRecord);
-      jest.spyOn(prisma.sybilExplanation, 'create').mockResolvedValueOnce({ id: 'ex-1', sybilScoreId: 'score-1', explanation: 'exp' });
+      jest
+        .spyOn(prisma.sybilScore, 'create')
+        .mockResolvedValueOnce(mockScoreRecord);
+      jest.spyOn(prisma.sybilExplanation, 'create').mockResolvedValueOnce({
+        id: 'ex-1',
+        sybilScoreId: 'score-1',
+        explanation: 'exp',
+      });
 
       const result = await service.recordSybilScore(mockUserId);
 
       expect(prisma.sybilScore.create).toHaveBeenCalled();
       expect(prisma.sybilExplanation.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ sybilScoreId: 'score-1' }) }),
+        expect.objectContaining({
+          data: expect.objectContaining({ sybilScoreId: 'score-1' }),
+        }),
       );
       expect(result.userId).toBe(mockUserId);
       expect(result.compositeScore).toBeDefined();
@@ -259,7 +290,9 @@ describe('SybilResistanceService', () => {
         updatedAt: new Date(),
       };
 
-      jest.spyOn(prisma.sybilScore, 'findFirst').mockResolvedValueOnce(mockScore);
+      jest
+        .spyOn(prisma.sybilScore, 'findFirst')
+        .mockResolvedValueOnce(mockScore);
 
       const result = await service.getLatestSybilScore(mockUserId);
 
@@ -273,7 +306,9 @@ describe('SybilResistanceService', () => {
     it('should compute and store score if none exists', async () => {
       jest.spyOn(prisma.sybilScore, 'findFirst').mockResolvedValueOnce(null);
       jest.spyOn(prisma.user, 'findUnique').mockResolvedValueOnce(mockUser);
-      jest.spyOn(prisma.worldIdVerification, 'findFirst').mockResolvedValueOnce(null);
+      jest
+        .spyOn(prisma.worldIdVerification, 'findFirst')
+        .mockResolvedValueOnce(null);
 
       const mockNewScore = {
         id: 'score-2',
@@ -288,7 +323,9 @@ describe('SybilResistanceService', () => {
         updatedAt: new Date(),
       };
 
-      jest.spyOn(prisma.sybilScore, 'create').mockResolvedValueOnce(mockNewScore);
+      jest
+        .spyOn(prisma.sybilScore, 'create')
+        .mockResolvedValueOnce(mockNewScore);
 
       const result = await service.getLatestSybilScore(mockUserId);
 
@@ -326,7 +363,9 @@ describe('SybilResistanceService', () => {
         },
       ];
 
-      jest.spyOn(prisma.sybilScore, 'findMany').mockResolvedValueOnce(mockHistory);
+      jest
+        .spyOn(prisma.sybilScore, 'findMany')
+        .mockResolvedValueOnce(mockHistory);
 
       const result = await service.getSybilScoreHistory(mockUserId);
 
@@ -375,7 +414,9 @@ describe('SybilResistanceService', () => {
         worldcoinVerified: true,
       };
       jest.spyOn(prisma.user, 'findUnique').mockResolvedValueOnce(verifiedUser);
-      jest.spyOn(prisma.worldIdVerification, 'findFirst').mockResolvedValueOnce({ id: 'v1', verifiedAt: new Date() });
+      jest
+        .spyOn(prisma.worldIdVerification, 'findFirst')
+        .mockResolvedValueOnce({ id: 'v1', verifiedAt: new Date() });
 
       const mockScore = {
         id: 'score-1',
@@ -404,9 +445,9 @@ describe('SybilResistanceService', () => {
     it('should throw NotFoundException for non-existent user', async () => {
       jest.spyOn(prisma.user, 'findUnique').mockResolvedValueOnce(null);
 
-      await expect(service.setWorldcoinVerified('non-existent', true)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.setWorldcoinVerified('non-existent', true),
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('should recalculate score after verification change', async () => {
@@ -419,7 +460,9 @@ describe('SybilResistanceService', () => {
         wallets: [mockWallet],
       };
 
-      jest.spyOn(prisma.user, 'findUnique').mockResolvedValueOnce(mockUserBefore);
+      jest
+        .spyOn(prisma.user, 'findUnique')
+        .mockResolvedValueOnce(mockUserBefore);
       jest.spyOn(prisma.user, 'update').mockResolvedValueOnce({
         ...mockUserBefore,
         worldcoinVerified: true,
@@ -430,8 +473,12 @@ describe('SybilResistanceService', () => {
         ...mockUserBefore,
         worldcoinVerified: true,
       };
-      jest.spyOn(prisma.user, 'findUnique').mockResolvedValueOnce(mockUserAfter);
-      jest.spyOn(prisma.worldIdVerification, 'findFirst').mockResolvedValueOnce({ id: 'v1', verifiedAt: new Date() });
+      jest
+        .spyOn(prisma.user, 'findUnique')
+        .mockResolvedValueOnce(mockUserAfter);
+      jest
+        .spyOn(prisma.worldIdVerification, 'findFirst')
+        .mockResolvedValueOnce({ id: 'v1', verifiedAt: new Date() });
 
       const mockScore = {
         id: 'score-1',
@@ -465,14 +512,21 @@ describe('SybilResistanceService', () => {
         stakingScore: 0.0,
         accuracyScore: 0.0,
         calculationDetails: JSON.stringify({
-          componentScores: { worldcoin: 1.0, walletAge: 0.67, staking: 0.0, accuracy: 0.0 },
+          componentScores: {
+            worldcoin: 1.0,
+            walletAge: 0.67,
+            staking: 0.0,
+            accuracy: 0.0,
+          },
           explanation: 'Test explanation',
         }),
         createdAt: new Date(),
         updatedAt: new Date(),
       };
 
-      jest.spyOn(prisma.sybilScore, 'findFirst').mockResolvedValueOnce(mockScore);
+      jest
+        .spyOn(prisma.sybilScore, 'findFirst')
+        .mockResolvedValueOnce(mockScore);
 
       const result = await service.getSybilScoreForVoting(mockUserId);
 
@@ -491,13 +545,21 @@ describe('SybilResistanceService', () => {
         walletAgeScore: 0.67,
         stakingScore: 0.0,
         accuracyScore: 0.0,
-        calculationDetails: JSON.stringify({ componentScores: { worldcoin: 1.0 } }),
+        calculationDetails: JSON.stringify({
+          componentScores: { worldcoin: 1.0 },
+        }),
         createdAt: new Date(),
         updatedAt: new Date(),
       };
 
-      jest.spyOn(prisma.sybilScore, 'findFirst').mockResolvedValueOnce(mockScore);
-      jest.spyOn(prisma.sybilExplanation, 'findFirst').mockResolvedValueOnce({ id: 'ex-1', sybilScoreId: 'score-1', explanation: 'Stored explanation' });
+      jest
+        .spyOn(prisma.sybilScore, 'findFirst')
+        .mockResolvedValueOnce(mockScore);
+      jest.spyOn(prisma.sybilExplanation, 'findFirst').mockResolvedValueOnce({
+        id: 'ex-1',
+        sybilScoreId: 'score-1',
+        explanation: 'Stored explanation',
+      });
 
       const result = await service.getSybilScoreForVoting(mockUserId);
 
@@ -519,7 +581,9 @@ describe('SybilResistanceService', () => {
         updatedAt: new Date(),
       };
 
-      jest.spyOn(prisma.sybilScore, 'findFirst').mockResolvedValueOnce(mockScore);
+      jest
+        .spyOn(prisma.sybilScore, 'findFirst')
+        .mockResolvedValueOnce(mockScore);
 
       const result = await service.getSybilScoreForVoting(mockUserId);
 
@@ -534,7 +598,9 @@ describe('SybilResistanceService', () => {
 
       jest.spyOn(prisma.user, 'findMany').mockResolvedValueOnce(users);
       jest.spyOn(prisma.user, 'findUnique').mockResolvedValueOnce(user1);
-      jest.spyOn(prisma.worldIdVerification, 'findFirst').mockResolvedValueOnce(null);
+      jest
+        .spyOn(prisma.worldIdVerification, 'findFirst')
+        .mockResolvedValueOnce(null);
 
       jest.spyOn(prisma.sybilScore, 'create').mockResolvedValueOnce({
         id: 'score-1',
@@ -562,7 +628,9 @@ describe('SybilResistanceService', () => {
 
       jest.spyOn(prisma.user, 'findMany').mockResolvedValueOnce(users);
       jest.spyOn(prisma.user, 'findUnique').mockResolvedValueOnce(users[0]);
-      jest.spyOn(prisma.worldIdVerification, 'findFirst').mockResolvedValueOnce(null);
+      jest
+        .spyOn(prisma.worldIdVerification, 'findFirst')
+        .mockResolvedValueOnce(null);
       jest
         .spyOn(prisma.sybilScore, 'create')
         .mockRejectedValueOnce(new Error('Database error'));
@@ -575,16 +643,28 @@ describe('SybilResistanceService', () => {
   });
 
   describe('MIN_CLAIMS_FOR_ACCURACY_SCORE configurability', () => {
-    async function buildServiceWithMinClaims(minClaims: number): Promise<SybilResistanceService> {
+    async function buildServiceWithMinClaims(
+      minClaims: number,
+    ): Promise<SybilResistanceService> {
       const mod = await Test.createTestingModule({
         providers: [
           SybilResistanceService,
           {
             provide: PrismaService,
             useValue: {
-              user: { findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn() },
-              worldIdVerification: { findFirst: jest.fn().mockResolvedValue(null) },
-              sybilScore: { create: jest.fn(), findFirst: jest.fn(), findMany: jest.fn() },
+              user: {
+                findUnique: jest.fn(),
+                findMany: jest.fn(),
+                update: jest.fn(),
+              },
+              worldIdVerification: {
+                findFirst: jest.fn().mockResolvedValue(null),
+              },
+              sybilScore: {
+                create: jest.fn(),
+                findFirst: jest.fn(),
+                findMany: jest.fn(),
+              },
             },
           },
           {
@@ -597,7 +677,9 @@ describe('SybilResistanceService', () => {
             provide: ConfigService,
             useValue: {
               get: (key: string, defaultValue?: any) =>
-                key === 'sybil.minClaimsForAccuracyScore' ? minClaims : defaultValue,
+                key === 'sybil.minClaimsForAccuracyScore'
+                  ? minClaims
+                  : defaultValue,
             },
           },
         ],
@@ -687,8 +769,12 @@ describe('SybilResistanceService', () => {
         wallets: [],
       };
 
-      jest.spyOn(prisma.user, 'findUnique').mockResolvedValueOnce(userNoWallets);
-      jest.spyOn(prisma.worldIdVerification, 'findFirst').mockResolvedValueOnce(null);
+      jest
+        .spyOn(prisma.user, 'findUnique')
+        .mockResolvedValueOnce(userNoWallets);
+      jest
+        .spyOn(prisma.worldIdVerification, 'findFirst')
+        .mockResolvedValueOnce(null);
 
       const { score, details } = await service.computeSybilScore(mockUserId);
 
@@ -700,7 +786,9 @@ describe('SybilResistanceService', () => {
 
     it('should normalize all component scores to 0-1 range', async () => {
       jest.spyOn(prisma.user, 'findUnique').mockResolvedValueOnce(mockUser);
-      jest.spyOn(prisma.worldIdVerification, 'findFirst').mockResolvedValueOnce(null);
+      jest
+        .spyOn(prisma.worldIdVerification, 'findFirst')
+        .mockResolvedValueOnce(null);
 
       const { details } = await service.computeSybilScore(mockUserId);
 
@@ -731,12 +819,16 @@ describe('SybilResistanceService', () => {
 
     it('should produce deterministic scores for same input', async () => {
       jest.spyOn(prisma.user, 'findUnique').mockResolvedValueOnce(mockUser);
-      jest.spyOn(prisma.worldIdVerification, 'findFirst').mockResolvedValueOnce(null);
+      jest
+        .spyOn(prisma.worldIdVerification, 'findFirst')
+        .mockResolvedValueOnce(null);
 
       const { score: score1 } = await service.computeSybilScore(mockUserId);
 
       jest.spyOn(prisma.user, 'findUnique').mockResolvedValueOnce(mockUser);
-      jest.spyOn(prisma.worldIdVerification, 'findFirst').mockResolvedValueOnce(null);
+      jest
+        .spyOn(prisma.worldIdVerification, 'findFirst')
+        .mockResolvedValueOnce(null);
 
       const { score: score2 } = await service.computeSybilScore(mockUserId);
 
@@ -755,12 +847,16 @@ describe('SybilResistanceService', () => {
      * Pass null to simulate no deposit history.
      */
     function mockHistoricalTotal(total: string | null) {
-      stakeEventRepo.createQueryBuilder.mockReturnValue(makeQb(total ? { total } : { total: null }));
+      stakeEventRepo.createQueryBuilder.mockReturnValue(
+        makeQb(total ? { total } : { total: null }),
+      );
     }
 
     it('stakingScore should be 0 when user has never staked (no deposit history)', async () => {
       jest.spyOn(prisma.user, 'findUnique').mockResolvedValueOnce(mockUser);
-      jest.spyOn(prisma.worldIdVerification, 'findFirst').mockResolvedValueOnce(null);
+      jest
+        .spyOn(prisma.worldIdVerification, 'findFirst')
+        .mockResolvedValueOnce(null);
       mockHistoricalTotal(null);
 
       const { details } = await service.computeSybilScore(mockUserId);
@@ -769,7 +865,9 @@ describe('SybilResistanceService', () => {
 
     it('stakingScore should be > 0 when user has stake deposit history', async () => {
       jest.spyOn(prisma.user, 'findUnique').mockResolvedValueOnce(mockUser);
-      jest.spyOn(prisma.worldIdVerification, 'findFirst').mockResolvedValueOnce(null);
+      jest
+        .spyOn(prisma.worldIdVerification, 'findFirst')
+        .mockResolvedValueOnce(null);
       // Deposit exactly MIN_STAKING_FOR_FULL_SCORE
       mockHistoricalTotal(ONE_TOKEN.toString());
 
@@ -779,7 +877,9 @@ describe('SybilResistanceService', () => {
 
     it('stakingScore should reach 1.0 at or above MIN_STAKING_FOR_FULL_SCORE', async () => {
       jest.spyOn(prisma.user, 'findUnique').mockResolvedValueOnce(mockUser);
-      jest.spyOn(prisma.worldIdVerification, 'findFirst').mockResolvedValueOnce(null);
+      jest
+        .spyOn(prisma.worldIdVerification, 'findFirst')
+        .mockResolvedValueOnce(null);
       mockHistoricalTotal(ONE_TOKEN.toString());
 
       const { details } = await service.computeSybilScore(mockUserId);
@@ -789,19 +889,25 @@ describe('SybilResistanceService', () => {
     it('stakingScore should NOT decrease when a user withdraws their active stake', async () => {
       // First, compute score BEFORE withdrawal (1 token deposited)
       jest.spyOn(prisma.user, 'findUnique').mockResolvedValueOnce(mockUser);
-      jest.spyOn(prisma.worldIdVerification, 'findFirst').mockResolvedValueOnce(null);
+      jest
+        .spyOn(prisma.worldIdVerification, 'findFirst')
+        .mockResolvedValueOnce(null);
       mockHistoricalTotal(ONE_TOKEN.toString());
 
-      const { details: beforeWithdrawal } = await service.computeSybilScore(mockUserId);
+      const { details: beforeWithdrawal } =
+        await service.computeSybilScore(mockUserId);
 
       // Now simulate withdrawal: active stake is 0 BUT historical deposits remain 1 token.
       // The fix means we still read from StakeEvent deposits, so the score should be the same.
       jest.spyOn(prisma.user, 'findUnique').mockResolvedValueOnce(mockUser);
-      jest.spyOn(prisma.worldIdVerification, 'findFirst').mockResolvedValueOnce(null);
+      jest
+        .spyOn(prisma.worldIdVerification, 'findFirst')
+        .mockResolvedValueOnce(null);
       // Historical total is unchanged (deposits don't decrease on withdrawal)
       mockHistoricalTotal(ONE_TOKEN.toString());
 
-      const { details: afterWithdrawal } = await service.computeSybilScore(mockUserId);
+      const { details: afterWithdrawal } =
+        await service.computeSybilScore(mockUserId);
 
       expect(afterWithdrawal.componentScores.staking).toBeGreaterThanOrEqual(
         beforeWithdrawal.componentScores.staking,
@@ -810,10 +916,16 @@ describe('SybilResistanceService', () => {
 
     it('stakingScore should reflect cumulative deposits across multiple stake events', async () => {
       // User staked 0.3 + 0.4 + 0.3 = 1.0 token total across 3 events
-      const total = (BigInt('300000000000000000') + BigInt('400000000000000000') + BigInt('300000000000000000')).toString();
+      const total = (
+        BigInt('300000000000000000') +
+        BigInt('400000000000000000') +
+        BigInt('300000000000000000')
+      ).toString();
 
       jest.spyOn(prisma.user, 'findUnique').mockResolvedValueOnce(mockUser);
-      jest.spyOn(prisma.worldIdVerification, 'findFirst').mockResolvedValueOnce(null);
+      jest
+        .spyOn(prisma.worldIdVerification, 'findFirst')
+        .mockResolvedValueOnce(null);
       mockHistoricalTotal(total);
 
       const { details } = await service.computeSybilScore(mockUserId);
@@ -822,26 +934,38 @@ describe('SybilResistanceService', () => {
 
     it('stakingScore should be higher for users with more historical deposits (partial stake)', async () => {
       const smallDeposit = (ONE_TOKEN / BigInt(10)).toString(); // 0.1 token
-      const largeDeposit = (ONE_TOKEN / BigInt(2)).toString();  // 0.5 token
+      const largeDeposit = (ONE_TOKEN / BigInt(2)).toString(); // 0.5 token
 
       jest.spyOn(prisma.user, 'findUnique').mockResolvedValueOnce(mockUser);
-      jest.spyOn(prisma.worldIdVerification, 'findFirst').mockResolvedValueOnce(null);
+      jest
+        .spyOn(prisma.worldIdVerification, 'findFirst')
+        .mockResolvedValueOnce(null);
       mockHistoricalTotal(smallDeposit);
-      const { details: smallDetails } = await service.computeSybilScore(mockUserId);
+      const { details: smallDetails } =
+        await service.computeSybilScore(mockUserId);
 
       jest.spyOn(prisma.user, 'findUnique').mockResolvedValueOnce(mockUser);
-      jest.spyOn(prisma.worldIdVerification, 'findFirst').mockResolvedValueOnce(null);
+      jest
+        .spyOn(prisma.worldIdVerification, 'findFirst')
+        .mockResolvedValueOnce(null);
       mockHistoricalTotal(largeDeposit);
-      const { details: largeDetails } = await service.computeSybilScore(mockUserId);
+      const { details: largeDetails } =
+        await service.computeSybilScore(mockUserId);
 
-      expect(largeDetails.componentScores.staking).toBeGreaterThan(smallDetails.componentScores.staking);
+      expect(largeDetails.componentScores.staking).toBeGreaterThan(
+        smallDetails.componentScores.staking,
+      );
     });
 
     it('stakingScore should be 0 for users with no wallets (no addresses to query)', async () => {
       const userNoWallets = { ...mockUser, wallets: [] };
 
-      jest.spyOn(prisma.user, 'findUnique').mockResolvedValueOnce(userNoWallets);
-      jest.spyOn(prisma.worldIdVerification, 'findFirst').mockResolvedValueOnce(null);
+      jest
+        .spyOn(prisma.user, 'findUnique')
+        .mockResolvedValueOnce(userNoWallets);
+      jest
+        .spyOn(prisma.worldIdVerification, 'findFirst')
+        .mockResolvedValueOnce(null);
 
       const { details } = await service.computeSybilScore(mockUserId);
 
@@ -855,7 +979,9 @@ describe('SybilResistanceService', () => {
       const hugeDeposit = (ONE_TOKEN * BigInt(100)).toString();
 
       jest.spyOn(prisma.user, 'findUnique').mockResolvedValueOnce(mockUser);
-      jest.spyOn(prisma.worldIdVerification, 'findFirst').mockResolvedValueOnce(null);
+      jest
+        .spyOn(prisma.worldIdVerification, 'findFirst')
+        .mockResolvedValueOnce(null);
       mockHistoricalTotal(hugeDeposit);
 
       const { details } = await service.computeSybilScore(mockUserId);
@@ -865,22 +991,29 @@ describe('SybilResistanceService', () => {
     it('composite score should be higher for a user with stake history vs zero stake', async () => {
       // User with stake history
       jest.spyOn(prisma.user, 'findUnique').mockResolvedValueOnce(mockUser);
-      jest.spyOn(prisma.worldIdVerification, 'findFirst').mockResolvedValueOnce(null);
+      jest
+        .spyOn(prisma.worldIdVerification, 'findFirst')
+        .mockResolvedValueOnce(null);
       mockHistoricalTotal(ONE_TOKEN.toString());
       const { score: withStake } = await service.computeSybilScore(mockUserId);
 
       // Same user with no stake history
       jest.spyOn(prisma.user, 'findUnique').mockResolvedValueOnce(mockUser);
-      jest.spyOn(prisma.worldIdVerification, 'findFirst').mockResolvedValueOnce(null);
+      jest
+        .spyOn(prisma.worldIdVerification, 'findFirst')
+        .mockResolvedValueOnce(null);
       mockHistoricalTotal(null);
-      const { score: withoutStake } = await service.computeSybilScore(mockUserId);
+      const { score: withoutStake } =
+        await service.computeSybilScore(mockUserId);
 
       expect(withStake).toBeGreaterThan(withoutStake);
     });
 
     it('should query StakeEvent with STAKE_DEPOSITED type filter (not WITHDRAWN or SLASHED)', async () => {
       jest.spyOn(prisma.user, 'findUnique').mockResolvedValueOnce(mockUser);
-      jest.spyOn(prisma.worldIdVerification, 'findFirst').mockResolvedValueOnce(null);
+      jest
+        .spyOn(prisma.worldIdVerification, 'findFirst')
+        .mockResolvedValueOnce(null);
       mockHistoricalTotal('0');
 
       await service.computeSybilScore(mockUserId);
@@ -894,7 +1027,9 @@ describe('SybilResistanceService', () => {
 
     it('should query using the wallet address of linked wallets', async () => {
       jest.spyOn(prisma.user, 'findUnique').mockResolvedValueOnce(mockUser);
-      jest.spyOn(prisma.worldIdVerification, 'findFirst').mockResolvedValueOnce(null);
+      jest
+        .spyOn(prisma.worldIdVerification, 'findFirst')
+        .mockResolvedValueOnce(null);
       mockHistoricalTotal('0');
 
       await service.computeSybilScore(mockUserId);
@@ -909,7 +1044,9 @@ describe('SybilResistanceService', () => {
 
   describe('cleanupScoreHistory', () => {
     it('should delete scores older than 1 year and return count', async () => {
-      jest.spyOn(prisma.sybilScore, 'deleteMany').mockResolvedValueOnce({ count: 99 });
+      jest
+        .spyOn(prisma.sybilScore, 'deleteMany')
+        .mockResolvedValueOnce({ count: 99 });
 
       const result = await service.cleanupScoreHistory();
 

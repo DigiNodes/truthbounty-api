@@ -57,7 +57,7 @@ export class FeatureFlagsService {
       return { key, enabled: false, reason: 'disabled' };
     }
 
-    const rules: FeatureFlagRuleSet = (flag.rules as FeatureFlagRuleSet) ?? {};
+    const rules: FeatureFlagRuleSet = flag.rules ?? {};
 
     switch (flag.type) {
       case 'kill-switch':
@@ -199,7 +199,10 @@ export class FeatureFlagsService {
     const cached = await this.redisService.get(cacheKey);
     if (cached) {
       this.metrics.recordCacheHitRatio(environment, 1.0);
-      this.metrics.observeRefreshLatency(environment, (Date.now() - startTime) / 1000);
+      this.metrics.observeRefreshLatency(
+        environment,
+        (Date.now() - startTime) / 1000,
+      );
       try {
         return JSON.parse(cached) as FeatureFlag;
       } catch {
@@ -217,7 +220,10 @@ export class FeatureFlagsService {
         CACHE_TTL_SECONDS,
       );
     }
-    this.metrics.observeRefreshLatency(environment, (Date.now() - startTime) / 1000);
+    this.metrics.observeRefreshLatency(
+      environment,
+      (Date.now() - startTime) / 1000,
+    );
     return flag;
   }
 

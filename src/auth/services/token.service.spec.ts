@@ -101,23 +101,30 @@ describe('TokenService', () => {
       const tokenHash = createHash('sha256').update(tokenValue).digest('hex');
       const refreshJti = 'a'.repeat(32); // 16 bytes hex
 
-      redisService.get.mockResolvedValueOnce(null) // blacklist check
-        .mockResolvedValueOnce(JSON.stringify({
-          jti: refreshJti,
-          tokenHash,
-          address: '0xabcd',
-          userId: 'user-1',
-          accessJti: 'old-access-jti',
-          createdAt: Date.now(),
-        }));
+      redisService.get
+        .mockResolvedValueOnce(null) // blacklist check
+        .mockResolvedValueOnce(
+          JSON.stringify({
+            jti: refreshJti,
+            tokenHash,
+            address: '0xabcd',
+            userId: 'user-1',
+            accessJti: 'old-access-jti',
+            createdAt: Date.now(),
+          }),
+        );
 
-      const result = await service.refreshAccessToken(`${refreshJti}.${tokenValue}`);
+      const result = await service.refreshAccessToken(
+        `${refreshJti}.${tokenValue}`,
+      );
 
       expect(result.accessToken).toBe('mock-access-token');
       expect(result.refreshToken).toBeDefined();
 
       // Old refresh token should be deleted and blacklisted
-      expect(redisService.del).toHaveBeenCalledWith(`auth:refresh:${refreshJti}`);
+      expect(redisService.del).toHaveBeenCalledWith(
+        `auth:refresh:${refreshJti}`,
+      );
       expect(redisService.set).toHaveBeenCalledWith(
         expect.stringMatching(/^auth:blacklist:/),
         '1',
@@ -127,41 +134,47 @@ describe('TokenService', () => {
 
     it('should reject a malformed refresh token', async () => {
       // issue-416: constant-shape generic 401 (was 'Malformed refresh token').
-      await expect(
-        service.refreshAccessToken('bad-format'),
-      ).rejects.toThrow('Invalid credentials');
+      await expect(service.refreshAccessToken('bad-format')).rejects.toThrow(
+        'Invalid credentials',
+      );
     });
 
     it('should reject a blacklisted refresh token', async () => {
       redisService.get.mockResolvedValueOnce('1'); // blacklist hit
 
-      await expect(
-        service.refreshAccessToken('abc.def'),
-      ).rejects.toThrow('Invalid credentials');
+      await expect(service.refreshAccessToken('abc.def')).rejects.toThrow(
+        'Invalid credentials',
+      );
     });
 
     it('should reject an expired/missing refresh token', async () => {
-      redisService.get.mockResolvedValueOnce(null) // not blacklisted
+      redisService.get
+        .mockResolvedValueOnce(null) // not blacklisted
         .mockResolvedValueOnce(null); // not found in storage
 
-      await expect(
-        service.refreshAccessToken('abc.def'),
-      ).rejects.toThrow('Invalid credentials');
+      await expect(service.refreshAccessToken('abc.def')).rejects.toThrow(
+        'Invalid credentials',
+      );
     });
 
     it('should revoke all tokens on hash mismatch (potential theft)', async () => {
       const { createHash } = require('crypto');
       const tokenValue = 'different'.repeat(6);
-      const tokenHash = createHash('sha256').update('original_value').digest('hex');
+      const tokenHash = createHash('sha256')
+        .update('original_value')
+        .digest('hex');
       const refreshJti = 'a'.repeat(32);
 
-      redisService.get.mockResolvedValueOnce(null) // not blacklisted
-        .mockResolvedValueOnce(JSON.stringify({
-          jti: refreshJti,
-          tokenHash,
-          address: '0xabcd',
-          userId: 'user-1',
-        }));
+      redisService.get
+        .mockResolvedValueOnce(null) // not blacklisted
+        .mockResolvedValueOnce(
+          JSON.stringify({
+            jti: refreshJti,
+            tokenHash,
+            address: '0xabcd',
+            userId: 'user-1',
+          }),
+        );
 
       // issue-416: external shape is generic, but fail-closed revocation remains.
       await expect(
@@ -171,7 +184,9 @@ describe('TokenService', () => {
 
     it('returns constant-shape 401 across refresh failure modes (no enumeration)', async () => {
       for (const raw of ['no-dot', 'a.b.c', 'jti.']) {
-        await expect(service.refreshAccessToken(raw)).rejects.toThrow('Invalid credentials');
+        await expect(service.refreshAccessToken(raw)).rejects.toThrow(
+          'Invalid credentials',
+        );
         jest.clearAllMocks();
         redisService.get.mockResolvedValue(null);
         redisService.set.mockResolvedValue(true);
@@ -252,8 +267,12 @@ describe('TokenService', () => {
       );
 
       // Refresh tokens revoked
-      expect(redisService.del).toHaveBeenCalledWith('auth:refresh:refresh-jti-1');
-      expect(redisService.del).toHaveBeenCalledWith('auth:refresh:refresh-jti-2');
+      expect(redisService.del).toHaveBeenCalledWith(
+        'auth:refresh:refresh-jti-1',
+      );
+      expect(redisService.del).toHaveBeenCalledWith(
+        'auth:refresh:refresh-jti-2',
+      );
 
       // User refresh list deleted
       expect(redisService.del).toHaveBeenCalledWith('auth:user_refresh:0xabcd');
@@ -264,7 +283,9 @@ describe('TokenService', () => {
 
   describe('revokeAllUserTokens', () => {
     it('should revoke all refresh tokens for a user', async () => {
-      redisService.get.mockResolvedValueOnce(JSON.stringify(['jti-1', 'jti-2', 'jti-3']));
+      redisService.get.mockResolvedValueOnce(
+        JSON.stringify(['jti-1', 'jti-2', 'jti-3']),
+      );
 
       await service.revokeAllUserTokens('0xAbCd');
 
@@ -275,7 +296,9 @@ describe('TokenService', () => {
 
       // Blacklisted
       expect(redisService.set).toHaveBeenCalledWith(
-        'auth:blacklist:jti-1', '1', expect.any(Number),
+        'auth:blacklist:jti-1',
+        '1',
+        expect.any(Number),
       );
 
       // User list deleted

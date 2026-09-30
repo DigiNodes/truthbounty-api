@@ -89,7 +89,10 @@ describe('Chain Reorg Handling (Integration Tests)', () => {
           parentHash: 'hash_0_different', // Different parent
         };
 
-        const reorg = await reorgDetector.detectReorg(block2_with_diff_parent, 1);
+        const reorg = await reorgDetector.detectReorg(
+          block2_with_diff_parent,
+          1,
+        );
 
         // Assert: Reorg should be detected
         expect(reorg).toBeNull(); // No canonical block at 1 with different hash
@@ -610,7 +613,9 @@ describe('Chain Reorg Handling (Integration Tests)', () => {
       };
 
       // Process block with no events
-      await expect(eventIndexing.processBlock(block, [])).resolves.not.toThrow();
+      await expect(
+        eventIndexing.processBlock(block, []),
+      ).resolves.not.toThrow();
 
       const stats = await eventIndexing.getIndexingStats();
       expect(stats.lastProcessedBlock).toBe(1);
@@ -635,7 +640,9 @@ describe('Chain Reorg Handling (Integration Tests)', () => {
       ];
 
       // Should handle gracefully
-      await expect(eventIndexing.processBlock(block, events)).resolves.not.toThrow();
+      await expect(
+        eventIndexing.processBlock(block, events),
+      ).resolves.not.toThrow();
     });
 
     it('should handle out-of-order block processing', async () => {

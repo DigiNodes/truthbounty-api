@@ -95,7 +95,13 @@ describe('GovernanceController — Authorization Matrix', () => {
   it('castVote() delegates to service', async () => {
     const dto = { voter: '0xabc', support: true, weight: 1 };
     const result = await controller.castVote('prop-1', dto as any);
-    expect(mockService.castVote).toHaveBeenCalledWith('prop-1', '0xabc', true, 1, undefined);
+    expect(mockService.castVote).toHaveBeenCalledWith(
+      'prop-1',
+      '0xabc',
+      true,
+      1,
+      undefined,
+    );
   });
 
   it('activate() delegates to service', async () => {
@@ -129,7 +135,9 @@ describe('GovernanceController — RolesGuard hierarchy enforcement', () => {
   });
 
   const buildReflector = (roles: string[]) =>
-    ({ getAllAndOverride: jest.fn().mockReturnValue(roles) }) as unknown as Reflector;
+    ({
+      getAllAndOverride: jest.fn().mockReturnValue(roles),
+    }) as unknown as Reflector;
 
   describe('activate / cancel — moderator or admin', () => {
     it('moderator is allowed', () => {
@@ -144,9 +152,9 @@ describe('GovernanceController — RolesGuard hierarchy enforcement', () => {
 
     it('contributor is denied', () => {
       const guard = new RolesGuard(buildReflector(['moderator', 'admin']));
-      expect(() => guard.canActivate(buildContext('contributor') as any)).toThrow(
-        ForbiddenException,
-      );
+      expect(() =>
+        guard.canActivate(buildContext('contributor') as any),
+      ).toThrow(ForbiddenException);
     });
   });
 
@@ -165,9 +173,9 @@ describe('GovernanceController — RolesGuard hierarchy enforcement', () => {
 
     it('contributor is denied execute', () => {
       const guard = new RolesGuard(buildReflector(['admin']));
-      expect(() => guard.canActivate(buildContext('contributor') as any)).toThrow(
-        ForbiddenException,
-      );
+      expect(() =>
+        guard.canActivate(buildContext('contributor') as any),
+      ).toThrow(ForbiddenException);
     });
 
     it('unauthenticated is denied execute', () => {

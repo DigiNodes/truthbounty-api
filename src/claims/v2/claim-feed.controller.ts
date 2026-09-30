@@ -17,14 +17,18 @@ export class ClaimFeedController {
       'Supports filtering by lifecycle state, creator wallet, and date range.',
   })
   @ApiResponse({ status: 200, description: 'Paginated claim feed' })
-  @ApiResponse({ status: 400, description: 'Invalid cursor or query parameters' })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid cursor or query parameters',
+  })
   async getFeed(@Query() query: ClaimFeedQueryDto) {
     return this.claimFeedService.getFeed(query);
   }
 
   @Get(':id')
   @ApiOperation({
-    summary: 'Full claim detail with lifecycle, confirmations, and resource links',
+    summary:
+      'Full claim detail with lifecycle, confirmations, and resource links',
     description:
       'Returns complete claim data including lifecycle state, confirmation/finality ' +
       'metadata, and links to related resources (evidence, stakes).',

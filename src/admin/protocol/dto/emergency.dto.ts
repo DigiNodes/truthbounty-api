@@ -1,9 +1,4 @@
-import {
-  IsEnum,
-  IsNotEmpty,
-  IsOptional,
-  IsString,
-} from 'class-validator';
+import { IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export enum EmergencyAction {
@@ -16,7 +11,10 @@ export enum EmergencyAction {
 }
 
 export class ExecuteEmergencyActionDto {
-  @ApiProperty({ enum: EmergencyAction, description: 'Emergency action to execute' })
+  @ApiProperty({
+    enum: EmergencyAction,
+    description: 'Emergency action to execute',
+  })
   @IsEnum(EmergencyAction)
   @IsNotEmpty()
   action: EmergencyAction;
@@ -26,7 +24,9 @@ export class ExecuteEmergencyActionDto {
   @IsNotEmpty()
   reason: string;
 
-  @ApiPropertyOptional({ description: 'Duration in minutes (for time-bound actions)' })
+  @ApiPropertyOptional({
+    description: 'Duration in minutes (for time-bound actions)',
+  })
   @IsOptional()
   durationMinutes?: number;
 }

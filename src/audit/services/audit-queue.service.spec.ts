@@ -59,19 +59,27 @@ describe('AuditQueueService', () => {
 
       await service.enqueue(input);
 
-      expect(queue.add).toHaveBeenCalledWith('write', input, expect.objectContaining({
-        attempts: 3,
-      }));
+      expect(queue.add).toHaveBeenCalledWith(
+        'write',
+        input,
+        expect.objectContaining({
+          attempts: 3,
+        }),
+      );
     });
 
     it('should handle queue errors gracefully', async () => {
-      (queue.add as jest.Mock).mockRejectedValue(new Error('Queue unavailable'));
+      (queue.add as jest.Mock).mockRejectedValue(
+        new Error('Queue unavailable'),
+      );
 
-      await expect(service.enqueue({
-        actionType: AuditActionType.CLAIM_CREATED,
-        entityType: AuditEntityType.CLAIM,
-        entityId: 'claim-1',
-      })).resolves.toBeUndefined();
+      await expect(
+        service.enqueue({
+          actionType: AuditActionType.CLAIM_CREATED,
+          entityType: AuditEntityType.CLAIM,
+          entityId: 'claim-1',
+        }),
+      ).resolves.toBeUndefined();
     });
   });
 

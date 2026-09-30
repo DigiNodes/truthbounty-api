@@ -1,7 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { createHmac } from 'crypto';
 import { Notification } from '../entities/notification.entity';
-import { DeliveryResult, DeliveryStatus, WebhookConfig } from '../interfaces/notification.types';
+import {
+  DeliveryResult,
+  DeliveryStatus,
+  WebhookConfig,
+} from '../interfaces/notification.types';
 import { RedisService } from '../../redis/redis.service';
 
 @Injectable()
@@ -12,14 +16,19 @@ export class WebhookService {
 
   async sendWebhookNotification(
     notification: Notification,
-    webhook: WebhookConfig
+    webhook: WebhookConfig,
   ): Promise<DeliveryResult> {
-    this.logger.debug(`Sending webhook notification to ${webhook.url} for notification ${notification.id}`);
+    this.logger.debug(
+      `Sending webhook notification to ${webhook.url} for notification ${notification.id}`,
+    );
 
     try {
       const payload = this.createWebhookPayload(notification);
-      const signature = this.generateSignature(JSON.stringify(payload), webhook.secret);
-      
+      const signature = this.generateSignature(
+        JSON.stringify(payload),
+        webhook.secret,
+      );
+
       const response = await fetch(webhook.url, {
         method: 'POST',
         headers: {
@@ -41,7 +50,9 @@ export class WebhookService {
         };
       } else {
         const errorText = await response.text();
-        this.logger.error(`Webhook delivery failed with status ${response.status}: ${errorText}`);
+        this.logger.error(
+          `Webhook delivery failed with status ${response.status}: ${errorText}`,
+        );
         return {
           success: false,
           status: DeliveryStatus.FAILED,
@@ -83,7 +94,7 @@ export class WebhookService {
 
   private timingSafeCompare(a: string, b: string): boolean {
     if (a.length !== b.length) return false;
-    
+
     let result = 0;
     for (let i = 0; i < a.length; i++) {
       result |= a.charCodeAt(i) ^ b.charCodeAt(i);
@@ -96,45 +107,52 @@ export class WebhookService {
     return webhooks ? JSON.parse(webhooks) : [];
   }
 
-  async addWebhook(userId: string, webhook: Omit<WebhookConfig, 'id' | 'createdAt' | 'updatedAt'>): Promise<WebhookConfig> {
+  async addWebhook(
+    userId: string,
+    webhook: Omit<WebhookConfig, 'id' | 'createdAt' | 'updatedAt'>,
+  ): Promise<WebhookConfig> {
     const webhooks = await this.getUserWebhooks(userId);
-    
+
     const newWebhook: WebhookConfig = {
       ...webhook,
       id: crypto.randomUUID(),
       createdAt: new Date(),
       updatedAt: new Date(),
     };
-    
+
     webhooks.push(newWebhook);
     await this.redisService.set(`webhooks:${userId}`, JSON.stringify(webhooks));
-    
+
     this.logger.log(`New webhook added for user ${userId}: ${webhook.url}`);
     return newWebhook;
   }
 
   async removeWebhook(userId: string, webhookId: string): Promise<boolean> {
     const webhooks = await this.getUserWebhooks(userId);
-    const index = webhooks.findIndex(w => w.id === webhookId);
-    
+    const index = webhooks.findIndex((w) => w.id === webhookId);
+
     if (index === -1) return false;
-    
+
     webhooks.splice(index, 1);
     await this.redisService.set(`webhooks:${userId}`, JSON.stringify(webhooks));
-    
+
     this.logger.log(`Webhook ${webhookId} removed for user ${userId}`);
     return true;
   }
 
-  async updateWebhook(userId: string, webhookId: string, updates: Partial<WebhookConfig>): Promise<WebhookConfig | null> {
+  async updateWebhook(
+    userId: string,
+    webhookId: string,
+    updates: Partial<WebhookConfig>,
+  ): Promise<WebhookConfig | null> {
     const webhooks = await this.getUserWebhooks(userId);
-    const webhook = webhooks.find(w => w.id === webhookId);
-    
+    const webhook = webhooks.find((w) => w.id === webhookId);
+
     if (!webhook) return null;
-    
+
     Object.assign(webhook, updates, { updatedAt: new Date() });
     await this.redisService.set(`webhooks:${userId}`, JSON.stringify(webhooks));
-    
+
     this.logger.log(`Webhook ${webhookId} updated for user ${userId}`);
     return webhook;
   }
