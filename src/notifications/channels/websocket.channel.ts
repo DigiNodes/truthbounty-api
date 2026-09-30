@@ -1,61 +1,129 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { NotificationChannel as ChannelType, Notification } from '../entities/notification.entity';
-import { UserNotificationPreferences } from '../entities/notification.entity';
-import { NotificationChannel, ChannelDeliveryResult } from './channel.interface';
-import { NotificationGateway } from '../websockets/websocket.gateway';
+import { Server as SocketServer } from 'socket.io';
+import { NotificationChannel, ChannelDeliveryResult, RenderedNotificationPayload } from './channel.interface';
 
+/**
+ * WebSocketChannel
+ * 
+ * Delivers notifications in real-time via WebSocket (Socket.io).
+ * 
+ * Features:
+ * - Real-time delivery to connected clients
+ * - No retry (ephemeral delivery - if client disconnected, notification is lost)
+ * - Low latency (under 100ms typical)
+ * - Ideal for dashboard alerts and live updates
+ * 
+ * Design:
+ * - SocketServer instance injected globally
+ * - Emits to user's socket room: `user:${userId}`
+ */
 @Injectable()
 export class WebSocketChannel implements NotificationChannel {
+  readonly channelType = 'WEBSOCKET';
   private readonly logger = new Logger(WebSocketChannel.name);
-  readonly channelType = ChannelType.WEBSOCKET;
 
-  constructor(
-    @InjectRepository(UserNotificationPreferences)
-    private readonly preferencesRepository: Repository<UserNotificationPreferences>,
-    private readonly gateway: NotificationGateway,
-  ) {}
+  private socketServer: SocketServer;
 
-  async isEnabled(userId: string): Promise<boolean> {
-    const preferences = await this.preferencesRepository.findOne({
-      where: { userId },
-    });
-    
-    if (!preferences) {
-      return true; // Default to enabled if no preferences set
-    }
-    
-    return preferences.enabledChannels?.[this.channelType] ?? true;
+  constructor() {
+    // SocketServer will be injected via setSocketServer method
   }
 
-  async send(notification: Notification): Promise<ChannelDeliveryResult> {
-    this.logger.debug(
-      `Sending WebSocket notification ${notification.id} to user ${notification.recipientId}`,
-    );
+  /**
+   * Set the global Socket.io server instance
+   * Called during module initialization
+   */
+  setSocketServer(server: SocketServer): void {
+    this.socketServer = server;
+    this.logger.log('WebSocket channel initialized with Socket.io server');
+  }
 
-    const delivered = this.gateway.sendToUser(notification.recipientId ?? notification.userId, notification);
-    
-    if (delivered) {
+  async isEnabled(userId: string): Promise<boolean> {
+    // WebSocket channel is always available if server is initialized
+    return !!this.socketServer;
+  }
+
+  async send(payload: RenderedNotificationPayload): Promise<ChannelDeliveryResult> {
+    try {
+      if (!this.socketServer) {
+        return {
+          success: false,
+          error: 'WebSocket server not initialized',
+        };
+      }
+
+      // Emit to user's socket room
+      const room = `user:${payload.userId}`;
+
+      const notification = {
+        id: payload.metadata.notificationId || `ws-${Date.now()}`,
+        eventType: payload.eventType,
+        timestamp: new Date().toISOString(),
+        title: payload.rendered.subject || payload.rendered.title,
+        message: payload.rendered.body,
+        html: payload.rendered.html,
+        actionUrl: payload.rendered.actionUrl,
+        metadata: payload.metadata,
+      };
+
+      this.socketServer.to(room).emit('notification:new', notification);
+
+      this.logger.debug(
+        `WebSocket notification emitted to ${room} (id: ${notification.id})`,
+      );
+
       return {
         success: true,
         deliveryTimestamp: new Date(),
+        channelMessageId: notification.id,
       };
-    } else {
+    } catch (error) {
+      this.logger.error(
+        `Failed to emit WebSocket notification to ${payload.userId}: ${error.message}`,
+      );
+
       return {
         success: false,
-        error: 'User not connected to WebSocket server',
+        error: error.message,
       };
     }
   }
 
   async validateConfig(userId: string): Promise<{ valid: boolean; errors: string[] }> {
+    // WebSocket has no configuration requirements
     const errors: string[] = [];
-    // WebSocket doesn't require any special configuration, just needs an active connection
-    const isOnline = this.gateway.isUserOnline(userId);
-    if (!isOnline) {
-      errors.push('User is not currently connected to WebSocket server');
+
+    if (!this.socketServer) {
+      errors.push('WebSocket server not initialized');
     }
-    return { valid: isOnline, errors };
+
+    return { valid: errors.length === 0, errors };
+  }
+
+  /**
+   * Get metrics on connected clients
+   */
+  async getMetrics(): Promise<any> {
+    if (!this.socketServer) {
+      return { connectedClients: 0, rooms: {} };
+    }
+
+    const sockets = await this.socketServer.fetchSockets();
+    const connectedClients = sockets.length;
+
+    // Count users by room
+    const rooms: Record<string, number> = {};
+    for (const socket of sockets) {
+      for (const room of socket.rooms) {
+        if (room.startsWith('user:')) {
+          rooms[room] = (rooms[room] || 0) + 1;
+        }
+      }
+    }
+
+    return {
+      connectedClients,
+      userRooms: Object.keys(rooms).length,
+      rooms,
+    };
   }
 }
