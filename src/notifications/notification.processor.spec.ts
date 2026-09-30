@@ -77,7 +77,9 @@ describe('NotificationProcessor', () => {
 
   describe('process', () => {
     it('should process deliver-notification job', async () => {
-      const processDeliverySpy = jest.spyOn(notificationService, 'processDelivery').mockResolvedValue(undefined);
+      const processDeliverySpy = jest
+        .spyOn(notificationService, 'processDelivery')
+        .mockResolvedValue(undefined);
 
       const mockJob = {
         id: 'job-1',
@@ -98,16 +100,32 @@ describe('NotificationProcessor', () => {
         data: {},
       } as Job;
 
-      await expect(processor.process(mockJob)).rejects.toThrow('Unknown notification job name: unknown-job');
+      await expect(processor.process(mockJob)).rejects.toThrow(
+        'Unknown notification job name: unknown-job',
+      );
     });
 
     it('should handle multiple concurrent deliveries', async () => {
-      const processDeliverySpy = jest.spyOn(notificationService, 'processDelivery').mockResolvedValue(undefined);
+      const processDeliverySpy = jest
+        .spyOn(notificationService, 'processDelivery')
+        .mockResolvedValue(undefined);
 
       const jobs = [
-        { id: 'job-1', name: 'deliver-notification', data: { notificationId: 'notif-1' } },
-        { id: 'job-2', name: 'deliver-notification', data: { notificationId: 'notif-2' } },
-        { id: 'job-3', name: 'deliver-notification', data: { notificationId: 'notif-3' } },
+        {
+          id: 'job-1',
+          name: 'deliver-notification',
+          data: { notificationId: 'notif-1' },
+        },
+        {
+          id: 'job-2',
+          name: 'deliver-notification',
+          data: { notificationId: 'notif-2' },
+        },
+        {
+          id: 'job-3',
+          name: 'deliver-notification',
+          data: { notificationId: 'notif-3' },
+        },
       ] as Job[];
 
       const results = await Promise.all(jobs.map((j) => processor.process(j)));

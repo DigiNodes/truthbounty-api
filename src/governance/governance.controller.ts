@@ -19,10 +19,7 @@ import {
 import { GovernanceService } from './governance.service';
 import { CreateProposalDto } from './dto/create-proposal.dto';
 import { CastVoteDto } from './dto/cast-vote.dto';
-import {
-  ProposalStatus,
-  ProposalCategory,
-} from './entities/proposal.entity';
+import { ProposalStatus, ProposalCategory } from './entities/proposal.entity';
 import { OptionalJwtAuthGuard } from '../auth/optional-jwt-auth.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';

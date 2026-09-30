@@ -1,5 +1,19 @@
-import { Body, Controller, Delete, Get, Param, Post, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiParam,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { IdentityService } from './identity.service';
 import { LinkWalletDto } from './dto/link-wallet.dto';
 import { SybilResistanceService } from '../sybil-resistance/sybil-resistance.service';
@@ -91,7 +105,9 @@ export class IdentityController {
   @Post('users/:id/verify-worldcoin')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Mark user as Worldcoin verified and recalculate Sybil score' })
+  @ApiOperation({
+    summary: 'Mark user as Worldcoin verified and recalculate Sybil score',
+  })
   @ApiParam({ name: 'id', description: 'User ID' })
   @ApiResponse({ status: 201, description: 'Verification recorded' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })

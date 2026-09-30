@@ -1,4 +1,7 @@
-import { AllocationKind, parseAllocationKind } from './reward-allocation-kind.enum';
+import {
+  AllocationKind,
+  parseAllocationKind,
+} from './reward-allocation-kind.enum';
 import {
   classifyAllocationStatus,
   reconcileAllocation,
@@ -53,7 +56,9 @@ describe('reward reconciliation arithmetic', () => {
   });
 
   describe('reconcileAllocation', () => {
-    const row = (overrides: Partial<Parameters<typeof reconcileAllocation>[0]>) =>
+    const row = (
+      overrides: Partial<Parameters<typeof reconcileAllocation>[0]>,
+    ) =>
       reconcileAllocation({
         allocationId: 'alloc-1',
         kind: AllocationKind.VERIFIER,
@@ -81,13 +86,10 @@ describe('reward reconciliation arithmetic', () => {
     it('is exact well past Number.MAX_SAFE_INTEGER', () => {
       // 2^256-ish territory. A float-based implementation silently loses the
       // low digits here; bigint arithmetic must not.
-      const huge = '115792089237316195423570985008687907853269984665640564039457584007913129639935';
+      const huge =
+        '115792089237316195423570985008687907853269984665640564039457584007913129639935';
       const result = row({ allocatedAmount: huge, claimedAmount: '1' });
-      expect(result.claimableRemaining).toBe(
-        (
-          BigInt(huge) - 1n
-        ).toString(),
-      );
+      expect(result.claimableRemaining).toBe((BigInt(huge) - 1n).toString());
       expect(result.claimed).toBe('1');
     });
 
@@ -98,7 +100,9 @@ describe('reward reconciliation arithmetic', () => {
       expect(() => row({ claimedAmount: '1e18' })).toThrow(
         /base-10 integer string/,
       );
-      expect(() => row({ claimedAmount: '' })).toThrow(/base-10 integer string/);
+      expect(() => row({ claimedAmount: '' })).toThrow(
+        /base-10 integer string/,
+      );
     });
   });
 
@@ -183,7 +187,9 @@ describe('reward reconciliation arithmetic', () => {
 
   describe('sumAmounts', () => {
     it('rejects decimal fractions outright, so no float arithmetic is reachable', () => {
-      expect(() => sumAmounts(['0.1', '0.2'])).toThrow(/base-10 integer string/);
+      expect(() => sumAmounts(['0.1', '0.2'])).toThrow(
+        /base-10 integer string/,
+      );
     });
 
     it('sums an empty list to zero', () => {

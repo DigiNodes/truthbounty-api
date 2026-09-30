@@ -7,7 +7,9 @@ export class RagService {
 
   constructor(private prisma: PrismaService) {}
 
-  async retrieveContext(query: string): Promise<{ content: string; citations: string[] }> {
+  async retrieveContext(
+    query: string,
+  ): Promise<{ content: string; citations: string[] }> {
     this.logger.debug(`Retrieving context for query: ${query}`);
 
     // Simple keyword-based retrieval for SQLite
@@ -22,9 +24,14 @@ export class RagService {
       take: 5,
     });
 
-    const context = documents.map((d) => `Source (${d.title}): ${d.content}`).join('\n\n');
+    const context = documents
+      .map((d) => `Source (${d.title}): ${d.content}`)
+      .join('\n\n');
     const citations = documents.map((d) => d.title);
 
-    return { content: context || 'No relevant protocol information found.', citations };
+    return {
+      content: context || 'No relevant protocol information found.',
+      citations,
+    };
   }
 }

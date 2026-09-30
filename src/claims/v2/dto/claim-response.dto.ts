@@ -29,7 +29,10 @@ export class ClaimFeedItemDto {
   @ApiProperty({ description: 'Claim title' })
   title: string;
 
-  @ApiProperty({ description: 'Lifecycle state', enum: ['PENDING', 'RESOLVED', 'FINALIZED'] })
+  @ApiProperty({
+    description: 'Lifecycle state',
+    enum: ['PENDING', 'RESOLVED', 'FINALIZED'],
+  })
   lifecycleState: string;
 
   @ApiPropertyOptional({ description: 'Confidence score (0-1)' })
@@ -47,7 +50,10 @@ export class ClaimFeedItemDto {
   @ApiProperty({ description: 'Creation timestamp' })
   createdAt: Date;
 
-  @ApiProperty({ description: 'Confirmation/finality metadata', type: ConfirmationsDto })
+  @ApiProperty({
+    description: 'Confirmation/finality metadata',
+    type: ConfirmationsDto,
+  })
   confirmations: ConfirmationsDto;
 
   @ApiProperty({ description: 'Related resource links', type: ClaimLinksDto })
@@ -66,7 +72,10 @@ export class ClaimFeedResponseDto {
   @ApiProperty({ description: 'List of claims', type: [ClaimFeedItemDto] })
   data: ClaimFeedItemDto[];
 
-  @ApiProperty({ description: 'Pagination metadata', type: ClaimFeedPaginationDto })
+  @ApiProperty({
+    description: 'Pagination metadata',
+    type: ClaimFeedPaginationDto,
+  })
   pagination: ClaimFeedPaginationDto;
 }
 
@@ -86,7 +95,10 @@ export class ClaimDetailResponseDto {
   @ApiPropertyOptional({ description: 'Additional metadata' })
   metadata: Record<string, any> | null;
 
-  @ApiProperty({ description: 'Lifecycle state', enum: ['PENDING', 'RESOLVED', 'FINALIZED'] })
+  @ApiProperty({
+    description: 'Lifecycle state',
+    enum: ['PENDING', 'RESOLVED', 'FINALIZED'],
+  })
   lifecycleState: string;
 
   @ApiProperty({ description: 'Confidence score (0-1)' })
@@ -107,7 +119,10 @@ export class ClaimDetailResponseDto {
   @ApiProperty({ description: 'Creation timestamp' })
   createdAt: Date;
 
-  @ApiProperty({ description: 'Confirmation/finality metadata', type: ConfirmationsDto })
+  @ApiProperty({
+    description: 'Confirmation/finality metadata',
+    type: ConfirmationsDto,
+  })
   confirmations: ConfirmationsDto;
 
   @ApiProperty({ description: 'Related resource links', type: ClaimLinksDto })

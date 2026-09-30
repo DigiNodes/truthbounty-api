@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/unbound-method */
 // Run date-sensitive assertions in UTC so SQLite's stored datetime strings and
 // this process share the same interpretation (avoids local offset drift).
 process.env.TZ = 'UTC';
@@ -13,7 +12,7 @@ import { ClaimsCache } from '../../cache/claims.cache';
 
 const buildTestDataSource = (): DataSource => {
   const dataSource = new DataSource({
-    type: 'sqlite',
+    type: 'better-sqlite3',
     database: ':memory:',
     entities: [Claim, Evidence, EvidenceVersion, IndexedEvent, Stake],
     synchronize: true,
@@ -22,8 +21,7 @@ const buildTestDataSource = (): DataSource => {
   // for deadline/effectiveAt. SQLite's driver does not list `timestamp` as
   // supported, so register it here (SQLite itself accepts the type name).
   // The driver instance already exists pre-initialize via DriverFactory.
-  const supported = (dataSource.driver as any)
-    .supportedDataTypes as string[];
+  const supported = (dataSource.driver as any).supportedDataTypes as string[];
   if (!supported.includes('timestamp')) {
     supported.push('timestamp');
   }
@@ -54,15 +52,10 @@ describe('ClaimFeedService (integration: projection query surface)', () => {
     indexedEventRepo = dataSource.getRepository(IndexedEvent);
     stakeRepo = dataSource.getRepository(Stake);
 
-    service = new ClaimFeedService(
-      claimRepo,
-      indexedEventRepo,
-      stakeRepo,
-      {
-        getClaim: jest.fn().mockResolvedValue(null),
-        setClaim: jest.fn().mockResolvedValue(undefined),
-      } as unknown as ClaimsCache,
-    );
+    service = new ClaimFeedService(claimRepo, indexedEventRepo, stakeRepo, {
+      getClaim: jest.fn().mockResolvedValue(null),
+      setClaim: jest.fn().mockResolvedValue(undefined),
+    } as unknown as ClaimsCache);
   });
 
   afterEach(async () => {
@@ -88,8 +81,12 @@ describe('ClaimFeedService (integration: projection query surface)', () => {
   };
 
   it('returns the full feed with lifecycle state, confirmations, and links', async () => {
-    const c1 = await seedClaim({ effectiveAt: new Date('2026-08-30T12:00:00Z') });
-    const c2 = await seedClaim({ effectiveAt: new Date('2026-08-29T12:00:00Z') });
+    const c1 = await seedClaim({
+      effectiveAt: new Date('2026-08-30T12:00:00Z'),
+    });
+    const c2 = await seedClaim({
+      effectiveAt: new Date('2026-08-29T12:00:00Z'),
+    });
 
     const feed = await service.getFeed({ limit: 20 });
 
@@ -119,11 +116,17 @@ describe('ClaimFeedService (integration: projection query surface)', () => {
     expect(page1.pagination.hasMore).toBe(true);
     expect(page1.pagination.nextCursor).toBeTruthy();
 
-    const page2 = await service.getFeed({ limit: 2, cursor: page1.pagination.nextCursor });
+    const page2 = await service.getFeed({
+      limit: 2,
+      cursor: page1.pagination.nextCursor,
+    });
     expect(page2.data).toHaveLength(2);
     expect(page2.pagination.hasMore).toBe(true);
 
-    const page3 = await service.getFeed({ limit: 2, cursor: page2.pagination.nextCursor });
+    const page3 = await service.getFeed({
+      limit: 2,
+      cursor: page2.pagination.nextCursor,
+    });
     expect(page3.data).toHaveLength(1);
     expect(page3.pagination.hasMore).toBe(false);
 

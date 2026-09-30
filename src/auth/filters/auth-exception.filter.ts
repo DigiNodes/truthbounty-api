@@ -29,9 +29,7 @@ export enum AuthErrorCode {
 /**
  * Maps HTTP exceptions to standardized auth error codes.
  */
-function mapExceptionToErrorCode(
-  exception: HttpException,
-): AuthErrorCode {
+function mapExceptionToErrorCode(exception: HttpException): AuthErrorCode {
   const message = exception.message?.toLowerCase() || '';
   const status = exception.getStatus();
 

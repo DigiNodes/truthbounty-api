@@ -3,7 +3,10 @@ import { Job } from 'bullmq';
 import { Logger } from '@nestjs/common';
 import { DeepPartial } from 'typeorm';
 import { AuditLog } from '../entities/audit-log.entity';
-import { AuditLogInput, AuditTrailService } from '../services/audit-trail.service';
+import {
+  AuditLogInput,
+  AuditTrailService,
+} from '../services/audit-trail.service';
 import { maskIp } from '../utils/ip-masking';
 import { AUDIT_QUEUE_NAME } from '../services/audit-queue.service';
 import { randomUUID } from 'crypto';
@@ -54,7 +57,9 @@ export class AuditLogProcessor extends WorkerHost {
 
       await this.auditTrailService.persistChainedRecord(record);
     } catch (error) {
-      this.logger.error(`Failed to process audit job ${job.id}: ${error.message}`);
+      this.logger.error(
+        `Failed to process audit job ${job.id}: ${error.message}`,
+      );
       throw error;
     }
   }

@@ -56,7 +56,7 @@ describe('Redis Connectivity (e2e)', () => {
 
     it('should set and get a value', async () => {
       const status = redisService.getStatus();
-      
+
       if (!status.connected) {
         console.log('⚠️  Redis not available, skipping set/get test');
         return;
@@ -71,7 +71,7 @@ describe('Redis Connectivity (e2e)', () => {
 
     it('should set value with TTL', async () => {
       const status = redisService.getStatus();
-      
+
       if (!status.connected) {
         console.log('⚠️  Redis not available, skipping TTL test');
         return;
@@ -92,7 +92,7 @@ describe('Redis Connectivity (e2e)', () => {
 
     it('should delete a key', async () => {
       const status = redisService.getStatus();
-      
+
       if (!status.connected) {
         console.log('⚠️  Redis not available, skipping delete test');
         return;
@@ -108,7 +108,7 @@ describe('Redis Connectivity (e2e)', () => {
 
     it('should handle missing keys gracefully', async () => {
       const status = redisService.getStatus();
-      
+
       if (!status.connected) {
         console.log('⚠️  Redis not available, skipping missing key test');
         return;
@@ -129,7 +129,7 @@ describe('Redis Connectivity (e2e)', () => {
 
     it('should return false/null when Redis operations fail', async () => {
       const status = redisService.getStatus();
-      
+
       if (status.connected) {
         console.log('✅ Redis is connected, skipping degradation test');
         return;

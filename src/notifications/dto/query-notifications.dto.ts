@@ -1,7 +1,18 @@
-import { IsOptional, IsBoolean, IsEnum, IsString, IsInt, Min, Max } from 'class-validator';
+import {
+  IsOptional,
+  IsBoolean,
+  IsEnum,
+  IsString,
+  IsInt,
+  Min,
+  Max,
+} from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { NotificationType, DeliveryChannel } from '../enums/notification-type.enum';
+import {
+  NotificationType,
+  DeliveryChannel,
+} from '../enums/notification-type.enum';
 
 export class QueryNotificationsDto {
   @ApiPropertyOptional()

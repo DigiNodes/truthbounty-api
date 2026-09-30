@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-call */
 import {
   Entity,
   Column,
@@ -53,4 +52,3 @@ export class RewardClaim {
   @Column({ type: 'boolean', default: false })
   isProcessed: boolean;
 }
-

@@ -93,7 +93,7 @@ export class ConfigurationService {
 
     const record = this.configRepo.create({
       key,
-      value: value as any,
+      value: value,
       environment: env,
       version: 1,
       createdBy,
@@ -156,7 +156,11 @@ export class ConfigurationService {
     }));
   }
 
-  async rollback(id: string, targetVersion: number, rolledBackBy?: string): Promise<ConfigurationValue> {
+  async rollback(
+    id: string,
+    targetVersion: number,
+    rolledBackBy?: string,
+  ): Promise<ConfigurationValue> {
     const current = await this.findOne(id);
     if (targetVersion >= current.version || targetVersion < 1) {
       throw new Error('Invalid rollback target version');
@@ -167,7 +171,9 @@ export class ConfigurationService {
     });
 
     if (!historyRecord) {
-      throw new NotFoundException(`History record for version ${targetVersion} not found`);
+      throw new NotFoundException(
+        `History record for version ${targetVersion} not found`,
+      );
     }
 
     return this.set(

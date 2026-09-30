@@ -1,5 +1,21 @@
-import { Controller, Post, Body, Get, Delete, UseGuards, Request, HttpCode, HttpStatus, UseFilters } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  Controller,
+  Post,
+  Body,
+  Get,
+  Delete,
+  UseGuards,
+  Request,
+  HttpCode,
+  HttpStatus,
+  UseFilters,
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { ThrottleByWallet } from '../common/decorators/throttle-by-wallet.decorator';
 import { ChallengeDto, RefreshDto, LogoutDto } from './dto/session.dto';
@@ -21,15 +37,21 @@ export class AuthController {
   @Post('challenge')
   @Public()
   @ThrottleByWallet('auth')
-  @ApiOperation({ summary: 'Get a SIWE (EIP-4361) or legacy challenge message to sign with your wallet' })
+  @ApiOperation({
+    summary:
+      'Get a SIWE (EIP-4361) or legacy challenge message to sign with your wallet',
+  })
   @ApiResponse({ status: 201, description: 'Challenge message generated' })
   @ApiResponse({ status: 400, description: 'Invalid address format' })
   async getChallenge(@Body() dto: ChallengeDto) {
-    const { message, format } = await this.authService.generateChallenge(dto.address, {
-      chainId: dto.chainId,
-      domain: dto.domain,
-      uri: dto.uri,
-    });
+    const { message, format } = await this.authService.generateChallenge(
+      dto.address,
+      {
+        chainId: dto.chainId,
+        domain: dto.domain,
+        uri: dto.uri,
+      },
+    );
     return { message, format, address: dto.address };
   }
 
@@ -38,9 +60,19 @@ export class AuthController {
   @Post('login')
   @Public()
   @ThrottleByWallet('auth')
-  @ApiOperation({ summary: 'Login with wallet signature (supports SIWE and legacy formats). All failures return constant-shape 401 Invalid credentials.' })
-  @ApiResponse({ status: 201, description: 'Login successful — returns access + refresh tokens' })
-  @ApiResponse({ status: 401, description: 'Invalid credentials (bad signature, unknown/expired challenge, or invalid nonce — intentionally indistinguishable)' })
+  @ApiOperation({
+    summary:
+      'Login with wallet signature (supports SIWE and legacy formats). All failures return constant-shape 401 Invalid credentials.',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Login successful — returns access + refresh tokens',
+  })
+  @ApiResponse({
+    status: 401,
+    description:
+      'Invalid credentials (bad signature, unknown/expired challenge, or invalid nonce — intentionally indistinguishable)',
+  })
   @ApiResponse({ status: 400, description: 'Malformed request' })
   async login(@Body() loginDto: LoginDto) {
     return this.authService.login(loginDto);
@@ -52,9 +84,19 @@ export class AuthController {
   @Public()
   @ThrottleByWallet('auth')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Refresh an expired access token using a valid refresh token (constant-shape 401 on any failure; theft triggers fail-closed revocation)' })
-  @ApiResponse({ status: 200, description: 'New access + refresh tokens issued (rotation)' })
-  @ApiResponse({ status: 401, description: 'Invalid credentials (invalid, expired, or revoked refresh token — intentionally indistinguishable)' })
+  @ApiOperation({
+    summary:
+      'Refresh an expired access token using a valid refresh token (constant-shape 401 on any failure; theft triggers fail-closed revocation)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'New access + refresh tokens issued (rotation)',
+  })
+  @ApiResponse({
+    status: 401,
+    description:
+      'Invalid credentials (invalid, expired, or revoked refresh token — intentionally indistinguishable)',
+  })
   async refresh(@Body() dto: RefreshDto) {
     return this.authService.refresh(dto.refreshToken);
   }
@@ -65,7 +107,10 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Logout — invalidates current access token and all refresh tokens for the user' })
+  @ApiOperation({
+    summary:
+      'Logout — invalidates current access token and all refresh tokens for the user',
+  })
   @ApiResponse({ status: 200, description: 'Logged out successfully' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async logout(@Request() req, @Body() _dto?: LogoutDto) {
@@ -119,7 +164,12 @@ export class AuthController {
         sessionRevocation: true,
         replayProtection: true,
       },
-      supportedProviders: ['MetaMask', 'Rabby', 'WalletConnect', 'Coinbase Wallet'],
+      supportedProviders: [
+        'MetaMask',
+        'Rabby',
+        'WalletConnect',
+        'Coinbase Wallet',
+      ],
     };
   }
 }

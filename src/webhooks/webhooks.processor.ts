@@ -4,7 +4,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as client from 'prom-client';
-import { WebhookDelivery, DeliveryStatus } from './entities/webhook-delivery.entity';
+import {
+  WebhookDelivery,
+  DeliveryStatus,
+} from './entities/webhook-delivery.entity';
 import { Webhook } from './entities/webhook.entity';
 import { MAX_CONSECUTIVE_FAILURES_BEFORE_DISABLE } from './webhooks.service';
 
@@ -79,7 +82,11 @@ export class WebhookProcessor extends WorkerHost {
       });
 
       this.deliveryLatencyHistogram.observe(
-        { webhook_id: data.webhookId, event_type: data.eventType, result: 'success' },
+        {
+          webhook_id: data.webhookId,
+          event_type: data.eventType,
+          result: 'success',
+        },
         latency / 1000,
       );
 
@@ -105,7 +112,8 @@ export class WebhookProcessor extends WorkerHost {
       return { success: true, status: response.status, latency };
     } catch (error) {
       const latency = Date.now() - startTime;
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       const isFinalAttempt = job.attemptsMade > data.maxRetries;
 
       this.logger.warn(
@@ -130,8 +138,13 @@ export class WebhookProcessor extends WorkerHost {
 
       // Update delivery with failure info
       await this.deliveryRepo.update(data.deliveryId, {
-        status: isFinalAttempt ? DeliveryStatus.DEAD_LETTER : DeliveryStatus.FAILED,
-        responseStatus: error instanceof Error && 'status' in error ? (error as any).status : undefined,
+        status: isFinalAttempt
+          ? DeliveryStatus.DEAD_LETTER
+          : DeliveryStatus.FAILED,
+        responseStatus:
+          error instanceof Error && 'status' in error
+            ? (error as any).status
+            : undefined,
         responseBody: errorMessage,
         latency,
         retryCount: job.attemptsMade - 1,
@@ -147,7 +160,10 @@ export class WebhookProcessor extends WorkerHost {
         if (webhook) {
           webhook.consecutiveFailures += 1;
 
-          if (webhook.consecutiveFailures >= MAX_CONSECUTIVE_FAILURES_BEFORE_DISABLE) {
+          if (
+            webhook.consecutiveFailures >=
+            MAX_CONSECUTIVE_FAILURES_BEFORE_DISABLE
+          ) {
             webhook.disabled = true;
             webhook.enabled = false;
             this.logger.warn(
@@ -168,7 +184,10 @@ export class WebhookProcessor extends WorkerHost {
     data: DeliverJobData,
   ): Promise<{ status: number; body: string }> {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), WEBHOOK_DELIVERY_TIMEOUT);
+    const timeout = setTimeout(
+      () => controller.abort(),
+      WEBHOOK_DELIVERY_TIMEOUT,
+    );
 
     try {
       // Build signed payload following webhook standards

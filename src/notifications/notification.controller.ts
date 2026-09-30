@@ -55,7 +55,10 @@ export class NotificationController {
     @Param('userId') userId: string,
     @Query() query: QueryNotificationsDto,
   ): Promise<{ notifications: Notification[]; total: number }> {
-    return this.notificationService.getUserNotifications(userId, query as unknown as Record<string, unknown>);
+    return this.notificationService.getUserNotifications(
+      userId,
+      query as unknown as Record<string, unknown>,
+    );
   }
 
   @Get(':userId/unread-count')
@@ -76,7 +79,8 @@ export class NotificationController {
     @Param('notificationId') notificationId: string,
     @Query('userId') userId: string,
   ): Promise<Notification> {
-    if (!userId) throw new BadRequestException('userId query parameter is required');
+    if (!userId)
+      throw new BadRequestException('userId query parameter is required');
     try {
       return await this.notificationService.markAsRead(notificationId, userId);
     } catch (error) {
@@ -110,7 +114,9 @@ export class NotificationController {
   @ApiResponse({ status: 201, type: NotificationResponseDto })
   async schedule(@Body() dto: CreateNotificationDto): Promise<Notification> {
     if (!dto.scheduledAt) {
-      throw new BadRequestException('scheduledAt is required for scheduled notifications');
+      throw new BadRequestException(
+        'scheduledAt is required for scheduled notifications',
+      );
     }
     return this.notificationService.scheduleNotification(dto);
   }
@@ -123,11 +129,16 @@ export class NotificationController {
     @Param('notificationId') notificationId: string,
     @Query('userId') userId: string,
   ): Promise<Notification> {
-    if (!userId) throw new BadRequestException('userId query parameter is required');
+    if (!userId)
+      throw new BadRequestException('userId query parameter is required');
     try {
-      return await this.notificationService.cancelScheduled(notificationId, userId);
+      return await this.notificationService.cancelScheduled(
+        notificationId,
+        userId,
+      );
     } catch (error) {
-      if (error.message.includes('not found')) throw new NotFoundException(error.message);
+      if (error.message.includes('not found'))
+        throw new NotFoundException(error.message);
       throw new BadRequestException(error.message);
     }
   }
@@ -149,7 +160,10 @@ export class NotificationController {
     @Param('userId') userId: string,
     @Body() dto: UpdateNotificationPreferencesDto,
   ): Promise<UserNotificationPreference> {
-    return this.notificationService.updatePreferences(userId, dto as unknown as Partial<UserNotificationPreference>);
+    return this.notificationService.updatePreferences(
+      userId,
+      dto as unknown as Partial<UserNotificationPreference>,
+    );
   }
 
   @Get('admin/metrics')
@@ -180,49 +194,56 @@ export class NotificationController {
         name: 'claim-submitted',
         type: NotificationType.CLAIM_SUBMITTED,
         subjectTemplate: 'Claim Submitted: {{claimTitle}}',
-        bodyTemplate: 'Your claim "{{claimTitle}}" has been submitted successfully and is pending verification.',
+        bodyTemplate:
+          'Your claim "{{claimTitle}}" has been submitted successfully and is pending verification.',
         variables: ['claimTitle', 'claimId'],
       },
       {
         name: 'verification-assigned',
         type: NotificationType.VERIFICATION_ASSIGNED,
         subjectTemplate: 'Verification Requested: {{claimTitle}}',
-        bodyTemplate: 'You have been assigned to verify the claim "{{claimTitle}}". Please submit your verification.',
+        bodyTemplate:
+          'You have been assigned to verify the claim "{{claimTitle}}". Please submit your verification.',
         variables: ['claimTitle', 'claimId', 'deadline'],
       },
       {
         name: 'dispute-opened',
         type: NotificationType.DISPUTE_OPENED,
         subjectTemplate: 'Dispute Opened: {{claimTitle}}',
-        bodyTemplate: 'A dispute has been opened on claim "{{claimTitle}}". Review the details and participate in resolution.',
+        bodyTemplate:
+          'A dispute has been opened on claim "{{claimTitle}}". Review the details and participate in resolution.',
         variables: ['claimTitle', 'claimId', 'disputeId'],
       },
       {
         name: 'rewards-distributed',
         type: NotificationType.REWARDS_DISTRIBUTED,
         subjectTemplate: 'Rewards Distributed: {{amount}}',
-        bodyTemplate: 'You have received {{amount}} tokens as a reward for your participation.',
+        bodyTemplate:
+          'You have received {{amount}} tokens as a reward for your participation.',
         variables: ['amount', 'tokenSymbol', 'reason'],
       },
       {
         name: 'governance-proposal',
         type: NotificationType.GOVERNANCE_PROPOSAL_CREATED,
         subjectTemplate: 'New Governance Proposal: {{proposalTitle}}',
-        bodyTemplate: 'A new governance proposal "{{proposalTitle}}" has been created. Cast your vote.',
+        bodyTemplate:
+          'A new governance proposal "{{proposalTitle}}" has been created. Cast your vote.',
         variables: ['proposalTitle', 'proposalId', 'deadline'],
       },
       {
         name: 'reputation-update',
         type: NotificationType.REPUTATION_UPDATE,
         subjectTemplate: 'Reputation Updated: {{newScore}}',
-        bodyTemplate: 'Your reputation score has been updated to {{newScore}} ({{change}}).',
+        bodyTemplate:
+          'Your reputation score has been updated to {{newScore}} ({{change}}).',
         variables: ['newScore', 'change', 'reason'],
       },
       {
         name: 'staking-event',
         type: NotificationType.STAKING_EVENT,
         subjectTemplate: 'Staking Event: {{eventType}}',
-        bodyTemplate: 'A staking event has occurred: {{eventType}} of {{amount}} tokens.',
+        bodyTemplate:
+          'A staking event has occurred: {{eventType}} of {{amount}} tokens.',
         variables: ['eventType', 'amount', 'tokenSymbol'],
       },
       {
@@ -236,7 +257,8 @@ export class NotificationController {
         name: 'system-maintenance',
         type: NotificationType.SYSTEM_MAINTENANCE,
         subjectTemplate: 'System Maintenance: {{startTime}}',
-        bodyTemplate: 'Scheduled maintenance from {{startTime}} to {{endTime}}. {{description}}',
+        bodyTemplate:
+          'Scheduled maintenance from {{startTime}} to {{endTime}}. {{description}}',
         variables: ['startTime', 'endTime', 'description'],
       },
     ];
@@ -247,7 +269,9 @@ export class NotificationController {
         await this.templateService.createTemplate(tpl);
         count++;
       } catch (err) {
-        this.logger.warn(`Template ${tpl.name} may already exist: ${err.message}`);
+        this.logger.warn(
+          `Template ${tpl.name} may already exist: ${err.message}`,
+        );
       }
     }
 

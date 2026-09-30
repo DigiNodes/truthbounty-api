@@ -92,7 +92,9 @@ describe('Migration: AddUserRoleToUsers1790000000000', () => {
 
     it('drops the role column', async () => {
       await migration.down(mockRunner);
-      expect(executedSql[1]).toMatch(/ALTER TABLE "users" DROP COLUMN IF EXISTS "role"/i);
+      expect(executedSql[1]).toMatch(
+        /ALTER TABLE "users" DROP COLUMN IF EXISTS "role"/i,
+      );
     });
 
     it('uses IF EXISTS so rollback is idempotent', async () => {
@@ -113,20 +115,10 @@ describe('Migration: AddUserRoleToUsers1790000000000', () => {
     it('timestamp is greater than all existing migration timestamps', () => {
       const ts = 1790000000000;
       const existingTimestamps = [
-        1704067200000,
-        1769422695901,
-        1769500000000,
-        1769500000001,
-        1769500000002,
-        1769600000000,
-        1769700000000,
-        1769800000000,
-        1769800100000,
-        1769800200000,
-        1769800300000,
-        1769800400000,
-        1785446400000,
-        1788000000000,
+        1704067200000, 1769422695901, 1769500000000, 1769500000001,
+        1769500000002, 1769600000000, 1769700000000, 1769800000000,
+        1769800100000, 1769800200000, 1769800300000, 1769800400000,
+        1785446400000, 1788000000000,
       ];
       for (const existing of existingTimestamps) {
         expect(ts).toBeGreaterThan(existing);

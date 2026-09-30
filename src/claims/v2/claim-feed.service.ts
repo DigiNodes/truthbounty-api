@@ -1,10 +1,18 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Claim } from '../entities/claim.entity';
 import { IndexedEvent } from '../../entities/indexed-event.entity';
 import { Stake } from '../../staking/entities/stake.entity';
-import { ClaimFeedQueryDto, CLAIM_FEED_MAX_LIMIT } from './dto/claim-feed-query.dto';
+import {
+  ClaimFeedQueryDto,
+  CLAIM_FEED_MAX_LIMIT,
+} from './dto/claim-feed-query.dto';
 import { ClaimsCache } from '../../cache/claims.cache';
 
 const DEFAULT_CONFIRMATIONS_REQUIRED = 12;
@@ -49,13 +57,13 @@ function normalizeDate(value: Date | string | null | undefined): Date | null {
  * ('%s', col) and strftime('%f') read that string as UTC, so we mirror that
  * interpretation here to keep the cursor sort key consistent with the column.
  */
-function toEpochMillis(value: Date | string | number | null | undefined): number | null {
+function toEpochMillis(
+  value: Date | string | number | null | undefined,
+): number | null {
   if (value === null || value === undefined) return null;
   if (value instanceof Date) return value.getTime();
   if (typeof value === 'number') return value;
-  const iso = value.includes('T')
-    ? value
-    : `${value.replace(' ', 'T')}Z`;
+  const iso = value.includes('T') ? value : `${value.replace(' ', 'T')}Z`;
   const ms = Date.parse(iso);
   return Number.isNaN(ms) ? null : ms;
 }
@@ -101,10 +109,16 @@ export class ClaimFeedService {
     if (query.state) {
       switch (query.state) {
         case 'PENDING':
-          qb.andWhere('claim."resolvedVerdict" IS NULL AND claim."confidenceScore" IS NULL AND claim.finalized = :f', { f: false });
+          qb.andWhere(
+            'claim."resolvedVerdict" IS NULL AND claim."confidenceScore" IS NULL AND claim.finalized = :f',
+            { f: false },
+          );
           break;
         case 'RESOLVED':
-          qb.andWhere('claim."resolvedVerdict" IS NOT NULL AND claim."confidenceScore" IS NOT NULL AND claim.finalized = :f', { f: false });
+          qb.andWhere(
+            'claim."resolvedVerdict" IS NOT NULL AND claim."confidenceScore" IS NOT NULL AND claim.finalized = :f',
+            { f: false },
+          );
           break;
         case 'FINALIZED':
           qb.andWhere('claim.finalized = :f', { f: true });
@@ -124,10 +138,14 @@ export class ClaimFeedService {
 
     // Date range filter
     if (query.from) {
-      qb.andWhere('claim."effectiveAt" >= :fromDate', { fromDate: new Date(query.from) });
+      qb.andWhere('claim."effectiveAt" >= :fromDate', {
+        fromDate: new Date(query.from),
+      });
     }
     if (query.to) {
-      qb.andWhere('claim."effectiveAt" <= :toDate', { toDate: new Date(query.to) });
+      qb.andWhere('claim."effectiveAt" <= :toDate', {
+        toDate: new Date(query.to),
+      });
     }
 
     // Stable ordering
@@ -142,14 +160,15 @@ export class ClaimFeedService {
     // Normalize the raw (possibly SQLite-string) effectiveAt before encoding
     // so the cursor carries a canonical instant independent of process timezone.
     const last = page[page.length - 1];
-    const nextCursor = hasMore && page.length > 0
-      ? encodeCursor({
-          effectiveAt: new Date(
-            toEpochMillis(last.effectiveAt ?? last.createdAt) ?? Date.now(),
-          ).toISOString(),
-          id: last.id,
-        })
-      : null;
+    const nextCursor =
+      hasMore && page.length > 0
+        ? encodeCursor({
+            effectiveAt: new Date(
+              toEpochMillis(last.effectiveAt ?? last.createdAt) ?? Date.now(),
+            ).toISOString(),
+            id: last.id,
+          })
+        : null;
 
     // Fetch once for the whole page: the underlying query has no per-claim
     // filter (see getLatestClaimCreatedEvent), so calling it once per row
@@ -177,7 +196,9 @@ export class ClaimFeedService {
       throw new NotFoundException(`Claim ${id} not found`);
     }
 
-    const confirmations = this.computeConfirmations(await this.getLatestClaimCreatedEvent());
+    const confirmations = this.computeConfirmations(
+      await this.getLatestClaimCreatedEvent(),
+    );
 
     return {
       id: claim.id,
@@ -201,7 +222,10 @@ export class ClaimFeedService {
     };
   }
 
-  private async toFeedItem(claim: Claim, latestEvent: IndexedEvent | null): Promise<any> {
+  private async toFeedItem(
+    claim: Claim,
+    latestEvent: IndexedEvent | null,
+  ): Promise<any> {
     const confirmations = this.computeConfirmations(latestEvent);
 
     return {

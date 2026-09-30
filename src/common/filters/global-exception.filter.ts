@@ -7,7 +7,10 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
-import { PublicErrorCode, ERROR_CODE_DESCRIPTIONS } from '../constants/error-codes';
+import {
+  PublicErrorCode,
+  ERROR_CODE_DESCRIPTIONS,
+} from '../constants/error-codes';
 import { redactObject, generateRequestId } from '../utils/redaction.util';
 
 @Catch()

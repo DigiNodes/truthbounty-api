@@ -24,7 +24,10 @@ export async function withTimeout<T>(
 ): Promise<T> {
   let timer: ReturnType<typeof setTimeout>;
   const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new ProbeTimeoutError(name, timeoutMs)), timeoutMs);
+    timer = setTimeout(
+      () => reject(new ProbeTimeoutError(name, timeoutMs)),
+      timeoutMs,
+    );
   });
 
   try {
@@ -62,10 +65,14 @@ export function classifyFailure(error: unknown): {
   reason: string;
 } {
   if (error instanceof ProbeTimeoutError) {
-    return { reasonCode: 'TIMEOUT', reason: 'Dependency check exceeded time budget' };
+    return {
+      reasonCode: 'TIMEOUT',
+      reason: 'Dependency check exceeded time budget',
+    };
   }
 
-  const message = error instanceof Error ? error.message : String(error ?? 'Unknown failure');
+  const message =
+    error instanceof Error ? error.message : String(error ?? 'Unknown failure');
   let sanitized = message;
   for (const pattern of SECRET_LIKE_PATTERNS) {
     sanitized = sanitized.replace(pattern, '[redacted]');
@@ -82,7 +89,11 @@ export function classifyFailure(error: unknown): {
     lower.includes('not connected')
   ) {
     reasonCode = 'CONNECTION_ERROR';
-  } else if (lower.includes('threshold') || lower.includes('exceeds') || lower.includes('degraded')) {
+  } else if (
+    lower.includes('threshold') ||
+    lower.includes('exceeds') ||
+    lower.includes('degraded')
+  ) {
     reasonCode = 'THRESHOLD_EXCEEDED';
   } else if (lower.includes('unavailable')) {
     reasonCode = 'UNAVAILABLE';

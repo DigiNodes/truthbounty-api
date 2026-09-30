@@ -118,7 +118,10 @@ describe('ProtocolAdminService', () => {
         { provide: ConfigurationService, useValue: mockConfigService },
         { provide: JobsService, useValue: mockJobsService },
         { provide: RedisService, useValue: mockRedisService },
-        { provide: getQueueToken(QueueName.DEFAULT), useValue: mockDefaultQueue },
+        {
+          provide: getQueueToken(QueueName.DEFAULT),
+          useValue: mockDefaultQueue,
+        },
         {
           provide: getQueueToken(QueueName.NOTIFICATIONS),
           useValue: mockNotificationsQueue,
@@ -544,10 +547,7 @@ describe('ProtocolAdminService', () => {
 
   describe('getAdminAuditLogs', () => {
     it('should return admin audit logs', async () => {
-      mockAuditLogRepo.findAndCount.mockResolvedValue([
-        [{ id: 'log-1' }],
-        1,
-      ]);
+      mockAuditLogRepo.findAndCount.mockResolvedValue([[{ id: 'log-1' }], 1]);
 
       const result = await service.getAdminAuditLogs(10, 0);
 

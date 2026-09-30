@@ -3,7 +3,6 @@ import { getMetadataArgsStorage } from 'typeorm';
 import { User } from './user.entity';
 
 describe('User entity schema sync (BE-203)', () => {
-
   it('User entity maps to the "users" table', () => {
     const tableMetadata = getMetadataArgsStorage().tables.find(
       (t) => t.target === User,
@@ -71,7 +70,9 @@ describe('User entity schema sync (BE-203)', () => {
       const relations = getMetadataArgsStorage().relations.filter(
         (r) => r.target === User,
       );
-      const walletsRelation = relations.find((r) => r.propertyName === 'wallets');
+      const walletsRelation = relations.find(
+        (r) => r.propertyName === 'wallets',
+      );
       expect(walletsRelation).toBeDefined();
       expect(walletsRelation?.relationType).toBe('one-to-many');
     });

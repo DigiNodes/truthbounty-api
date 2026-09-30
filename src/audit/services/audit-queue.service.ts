@@ -16,7 +16,10 @@ export class AuditQueueService {
     private readonly auditQueue: Queue,
     private readonly configService: ConfigService,
   ) {
-    this.asyncEnabled = this.configService.get<boolean>('audit.asyncWritesEnabled', true);
+    this.asyncEnabled = this.configService.get<boolean>(
+      'audit.asyncWritesEnabled',
+      true,
+    );
   }
 
   async enqueue(input: AuditLogInput): Promise<void> {

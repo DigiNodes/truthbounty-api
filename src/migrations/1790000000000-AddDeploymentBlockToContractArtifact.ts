@@ -13,9 +13,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * Nullable so the column addition is non-breaking and zero-downtime on a live
  * database (no default forces a table rewrite on Postgres).
  */
-export class AddDeploymentBlockToContractArtifact1790000000000
-  implements MigrationInterface
-{
+export class AddDeploymentBlockToContractArtifact1790000000000 implements MigrationInterface {
   name = 'AddDeploymentBlockToContractArtifact1790000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

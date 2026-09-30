@@ -37,7 +37,10 @@ export class ComplianceService {
 
     const query = this.auditLogRepo
       .createQueryBuilder('audit')
-      .where('audit.createdAt BETWEEN :startDate AND :endDate', { startDate, endDate })
+      .where('audit.createdAt BETWEEN :startDate AND :endDate', {
+        startDate,
+        endDate,
+      })
       .orderBy('audit.createdAt', 'DESC');
 
     if (options.userId) {
@@ -46,10 +49,14 @@ export class ComplianceService {
 
     switch (type) {
       case 'admin-activity':
-        query.andWhere('audit.category = :cat', { cat: AuditCategory.ADMINISTRATIVE });
+        query.andWhere('audit.category = :cat', {
+          cat: AuditCategory.ADMINISTRATIVE,
+        });
         break;
       case 'moderation-actions':
-        query.andWhere('audit.category = :cat', { cat: AuditCategory.MODERATION });
+        query.andWhere('audit.category = :cat', {
+          cat: AuditCategory.MODERATION,
+        });
         break;
       case 'login-history':
         query.andWhere('(audit.actionType = :s OR audit.actionType = :f)', {
@@ -58,14 +65,19 @@ export class ComplianceService {
         });
         break;
       case 'governance-actions':
-        query.andWhere('audit.category = :cat', { cat: AuditCategory.GOVERNANCE });
+        query.andWhere('audit.category = :cat', {
+          cat: AuditCategory.GOVERNANCE,
+        });
         break;
       case 'permission-changes':
-        query.andWhere('(audit.actionType = :pc OR audit.actionType = :ra OR audit.actionType = :rr)', {
-          pc: AuditActionType.PERMISSION_CHANGED,
-          ra: AuditActionType.ROLE_ASSIGNED,
-          rr: AuditActionType.ROLE_REVOKED,
-        });
+        query.andWhere(
+          '(audit.actionType = :pc OR audit.actionType = :ra OR audit.actionType = :rr)',
+          {
+            pc: AuditActionType.PERMISSION_CHANGED,
+            ra: AuditActionType.ROLE_ASSIGNED,
+            rr: AuditActionType.ROLE_REVOKED,
+          },
+        );
         break;
       case 'security-incidents':
         query.andWhere('audit.severity IN (:...severities)', {
@@ -95,7 +107,9 @@ export class ComplianceService {
     return report;
   }
 
-  async exportAuditLogs(options: ReportOptions): Promise<{ data: any; format: string; filename: string }> {
+  async exportAuditLogs(
+    options: ReportOptions,
+  ): Promise<{ data: any; format: string; filename: string }> {
     const startDate = options.startDate
       ? new Date(options.startDate)
       : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
@@ -107,7 +121,7 @@ export class ComplianceService {
         createdAt: this.buildDateRangeCondition(startDate, endDate) as any,
       },
       order: { createdAt: 'DESC' },
-      relations: ['user'],
+      relations: { user: true },
     });
 
     const filename = `audit-export-${startDate.toISOString().split('T')[0]}-to-${endDate.toISOString().split('T')[0]}`;
@@ -178,7 +192,20 @@ export class ComplianceService {
   }
 
   private toCsvString(records: AuditLog[]): string {
-    const headers = ['eventId', 'actionType', 'entityType', 'entityId', 'userId', 'severity', 'category', 'description', 'createdAt', 'ipAddress', 'source', 'requestId'];
+    const headers = [
+      'eventId',
+      'actionType',
+      'entityType',
+      'entityId',
+      'userId',
+      'severity',
+      'category',
+      'description',
+      'createdAt',
+      'ipAddress',
+      'source',
+      'requestId',
+    ];
     const rows = this.toCsvRecords(records);
 
     const escapeCsv = (val: any): string => {
@@ -219,13 +246,15 @@ export class ComplianceService {
     return summary;
   }
 
-  async getDailyActivity(days = 30): Promise<Array<{ date: string; count: number }>> {
+  async getDailyActivity(
+    days = 30,
+  ): Promise<Array<{ date: string; count: number }>> {
     const since = new Date();
     since.setDate(since.getDate() - days);
 
     const query = this.auditLogRepo
       .createQueryBuilder('audit')
-      .select("DATE(audit.createdAt) as date")
+      .select('DATE(audit.createdAt) as date')
       .addSelect('COUNT(*)', 'count')
       .where('audit.createdAt >= :since', { since })
       .groupBy('date')

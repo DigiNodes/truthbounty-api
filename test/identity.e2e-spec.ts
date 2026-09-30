@@ -28,13 +28,13 @@ describe('Identity (e2e)', () => {
     const res = await request(app.getHttpServer())
       .post('/identity/users')
       .expect(201);
-    
+
     expect(res.body.id).toBeDefined();
     userId = res.body.id;
   });
 
   it('should link a wallet with valid signature', async () => {
-    // Ensure user exists (re-create for isolation if needed, but we use shared userId from previous test if sequential, 
+    // Ensure user exists (re-create for isolation if needed, but we use shared userId from previous test if sequential,
     // but jest runs parallel by default unless runInBand. Best to create user here.)
     const userRes = await request(app.getHttpServer()).post('/identity/users');
     const uid = userRes.body.id;
@@ -52,9 +52,11 @@ describe('Identity (e2e)', () => {
         message,
       })
       .expect(201);
-    
+
     // Verify wallet is linked
-    const user = await request(app.getHttpServer()).get(`/identity/users/${uid}`);
+    const user = await request(app.getHttpServer()).get(
+      `/identity/users/${uid}`,
+    );
     expect(user.body.wallets).toHaveLength(1);
     expect(user.body.wallets[0].address).toBe(wallet.address);
   });
@@ -82,7 +84,7 @@ describe('Identity (e2e)', () => {
     // User 1
     const u1 = await request(app.getHttpServer()).post('/identity/users');
     const uid1 = u1.body.id;
-    
+
     // User 2
     const u2 = await request(app.getHttpServer()).post('/identity/users');
     const uid2 = u2.body.id;
@@ -113,38 +115,40 @@ describe('Identity (e2e)', () => {
       })
       .expect(409); // Conflict
   });
-  
-  it('should allow linking same wallet to SAME user (idempotent or multi-chain)', async () => {
-     const u1 = await request(app.getHttpServer()).post('/identity/users');
-     const uid1 = u1.body.id;
- 
-     const wallet = Wallet.createRandom();
-     const message = 'Link me';
-     const signature = await wallet.signMessage(message);
- 
-     // Link ETH
-     await request(app.getHttpServer())
-       .post(`/identity/users/${uid1}/wallets`)
-       .send({
-         address: wallet.address,
-         chain: 'ETH',
-         signature,
-         message,
-       })
-       .expect(201);
- 
-     // Link OPT (Same user, different chain)
-     await request(app.getHttpServer())
-       .post(`/identity/users/${uid1}/wallets`)
-       .send({
-         address: wallet.address,
-         chain: 'OPT',
-         signature,
-         message,
-       })
-       .expect(201);
 
-     const user = await request(app.getHttpServer()).get(`/identity/users/${uid1}`);
-     expect(user.body.wallets).toHaveLength(2);
+  it('should allow linking same wallet to SAME user (idempotent or multi-chain)', async () => {
+    const u1 = await request(app.getHttpServer()).post('/identity/users');
+    const uid1 = u1.body.id;
+
+    const wallet = Wallet.createRandom();
+    const message = 'Link me';
+    const signature = await wallet.signMessage(message);
+
+    // Link ETH
+    await request(app.getHttpServer())
+      .post(`/identity/users/${uid1}/wallets`)
+      .send({
+        address: wallet.address,
+        chain: 'ETH',
+        signature,
+        message,
+      })
+      .expect(201);
+
+    // Link OPT (Same user, different chain)
+    await request(app.getHttpServer())
+      .post(`/identity/users/${uid1}/wallets`)
+      .send({
+        address: wallet.address,
+        chain: 'OPT',
+        signature,
+        message,
+      })
+      .expect(201);
+
+    const user = await request(app.getHttpServer()).get(
+      `/identity/users/${uid1}`,
+    );
+    expect(user.body.wallets).toHaveLength(2);
   });
 });

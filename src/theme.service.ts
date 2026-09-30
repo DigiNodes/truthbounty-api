@@ -103,7 +103,10 @@ export class ThemeService {
   /**
    * Save user theme to persistent storage (database simulation)
    */
-  private saveUserThemeToStorage(userId: string, preference: ThemePreference): void {
+  private saveUserThemeToStorage(
+    userId: string,
+    preference: ThemePreference,
+  ): void {
     try {
       // In a real implementation, this would save to database
       this.userThemes.set(userId, preference.theme);

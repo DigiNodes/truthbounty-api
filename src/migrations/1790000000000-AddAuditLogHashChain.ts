@@ -56,7 +56,11 @@ export class AddAuditLogHashChain1790000000000 implements MigrationInterface {
     await queryRunner.query(`DROP TABLE "audit_chain_state"`);
     await queryRunner.query(`DROP INDEX "IDX_audit_logs_chain_sequence"`);
     await queryRunner.query(`DROP INDEX "UQ_audit_logs_chain_sequence"`);
-    await queryRunner.query(`ALTER TABLE "audit_logs" DROP COLUMN "chainSequence"`);
-    await queryRunner.query(`ALTER TABLE "audit_logs" DROP COLUMN "previousHash"`);
+    await queryRunner.query(
+      `ALTER TABLE "audit_logs" DROP COLUMN "chainSequence"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "audit_logs" DROP COLUMN "previousHash"`,
+    );
   }
 }

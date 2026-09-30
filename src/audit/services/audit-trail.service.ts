@@ -294,7 +294,7 @@ export class AuditTrailService implements OnModuleInit {
     return this.auditLogRepo.find({
       where: { entityType, entityId },
       order: { createdAt: 'DESC' },
-      relations: ['user'],
+      relations: { user: true },
     });
   }
 
@@ -308,7 +308,7 @@ export class AuditTrailService implements OnModuleInit {
       order: { createdAt: 'DESC' },
       skip: offset,
       take: limit,
-      relations: ['user'],
+      relations: { user: true },
     });
 
     return { logs, total };
@@ -324,7 +324,7 @@ export class AuditTrailService implements OnModuleInit {
       order: { createdAt: 'DESC' },
       skip: offset,
       take: limit,
-      relations: ['user'],
+      relations: { user: true },
     });
 
     return { logs, total };
@@ -469,7 +469,7 @@ export class AuditTrailService implements OnModuleInit {
     Array<{
       timestamp: Date;
       action: AuditActionType;
-      userId: string;
+      userId: string | null;
       changes: Record<string, { before: any; after: any }>;
     }>
   > {
@@ -495,7 +495,7 @@ export class AuditTrailService implements OnModuleInit {
   async getAuditLogsByEventId(eventId: string): Promise<AuditLog | null> {
     return this.auditLogRepo.findOne({
       where: { eventId },
-      relations: ['user'],
+      relations: { user: true },
     });
   }
 
@@ -579,7 +579,11 @@ export class AuditTrailService implements OnModuleInit {
     return result.affected || 0;
   }
 
-  async getStorageStats(): Promise<{ totalRecords: number; oldestRecord: Date | null; newestRecord: Date | null }> {
+  async getStorageStats(): Promise<{
+    totalRecords: number;
+    oldestRecord: Date | null;
+    newestRecord: Date | null;
+  }> {
     const totalRecords = await this.auditLogRepo.count();
     const oldest = await this.auditLogRepo
       .createQueryBuilder('audit')

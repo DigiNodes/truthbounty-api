@@ -55,13 +55,19 @@ describe('claim-resolution invariant (BE-219)', () => {
 
     it('throws when resolvedAt is set but resolvedVerdict is null (inverse bug)', () => {
       expect(() =>
-        assertResolvedAtInvariant({ resolvedVerdict: null, resolvedAt: new Date() }),
+        assertResolvedAtInvariant({
+          resolvedVerdict: null,
+          resolvedAt: new Date(),
+        }),
       ).toThrow(BadRequestException);
     });
 
     it('includes BE-219 in the error message for the timestamp-without-verdict case', () => {
       expect(() =>
-        assertResolvedAtInvariant({ resolvedVerdict: null, resolvedAt: new Date() }),
+        assertResolvedAtInvariant({
+          resolvedVerdict: null,
+          resolvedAt: new Date(),
+        }),
       ).toThrow(/BE-219/);
     });
   });

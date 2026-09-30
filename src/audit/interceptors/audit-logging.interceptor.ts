@@ -12,7 +12,10 @@ import { Reflector } from '@nestjs/core';
 import { REQUEST } from '@nestjs/core';
 import { Request } from 'express';
 import { AuditTrailService } from '../services/audit-trail.service';
-import { AUDIT_LOG_KEY, AuditMetadata } from '../decorators/audit-log.decorator';
+import {
+  AUDIT_LOG_KEY,
+  AuditMetadata,
+} from '../decorators/audit-log.decorator';
 
 @Injectable()
 export class AuditLoggingInterceptor implements NestInterceptor {
@@ -100,16 +103,17 @@ export class AuditLoggingInterceptor implements NestInterceptor {
             },
           });
         } catch (auditError) {
-          this.logger.error(
-            `Failed to audit log error: ${auditError.message}`,
-          );
+          this.logger.error(`Failed to audit log error: ${auditError.message}`);
         }
         throw error;
       }),
     );
   }
 
-  private extractEntityId(path: string | undefined, args: any[]): string | null {
+  private extractEntityId(
+    path: string | undefined,
+    args: any[],
+  ): string | null {
     if (!path) return null;
 
     try {

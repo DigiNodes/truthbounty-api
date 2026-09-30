@@ -1,7 +1,5 @@
-import { createHash } from "crypto";
+import { createHash } from 'crypto';
 
 export function computeSHA256(buffer: Buffer): string {
-  return createHash("sha256")
-    .update(buffer)
-    .digest("hex");
+  return createHash('sha256').update(buffer).digest('hex');
 }

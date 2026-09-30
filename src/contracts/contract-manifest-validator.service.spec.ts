@@ -2,9 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
 import { ethers } from 'ethers';
-import {
-  ContractManifestValidatorService,
-} from './contract-manifest-validator.service';
+import { ContractManifestValidatorService } from './contract-manifest-validator.service';
 import {
   ContractAddressManifest,
   ManifestContractEntry,
@@ -92,11 +90,11 @@ describe('ContractManifestValidatorService', () => {
   ): Promise<ContractManifestValidatorService> => {
     configGet = jest.fn((key: string, def?: unknown) => {
       const defaults: Record<string, unknown> = {
-        MANIFEST_VALIDATION: undefined,           // not disabled
-        BLOCKCHAIN_STARTUP_RPC_CHECK: 'false',    // no live network in tests
+        MANIFEST_VALIDATION: undefined, // not disabled
+        BLOCKCHAIN_STARTUP_RPC_CHECK: 'false', // no live network in tests
         OPTIMISM_RPC_URL: 'https://mainnet.optimism.io',
         CONTRACT_ADDRESS_MANIFEST: undefined,
-        MANIFEST_MAX_AGE_DAYS: undefined,         // use default (90)
+        MANIFEST_MAX_AGE_DAYS: undefined, // use default (90)
         ...configValues,
       };
       return key in defaults ? defaults[key] : def;
@@ -203,21 +201,18 @@ describe('ContractManifestValidatorService', () => {
   // ── validateManifest — chain guard ────────────────────────────────────────
 
   describe('validateManifest — chain guard', () => {
-    it.each([10, 11155420])(
-      'accepts Optimism chain ID %i',
-      async (chainId) => {
-        const contracts = [buildContract()];
-        const m: ContractAddressManifest = {
-          version: '1.0.0',
-          chainId: chainId as any,
-          publishedAt: new Date().toISOString(),
-          manifestChecksum: manifestChecksum(contracts),
-          contracts,
-        };
-        const report = await service.validateManifest(m);
-        expect(report.valid).toBe(true);
-      },
-    );
+    it.each([10, 11155420])('accepts Optimism chain ID %i', async (chainId) => {
+      const contracts = [buildContract()];
+      const m: ContractAddressManifest = {
+        version: '1.0.0',
+        chainId: chainId as any,
+        publishedAt: new Date().toISOString(),
+        manifestChecksum: manifestChecksum(contracts),
+        contracts,
+      };
+      const report = await service.validateManifest(m);
+      expect(report.valid).toBe(true);
+    });
 
     it.each([1, 137, 42161, 56, 0, -1, 999])(
       'rejects non-Optimism chain ID %i',
@@ -256,9 +251,7 @@ describe('ContractManifestValidatorService', () => {
     });
 
     it('rejects a manifest published 91 days ago (exceeds default 90-day limit)', async () => {
-      const ninetyOneDaysAgo = new Date(
-        Date.now() - 91 * 24 * 60 * 60 * 1000,
-      );
+      const ninetyOneDaysAgo = new Date(Date.now() - 91 * 24 * 60 * 60 * 1000);
       const m = buildManifest({ publishedAt: ninetyOneDaysAgo.toISOString() });
       const report = await service.validateManifest(m);
       expect(report.valid).toBe(false);
@@ -342,7 +335,9 @@ describe('ContractManifestValidatorService', () => {
 
     it('fails for an address with non-hex characters', () => {
       const result = service.validateContractEntry(
-        buildContract({ address: '0xGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG' }),
+        buildContract({
+          address: '0xGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG',
+        }),
       );
       expect(result.valid).toBe(false);
     });
@@ -415,7 +410,10 @@ describe('ContractManifestValidatorService', () => {
     it('fails when an event has no ABI string', () => {
       const events = [{ name: 'NoAbi', abi: '' }];
       const result = service.validateContractEntry(
-        buildContract({ events: events as any, abiChecksum: abiChecksum(events as any) }),
+        buildContract({
+          events: events as any,
+          abiChecksum: abiChecksum(events as any),
+        }),
       );
       expect(result.valid).toBe(false);
       expect(result.errors.join(' ')).toMatch(/no ABI string/i);
@@ -451,7 +449,9 @@ describe('ContractManifestValidatorService', () => {
   describe('validateContractEntry — topic0 cross-check', () => {
     it('passes when topic0 matches the ABI-derived hash', () => {
       const correctTopic0 = topic0FromAbi(VALID_EVENT_ABI);
-      const events = [{ name: 'Staked', abi: VALID_EVENT_ABI, topic0: correctTopic0 }];
+      const events = [
+        { name: 'Staked', abi: VALID_EVENT_ABI, topic0: correctTopic0 },
+      ];
       const result = service.validateContractEntry(
         buildContract({ events, abiChecksum: abiChecksum(events) }),
       );
@@ -460,7 +460,9 @@ describe('ContractManifestValidatorService', () => {
 
     it('fails when the declared topic0 does not match the ABI-derived hash', () => {
       const wrongTopic0 = '0x' + 'aa'.repeat(32);
-      const events = [{ name: 'Staked', abi: VALID_EVENT_ABI, topic0: wrongTopic0 }];
+      const events = [
+        { name: 'Staked', abi: VALID_EVENT_ABI, topic0: wrongTopic0 },
+      ];
       const result = service.validateContractEntry(
         buildContract({ events, abiChecksum: abiChecksum(events) }),
       );
@@ -657,7 +659,10 @@ describe('ContractManifestValidatorService', () => {
     });
 
     it('produces a separate contractResult entry per contract regardless of pass/fail', async () => {
-      const c1 = buildContract({ name: 'Good', address: checksummedAddr('0001') });
+      const c1 = buildContract({
+        name: 'Good',
+        address: checksummedAddr('0001'),
+      });
       const c2 = buildContract({ name: 'BadAddr', address: '' });
       const contracts = [c1, c2];
       const m: ContractAddressManifest = {
@@ -686,7 +691,9 @@ describe('ContractManifestValidatorService', () => {
 
     it('wrong topic0 does not silently pass when other fields are valid', () => {
       const wrongTopic0 = '0x' + 'cc'.repeat(32);
-      const events = [{ name: 'Staked', abi: VALID_EVENT_ABI, topic0: wrongTopic0 }];
+      const events = [
+        { name: 'Staked', abi: VALID_EVENT_ABI, topic0: wrongTopic0 },
+      ];
       const result = service.validateContractEntry(
         buildContract({ events, abiChecksum: abiChecksum(events) }),
       );

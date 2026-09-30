@@ -6,9 +6,14 @@ import { WebhookDeliveryService } from './webhook-delivery.service';
 import { PushDeliveryService } from './push-delivery.service';
 import { SmsDeliveryService } from './sms-delivery.service';
 import { NotificationDelivery } from '../../entities/notification-delivery.entity';
-import { DeliveryChannel, DeliveryStatus } from '../../enums/notification-type.enum';
+import {
+  DeliveryChannel,
+  DeliveryStatus,
+} from '../../enums/notification-type.enum';
 
-function createMockDelivery(overrides: Partial<NotificationDelivery> = {}): NotificationDelivery {
+function createMockDelivery(
+  overrides: Partial<NotificationDelivery> = {},
+): NotificationDelivery {
   return {
     id: 'del-1',
     notificationId: 'notif-1',
@@ -102,7 +107,10 @@ describe('Delivery Channels', () => {
     });
 
     it('should fail when no webhook URL configured', async () => {
-      const delivery = createMockDelivery({ destination: null, channel: DeliveryChannel.WEBHOOK });
+      const delivery = createMockDelivery({
+        destination: null,
+        channel: DeliveryChannel.WEBHOOK,
+      });
       const result = await service.deliver(delivery);
       expect(result.success).toBe(false);
       expect(result.failureReason).toContain('No webhook URL');
@@ -129,7 +137,10 @@ describe('Delivery Channels', () => {
     });
 
     it('should fail when no push token configured', async () => {
-      const delivery = createMockDelivery({ destination: null, channel: DeliveryChannel.PUSH });
+      const delivery = createMockDelivery({
+        destination: null,
+        channel: DeliveryChannel.PUSH,
+      });
       const result = await service.deliver(delivery);
       expect(result.success).toBe(false);
       expect(result.failureReason).toContain('No push token');
@@ -156,7 +167,10 @@ describe('Delivery Channels', () => {
     });
 
     it('should fail when no phone number configured', async () => {
-      const delivery = createMockDelivery({ destination: null, channel: DeliveryChannel.SMS });
+      const delivery = createMockDelivery({
+        destination: null,
+        channel: DeliveryChannel.SMS,
+      });
       const result = await service.deliver(delivery);
       expect(result.success).toBe(false);
       expect(result.failureReason).toContain('No phone number');

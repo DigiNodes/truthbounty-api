@@ -49,7 +49,9 @@ describe('Authentication Gateway E2E (auth.e2e-spec.ts)', () => {
         })
         .expect(201)
         .expect((res) => {
-          expect(res.body.message).toContain('wants you to sign in with your Ethereum account');
+          expect(res.body.message).toContain(
+            'wants you to sign in with your Ethereum account',
+          );
           expect(res.body.format).toBe('siwe');
         });
     });
@@ -232,9 +234,7 @@ describe('Authentication Gateway E2E (auth.e2e-spec.ts)', () => {
     });
 
     it('should reject logout without token', () => {
-      return request(app.getHttpServer())
-        .post('/auth/logout')
-        .expect(403);
+      return request(app.getHttpServer()).post('/auth/logout').expect(403);
     });
   });
 
@@ -272,9 +272,7 @@ describe('Authentication Gateway E2E (auth.e2e-spec.ts)', () => {
     });
 
     it('should reject without token', () => {
-      return request(app.getHttpServer())
-        .get('/auth/profile')
-        .expect(403);
+      return request(app.getHttpServer()).get('/auth/profile').expect(403);
     });
 
     it('should reject with invalid token', () => {
@@ -335,9 +333,7 @@ describe('Authentication Gateway E2E (auth.e2e-spec.ts)', () => {
     });
 
     it('should allow GET /claims/latest without auth', () => {
-      return request(app.getHttpServer())
-        .get('/claims/latest')
-        .expect(200);
+      return request(app.getHttpServer()).get('/claims/latest').expect(200);
     });
   });
 

@@ -3,7 +3,12 @@ import { NotFoundException } from '@nestjs/common';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ModerationService } from '../moderation/moderation.service';
-import { ModerationReport, ReportStatus, ReportType, ReportPriority } from '../entities/moderation-report.entity';
+import {
+  ModerationReport,
+  ReportStatus,
+  ReportType,
+  ReportPriority,
+} from '../entities/moderation-report.entity';
 import { Admin, AdminRole } from '../entities/admin.entity';
 import { AuditTrailService } from '../../audit/services/audit-trail.service';
 
@@ -117,7 +122,9 @@ describe('ModerationService', () => {
     it('should throw NotFoundException if report not found', async () => {
       reportRepo.findOneBy.mockResolvedValue(null);
 
-      await expect(service.findById('nonexistent')).rejects.toThrow(NotFoundException);
+      await expect(service.findById('nonexistent')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -152,9 +159,17 @@ describe('ModerationService', () => {
   describe('assign', () => {
     it('should assign a report to a moderator', async () => {
       reportRepo.findOneBy.mockResolvedValue(mockReport);
-      reportRepo.save.mockResolvedValue({ ...mockReport, assignedTo: 'mod-1', status: ReportStatus.UNDER_REVIEW });
+      reportRepo.save.mockResolvedValue({
+        ...mockReport,
+        assignedTo: 'mod-1',
+        status: ReportStatus.UNDER_REVIEW,
+      });
 
-      const result = await service.assign('report-1', { assigneeId: 'mod-1' }, mockAdmin);
+      const result = await service.assign(
+        'report-1',
+        { assigneeId: 'mod-1' },
+        mockAdmin,
+      );
 
       expect(result.assignedTo).toBe('mod-1');
       expect(result.status).toBe(ReportStatus.UNDER_REVIEW);

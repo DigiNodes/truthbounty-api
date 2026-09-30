@@ -1,4 +1,8 @@
-import { ForbiddenException, ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
 import { StakingController } from './staking.controller';
@@ -20,8 +24,12 @@ describe('StakingController — Authorization Matrix', () => {
   let controller: StakingController;
 
   const mockStakeService: Partial<ProjectStakeService> = {
-    getEntitlement: jest.fn().mockResolvedValue({ total: '1000', locked: '0', withdrawable: '1000' }),
-    getStakeOrThrow: jest.fn().mockResolvedValue({ walletAddress: '0xabc', amount: '500' }),
+    getEntitlement: jest
+      .fn()
+      .mockResolvedValue({ total: '1000', locked: '0', withdrawable: '1000' }),
+    getStakeOrThrow: jest
+      .fn()
+      .mockResolvedValue({ walletAddress: '0xabc', amount: '500' }),
     createLock: jest.fn().mockResolvedValue({ id: 'lock-1' }),
     withdraw: jest.fn().mockResolvedValue({ applied: true }),
     reconcile: jest.fn().mockResolvedValue({ synced: true }),
@@ -47,13 +55,19 @@ describe('StakingController — Authorization Matrix', () => {
 
   it('entitlement() returns breakdown from service', async () => {
     const result = await controller.entitlement('claim-1', '0xabc');
-    expect(mockStakeService.getEntitlement).toHaveBeenCalledWith('0xabc', 'claim-1');
+    expect(mockStakeService.getEntitlement).toHaveBeenCalledWith(
+      '0xabc',
+      'claim-1',
+    );
     expect(result).toHaveProperty('total');
   });
 
   it('stake() returns stake record from service', async () => {
     const result = await controller.stake('claim-1', '0xabc');
-    expect(mockStakeService.getStakeOrThrow).toHaveBeenCalledWith('0xabc', 'claim-1');
+    expect(mockStakeService.getStakeOrThrow).toHaveBeenCalledWith(
+      '0xabc',
+      'claim-1',
+    );
     expect(result).toHaveProperty('walletAddress');
   });
 
@@ -61,13 +75,20 @@ describe('StakingController — Authorization Matrix', () => {
     (mockStakeService.getStakeOrThrow as jest.Mock).mockRejectedValueOnce(
       new Error('Stake not found'),
     );
-    await expect(controller.stake('claim-x', '0xnobody')).rejects.toThrow(NotFoundException);
+    await expect(controller.stake('claim-x', '0xnobody')).rejects.toThrow(
+      NotFoundException,
+    );
   });
 
   // ── Write routes — authenticated users ───────────────────────────────────
 
   it('createLock() delegates to service', async () => {
-    const dto = { walletAddress: '0xabc', amount: '100', unlocksAt: new Date(), reason: 'test' };
+    const dto = {
+      walletAddress: '0xabc',
+      amount: '100',
+      unlocksAt: new Date(),
+      reason: 'test',
+    };
     const result = await controller.createLock('claim-1', dto as any);
     expect(mockStakeService.createLock).toHaveBeenCalledWith({
       walletAddress: '0xabc',
@@ -83,14 +104,23 @@ describe('StakingController — Authorization Matrix', () => {
     (mockStakeService.createLock as jest.Mock).mockRejectedValueOnce(
       new Error('lock already exists'),
     );
-    const dto = { walletAddress: '0xabc', amount: '100', unlocksAt: new Date() };
+    const dto = {
+      walletAddress: '0xabc',
+      amount: '100',
+      unlocksAt: new Date(),
+    };
     await expect(controller.createLock('claim-1', dto as any)).rejects.toThrow(
       ConflictException,
     );
   });
 
   it('withdraw() delegates to service', async () => {
-    const dto = { walletAddress: '0xabc', amount: '50', txHash: '0xtx', blockNumber: 100 };
+    const dto = {
+      walletAddress: '0xabc',
+      amount: '50',
+      txHash: '0xtx',
+      blockNumber: 100,
+    };
     const result = await controller.withdraw('claim-1', dto as any);
     expect(mockStakeService.withdraw).toHaveBeenCalledWith({
       walletAddress: '0xabc',
@@ -107,8 +137,15 @@ describe('StakingController — Authorization Matrix', () => {
       applied: false,
       reason: 'duplicate',
     });
-    const dto = { walletAddress: '0xabc', amount: '50', txHash: '0xtx', blockNumber: 100 };
-    await expect(controller.withdraw('claim-1', dto as any)).rejects.toThrow(ConflictException);
+    const dto = {
+      walletAddress: '0xabc',
+      amount: '50',
+      txHash: '0xtx',
+      blockNumber: 100,
+    };
+    await expect(controller.withdraw('claim-1', dto as any)).rejects.toThrow(
+      ConflictException,
+    );
   });
 
   // ── Reconcile — admin only ────────────────────────────────────────────────
@@ -116,7 +153,11 @@ describe('StakingController — Authorization Matrix', () => {
   it('reconcile() delegates to service when admin guard allows', async () => {
     const body = { walletAddress: '0xabc', observedTotal: '1000' };
     const result = await controller.reconcile('claim-1', body);
-    expect(mockStakeService.reconcile).toHaveBeenCalledWith('0xabc', 'claim-1', '1000');
+    expect(mockStakeService.reconcile).toHaveBeenCalledWith(
+      '0xabc',
+      'claim-1',
+      '1000',
+    );
     expect(result).toEqual({ synced: true });
   });
 });
@@ -136,7 +177,9 @@ describe('StakingController — RolesGuard enforcement on reconcile', () => {
   });
 
   const buildReflector = (roles: string[]) =>
-    ({ getAllAndOverride: jest.fn().mockReturnValue(roles) }) as unknown as Reflector;
+    ({
+      getAllAndOverride: jest.fn().mockReturnValue(roles),
+    }) as unknown as Reflector;
 
   it('admin is allowed on reconcile', () => {
     const guard = new RolesGuard(buildReflector(['admin']));

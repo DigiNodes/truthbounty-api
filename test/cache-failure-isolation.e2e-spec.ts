@@ -11,7 +11,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 
 /**
  * Integration tests for cache failure isolation (V2-BE-116)
- * 
+ *
  * These tests verify that:
  * 1. Cache failures are isolated from canonical state (TypeORM/PostgreSQL)
  * 2. Cache failures are observable via logging and metrics
@@ -66,12 +66,19 @@ describe('Cache Failure Isolation (E2E)', () => {
       };
 
       // Mock database to return claim
-      jest.spyOn(claimRepo, 'findOneBy').mockResolvedValue(mockClaim as Claim);
+      jest
+        .spyOn(claimRepo, 'findOneBy')
+        .mockResolvedValue(mockClaim as unknown as Claim);
 
       // Mock cache to throw exception
-      jest.spyOn(claimsCache, 'getClaim').mockRejectedValue(
-        CacheUnavailableException.forGet('v1:claim:test-claim-1', new Error('Redis down')),
-      );
+      jest
+        .spyOn(claimsCache, 'getClaim')
+        .mockRejectedValue(
+          CacheUnavailableException.forGet(
+            'v1:claim:test-claim-1',
+            new Error('Redis down'),
+          ),
+        );
 
       // Service should still return the claim from database
       const result = await claimsService.findOne('test-claim-1');
@@ -92,15 +99,22 @@ describe('Cache Failure Isolation (E2E)', () => {
       };
 
       // Mock database to return claim
-      jest.spyOn(claimRepo, 'findOneBy').mockResolvedValue(mockClaim as Claim);
+      jest
+        .spyOn(claimRepo, 'findOneBy')
+        .mockResolvedValue(mockClaim as unknown as Claim);
 
       // Mock cache GET to return null (miss)
       jest.spyOn(claimsCache, 'getClaim').mockResolvedValue(null);
 
       // Mock cache SET to throw exception
-      jest.spyOn(claimsCache, 'setClaim').mockRejectedValue(
-        CacheUnavailableException.forSet('v1:claim:test-claim-2', new Error('Redis write failed')),
-      );
+      jest
+        .spyOn(claimsCache, 'setClaim')
+        .mockRejectedValue(
+          CacheUnavailableException.forSet(
+            'v1:claim:test-claim-2',
+            new Error('Redis write failed'),
+          ),
+        );
 
       // Service should still return the claim from database
       const result = await claimsService.findOne('test-claim-2');
@@ -122,10 +136,17 @@ describe('Cache Failure Isolation (E2E)', () => {
         updatedAt: new Date(),
       };
 
-      jest.spyOn(claimRepo, 'findOneBy').mockResolvedValue(mockClaim as Claim);
-      jest.spyOn(claimsCache, 'getClaim').mockRejectedValue(
-        CacheUnavailableException.forGet('v1:claim:test-claim-3', new Error('Redis connection failed')),
-      );
+      jest
+        .spyOn(claimRepo, 'findOneBy')
+        .mockResolvedValue(mockClaim as unknown as Claim);
+      jest
+        .spyOn(claimsCache, 'getClaim')
+        .mockRejectedValue(
+          CacheUnavailableException.forGet(
+            'v1:claim:test-claim-3',
+            new Error('Redis connection failed'),
+          ),
+        );
 
       await claimsService.findOne('test-claim-3');
 
@@ -158,7 +179,10 @@ describe('Cache Failure Isolation (E2E)', () => {
 
     it('should mark cache as unhealthy when threshold exceeded', () => {
       // Reset counters
-      const newService = new CacheHealthService(redisService, module.get(MetricsService));
+      const newService = new CacheHealthService(
+        redisService,
+        module.get(MetricsService),
+      );
 
       // Exceed threshold of 10 failures
       for (let i = 0; i < 11; i++) {
@@ -184,25 +208,39 @@ describe('Cache Failure Isolation (E2E)', () => {
         updatedAt: new Date(),
       };
 
-      jest.spyOn(claimRepo, 'findOneBy').mockResolvedValue(mockClaim as Claim);
-      jest.spyOn(claimsCache, 'getClaim').mockRejectedValue(
-        CacheUnavailableException.forGet('v1:claim:test-claim-4', new Error('Redis down')),
-      );
+      jest
+        .spyOn(claimRepo, 'findOneBy')
+        .mockResolvedValue(mockClaim as unknown as Claim);
+      jest
+        .spyOn(claimsCache, 'getClaim')
+        .mockRejectedValue(
+          CacheUnavailableException.forGet(
+            'v1:claim:test-claim-4',
+            new Error('Redis down'),
+          ),
+        );
 
       const result = await claimsService.findOne('test-claim-4');
 
       // Result must come from database, not fabricated
       expect(result).toEqual(mockClaim);
-      expect(result.id).toBe('test-claim-4');
-      expect(result.title).toBe('Real Claim');
+      expect(result!.id).toBe('test-claim-4');
+      expect(result!.title).toBe('Real Claim');
     });
 
     it('should not skip database when cache fails', async () => {
-      const findOneSpy = jest.spyOn(claimRepo, 'findOneBy').mockResolvedValue(null);
+      const findOneSpy = jest
+        .spyOn(claimRepo, 'findOneBy')
+        .mockResolvedValue(null);
 
-      jest.spyOn(claimsCache, 'getClaim').mockRejectedValue(
-        CacheUnavailableException.forGet('v1:claim:nonexistent', new Error('Redis down')),
-      );
+      jest
+        .spyOn(claimsCache, 'getClaim')
+        .mockRejectedValue(
+          CacheUnavailableException.forGet(
+            'v1:claim:nonexistent',
+            new Error('Redis down'),
+          ),
+        );
 
       await claimsService.findOne('nonexistent');
 
@@ -225,10 +263,16 @@ describe('Cache Failure Isolation (E2E)', () => {
       };
 
       // First call: cache fails, use database
-      jest.spyOn(claimRepo, 'findOneBy').mockResolvedValue(mockClaim as Claim);
-      jest.spyOn(claimsCache, 'getClaim')
+      jest
+        .spyOn(claimRepo, 'findOneBy')
+        .mockResolvedValue(mockClaim as unknown as Claim);
+      jest
+        .spyOn(claimsCache, 'getClaim')
         .mockRejectedValueOnce(
-          CacheUnavailableException.forGet('v1:claim:test-claim-5', new Error('Redis down')),
+          CacheUnavailableException.forGet(
+            'v1:claim:test-claim-5',
+            new Error('Redis down'),
+          ),
         )
         .mockResolvedValueOnce(JSON.stringify(mockClaim)); // Cache recovers
 

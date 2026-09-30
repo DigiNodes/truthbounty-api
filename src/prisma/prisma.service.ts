@@ -6,11 +6,14 @@ import * as dotenv from 'dotenv';
 dotenv.config();
 
 @Injectable()
-export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+export class PrismaService
+  extends PrismaClient
+  implements OnModuleInit, OnModuleDestroy
+{
   constructor() {
     const connectionString = process.env.DATABASE_URL || 'file:./dev.db';
     const adapter = new PrismaLibSql({ url: connectionString });
-    
+
     super({ adapter });
   }
 

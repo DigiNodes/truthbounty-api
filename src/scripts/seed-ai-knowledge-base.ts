@@ -1,6 +1,9 @@
 import { DataSource } from 'typeorm';
 import { config } from 'dotenv';
-import { ContextDocument, ContextDocumentCategory } from '../ai-assistant/entities/context-document.entity';
+import {
+  ContextDocument,
+  ContextDocumentCategory,
+} from '../ai-assistant/entities/context-document.entity';
 
 // Load environment variables
 config();
@@ -15,7 +18,7 @@ config();
  */
 
 const dataSource = new DataSource({
-  type: 'sqlite',
+  type: 'better-sqlite3',
   database: process.env.DATABASE_PATH || 'database.sqlite',
   entities: [ContextDocument],
   synchronize: true,
@@ -43,7 +46,7 @@ const documents: Partial<ContextDocument>[] = [
     title: 'Understanding reputation scores',
     category: ContextDocumentCategory.KNOWLEDGE_BASE,
     content:
-      'Reputation reflects a contributor\'s track record of accurate claims and evidence. It factors in claim accuracy, dispute outcomes, and account age. Higher reputation unlocks larger staking limits and moderation-assist privileges.',
+      "Reputation reflects a contributor's track record of accurate claims and evidence. It factors in claim accuracy, dispute outcomes, and account age. Higher reputation unlocks larger staking limits and moderation-assist privileges.",
     tags: ['reputation', 'scoring'],
     sourceUrl: undefined,
   },
@@ -106,7 +109,9 @@ async function seed() {
       console.log(`✅ Created: ${doc.title}`);
     }
 
-    console.log(`\n🎉 Knowledge base now has ${await repository.count()} document(s).`);
+    console.log(
+      `\n🎉 Knowledge base now has ${await repository.count()} document(s).`,
+    );
   } catch (error) {
     console.error('❌ Seed failed:', error);
     process.exit(1);

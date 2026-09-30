@@ -28,7 +28,9 @@ export class WebhookDelivery {
   @Column()
   webhookId: string;
 
-  @ManyToOne(() => Webhook, (webhook) => webhook.deliveries, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Webhook, (webhook) => webhook.deliveries, {
+    onDelete: 'CASCADE',
+  })
   @JoinColumn({ name: 'webhookId' })
   webhook: Webhook;
 

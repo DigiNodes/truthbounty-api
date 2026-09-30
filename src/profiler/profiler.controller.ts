@@ -20,20 +20,27 @@ export class ProfilerController {
   constructor(private readonly profilerService: ProfilerService) {}
 
   @Get('summary')
-  @ApiOperation({ summary: 'Get summary of profiling service status and high-level metrics' })
+  @ApiOperation({
+    summary: 'Get summary of profiling service status and high-level metrics',
+  })
   getSummary() {
     return this.profilerService.getSummary();
   }
 
   @Get('metrics')
-  @ApiOperation({ summary: 'Get latency distributions (p50-p99) and resource metrics' })
+  @ApiOperation({
+    summary: 'Get latency distributions (p50-p99) and resource metrics',
+  })
   @ApiQuery({ name: 'route', required: false })
   @ApiQuery({ name: 'category', required: false })
   getMetrics(
     @Query('route') route?: string,
     @Query('category') category?: SpanCategory,
   ) {
-    const latency = this.profilerService.getLatencyDistributions({ route, category });
+    const latency = this.profilerService.getLatencyDistributions({
+      route,
+      category,
+    });
     return {
       timestamp: new Date().toISOString(),
       latency,
@@ -82,11 +89,15 @@ export class ProfilerController {
   }
 
   @Get('traces/:id/flamegraph')
-  @ApiOperation({ summary: 'Generate hierarchical flame graph data structure for trace' })
+  @ApiOperation({
+    summary: 'Generate hierarchical flame graph data structure for trace',
+  })
   getFlameGraph(@Param('id') id: string) {
     const flameGraph = this.profilerService.generateFlameGraph(id);
     if (!flameGraph) {
-      throw new NotFoundException(`Trace or FlameGraph for ID '${id}' not found`);
+      throw new NotFoundException(
+        `Trace or FlameGraph for ID '${id}' not found`,
+      );
     }
     return {
       traceId: id,
@@ -95,7 +106,10 @@ export class ProfilerController {
   }
 
   @Get('bottlenecks')
-  @ApiOperation({ summary: 'Generate bottleneck report for slow queries, endpoints, Redis, RPC & CPU hotspots' })
+  @ApiOperation({
+    summary:
+      'Generate bottleneck report for slow queries, endpoints, Redis, RPC & CPU hotspots',
+  })
   getBottleneckReport() {
     return this.profilerService.generateBottleneckReport();
   }
@@ -110,7 +124,9 @@ export class ProfilerController {
   }
 
   @Post('snapshots')
-  @ApiOperation({ summary: 'Take a new historical baseline performance snapshot' })
+  @ApiOperation({
+    summary: 'Take a new historical baseline performance snapshot',
+  })
   takeSnapshot(@Body('name') name: string) {
     if (!name) {
       throw new BadRequestException('Snapshot name is required');
@@ -123,7 +139,9 @@ export class ProfilerController {
   }
 
   @Get('compare')
-  @ApiOperation({ summary: 'Compare historical performance between two baseline snapshots' })
+  @ApiOperation({
+    summary: 'Compare historical performance between two baseline snapshots',
+  })
   @ApiQuery({ name: 'baselineId', required: true })
   @ApiQuery({ name: 'targetId', required: true })
   compareSnapshots(
@@ -131,17 +149,27 @@ export class ProfilerController {
     @Query('targetId') targetId: string,
   ) {
     if (!baselineId || !targetId) {
-      throw new BadRequestException('Both baselineId and targetId query parameters are required');
+      throw new BadRequestException(
+        'Both baselineId and targetId query parameters are required',
+      );
     }
-    const comparison = this.profilerService.compareHistorical(baselineId, targetId);
+    const comparison = this.profilerService.compareHistorical(
+      baselineId,
+      targetId,
+    );
     if (!comparison) {
-      throw new NotFoundException('One or both specified snapshot IDs were not found');
+      throw new NotFoundException(
+        'One or both specified snapshot IDs were not found',
+      );
     }
     return comparison;
   }
 
   @Get('regressions')
-  @ApiOperation({ summary: 'Detect performance regressions between target and baseline snapshots' })
+  @ApiOperation({
+    summary:
+      'Detect performance regressions between target and baseline snapshots',
+  })
   @ApiQuery({ name: 'baselineId', required: true })
   @ApiQuery({ name: 'targetId', required: true })
   @ApiQuery({ name: 'thresholdPercent', required: false })
@@ -151,20 +179,30 @@ export class ProfilerController {
     @Query('thresholdPercent') thresholdPercent?: string,
   ) {
     if (!baselineId || !targetId) {
-      throw new BadRequestException('Both baselineId and targetId query parameters are required');
+      throw new BadRequestException(
+        'Both baselineId and targetId query parameters are required',
+      );
     }
     const threshold = thresholdPercent ? parseFloat(thresholdPercent) : 20;
-    return this.profilerService.detectRegressions(baselineId, targetId, threshold);
+    return this.profilerService.detectRegressions(
+      baselineId,
+      targetId,
+      threshold,
+    );
   }
 
   @Get('sampling')
-  @ApiOperation({ summary: 'Get current profiler sampling strategy and configuration' })
+  @ApiOperation({
+    summary: 'Get current profiler sampling strategy and configuration',
+  })
   getSamplingConfig() {
     return this.profilerService.getSamplingConfig();
   }
 
   @Put('sampling')
-  @ApiOperation({ summary: 'Dynamically update profiler sampling configuration' })
+  @ApiOperation({
+    summary: 'Dynamically update profiler sampling configuration',
+  })
   updateSamplingConfig(@Body() config: Partial<SamplingConfig>) {
     const updated = this.profilerService.updateSamplingConfig(config);
     return {
@@ -174,7 +212,9 @@ export class ProfilerController {
   }
 
   @Get('dashboard')
-  @ApiOperation({ summary: 'Get dashboard data representation or HTML UI view' })
+  @ApiOperation({
+    summary: 'Get dashboard data representation or HTML UI view',
+  })
   @Header('Content-Type', 'text/html')
   getDashboard() {
     const summary = this.profilerService.getSummary();

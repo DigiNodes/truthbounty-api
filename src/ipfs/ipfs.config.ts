@@ -13,7 +13,10 @@ export class IpfsConfigService {
   getConfig(): IpfsConfig {
     return {
       provider: this.configService.get('IPFS_PROVIDER', 'local'),
-      localStoragePath: this.configService.get('IPFS_LOCAL_STORAGE_PATH', 'data/ipfs'),
+      localStoragePath: this.configService.get(
+        'IPFS_LOCAL_STORAGE_PATH',
+        'data/ipfs',
+      ),
     };
   }
 }

@@ -32,9 +32,9 @@ export class BlockchainListenerService implements OnModuleInit {
 
   private async initializeProvider() {
     const rpcUrl = this.configService.get<string>('BLOCKCHAIN_RPC_URL');
-    const contractAddress = this.configService.get<string>(
-      'REWARD_CONTRACT_ADDRESS',
-    ) || '0x0000000000000000000000000000000000000000';
+    const contractAddress =
+      this.configService.get<string>('REWARD_CONTRACT_ADDRESS') ||
+      '0x0000000000000000000000000000000000000000';
 
     this.provider = new ethers.JsonRpcProvider(rpcUrl);
     this.contract = new ethers.Contract(

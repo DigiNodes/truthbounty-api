@@ -91,8 +91,8 @@ export class ClaimResolutionService {
       trueWeight === falseWeight
         ? 'inconclusive'
         : trueWeight > falseWeight
-        ? 'true'
-        : 'false';
+          ? 'true'
+          : 'false';
 
     return { score, verdict, margin, participation, totalWeight: total };
   }
@@ -162,14 +162,16 @@ export class ClaimResolutionService {
     this.logger.log(
       confidence
         ? `Claim ${claimId} resolved: verdict=${confidence.verdict}, ` +
-          `score=${confidence.score}, margin=${confidence.margin.toFixed(3)}, ` +
-          `participation=${confidence.participation.toFixed(3)}`
+            `score=${confidence.score}, margin=${confidence.margin.toFixed(3)}, ` +
+            `participation=${confidence.participation.toFixed(3)}`
         : `Claim ${claimId} resolved as inconclusive (insufficient participation — ` +
-          `total weight ${votes.trueWeight + votes.falseWeight} < ${this.MIN_REQUIRED_WEIGHT})`,
+            `total weight ${votes.trueWeight + votes.falseWeight} < ${this.MIN_REQUIRED_WEIGHT})`,
     );
 
     if (confidence && confidence.score >= this.STRONG_CONSENSUS_THRESHOLD) {
-      this.logger.log(`Claim ${claimId} reached strong consensus (score ${confidence.score})`);
+      this.logger.log(
+        `Claim ${claimId} reached strong consensus (score ${confidence.score})`,
+      );
     }
 
     return { claim: savedClaim, confidence, resolvedAt };
@@ -197,7 +199,10 @@ export class ClaimResolutionService {
     if (votes.trueWeight < 0 || votes.falseWeight < 0) {
       throw new BadRequestException('Vote weights must be non-negative');
     }
-    if (!Number.isFinite(votes.trueWeight) || !Number.isFinite(votes.falseWeight)) {
+    if (
+      !Number.isFinite(votes.trueWeight) ||
+      !Number.isFinite(votes.falseWeight)
+    ) {
       throw new BadRequestException('Vote weights must be finite numbers');
     }
   }

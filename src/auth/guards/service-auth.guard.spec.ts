@@ -14,7 +14,9 @@ describe('ServiceAuthGuard', () => {
     guard = new ServiceAuthGuard(configService);
   });
 
-  function createMockContext(headers: Record<string, string>): ExecutionContext {
+  function createMockContext(
+    headers: Record<string, string>,
+  ): ExecutionContext {
     return {
       switchToHttp: () => ({
         getRequest: () => ({
@@ -38,7 +40,9 @@ describe('ServiceAuthGuard', () => {
   it('should reject when no API key header is present', () => {
     const context = createMockContext({});
     expect(() => guard.canActivate(context)).toThrow(UnauthorizedException);
-    expect(() => guard.canActivate(context)).toThrow('Service API key required');
+    expect(() => guard.canActivate(context)).toThrow(
+      'Service API key required',
+    );
   });
 
   // ── Invalid key ──────────────────────────────────────────────────────────
@@ -67,7 +71,11 @@ describe('ServiceAuthGuard', () => {
       'x-service-api-key': 'anything',
     });
 
-    expect(() => noKeyGuard.canActivate(context)).toThrow(UnauthorizedException);
-    expect(() => noKeyGuard.canActivate(context)).toThrow('Service authentication not configured');
+    expect(() => noKeyGuard.canActivate(context)).toThrow(
+      UnauthorizedException,
+    );
+    expect(() => noKeyGuard.canActivate(context)).toThrow(
+      'Service authentication not configured',
+    );
   });
 });

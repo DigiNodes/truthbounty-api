@@ -11,8 +11,19 @@ describe('RagService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         RagService,
-        { provide: PrismaService, useValue: { contextDocument: { findMany: jest.fn().mockResolvedValue([]) } } },
-        { provide: RedisService, useValue: { get: jest.fn().mockResolvedValue(null), set: jest.fn().mockResolvedValue(true) } },
+        {
+          provide: PrismaService,
+          useValue: {
+            contextDocument: { findMany: jest.fn().mockResolvedValue([]) },
+          },
+        },
+        {
+          provide: RedisService,
+          useValue: {
+            get: jest.fn().mockResolvedValue(null),
+            set: jest.fn().mockResolvedValue(true),
+          },
+        },
         { provide: LlmProviderService, useValue: {} },
       ],
     }).compile();

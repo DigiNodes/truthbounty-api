@@ -39,10 +39,7 @@ import {
   ScheduleMaintenanceDto,
   MaintenanceStatusResponse,
 } from './dto/maintenance.dto';
-import {
-  ProtocolConfigDto,
-  OperationalStatsResponse,
-} from './dto/config.dto';
+import { ProtocolConfigDto, OperationalStatsResponse } from './dto/config.dto';
 
 import {
   AuditActionType,
@@ -130,8 +127,7 @@ export class ProtocolAdminService {
       activeEmergencies,
       queuesOperational: this.serviceStates.get('queues_operational') ?? true,
       notificationsEnabled: this.serviceStates.get('notifications') ?? true,
-      integrationsOperational:
-        this.serviceStates.get('integrations') ?? true,
+      integrationsOperational: this.serviceStates.get('integrations') ?? true,
       apiThrottlingActive: activeEmergencies.includes(
         EmergencyAction.ENABLE_API_THROTTLING,
       ),
@@ -152,10 +148,7 @@ export class ProtocolAdminService {
     const totalWaiting = allMetrics.reduce((sum, m) => sum + m.waiting, 0);
     const totalActive = allMetrics.reduce((sum, m) => sum + m.active, 0);
     const totalFailed = allMetrics.reduce((sum, m) => sum + m.failed, 0);
-    const totalCompleted = allMetrics.reduce(
-      (sum, m) => sum + m.completed,
-      0,
-    );
+    const totalCompleted = allMetrics.reduce((sum, m) => sum + m.completed, 0);
 
     return {
       totalUsers,
@@ -200,8 +193,7 @@ export class ProtocolAdminService {
       services: {
         maintenanceMode: this.maintenanceActive,
         notificationsEnabled: this.serviceStates.get('notifications') ?? true,
-        integrationsOperational:
-          this.serviceStates.get('integrations') ?? true,
+        integrationsOperational: this.serviceStates.get('integrations') ?? true,
         apiThrottlingActive: this.emergencyStates.has(
           EmergencyAction.ENABLE_API_THROTTLING,
         ),
@@ -226,9 +218,7 @@ export class ProtocolAdminService {
     const wasActive = this.maintenanceActive;
     this.maintenanceActive = dto.enabled;
     this.maintenanceReason = dto.reason ?? '';
-    this.maintenanceStartedAt = dto.enabled
-      ? new Date().toISOString()
-      : null;
+    this.maintenanceStartedAt = dto.enabled ? new Date().toISOString() : null;
     this.maintenanceScheduledEnd = dto.scheduledEnd ?? null;
 
     const actionType = dto.enabled
@@ -280,7 +270,7 @@ export class ProtocolAdminService {
       severity: AuditSeverity.MEDIUM,
       category: AuditCategory.MAINTENANCE,
       description: `Scheduled maintenance: ${dto.description}`,
-      afterState: schedule as unknown as Record<string, unknown>,
+      afterState: schedule,
     });
 
     this.logger.log(
@@ -289,10 +279,7 @@ export class ProtocolAdminService {
     return schedule;
   }
 
-  async cancelMaintenance(
-    scheduleId: string,
-    adminId: string,
-  ): Promise<void> {
+  async cancelMaintenance(scheduleId: string, adminId: string): Promise<void> {
     const index = this.scheduledMaintenance.findIndex(
       (s) => s.id === scheduleId,
     );
@@ -393,9 +380,7 @@ export class ProtocolAdminService {
             beforeState,
           );
         default:
-          throw new BadRequestException(
-            `Unknown service type: ${serviceType}`,
-          );
+          throw new BadRequestException(`Unknown service type: ${serviceType}`);
       }
     } catch (error) {
       this.logger.error(
@@ -423,7 +408,12 @@ export class ProtocolAdminService {
   ): Promise<ServiceControlResponse> {
     const queuesToActOn = queueName
       ? [queueName]
-      : [QueueName.DEFAULT, QueueName.NOTIFICATIONS, QueueName.BLOCKCHAIN, QueueName.ANALYTICS];
+      : [
+          QueueName.DEFAULT,
+          QueueName.NOTIFICATIONS,
+          QueueName.BLOCKCHAIN,
+          QueueName.ANALYTICS,
+        ];
 
     let auditActionType: AuditActionType;
 
@@ -656,7 +646,12 @@ export class ProtocolAdminService {
 
     const queuesToRetry = queueName
       ? [queueName as QueueName]
-      : [QueueName.DEFAULT, QueueName.NOTIFICATIONS, QueueName.BLOCKCHAIN, QueueName.ANALYTICS];
+      : [
+          QueueName.DEFAULT,
+          QueueName.NOTIFICATIONS,
+          QueueName.BLOCKCHAIN,
+          QueueName.ANALYTICS,
+        ];
 
     for (const name of queuesToRetry) {
       const retried = await this.jobsService.retryFailed(name);
@@ -715,9 +710,7 @@ export class ProtocolAdminService {
       afterState: {
         action,
         reason,
-        expiresAt: expiresAt
-          ? new Date(expiresAt).toISOString()
-          : undefined,
+        expiresAt: expiresAt ? new Date(expiresAt).toISOString() : undefined,
         affectedServices,
       },
     });
@@ -741,9 +734,7 @@ export class ProtocolAdminService {
   ): Promise<void> {
     const emergency = this.emergencyStates.get(action);
     if (!emergency) {
-      throw new NotFoundException(
-        `No active emergency action: ${action}`,
-      );
+      throw new NotFoundException(`No active emergency action: ${action}`);
     }
 
     this.emergencyStates.delete(action);
@@ -757,13 +748,11 @@ export class ProtocolAdminService {
       severity: AuditSeverity.HIGH,
       category: AuditCategory.EMERGENCY,
       description: `Resolved emergency action: ${action}`,
-      beforeState: emergency as unknown as Record<string, unknown>,
+      beforeState: emergency,
       afterState: { resolved: true, resolvedAt: new Date().toISOString() },
     });
 
-    this.logger.log(
-      `Emergency action resolved: ${action} by admin ${adminId}`,
-    );
+    this.logger.log(`Emergency action resolved: ${action} by admin ${adminId}`);
   }
 
   private getAffectedServices(action: EmergencyAction): string[] {
@@ -831,10 +820,7 @@ export class ProtocolAdminService {
     dto: ProtocolConfigDto,
     adminId: string,
   ): Promise<unknown> {
-    const beforeValue = await this.configService.get(
-      dto.key,
-      dto.environment,
-    );
+    const beforeValue = await this.configService.get(dto.key, dto.environment);
 
     const saved = await this.configService.set(
       dto.key,
@@ -877,10 +863,7 @@ export class ProtocolAdminService {
     return this.featureFlagsService.findAll(environment);
   }
 
-  async evaluateFeatureFlag(
-    key: string,
-    context?: Record<string, unknown>,
-  ) {
+  async evaluateFeatureFlag(key: string, context?: Record<string, unknown>) {
     return this.featureFlagsService.evaluate(key, context);
   }
 

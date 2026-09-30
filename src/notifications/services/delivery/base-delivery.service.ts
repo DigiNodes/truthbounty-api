@@ -1,6 +1,9 @@
 import { Logger } from '@nestjs/common';
 import { NotificationDelivery } from '../../entities/notification-delivery.entity';
-import { DeliveryStatus, DeliveryChannel } from '../../enums/notification-type.enum';
+import {
+  DeliveryStatus,
+  DeliveryChannel,
+} from '../../enums/notification-type.enum';
 
 export interface DeliveryResult {
   success: boolean;
@@ -14,9 +17,7 @@ export abstract class BaseDeliveryService {
 
   abstract get channel(): DeliveryChannel;
 
-  abstract deliver(
-    delivery: NotificationDelivery,
-  ): Promise<DeliveryResult>;
+  abstract deliver(delivery: NotificationDelivery): Promise<DeliveryResult>;
 
   protected updateDeliveryStatus(
     delivery: NotificationDelivery,

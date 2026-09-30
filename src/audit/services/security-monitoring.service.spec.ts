@@ -1,7 +1,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { SecurityMonitoringService } from './security-monitoring.service';
-import { AuditLog, AuditActionType, AuditEntityType, AuditSeverity, AuditCategory } from '../entities/audit-log.entity';
+import {
+  AuditLog,
+  AuditActionType,
+  AuditEntityType,
+  AuditSeverity,
+  AuditCategory,
+} from '../entities/audit-log.entity';
 import { Repository } from 'typeorm';
 
 describe('SecurityMonitoringService', () => {
@@ -116,8 +122,15 @@ describe('SecurityMonitoringService', () => {
   describe('getRecentSecurityEvents', () => {
     it('should return grouped security events', async () => {
       const logs = [
-        mockAuditLog({ actionType: AuditActionType.LOGIN_FAILED, userId: 'user-1' }),
-        mockAuditLog({ actionType: AuditActionType.PERMISSION_CHANGED, userId: 'user-2', severity: AuditSeverity.HIGH }),
+        mockAuditLog({
+          actionType: AuditActionType.LOGIN_FAILED,
+          userId: 'user-1',
+        }),
+        mockAuditLog({
+          actionType: AuditActionType.PERMISSION_CHANGED,
+          userId: 'user-2',
+          severity: AuditSeverity.HIGH,
+        }),
       ];
 
       (repository.find as jest.Mock).mockResolvedValue(logs);

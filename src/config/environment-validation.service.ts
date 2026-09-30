@@ -54,17 +54,41 @@ export class EnvironmentValidationService implements OnModuleInit {
   ];
 
   // Chain configurations that are supported
-  private readonly supportedChains = new Map<number, { name: string; rpcUrlPattern: RegExp }>([
-    [1, { name: 'Ethereum Mainnet', rpcUrlPattern: /^(https?:\/\/|wss?:\/\/).*/ }],
+  private readonly supportedChains = new Map<
+    number,
+    { name: string; rpcUrlPattern: RegExp }
+  >([
+    [
+      1,
+      { name: 'Ethereum Mainnet', rpcUrlPattern: /^(https?:\/\/|wss?:\/\/).*/ },
+    ],
     [10, { name: 'Optimism', rpcUrlPattern: /^(https?:\/\/|wss?:\/\/).*/ }],
-    [100, { name: 'Gnosis Chain', rpcUrlPattern: /^(https?:\/\/|wss?:\/\/).*/ }],
+    [
+      100,
+      { name: 'Gnosis Chain', rpcUrlPattern: /^(https?:\/\/|wss?:\/\/).*/ },
+    ],
     [137, { name: 'Polygon', rpcUrlPattern: /^(https?:\/\/|wss?:\/\/).*/ }],
-    [42161, { name: 'Arbitrum One', rpcUrlPattern: /^(https?:\/\/|wss?:\/\/).*/ }],
+    [
+      42161,
+      { name: 'Arbitrum One', rpcUrlPattern: /^(https?:\/\/|wss?:\/\/).*/ },
+    ],
     [8453, { name: 'Base', rpcUrlPattern: /^(https?:\/\/|wss?:\/\/).*/ }],
-    [84532, { name: 'Base Sepolia', rpcUrlPattern: /^(https?:\/\/|wss?:\/\/).*/ }],
-    [11155111, { name: 'Sepolia', rpcUrlPattern: /^(https?:\/\/|wss?:\/\/).*/ }],
-    [420, { name: 'Optimism Goerli', rpcUrlPattern: /^(https?:\/\/|wss?:\/\/).*/ }],
-    [11155420, { name: 'OP Sepolia', rpcUrlPattern: /^(https?:\/\/|wss?:\/\/).*/ }],
+    [
+      84532,
+      { name: 'Base Sepolia', rpcUrlPattern: /^(https?:\/\/|wss?:\/\/).*/ },
+    ],
+    [
+      11155111,
+      { name: 'Sepolia', rpcUrlPattern: /^(https?:\/\/|wss?:\/\/).*/ },
+    ],
+    [
+      420,
+      { name: 'Optimism Goerli', rpcUrlPattern: /^(https?:\/\/|wss?:\/\/).*/ },
+    ],
+    [
+      11155420,
+      { name: 'OP Sepolia', rpcUrlPattern: /^(https?:\/\/|wss?:\/\/).*/ },
+    ],
   ]);
 
   constructor(private readonly configService: ConfigService) {}
@@ -129,7 +153,11 @@ export class EnvironmentValidationService implements OnModuleInit {
   /**
    * Validate a single secret value
    */
-  private validateSecret(key: string, value: string | undefined, category: string): string | null {
+  private validateSecret(
+    key: string,
+    value: string | undefined,
+    category: string,
+  ): string | null {
     if (!value || value.trim() === '') {
       return `[${category.toUpperCase()}] Required environment variable ${key} is not set`;
     }
@@ -173,7 +201,11 @@ export class EnvironmentValidationService implements OnModuleInit {
    * Validate database URL format and security
    */
   private validateDatabaseUrl(url: string): string | null {
-    if (!url.startsWith('postgresql://') && !url.startsWith('postgres://') && !url.startsWith('sqlite:')) {
+    if (
+      !url.startsWith('postgresql://') &&
+      !url.startsWith('postgres://') &&
+      !url.startsWith('sqlite:')
+    ) {
       return 'DATABASE_URL must be a postgresql:// or sqlite: connection string';
     }
 
@@ -186,7 +218,9 @@ export class EnvironmentValidationService implements OnModuleInit {
     if (!url.includes('sslmode=require') && url.startsWith('postgresql://')) {
       // Check if SSL is explicitly disabled
       if (!url.includes('sslmode=disable') && !url.includes('sslmode=allow')) {
-        this.logger.warn('[ENV VALIDATION] DATABASE_URL should use sslmode=require for production');
+        this.logger.warn(
+          '[ENV VALIDATION] DATABASE_URL should use sslmode=require for production',
+        );
       }
     }
 
@@ -197,7 +231,12 @@ export class EnvironmentValidationService implements OnModuleInit {
    * Validate RPC URL format
    */
   private validateRpcUrl(url: string): string | null {
-    if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('ws://') && !url.startsWith('wss://')) {
+    if (
+      !url.startsWith('http://') &&
+      !url.startsWith('https://') &&
+      !url.startsWith('ws://') &&
+      !url.startsWith('wss://')
+    ) {
       return 'RPC_URL must start with http://, https://, ws://, or wss://';
     }
 
@@ -242,20 +281,24 @@ export class EnvironmentValidationService implements OnModuleInit {
     const errors: string[] = [];
 
     const addresses = {
-      'CONTRACT_ADDRESS': this.configService.get<string>('CONTRACT_ADDRESS'),
-      'TREASURY_ADDRESS': this.configService.get<string>('TREASURY_ADDRESS'),
-      'VERIFIER_ADDRESS': this.configService.get<string>('VERIFIER_ADDRESS'),
-      'FEE_RECIPIENT': this.configService.get<string>('FEE_RECIPIENT'),
+      CONTRACT_ADDRESS: this.configService.get<string>('CONTRACT_ADDRESS'),
+      TREASURY_ADDRESS: this.configService.get<string>('TREASURY_ADDRESS'),
+      VERIFIER_ADDRESS: this.configService.get<string>('VERIFIER_ADDRESS'),
+      FEE_RECIPIENT: this.configService.get<string>('FEE_RECIPIENT'),
     };
 
     for (const [key, address] of Object.entries(addresses)) {
       if (address) {
         if (!this.isValidEthAddress(address)) {
-          errors.push(`[ADDRESS] ${key} is not a valid Ethereum address: ${this.redactValue(address)}`);
+          errors.push(
+            `[ADDRESS] ${key} is not a valid Ethereum address: ${this.redactValue(address)}`,
+          );
         }
 
         // Check for zero address
-        if (address.toLowerCase() === '0x0000000000000000000000000000000000000000') {
+        if (
+          address.toLowerCase() === '0x0000000000000000000000000000000000000000'
+        ) {
           errors.push(`[ADDRESS] ${key} cannot be the zero address`);
         }
       }
@@ -277,7 +320,9 @@ export class EnvironmentValidationService implements OnModuleInit {
     if (chainId && contractAddress) {
       // This would require a contract registry - for now just warn
       if (this.configService.get('NODE_ENV') === 'production') {
-        warnings.push(`[COMBINATION] Verify CONTRACT_ADDRESS is deployed on chain ${chainId} before production deployment`);
+        warnings.push(
+          `[COMBINATION] Verify CONTRACT_ADDRESS is deployed on chain ${chainId} before production deployment`,
+        );
       }
     }
 
@@ -294,11 +339,15 @@ export class EnvironmentValidationService implements OnModuleInit {
     const redisPort = this.configService.get<number>('REDIS_PORT');
 
     if (!redisHost) {
-      errors.push('[RATE_LIMIT] REDIS_HOST is required for distributed rate limiting');
+      errors.push(
+        '[RATE_LIMIT] REDIS_HOST is required for distributed rate limiting',
+      );
     }
 
     if (!redisPort || redisPort <= 0 || redisPort > 65535) {
-      errors.push('[RATE_LIMIT] REDIS_PORT must be a valid port number (1-65535)');
+      errors.push(
+        '[RATE_LIMIT] REDIS_PORT must be a valid port number (1-65535)',
+      );
     }
 
     // Validate TTL values are reasonable
@@ -316,9 +365,12 @@ export class EnvironmentValidationService implements OnModuleInit {
       if (value) {
         const ttl = parseInt(value, 10);
         if (isNaN(ttl) || ttl <= 0) {
-          errors.push(`[RATE_LIMIT] ${key} must be a positive integer (got: ${value})`);
+          errors.push(
+            `[RATE_LIMIT] ${key} must be a positive integer (got: ${value})`,
+          );
         }
-        if (ttl > 86400000) { // 24 hours in ms
+        if (ttl > 86400000) {
+          // 24 hours in ms
           this.logger.warn(`[RATE_LIMIT] ${key} TTL is very high (${ttl}ms)`);
         }
       }

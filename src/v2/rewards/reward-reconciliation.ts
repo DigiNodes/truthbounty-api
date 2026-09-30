@@ -1,4 +1,7 @@
-import { AllocationKind, ALLOCATION_KINDS } from './reward-allocation-kind.enum';
+import {
+  AllocationKind,
+  ALLOCATION_KINDS,
+} from './reward-allocation-kind.enum';
 
 /**
  * Pure, deterministic reward-allocation reconciliation arithmetic.

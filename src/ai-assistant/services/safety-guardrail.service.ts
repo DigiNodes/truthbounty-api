@@ -6,8 +6,7 @@ export class SafetyGuardrailService {
   private readonly logger = new Logger(SafetyGuardrailService.name);
   private readonly blocklist = ['bomb', 'malware', 'hack'];
 
-  readonly REFUSAL_MESSAGE =
-    'I cannot help with that request.';
+  readonly REFUSAL_MESSAGE = 'I cannot help with that request.';
   readonly LEAK_REFUSAL_MESSAGE =
     'I cannot share internal instructions. How else can I help?';
 
@@ -22,9 +21,11 @@ export class SafetyGuardrailService {
     return this.blocklist;
   }
 
-  checkContent(
-    content: string,
-  ): { flagged: boolean; blocked: boolean; reason?: string } {
+  checkContent(content: string): {
+    flagged: boolean;
+    blocked: boolean;
+    reason?: string;
+  } {
     const lowerContent = content.toLowerCase();
     for (const term of this.getBlockedTerms()) {
       if (lowerContent.includes(term.toLowerCase())) {

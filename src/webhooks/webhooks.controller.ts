@@ -52,7 +52,10 @@ export class WebhooksController {
     description: 'Webhook created successfully',
   })
   @ApiResponse({ status: 400, description: 'Invalid input or non-HTTPS URL' })
-  @ApiResponse({ status: 409, description: 'Duplicate webhook URL for this owner' })
+  @ApiResponse({
+    status: 409,
+    description: 'Duplicate webhook URL for this owner',
+  })
   async create(@Body() dto: CreateWebhookDto): Promise<Webhook> {
     return this.webhooksService.create(dto);
   }
@@ -73,16 +76,15 @@ export class WebhooksController {
     required: false,
     description: 'Filter by enabled status (true/false)',
   })
-  async findAll(
-    @Query() filter: WebhookListFilterDto,
-  ): Promise<Webhook[]> {
+  async findAll(@Query() filter: WebhookListFilterDto): Promise<Webhook[]> {
     return this.webhooksService.findAll(filter.ownerId, filter.enabled);
   }
 
   @Get(':id')
   @ApiOperation({
     summary: 'Get webhook details',
-    description: 'Retrieve a specific webhook by ID including its subscriptions.',
+    description:
+      'Retrieve a specific webhook by ID including its subscriptions.',
   })
   @ApiParam({ name: 'id', description: 'Webhook UUID' })
   @ApiResponse({ status: 404, description: 'Webhook not found' })
@@ -109,8 +111,7 @@ export class WebhooksController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({
     summary: 'Delete a webhook',
-    description:
-      'Permanently remove a webhook and all its delivery history.',
+    description: 'Permanently remove a webhook and all its delivery history.',
   })
   @ApiParam({ name: 'id', description: 'Webhook UUID' })
   @ApiResponse({ status: 204, description: 'Webhook deleted successfully' })
@@ -159,8 +160,7 @@ export class WebhooksController {
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({
     summary: 'Retry a failed delivery',
-    description:
-      'Re-queue a failed webhook delivery for another attempt.',
+    description: 'Re-queue a failed webhook delivery for another attempt.',
   })
   @ApiParam({ name: 'id', description: 'Webhook UUID' })
   @ApiParam({ name: 'deliveryId', description: 'Delivery UUID' })
@@ -212,9 +212,7 @@ export class WebhooksController {
       'total deliveries, success/failure counts, and last delivery info.',
   })
   @ApiParam({ name: 'id', description: 'Webhook UUID' })
-  async getStatus(
-    @Param('id') id: string,
-  ): Promise<{
+  async getStatus(@Param('id') id: string): Promise<{
     webhook: Webhook;
     totalDeliveries: number;
     successfulDeliveries: number;

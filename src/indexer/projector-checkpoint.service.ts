@@ -1,5 +1,9 @@
 // src/indexer/projector-checkpoint.service.ts
-import { Injectable, Logger, InternalServerErrorException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { DataSource, QueryRunner } from 'typeorm';
 import { randomBytes, createHash } from 'crypto';
 
@@ -57,8 +61,16 @@ export class ProjectorCheckpointService {
    * Acquire or create a checkpoint for a projector
    * Uses lease mechanism to prevent concurrent processing
    */
-  async acquireCheckpoint(options: CheckpointOptions): Promise<CheckpointResult> {
-    const { projectorName, chainId, contractAddress, batchSize = this.DEFAULT_BATCH_SIZE, leaseDurationMs = this.DEFAULT_LEASE_DURATION_MS } = options;
+  async acquireCheckpoint(
+    options: CheckpointOptions,
+  ): Promise<CheckpointResult> {
+    const {
+      projectorName,
+      chainId,
+      contractAddress,
+      batchSize = this.DEFAULT_BATCH_SIZE,
+      leaseDurationMs = this.DEFAULT_LEASE_DURATION_MS,
+    } = options;
     const normalizedContract = contractAddress.toLowerCase();
     const leaseOwner = this.generateLeaseId();
 
@@ -68,16 +80,29 @@ export class ProjectorCheckpointService {
 
     try {
       // Try to acquire lease on existing checkpoint
-      const existing = await this.findCheckpoint(queryRunner, projectorName, chainId, normalizedContract);
+      const existing = await this.findCheckpoint(
+        queryRunner,
+        projectorName,
+        chainId,
+        normalizedContract,
+      );
 
       if (existing) {
         // Check if lease is stale or expired
-        const isLeaseStale = existing.leaseExpiresAt && new Date() > existing.leaseExpiresAt;
-        const isLeaseExpired = existing.leaseExpiresAt && new Date() > new Date(existing.leaseExpiresAt.getTime() + this.STALE_LEASE_THRESHOLD_MS);
+        const isLeaseStale =
+          existing.leaseExpiresAt && new Date() > existing.leaseExpiresAt;
+        const isLeaseExpired =
+          existing.leaseExpiresAt &&
+          new Date() >
+            new Date(
+              existing.leaseExpiresAt.getTime() + this.STALE_LEASE_THRESHOLD_MS,
+            );
 
         if (existing.leaseOwner && !isLeaseStale && !isLeaseExpired) {
           // Lease is held by another process
-          this.logger.debug(`Checkpoint lease held by ${existing.leaseOwner} for ${projectorName}`);
+          this.logger.debug(
+            `Checkpoint lease held by ${existing.leaseOwner} for ${projectorName}`,
+          );
           return {
             checkpoint: existing,
             acquired: false,
@@ -93,15 +118,22 @@ export class ProjectorCheckpointService {
           `UPDATE "v2_projector_checkpoints" 
           SET "lease_owner" = $1, "lease_expires_at" = $2, "status" = 'running', "updated_at" = NOW()
           WHERE "id" = $3 AND ("lease_owner" IS NULL OR "lease_expires_at" <= NOW())`,
-          [leaseOwner, leaseExpiresAt, existing.id]
+          [leaseOwner, leaseExpiresAt, existing.id],
         );
 
         // Check if update succeeded
-        const updated = await this.findCheckpoint(queryRunner, projectorName, chainId, normalizedContract);
+        const updated = await this.findCheckpoint(
+          queryRunner,
+          projectorName,
+          chainId,
+          normalizedContract,
+        );
 
         if (updated && updated.leaseOwner === leaseOwner) {
           await queryRunner.commitTransaction();
-          this.logger.log(`Acquired stale lease for projector: ${projectorName} on chain ${chainId}`);
+          this.logger.log(
+            `Acquired stale lease for projector: ${projectorName} on chain ${chainId}`,
+          );
           return {
             checkpoint: updated,
             acquired: true,
@@ -127,14 +159,29 @@ export class ProjectorCheckpointService {
         `INSERT INTO "v2_projector_checkpoints" 
         ("id", "projector_name", "chain_id", "contract_address", "last_processed_block", "last_processed_log_index", "last_processed_tx_hash", "status", "batch_size", "lease_owner", "lease_expires_at", "created_at", "updated_at", "processed_count", "failed_count")
         VALUES ($1, $2, $3, $4, 0, -1, '', 'running', $5, $6, $7, NOW(), NOW(), 0, 0)`,
-        [id, projectorName, chainId, normalizedContract, batchSize, leaseOwner, leaseExpiresAt]
+        [
+          id,
+          projectorName,
+          chainId,
+          normalizedContract,
+          batchSize,
+          leaseOwner,
+          leaseExpiresAt,
+        ],
       );
 
-      const newCheckpoint = await this.findCheckpoint(queryRunner, projectorName, chainId, normalizedContract);
+      const newCheckpoint = await this.findCheckpoint(
+        queryRunner,
+        projectorName,
+        chainId,
+        normalizedContract,
+      );
 
       await queryRunner.commitTransaction();
 
-      this.logger.log(`Created new checkpoint for projector: ${projectorName} on chain ${chainId}`);
+      this.logger.log(
+        `Created new checkpoint for projector: ${projectorName} on chain ${chainId}`,
+      );
 
       return {
         checkpoint: newCheckpoint!,
@@ -143,8 +190,12 @@ export class ProjectorCheckpointService {
       };
     } catch (error) {
       await queryRunner.rollbackTransaction();
-      this.logger.error(`Failed to acquire checkpoint for ${projectorName}: ${error.message}`);
-      throw new InternalServerErrorException('Failed to acquire projector checkpoint');
+      this.logger.error(
+        `Failed to acquire checkpoint for ${projectorName}: ${error.message}`,
+      );
+      throw new InternalServerErrorException(
+        'Failed to acquire projector checkpoint',
+      );
     } finally {
       await queryRunner.release();
     }
@@ -187,7 +238,9 @@ export class ProjectorCheckpointService {
         values.push(updates.lastProcessedTxHash);
       }
       if (updates.processedIncrement !== undefined) {
-        setParts.push(`"processed_count" = "processed_count" + $${paramIndex++}`);
+        setParts.push(
+          `"processed_count" = "processed_count" + $${paramIndex++}`,
+        );
         values.push(updates.processedIncrement);
       }
       if (updates.failedIncrement !== undefined) {
@@ -207,7 +260,7 @@ export class ProjectorCheckpointService {
 
       await queryRunner.query(
         `UPDATE "v2_projector_checkpoints" SET ${setParts.join(', ')} WHERE "id" = $${paramIndex}`,
-        values
+        values,
       );
 
       await queryRunner.commitTransaction();
@@ -215,8 +268,12 @@ export class ProjectorCheckpointService {
       return this.getCheckpointById(checkpointId);
     } catch (error) {
       await queryRunner.rollbackTransaction();
-      this.logger.error(`Failed to update checkpoint ${checkpointId}: ${error.message}`);
-      throw new InternalServerErrorException('Failed to update projector checkpoint');
+      this.logger.error(
+        `Failed to update checkpoint ${checkpointId}: ${error.message}`,
+      );
+      throw new InternalServerErrorException(
+        'Failed to update projector checkpoint',
+      );
     } finally {
       await queryRunner.release();
     }
@@ -225,7 +282,10 @@ export class ProjectorCheckpointService {
   /**
    * Release lease on checkpoint
    */
-  async releaseCheckpoint(checkpointId: string, leaseOwner: string): Promise<boolean> {
+  async releaseCheckpoint(
+    checkpointId: string,
+    leaseOwner: string,
+  ): Promise<boolean> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -235,14 +295,16 @@ export class ProjectorCheckpointService {
         `UPDATE "v2_projector_checkpoints" 
         SET "lease_owner" = NULL, "lease_expires_at" = NULL, "status" = 'idle', "updated_at" = NOW()
         WHERE "id" = $1 AND "lease_owner" = $2`,
-        [checkpointId, leaseOwner]
+        [checkpointId, leaseOwner],
       );
 
       await queryRunner.commitTransaction();
       return (result.affectedRows || 0) > 0;
     } catch (error) {
       await queryRunner.rollbackTransaction();
-      this.logger.error(`Failed to release checkpoint ${checkpointId}: ${error.message}`);
+      this.logger.error(
+        `Failed to release checkpoint ${checkpointId}: ${error.message}`,
+      );
       return false;
     } finally {
       await queryRunner.release();
@@ -261,7 +323,7 @@ export class ProjectorCheckpointService {
       const result = await queryRunner.query(
         `UPDATE "v2_projector_checkpoints" 
         SET "lease_owner" = NULL, "lease_expires_at" = NULL, "status" = 'idle', "updated_at" = NOW()
-        WHERE "lease_expires_at" IS NOT NULL AND "lease_expires_at" < NOW() - INTERVAL '${this.STALE_LEASE_THRESHOLD_MS} milliseconds'`
+        WHERE "lease_expires_at" IS NOT NULL AND "lease_expires_at" < NOW() - INTERVAL '${this.STALE_LEASE_THRESHOLD_MS} milliseconds'`,
       );
 
       await queryRunner.commitTransaction();
@@ -284,12 +346,21 @@ export class ProjectorCheckpointService {
   /**
    * Get checkpoint by projector details
    */
-  async getCheckpoint(projectorName: string, chainId: number, contractAddress: string): Promise<ProjectorCheckpoint | null> {
+  async getCheckpoint(
+    projectorName: string,
+    chainId: number,
+    contractAddress: string,
+  ): Promise<ProjectorCheckpoint | null> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
 
     try {
-      return this.findCheckpoint(queryRunner, projectorName, chainId, contractAddress.toLowerCase());
+      return this.findCheckpoint(
+        queryRunner,
+        projectorName,
+        chainId,
+        contractAddress.toLowerCase(),
+      );
     } finally {
       await queryRunner.release();
     }
@@ -305,7 +376,7 @@ export class ProjectorCheckpointService {
     try {
       const result = await queryRunner.query(
         `SELECT * FROM "v2_projector_checkpoints" WHERE "id" = $1`,
-        [id]
+        [id],
       );
       return result[0] ? this.mapToCheckpoint(result[0]) : null;
     } finally {
@@ -323,7 +394,7 @@ export class ProjectorCheckpointService {
     try {
       const result = await queryRunner.query(
         `SELECT * FROM "v2_projector_checkpoints" WHERE "projector_name" = $1 ORDER BY "updated_at" DESC`,
-        [projectorName]
+        [projectorName],
       );
       return result.map(this.mapToCheckpoint);
     } finally {
@@ -364,7 +435,7 @@ export class ProjectorCheckpointService {
     const result = await queryRunner.query(
       `SELECT * FROM "v2_projector_checkpoints" 
       WHERE "projector_name" = $1 AND "chain_id" = $2 AND "contract_address" = $3`,
-      [projectorName, chainId, contractAddress]
+      [projectorName, chainId, contractAddress],
     );
     return result[0] ? this.mapToCheckpoint(result[0]) : null;
   }
@@ -375,14 +446,18 @@ export class ProjectorCheckpointService {
       projectorName: row.projector_name,
       chainId: parseInt(row.chain_id, 10),
       contractAddress: row.contract_address,
-      lastProcessedBlock: row.last_processed_block ? BigInt(row.last_processed_block) : BigInt(0),
+      lastProcessedBlock: row.last_processed_block
+        ? BigInt(row.last_processed_block)
+        : BigInt(0),
       lastProcessedLogIndex: parseInt(row.last_processed_log_index, 10),
       lastProcessedTxHash: row.last_processed_tx_hash,
       status: row.status,
       errorMessage: row.error_message,
       batchSize: parseInt(row.batch_size, 10),
       leaseOwner: row.lease_owner,
-      leaseExpiresAt: row.lease_expires_at ? new Date(row.lease_expires_at) : undefined,
+      leaseExpiresAt: row.lease_expires_at
+        ? new Date(row.lease_expires_at)
+        : undefined,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
       processedCount: parseInt(row.processed_count, 10),

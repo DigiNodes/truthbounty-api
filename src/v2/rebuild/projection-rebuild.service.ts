@@ -1,4 +1,9 @@
-import { Inject, Injectable, Logger, BadRequestException } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import {
@@ -125,9 +130,7 @@ export class ProjectionRebuildService {
    * Run (or resume) a rebuild. Returns the deterministic checkpoint; a durable
    * audit row is written for the run.
    */
-  async rebuild(
-    options: ProjectionRebuildOptions,
-  ): Promise<RebuildCheckpoint> {
+  async rebuild(options: ProjectionRebuildOptions): Promise<RebuildCheckpoint> {
     const eventBatchSize = options.eventBatchSize ?? DEFAULT_EVENT_BATCH;
     this.assertParsableDeploymentBlock(options.deploymentBlock);
     this.assertShadowTarget(options);
@@ -181,7 +184,10 @@ export class ProjectionRebuildService {
       return checkpoint;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      await runRepo.update(run.id, { status: 'failed', error: message.slice(0, 2000) });
+      await runRepo.update(run.id, {
+        status: 'failed',
+        error: message.slice(0, 2000),
+      });
       throw err;
     }
   }
@@ -208,9 +214,7 @@ export class ProjectionRebuildService {
     const deploymentBlock = BigInt(options.deploymentBlock);
     const prior = options.resumeFrom ?? null;
     /** First block not yet folded into `digest`. */
-    let nextBlockToFold = prior
-      ? BigInt(prior.fromBlock)
-      : deploymentBlock;
+    let nextBlockToFold = prior ? BigInt(prior.fromBlock) : deploymentBlock;
     let digest = prior ? prior.inputDigest : initialDigest();
 
     // Counters carry forward across a resume, so the final report describes the
@@ -266,10 +270,7 @@ export class ProjectionRebuildService {
             nextBlockToFold,
             cursor.blockNumber,
           );
-          digest = foldDigest(
-            digest,
-            slice.map(canonicalEventIdentity),
-          );
+          digest = foldDigest(digest, slice.map(canonicalEventIdentity));
           eventsConsumed += slice.length;
           unclaimedEvents += this.countUnclaimed(slice);
           nextBlockToFold = cursor.blockNumber + 1n;
@@ -478,7 +479,8 @@ export class ProjectionRebuildService {
       if (
         highest === null ||
         blockNumber > highest.blockNumber ||
-        (blockNumber === highest.blockNumber && cursor.lastLogIndex > highest.logIndex)
+        (blockNumber === highest.blockNumber &&
+          cursor.lastLogIndex > highest.logIndex)
       ) {
         highest = { blockNumber, logIndex: cursor.lastLogIndex };
       }

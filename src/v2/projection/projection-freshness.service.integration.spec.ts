@@ -52,10 +52,10 @@ describe('ProjectionFreshnessService (integration)', () => {
     moduleRef = await Test.createTestingModule({
       imports: [
         TypeOrmModule.forRoot({
-          type: 'sqlite',
+          type: 'better-sqlite3',
           database: ':memory:',
           // eslint-disable-next-line @typescript-eslint/no-require-imports
-          driver: require('sqlite3'),
+          driver: require('better-sqlite3'),
           entities: [ProjectorCursor, EventCheckpoint],
           synchronize: true,
         }),

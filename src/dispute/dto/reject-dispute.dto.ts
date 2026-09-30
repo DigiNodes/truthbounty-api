@@ -7,7 +7,10 @@ export class RejectDisputeDto {
   @IsNotEmpty()
   reason: string;
 
-  @ApiProperty({ description: 'ID of the user rejecting the dispute', required: false })
+  @ApiProperty({
+    description: 'ID of the user rejecting the dispute',
+    required: false,
+  })
   @IsString()
   @IsOptional()
   rejectedBy?: string;

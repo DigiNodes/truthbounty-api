@@ -12,9 +12,7 @@ import { Wallet } from '../entities/wallet.entity';
 import { Claim } from '../claims/entities/claim.entity';
 import { User } from '../entities/user.entity';
 import { AggregationService } from '../aggregation/aggregation.service';
-import {
-  VerificationVerdict,
-} from '../aggregation/aggregation.types';
+import { VerificationVerdict } from '../aggregation/aggregation.types';
 import { ClaimsCache } from '../cache/claims.cache';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Job, JobsOptions, Queue } from 'bullmq';
@@ -132,9 +130,7 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
       this.logger.error(
         `Failed to enqueue job ${name}: ${error instanceof Error ? error.message : String(error)}`,
       );
-      this.logger.debug(
-        `Enqueue error classification: ${errorClassification}`,
-      );
+      this.logger.debug(`Enqueue error classification: ${errorClassification}`);
       return null;
     }
   }
@@ -149,13 +145,18 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
     if (!queue) return null;
 
     const options: JobsOptions = {
-      repeat: { pattern: cron },
       attempts: DEFAULT_RETRY_POLICY.attempts,
       backoff: DEFAULT_RETRY_POLICY.backoff,
     };
 
     try {
-      const job = await queue.add(name, data, options);
+      // bullmq 6 removed `repeat` from Queue.add(); repeatable work must go
+      // through the job-scheduler API.
+      const job = await queue.upsertJobScheduler(
+        name,
+        { pattern: cron },
+        { data, opts: options },
+      );
       this.logger.log(`Scheduled recurring job ${name} with cron ${cron}`);
       return job as Job<T>;
     } catch (error) {
@@ -215,7 +216,7 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    this.logger.info(
+    this.logger.log(
       `Retry summary for ${queueName}: ${retried} retried, ${skipped} skipped`,
     );
     return retried;
@@ -252,7 +253,6 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
       'completed',
       'failed',
       'delayed',
-      'paused',
     );
 
     return {

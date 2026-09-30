@@ -22,7 +22,10 @@ describe('integrity', () => {
 
     it('changes when any hashed field changes', () => {
       const original = computeAuditRecordHash(baseRecord, secret);
-      const changed = computeAuditRecordHash({ ...baseRecord, entityId: 'claim-2' }, secret);
+      const changed = computeAuditRecordHash(
+        { ...baseRecord, entityId: 'claim-2' },
+        secret,
+      );
       expect(changed).not.toBe(original);
     });
 
@@ -66,7 +69,9 @@ describe('integrity', () => {
   describe('verifyAuditRecordHash', () => {
     it('returns true for an untampered record', () => {
       const integrityHash = computeAuditRecordHash(baseRecord, secret);
-      expect(verifyAuditRecordHash({ ...baseRecord, integrityHash }, secret)).toBe(true);
+      expect(
+        verifyAuditRecordHash({ ...baseRecord, integrityHash }, secret),
+      ).toBe(true);
     });
 
     it('returns false when the record was edited after hashing', () => {
@@ -81,12 +86,18 @@ describe('integrity', () => {
 
     it('returns false without recomputing the secret-less hash correctly if the wrong secret is used', () => {
       const integrityHash = computeAuditRecordHash(baseRecord, 'secret-a');
-      expect(verifyAuditRecordHash({ ...baseRecord, integrityHash }, 'secret-b')).toBe(false);
+      expect(
+        verifyAuditRecordHash({ ...baseRecord, integrityHash }, 'secret-b'),
+      ).toBe(false);
     });
 
     it('returns false when integrityHash is missing', () => {
-      expect(verifyAuditRecordHash({ ...baseRecord, integrityHash: null }, secret)).toBe(false);
-      expect(verifyAuditRecordHash({ ...baseRecord } as any, secret)).toBe(false);
+      expect(
+        verifyAuditRecordHash({ ...baseRecord, integrityHash: null }, secret),
+      ).toBe(false);
+      expect(verifyAuditRecordHash({ ...baseRecord } as any, secret)).toBe(
+        false,
+      );
     });
   });
 });

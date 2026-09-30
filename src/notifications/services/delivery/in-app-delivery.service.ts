@@ -10,7 +10,9 @@ export class InAppDeliveryService extends BaseDeliveryService {
 
   async deliver(delivery: NotificationDelivery): Promise<DeliveryResult> {
     try {
-      this.logger.debug(`In-app delivery for notification ${delivery.notificationId}`);
+      this.logger.debug(
+        `In-app delivery for notification ${delivery.notificationId}`,
+      );
       return {
         success: true,
         deliveredAt: new Date(),

@@ -11,7 +11,10 @@ import {
   reconcilePool,
   sumAmounts,
 } from './reward-reconciliation';
-import { AllocationKind, ALLOCATION_KINDS } from './reward-allocation-kind.enum';
+import {
+  AllocationKind,
+  ALLOCATION_KINDS,
+} from './reward-allocation-kind.enum';
 
 export interface AllocationWithdrawalReconciliation {
   allocationId: string;
@@ -272,7 +275,8 @@ export class RewardsReconciliationService {
     return totals;
   }
 
-  private groupAllocationsByPool(    allocations: ProjectRewardAllocation[],
+  private groupAllocationsByPool(
+    allocations: ProjectRewardAllocation[],
   ): Map<string, ProjectRewardAllocation[]> {
     const grouped = new Map<string, ProjectRewardAllocation[]>();
     for (const allocation of allocations) {
@@ -286,7 +290,7 @@ export class RewardsReconciliationService {
     return grouped;
   }
 
-  private async summarise(
+  private summarise(
     pools: PoolReconciliation[],
     allocations: AllocationReconciliation[],
     withdrawals: AllocationWithdrawalReconciliation[],

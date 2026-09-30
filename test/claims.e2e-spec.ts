@@ -1,17 +1,16 @@
-import { Test, TestingModule } from "@nestjs/testing";
-import { INestApplication } from "@nestjs/common";
-import request from "supertest";
+import { Test, TestingModule } from '@nestjs/testing';
+import { INestApplication } from '@nestjs/common';
+import request from 'supertest';
 
-import { AppModule } from "../src/app.module";
+import { AppModule } from '../src/app.module';
 
-describe("Claims (e2e)", () => {
+describe('Claims (e2e)', () => {
   let app: INestApplication;
 
   beforeAll(async () => {
-    const moduleFixture: TestingModule =
-      await Test.createTestingModule({
-        imports: [AppModule],
-      }).compile();
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
 
     app = moduleFixture.createNestApplication();
     await app.init();
@@ -21,14 +20,14 @@ describe("Claims (e2e)", () => {
     await app.close();
   });
 
-  it("GET /claims/:id should return 404 for unknown id", async () => {
-    const unknownId = "non-existent-id";
+  it('GET /claims/:id should return 404 for unknown id', async () => {
+    const unknownId = 'non-existent-id';
 
     await request(app.getHttpServer())
       .get(`/claims/${unknownId}`)
       .expect(404)
       .expect((res) => {
-        expect(res.body.message).toContain("not found");
+        expect(res.body.message).toContain('not found');
       });
   });
 });

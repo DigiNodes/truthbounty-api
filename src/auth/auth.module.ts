@@ -23,7 +23,10 @@ import { ServiceAuthGuard } from './guards/service-auth.guard';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET', 'truthbounty-secret-key-change-in-production'),
+        secret: configService.get<string>(
+          'JWT_SECRET',
+          'truthbounty-secret-key-change-in-production',
+        ),
         signOptions: {
           expiresIn: configService.get<string>('JWT_EXPIRATION', '15m') as any,
         },

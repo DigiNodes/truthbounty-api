@@ -1,6 +1,7 @@
 import { ConfigService } from '@nestjs/config';
 import { ClaimsCache } from './claims.cache';
 import { RedisService } from '../redis/redis.service';
+import { CacheHealthService } from './cache-health.service';
 
 describe('ClaimsCache', () => {
   let cache: ClaimsCache;
@@ -45,9 +46,15 @@ describe('ClaimsCache', () => {
       }),
     } as unknown as ConfigService;
 
+    const cacheHealthService = {
+      recordSuccess: jest.fn(),
+      recordFailure: jest.fn(),
+    } as unknown as CacheHealthService;
+
     cache = new ClaimsCache(
       redisService as unknown as RedisService,
       configService,
+      cacheHealthService,
     );
   });
 
@@ -102,7 +109,9 @@ describe('ClaimsCache', () => {
       expect(redisService.del).toHaveBeenCalledWith('v1:claim:123');
       expect(redisService.del).toHaveBeenCalledWith('v1:claims:latest');
       // Key uses the wallet as passed (lowercased) — matches the input above.
-      expect(redisService.del).toHaveBeenCalledWith('v1:claims:user:0x1234567890');
+      expect(redisService.del).toHaveBeenCalledWith(
+        'v1:claims:user:0x1234567890',
+      );
       expect(mockSrem).toHaveBeenCalled();
     });
   });

@@ -27,7 +27,13 @@ import { QueueName } from '../jobs/jobs.types';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Admin, Incident, ModerationReport, AuditLog, Claim]),
+    TypeOrmModule.forFeature([
+      Admin,
+      Incident,
+      ModerationReport,
+      AuditLog,
+      Claim,
+    ]),
     FeatureFlagsModule,
     JobsModule,
     RedisModule,

@@ -15,18 +15,23 @@ export class PushDeliveryService extends BaseDeliveryService {
     }
 
     try {
-      this.logger.debug(`Push delivery to token ${pushToken.substring(0, 8)}... for notification ${delivery.notificationId}`);
+      this.logger.debug(
+        `Push delivery to token ${pushToken.substring(0, 8)}... for notification ${delivery.notificationId}`,
+      );
 
       this.logger.log(
         `PUSH NOTIFICATION to ${pushToken.substring(0, 8)}... | ` +
-        `Title: ${delivery.responseData?.title || ''} | ` +
-        `Body: ${delivery.responseData?.body || ''}`,
+          `Title: ${delivery.responseData?.title || ''} | ` +
+          `Body: ${delivery.responseData?.body || ''}`,
       );
 
       return {
         success: true,
         deliveredAt: new Date(),
-        responseData: { provider: 'fcm-placeholder', tokenPrefix: pushToken.substring(0, 8) },
+        responseData: {
+          provider: 'fcm-placeholder',
+          tokenPrefix: pushToken.substring(0, 8),
+        },
       };
     } catch (error) {
       this.logger.error(`Push delivery failed: ${error.message}`);

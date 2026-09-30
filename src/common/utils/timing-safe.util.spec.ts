@@ -18,7 +18,9 @@ describe('timing-safe.util (issue-416)', () => {
     });
 
     it('returns false for length mismatch without throwing', () => {
-      expect(() => timingSafeEqualUtf8('short', 'much-longer-value')).not.toThrow();
+      expect(() =>
+        timingSafeEqualUtf8('short', 'much-longer-value'),
+      ).not.toThrow();
       expect(timingSafeEqualUtf8('short', 'much-longer-value')).toBe(false);
     });
   });
@@ -44,20 +46,21 @@ describe('timing-safe.util (issue-416)', () => {
 
   describe('timingSafeEqualBytes', () => {
     it('never throws on length mismatch (unlike crypto.timingSafeEqual)', () => {
-      expect(() => timingSafeEqual(Buffer.from('a'), Buffer.from('ab'))).toThrow();
-      expect(() => timingSafeEqualBytes(Buffer.from('a'), Buffer.from('ab'))).not.toThrow();
-      expect(timingSafeEqualBytes(Buffer.from('a'), Buffer.from('ab'))).toBe(false);
+      expect(() =>
+        timingSafeEqual(Buffer.from('a'), Buffer.from('ab')),
+      ).toThrow();
+      expect(() =>
+        timingSafeEqualBytes(Buffer.from('a'), Buffer.from('ab')),
+      ).not.toThrow();
+      expect(timingSafeEqualBytes(Buffer.from('a'), Buffer.from('ab'))).toBe(
+        false,
+      );
     });
   });
 
   describe('constantTimeAddressEqual', () => {
     it('compares addresses case-insensitively', () => {
-      expect(
-        constantTimeAddressEqual(
-          '0xAbC123',
-          '0xabc123',
-        ),
-      ).toBe(true);
+      expect(constantTimeAddressEqual('0xAbC123', '0xabc123')).toBe(true);
     });
 
     it('returns false on mismatch without leaking via early return', () => {

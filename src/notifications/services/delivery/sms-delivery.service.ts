@@ -15,7 +15,9 @@ export class SmsDeliveryService extends BaseDeliveryService {
     }
 
     try {
-      this.logger.debug(`SMS delivery to ${phoneNumber} for notification ${delivery.notificationId}`);
+      this.logger.debug(
+        `SMS delivery to ${phoneNumber} for notification ${delivery.notificationId}`,
+      );
 
       this.logger.log(
         `SMS TO: ${phoneNumber} | Body: ${delivery.responseData?.body || ''}`,
@@ -27,7 +29,9 @@ export class SmsDeliveryService extends BaseDeliveryService {
         responseData: { provider: 'twilio-placeholder', phoneNumber },
       };
     } catch (error) {
-      this.logger.error(`SMS delivery failed to ${phoneNumber}: ${error.message}`);
+      this.logger.error(
+        `SMS delivery failed to ${phoneNumber}: ${error.message}`,
+      );
       return {
         success: false,
         failureReason: error.message,

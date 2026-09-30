@@ -1,6 +1,16 @@
-import { IsString, IsNotEmpty, IsOptional, IsEnum, IsArray } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsEnum,
+  IsArray,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IncidentClassification, IncidentSeverity, IncidentStatus } from '../entities/incident.entity';
+import {
+  IncidentClassification,
+  IncidentSeverity,
+  IncidentStatus,
+} from '../entities/incident.entity';
 
 export class CreateIncidentDto {
   @ApiProperty({ description: 'Incident title' })
@@ -23,7 +33,9 @@ export class CreateIncidentDto {
   @IsNotEmpty()
   severity: IncidentSeverity;
 
-  @ApiPropertyOptional({ description: 'Related entity type (e.g. claim, user)' })
+  @ApiPropertyOptional({
+    description: 'Related entity type (e.g. claim, user)',
+  })
   @IsString()
   @IsOptional()
   relatedEntityType?: string;

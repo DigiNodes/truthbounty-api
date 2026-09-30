@@ -1,4 +1,9 @@
-import { Injectable, UnauthorizedException, InternalServerErrorException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { verifyMessage } from 'ethers';
@@ -46,20 +51,37 @@ export class AuthService {
     const record: ChallengeRecord = { nonce, issuedAt: Date.now() };
 
     try {
-      const ok = await this.redisService.set(key, JSON.stringify(record), this.NONCE_TTL_SECONDS);
+      const ok = await this.redisService.set(
+        key,
+        JSON.stringify(record),
+        this.NONCE_TTL_SECONDS,
+      );
       if (!ok) {
         this.logger.error(`Failed to persist nonce for ${address}`);
-        throw new InternalServerErrorException('Failed to generate challenge. Please try again later.');
+        throw new InternalServerErrorException(
+          'Failed to generate challenge. Please try again later.',
+        );
       }
     } catch (err) {
-      this.logger.error(`Error persisting nonce for ${address}: ${err?.message ?? err}`);
-      throw new InternalServerErrorException('Failed to generate challenge. Please try again later.');
+      this.logger.error(
+        `Error persisting nonce for ${address}: ${err?.message ?? err}`,
+      );
+      throw new InternalServerErrorException(
+        'Failed to generate challenge. Please try again later.',
+      );
     }
 
     // If SIWE parameters are provided, build a SIWE-compliant message
     if (options?.domain || options?.uri || options?.chainId) {
-      const domain = options.domain || this.configService.get<string>('SIWE_DOMAIN', 'truthbounty.com');
-      const uri = options.uri || this.configService.get<string>('SIWE_ORIGIN', 'https://app.truthbounty.com');
+      const domain =
+        options.domain ||
+        this.configService.get<string>('SIWE_DOMAIN', 'truthbounty.com');
+      const uri =
+        options.uri ||
+        this.configService.get<string>(
+          'SIWE_ORIGIN',
+          'https://app.truthbounty.com',
+        );
       const chainId = options.chainId || 1;
 
       const message = this.siweService.buildSiweMessage({
@@ -84,7 +106,12 @@ export class AuthService {
    * Verify wallet signature and issue JWT access + refresh tokens.
    * Supports both SIWE (EIP-4361) and legacy message formats.
    */
-  async login(loginDto: LoginDto): Promise<{ accessToken: string; refreshToken: string; expiresIn: number; user: any }> {
+  async login(loginDto: LoginDto): Promise<{
+    accessToken: string;
+    refreshToken: string;
+    expiresIn: number;
+    user: any;
+  }> {
     const { address, signature, message } = loginDto;
     const normalizedAddress = address.toLowerCase();
     const key = `auth:nonce:${normalizedAddress}`;
@@ -97,7 +124,9 @@ export class AuthService {
     try {
       recoveredAddress = verifyMessage(message, signature);
     } catch (error) {
-      this.logger.warn(`Login failed [signature-parse] for ${normalizedAddress}`);
+      this.logger.warn(
+        `Login failed [signature-parse] for ${normalizedAddress}`,
+      );
       // Dummy timing-safe work to normalize the failure path.
       timingSafeEqualUtf8(message, message);
       throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
@@ -105,7 +134,9 @@ export class AuthService {
 
     // 2. Check if recovered address matches the claimed address (timing-safe).
     if (!constantTimeAddressEqual(recoveredAddress, address)) {
-      this.logger.warn(`Login failed [address-mismatch] for ${normalizedAddress}`);
+      this.logger.warn(
+        `Login failed [address-mismatch] for ${normalizedAddress}`,
+      );
       timingSafeEqualUtf8(message, message);
       throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
     }
@@ -115,7 +146,9 @@ export class AuthService {
     // above so hit-vs-miss timing is bounded by the same Redis + compare work.
     const raw = await this.redisService.get(key);
     if (!raw) {
-      this.logger.warn(`Login failed [challenge-not-found] for ${normalizedAddress}`);
+      this.logger.warn(
+        `Login failed [challenge-not-found] for ${normalizedAddress}`,
+      );
       timingSafeEqualUtf8(message, message);
       throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
     }
@@ -126,7 +159,9 @@ export class AuthService {
     } catch {
       // Stored value is not a valid record — treat as expired/invalid
       await this.redisService.del(key).catch(() => null);
-      this.logger.warn(`Login failed [challenge-corrupt] for ${normalizedAddress}`);
+      this.logger.warn(
+        `Login failed [challenge-corrupt] for ${normalizedAddress}`,
+      );
       timingSafeEqualUtf8(message, message);
       throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
     }
@@ -137,7 +172,9 @@ export class AuthService {
     const elapsedSeconds = (Date.now() - record.issuedAt) / 1000;
     if (elapsedSeconds >= this.NONCE_TTL_SECONDS) {
       await this.redisService.del(key).catch(() => null);
-      this.logger.warn(`Login failed [challenge-expired] for ${normalizedAddress}`);
+      this.logger.warn(
+        `Login failed [challenge-expired] for ${normalizedAddress}`,
+      );
       timingSafeEqualUtf8(message, message);
       throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
     }
@@ -146,7 +183,9 @@ export class AuthService {
 
     // Compare the full challenge message in constant time to avoid timing attacks.
     if (!timingSafeEqualUtf8(message, expectedMessage)) {
-      this.logger.warn(`Login failed [nonce-mismatch] for ${normalizedAddress}`);
+      this.logger.warn(
+        `Login failed [nonce-mismatch] for ${normalizedAddress}`,
+      );
       throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
     }
 
@@ -154,7 +193,7 @@ export class AuthService {
     await this.redisService.del(key).catch(() => null);
 
     // 7. Find or create user
-    let user = await this.prisma.wallet.findFirst({
+    const user = await this.prisma.wallet.findFirst({
       where: { address: address.toLowerCase() },
       include: { user: true },
     });
@@ -223,12 +262,13 @@ export class AuthService {
    * Validate JWT token and return user info
    */
   async validateToken(payload: any): Promise<any> {
-    let { address, userId } = payload;
+    const { address, userId } = payload;
 
     // If sub contains an address (0x...), prefer it for the wallet lookup
     const sub = payload.sub;
     const candidateAddress =
-      address || (typeof sub === 'string' && sub.startsWith('0x') ? sub : undefined);
+      address ||
+      (typeof sub === 'string' && sub.startsWith('0x') ? sub : undefined);
 
     // Verify wallet still exists using the best available address
     const wallet = candidateAddress
@@ -260,7 +300,8 @@ export class AuthService {
    * Generate a random nonce
    */
   private generateRandomNonce(): string {
-    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    const characters =
+      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
     const length = 32;
     let nonce = '';
 

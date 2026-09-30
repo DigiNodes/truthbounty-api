@@ -64,7 +64,7 @@ export const PROJECTION_REGISTRY = Symbol('PROJECTION_REGISTRY');
 
 function tableCounter(
   dataSource: DataSource,
-  targets: EntityTarget[],
+  targets: EntityTarget<any>[],
 ): () => Promise<number> {
   return async () => {
     let total = 0;
@@ -77,7 +77,7 @@ function tableCounter(
 
 function tableResetter(
   dataSource: DataSource,
-  targets: EntityTarget[],
+  targets: EntityTarget<any>[],
 ): () => Promise<void> {
   return async () => {
     for (const target of targets) {
@@ -123,8 +123,14 @@ export function buildDefaultRegistry(
       projectorName: 'v2-evidence',
       eventNames: ['EvidenceRegistered', 'EvidenceReplaced', 'EvidenceRemoved'],
       run: (batchSize) => projectors.evidence.processNewEvents(batchSize),
-      countRows: tableCounter(dataSource, [ProjectEvidence, ProjectEvidenceVersion]),
-      reset: tableResetter(dataSource, [ProjectEvidence, ProjectEvidenceVersion]),
+      countRows: tableCounter(dataSource, [
+        ProjectEvidence,
+        ProjectEvidenceVersion,
+      ]),
+      reset: tableResetter(dataSource, [
+        ProjectEvidence,
+        ProjectEvidenceVersion,
+      ]),
     },
     {
       name: 'v2-verification',
@@ -151,11 +157,7 @@ export function buildDefaultRegistry(
     {
       name: 'v2-rewards',
       projectorName: 'v2-rewards',
-      eventNames: [
-        'RewardPoolSettled',
-        'RewardAllocated',
-        'RewardClaimed',
-      ],
+      eventNames: ['RewardPoolSettled', 'RewardAllocated', 'RewardClaimed'],
       run: (batchSize) => projectors.rewards.processNewEvents(batchSize),
       countRows: tableCounter(dataSource, [
         ProjectRewardAllocation,

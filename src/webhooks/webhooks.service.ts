@@ -12,9 +12,16 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import * as crypto from 'crypto';
 import * as client from 'prom-client';
-import { Webhook, WebhookEventType, ALL_WEBHOOK_EVENTS } from './entities/webhook.entity';
+import {
+  Webhook,
+  WebhookEventType,
+  ALL_WEBHOOK_EVENTS,
+} from './entities/webhook.entity';
 import { WebhookSubscription } from './entities/webhook-subscription.entity';
-import { WebhookDelivery, DeliveryStatus } from './entities/webhook-delivery.entity';
+import {
+  WebhookDelivery,
+  DeliveryStatus,
+} from './entities/webhook-delivery.entity';
 import { CreateWebhookDto } from './dto/create-webhook.dto';
 import { UpdateWebhookDto } from './dto/update-webhook.dto';
 import { WebhookDeliveryFilterDto } from './dto/webhook-filter.dto';
@@ -56,7 +63,7 @@ export class WebhooksService implements OnModuleInit {
     private readonly webhookQueue: Queue,
   ) {}
 
-async onModuleInit(): Promise<void> {
+  async onModuleInit(): Promise<void> {
     try {
       this.deliveriesCounter = new client.Counter({
         name: 'webhook_deliveries_total',
@@ -124,7 +131,9 @@ async onModuleInit(): Promise<void> {
 
     // Validate event types
     if (!dto.events || dto.events.length === 0) {
-      throw new BadRequestException('At least one event type must be subscribed');
+      throw new BadRequestException(
+        'At least one event type must be subscribed',
+      );
     }
 
     const invalidEvents = dto.events.filter(
@@ -170,17 +179,14 @@ async onModuleInit(): Promise<void> {
     return result;
   }
 
-  async findAll(
-    ownerId?: string,
-    enabled?: string,
-  ): Promise<Webhook[]> {
+  async findAll(ownerId?: string, enabled?: string): Promise<Webhook[]> {
     const where: any = {};
     if (ownerId) where.ownerId = ownerId;
     if (enabled !== undefined) where.enabled = enabled === 'true';
 
     return this.webhookRepo.find({
       where,
-      relations: ['subscriptions'],
+      relations: { subscriptions: true },
       order: { createdAt: 'DESC' },
     });
   }
@@ -188,7 +194,7 @@ async onModuleInit(): Promise<void> {
   async findOne(id: string): Promise<Webhook> {
     const webhook = await this.webhookRepo.findOne({
       where: { id },
-      relations: ['subscriptions'],
+      relations: { subscriptions: true },
     });
     if (!webhook) {
       throw new NotFoundException(`Webhook ${id} not found`);
@@ -253,7 +259,9 @@ async onModuleInit(): Promise<void> {
       await this.subscriptionRepo.save(subscriptions);
     } else if (dto.filters !== undefined) {
       // Update filters on all existing subscriptions
-      const subs = await this.subscriptionRepo.find({ where: { webhookId: id } });
+      const subs = await this.subscriptionRepo.find({
+        where: { webhookId: id },
+      });
       for (const sub of subs) {
         sub.filters = dto.filters;
       }
@@ -315,7 +323,7 @@ async onModuleInit(): Promise<void> {
     // Find all active webhooks subscribed to this event type
     const subscriptions = await this.subscriptionRepo.find({
       where: { eventType },
-      relations: ['webhook'],
+      relations: { webhook: true },
     });
 
     // Filter to active webhooks that aren't disabled
@@ -324,9 +332,7 @@ async onModuleInit(): Promise<void> {
     );
 
     if (activeSubs.length === 0) {
-      this.logger.debug(
-        `No active subscribers for event ${eventType}`,
-      );
+      this.logger.debug(`No active subscribers for event ${eventType}`);
       return 0;
     }
 
@@ -429,7 +435,12 @@ async onModuleInit(): Promise<void> {
   async getDeliveries(
     webhookId: string,
     filter?: WebhookDeliveryFilterDto,
-  ): Promise<{ deliveries: WebhookDelivery[]; total: number; page: number; limit: number }> {
+  ): Promise<{
+    deliveries: WebhookDelivery[];
+    total: number;
+    page: number;
+    limit: number;
+  }> {
     const page = filter?.page || 1;
     const limit = filter?.limit || 20;
     const skip = (page - 1) * limit;
@@ -442,7 +453,9 @@ async onModuleInit(): Promise<void> {
       .take(limit);
 
     if (filter?.eventType) {
-      query.andWhere('d.eventType = :eventType', { eventType: filter.eventType });
+      query.andWhere('d.eventType = :eventType', {
+        eventType: filter.eventType,
+      });
     }
     if (filter?.status) {
       query.andWhere('d.status = :status', { status: filter.status });

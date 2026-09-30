@@ -82,7 +82,7 @@ export class EventDecoderService {
       const value = args[argName];
       if (value === undefined || value === null) return null;
       if (typeof value === 'object') return JSON.stringify(value);
-      return String(value as string | number | boolean);
+      return String(value);
     };
 
     const event: NormalizedEvent = {

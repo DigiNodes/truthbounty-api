@@ -1,5 +1,20 @@
-import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiParam,
+} from '@nestjs/swagger';
 import { ModerationService } from './moderation.service';
 import { AdminGuard } from '../guards/admin.guard';
 import { RolesGuard } from '../guards/roles.guard';
@@ -22,7 +37,12 @@ export class ModerationController {
   constructor(private readonly moderationService: ModerationService) {}
 
   @Get('queue')
-  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMINISTRATOR, AdminRole.MODERATOR, AdminRole.SECURITY_ANALYST)
+  @Roles(
+    AdminRole.SUPER_ADMIN,
+    AdminRole.ADMINISTRATOR,
+    AdminRole.MODERATOR,
+    AdminRole.SECURITY_ANALYST,
+  )
   @ApiOperation({ summary: 'Get moderation queue' })
   @ApiResponse({ status: 200, description: 'Moderation queue items' })
   async getQueue(@Query() query: ModerationQueryDto) {
@@ -30,7 +50,12 @@ export class ModerationController {
   }
 
   @Get('queue/:id')
-  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMINISTRATOR, AdminRole.MODERATOR, AdminRole.SECURITY_ANALYST)
+  @Roles(
+    AdminRole.SUPER_ADMIN,
+    AdminRole.ADMINISTRATOR,
+    AdminRole.MODERATOR,
+    AdminRole.SECURITY_ANALYST,
+  )
   @ApiOperation({ summary: 'Get moderation queue item details' })
   @ApiParam({ name: 'id', description: 'Report ID' })
   async getQueueItem(@Param('id') id: string) {
@@ -38,7 +63,12 @@ export class ModerationController {
   }
 
   @Patch('queue/:id')
-  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMINISTRATOR, AdminRole.MODERATOR, AdminRole.SECURITY_ANALYST)
+  @Roles(
+    AdminRole.SUPER_ADMIN,
+    AdminRole.ADMINISTRATOR,
+    AdminRole.MODERATOR,
+    AdminRole.SECURITY_ANALYST,
+  )
   @ApiOperation({ summary: 'Update queue item' })
   @ApiParam({ name: 'id', description: 'Report ID' })
   async updateQueueItem(
@@ -50,22 +80,42 @@ export class ModerationController {
   }
 
   @Post('reports')
-  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMINISTRATOR, AdminRole.MODERATOR, AdminRole.SECURITY_ANALYST)
+  @Roles(
+    AdminRole.SUPER_ADMIN,
+    AdminRole.ADMINISTRATOR,
+    AdminRole.MODERATOR,
+    AdminRole.SECURITY_ANALYST,
+  )
   @ApiOperation({ summary: 'Create a moderation report' })
   @ApiResponse({ status: 201, description: 'Report created' })
-  async createReport(@Body() createDto: CreateReportDto, @CurrentAdmin() admin: Admin) {
+  async createReport(
+    @Body() createDto: CreateReportDto,
+    @CurrentAdmin() admin: Admin,
+  ) {
     return this.moderationService.createReport(createDto, admin);
   }
 
   @Get('reports')
-  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMINISTRATOR, AdminRole.MODERATOR, AdminRole.SECURITY_ANALYST, AdminRole.AUDITOR)
+  @Roles(
+    AdminRole.SUPER_ADMIN,
+    AdminRole.ADMINISTRATOR,
+    AdminRole.MODERATOR,
+    AdminRole.SECURITY_ANALYST,
+    AdminRole.AUDITOR,
+  )
   @ApiOperation({ summary: 'List all reports' })
   async listReports(@Query() query: ModerationQueryDto) {
     return this.moderationService.findAll(query);
   }
 
   @Get('reports/:id')
-  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMINISTRATOR, AdminRole.MODERATOR, AdminRole.SECURITY_ANALYST, AdminRole.AUDITOR)
+  @Roles(
+    AdminRole.SUPER_ADMIN,
+    AdminRole.ADMINISTRATOR,
+    AdminRole.MODERATOR,
+    AdminRole.SECURITY_ANALYST,
+    AdminRole.AUDITOR,
+  )
   @ApiOperation({ summary: 'Get report details' })
   @ApiParam({ name: 'id', description: 'Report ID' })
   async getReport(@Param('id') id: string) {
@@ -73,7 +123,12 @@ export class ModerationController {
   }
 
   @Patch('reports/:id')
-  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMINISTRATOR, AdminRole.MODERATOR, AdminRole.SECURITY_ANALYST)
+  @Roles(
+    AdminRole.SUPER_ADMIN,
+    AdminRole.ADMINISTRATOR,
+    AdminRole.MODERATOR,
+    AdminRole.SECURITY_ANALYST,
+  )
   @ApiOperation({ summary: 'Update report' })
   @ApiParam({ name: 'id', description: 'Report ID' })
   async updateReport(
@@ -97,7 +152,12 @@ export class ModerationController {
   }
 
   @Post('reports/:id/resolve')
-  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMINISTRATOR, AdminRole.MODERATOR, AdminRole.SECURITY_ANALYST)
+  @Roles(
+    AdminRole.SUPER_ADMIN,
+    AdminRole.ADMINISTRATOR,
+    AdminRole.MODERATOR,
+    AdminRole.SECURITY_ANALYST,
+  )
   @ApiOperation({ summary: 'Resolve a report' })
   @ApiParam({ name: 'id', description: 'Report ID' })
   async resolveReport(
@@ -109,7 +169,12 @@ export class ModerationController {
   }
 
   @Get('stats')
-  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMINISTRATOR, AdminRole.MODERATOR, AdminRole.AUDITOR)
+  @Roles(
+    AdminRole.SUPER_ADMIN,
+    AdminRole.ADMINISTRATOR,
+    AdminRole.MODERATOR,
+    AdminRole.AUDITOR,
+  )
   @ApiOperation({ summary: 'Get moderation statistics' })
   async getStats() {
     return this.moderationService.getStats();

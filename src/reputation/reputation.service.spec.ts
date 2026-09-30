@@ -90,9 +90,9 @@ describe('ReputationService', () => {
     it('should throw if not found', async () => {
       reputationRepo.findOne.mockResolvedValue(null);
 
-      await expect(
-        service.findByWalletOrThrow('nonexistent'),
-      ).rejects.toThrow('Reputation record not found');
+      await expect(service.findByWalletOrThrow('nonexistent')).rejects.toThrow(
+        'Reputation record not found',
+      );
     });
   });
 
@@ -102,8 +102,20 @@ describe('ReputationService', () => {
         orderBy: jest.fn().mockReturnThis(),
         take: jest.fn().mockReturnThis(),
         getMany: jest.fn().mockResolvedValue([
-          { walletAddress: '0x1', score: 100, verificationCount: 10, governanceParticipation: 5, rewardTotal: 50 },
-          { walletAddress: '0x2', score: 80, verificationCount: 8, governanceParticipation: 3, rewardTotal: 30 },
+          {
+            walletAddress: '0x1',
+            score: 100,
+            verificationCount: 10,
+            governanceParticipation: 5,
+            rewardTotal: 50,
+          },
+          {
+            walletAddress: '0x2',
+            score: 80,
+            verificationCount: 8,
+            governanceParticipation: 3,
+            rewardTotal: 30,
+          },
         ]),
       };
       reputationRepo.createQueryBuilder.mockReturnValue(

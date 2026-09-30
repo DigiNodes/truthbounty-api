@@ -10,15 +10,35 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Response } from 'express';
-import { ApiTags, ApiOperation, ApiResponse, ApiProduces, ApiBearerAuth } from '@nestjs/swagger';
-import { AuditTrailService, AuditQueryFilters } from '../services/audit-trail.service';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiProduces,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
+import {
+  AuditTrailService,
+  AuditQueryFilters,
+} from '../services/audit-trail.service';
 import { ComplianceService } from '../services/compliance.service';
 import { SecurityMonitoringService } from '../services/security-monitoring.service';
 import { AuditMetricsService } from '../services/audit-metrics.service';
 import { AuditQueueService } from '../services/audit-queue.service';
-import { AuditLog, AuditActionType, AuditEntityType } from '../entities/audit-log.entity';
-import { AuditQueryDto, ExportAuditDto, ComplianceReportDto } from '../dto/audit-query.dto';
-import { AuditPaginatedResponse, AuditResponse } from '../interfaces/audit-response.interface';
+import {
+  AuditLog,
+  AuditActionType,
+  AuditEntityType,
+} from '../entities/audit-log.entity';
+import {
+  AuditQueryDto,
+  ExportAuditDto,
+  ComplianceReportDto,
+} from '../dto/audit-query.dto';
+import {
+  AuditPaginatedResponse,
+  AuditResponse,
+} from '../interfaces/audit-response.interface';
 import { AdminGuard } from '../../admin/guards/admin.guard';
 import { RolesGuard } from '../../admin/guards/roles.guard';
 import { Roles } from '../../admin/decorators/roles.decorator';
@@ -119,8 +139,16 @@ export class AuditController {
     @Param('entityId') entityId: string,
     @Headers('x-request-id') requestId?: string,
   ): Promise<AuditResponse<AuditLog[]>> {
-    const logs = await this.auditTrailService.getEntityAuditLogs(entityType, entityId);
-    return { success: true, data: logs, timestamp: new Date().toISOString(), requestId };
+    const logs = await this.auditTrailService.getEntityAuditLogs(
+      entityType,
+      entityId,
+    );
+    return {
+      success: true,
+      data: logs,
+      timestamp: new Date().toISOString(),
+      requestId,
+    };
   }
 
   @Get('user/:userId')
@@ -141,7 +169,11 @@ export class AuditController {
     const parsedPage = page ? Math.max(parseInt(page, 10), 1) : 1;
     const offset = (parsedPage - 1) * parsedLimit;
 
-    const { logs, total } = await this.auditTrailService.getUserAuditLogs(userId, parsedLimit, offset);
+    const { logs, total } = await this.auditTrailService.getUserAuditLogs(
+      userId,
+      parsedLimit,
+      offset,
+    );
     const totalPages = Math.ceil(total / parsedLimit);
 
     return {
@@ -178,7 +210,11 @@ export class AuditController {
     const parsedPage = page ? Math.max(parseInt(page, 10), 1) : 1;
     const offset = (parsedPage - 1) * parsedLimit;
 
-    const { logs, total } = await this.auditTrailService.getActionAuditLogs(actionType, parsedLimit, offset);
+    const { logs, total } = await this.auditTrailService.getActionAuditLogs(
+      actionType,
+      parsedLimit,
+      offset,
+    );
     const totalPages = Math.ceil(total / parsedLimit);
 
     return {
@@ -209,9 +245,26 @@ export class AuditController {
     @Param('entityType') entityType: AuditEntityType,
     @Param('entityId') entityId: string,
     @Headers('x-request-id') requestId?: string,
-  ): Promise<AuditResponse<Array<{ timestamp: Date; action: AuditActionType; userId: string; changes: Record<string, { before: any; after: any }> }>>> {
-    const history = await this.auditTrailService.getChangeHistory(entityType, entityId);
-    return { success: true, data: history, timestamp: new Date().toISOString(), requestId };
+  ): Promise<
+    AuditResponse<
+      Array<{
+        timestamp: Date;
+        action: AuditActionType;
+        userId: string | null;
+        changes: Record<string, { before: any; after: any }>;
+      }>
+    >
+  > {
+    const history = await this.auditTrailService.getChangeHistory(
+      entityType,
+      entityId,
+    );
+    return {
+      success: true,
+      data: history,
+      timestamp: new Date().toISOString(),
+      requestId,
+    };
   }
 
   @Get('summary')
@@ -229,8 +282,16 @@ export class AuditController {
     @Headers('x-request-id') requestId?: string,
   ): Promise<AuditResponse<Record<string, number>>> {
     const parsedDays = days ? Math.max(parseInt(days, 10), 1) : 7;
-    const summary = await this.auditTrailService.getAuditSummary(entityType, parsedDays);
-    return { success: true, data: summary, timestamp: new Date().toISOString(), requestId };
+    const summary = await this.auditTrailService.getAuditSummary(
+      entityType,
+      parsedDays,
+    );
+    return {
+      success: true,
+      data: summary,
+      timestamp: new Date().toISOString(),
+      requestId,
+    };
   }
 
   @Get('event/:eventId')
@@ -246,7 +307,12 @@ export class AuditController {
     @Headers('x-request-id') requestId?: string,
   ): Promise<AuditResponse<AuditLog | null>> {
     const log = await this.auditTrailService.getAuditLogsByEventId(eventId);
-    return { success: true, data: log, timestamp: new Date().toISOString(), requestId };
+    return {
+      success: true,
+      data: log,
+      timestamp: new Date().toISOString(),
+      requestId,
+    };
   }
 
   @Get('correlation/:correlationId')
@@ -261,8 +327,14 @@ export class AuditController {
     @Param('correlationId') correlationId: string,
     @Headers('x-request-id') requestId?: string,
   ): Promise<AuditResponse<AuditLog[]>> {
-    const logs = await this.auditTrailService.getAuditLogsByCorrelationId(correlationId);
-    return { success: true, data: logs, timestamp: new Date().toISOString(), requestId };
+    const logs =
+      await this.auditTrailService.getAuditLogsByCorrelationId(correlationId);
+    return {
+      success: true,
+      data: logs,
+      timestamp: new Date().toISOString(),
+      requestId,
+    };
   }
 
   @Get('stats/storage')
@@ -272,7 +344,12 @@ export class AuditController {
     @Headers('x-request-id') requestId?: string,
   ): Promise<AuditResponse<any>> {
     const stats = await this.auditTrailService.getStorageStats();
-    return { success: true, data: stats, timestamp: new Date().toISOString(), requestId };
+    return {
+      success: true,
+      data: stats,
+      timestamp: new Date().toISOString(),
+      requestId,
+    };
   }
 
   // ── Compliance / Export ───────────────────────────────────────────────────
@@ -288,7 +365,10 @@ export class AuditController {
   ): Promise<void> {
     const result = await this.complianceService.exportAuditLogs(query);
     res.setHeader('Content-Type', result.format);
-    res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${result.filename}"`,
+    );
     res.setHeader('X-Request-Id', requestId || '');
     if (query.format === 'csv') {
       res.send(result.data);
@@ -305,11 +385,21 @@ export class AuditController {
     @Headers('x-request-id') requestId?: string,
   ): Promise<AuditResponse<any>> {
     const report = await this.complianceService.generateReport(query);
-    return { success: true, data: report, timestamp: new Date().toISOString(), requestId };
+    return {
+      success: true,
+      data: report,
+      timestamp: new Date().toISOString(),
+      requestId,
+    };
   }
 
   @Get('reports/daily')
-  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMINISTRATOR, AdminRole.AUDITOR, AdminRole.MODERATOR)
+  @Roles(
+    AdminRole.SUPER_ADMIN,
+    AdminRole.ADMINISTRATOR,
+    AdminRole.AUDITOR,
+    AdminRole.MODERATOR,
+  )
   @ApiOperation({ summary: 'Get daily audit activity' })
   async getDailyActivity(
     @Query('days') days?: string,
@@ -317,11 +407,21 @@ export class AuditController {
   ): Promise<AuditResponse<any>> {
     const parsedDays = days ? Math.max(parseInt(days, 10), 1) : 30;
     const activity = await this.complianceService.getDailyActivity(parsedDays);
-    return { success: true, data: activity, timestamp: new Date().toISOString(), requestId };
+    return {
+      success: true,
+      data: activity,
+      timestamp: new Date().toISOString(),
+      requestId,
+    };
   }
 
   @Get('reports/categories')
-  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMINISTRATOR, AdminRole.AUDITOR, AdminRole.MODERATOR)
+  @Roles(
+    AdminRole.SUPER_ADMIN,
+    AdminRole.ADMINISTRATOR,
+    AdminRole.AUDITOR,
+    AdminRole.MODERATOR,
+  )
   @ApiOperation({ summary: 'Get audit category summary' })
   async getCategorySummary(
     @Query('days') days?: string,
@@ -329,7 +429,12 @@ export class AuditController {
   ): Promise<AuditResponse<any>> {
     const parsedDays = days ? Math.max(parseInt(days, 10), 1) : 30;
     const summary = await this.complianceService.getCategorySummary(parsedDays);
-    return { success: true, data: summary, timestamp: new Date().toISOString(), requestId };
+    return {
+      success: true,
+      data: summary,
+      timestamp: new Date().toISOString(),
+      requestId,
+    };
   }
 
   // ── Security events (restricted to security_analyst+) ────────────────────
@@ -346,8 +451,16 @@ export class AuditController {
     @Headers('x-request-id') requestId?: string,
   ): Promise<AuditResponse<any>> {
     const parsedMinutes = minutes ? Math.max(parseInt(minutes, 10), 1) : 60;
-    const events = await this.securityMonitoringService.getRecentSecurityEvents(parsedMinutes);
-    return { success: true, data: events, timestamp: new Date().toISOString(), requestId };
+    const events =
+      await this.securityMonitoringService.getRecentSecurityEvents(
+        parsedMinutes,
+      );
+    return {
+      success: true,
+      data: events,
+      timestamp: new Date().toISOString(),
+      requestId,
+    };
   }
 
   @Get('security/failed-logins')
@@ -362,8 +475,14 @@ export class AuditController {
     @Headers('x-request-id') requestId?: string,
   ): Promise<AuditResponse<any>> {
     const parsedDays = days ? Math.max(parseInt(days, 10), 1) : 7;
-    const report = await this.securityMonitoringService.getFailedLoginReport(parsedDays);
-    return { success: true, data: report, timestamp: new Date().toISOString(), requestId };
+    const report =
+      await this.securityMonitoringService.getFailedLoginReport(parsedDays);
+    return {
+      success: true,
+      data: report,
+      timestamp: new Date().toISOString(),
+      requestId,
+    };
   }
 
   @Get('security/admin-activity')
@@ -379,8 +498,14 @@ export class AuditController {
     @Headers('x-request-id') requestId?: string,
   ): Promise<AuditResponse<any>> {
     const parsedDays = days ? Math.max(parseInt(days, 10), 1) : 30;
-    const report = await this.securityMonitoringService.getAdminActivityReport(parsedDays);
-    return { success: true, data: report, timestamp: new Date().toISOString(), requestId };
+    const report =
+      await this.securityMonitoringService.getAdminActivityReport(parsedDays);
+    return {
+      success: true,
+      data: report,
+      timestamp: new Date().toISOString(),
+      requestId,
+    };
   }
 
   @Get('security/check/:userId')
@@ -416,18 +541,28 @@ export class AuditController {
     @Headers('x-request-id') requestId?: string,
   ): Promise<AuditResponse<any>> {
     const status = await this.auditTrailService.getRetentionStatus();
-    return { success: true, data: status, timestamp: new Date().toISOString(), requestId };
+    return {
+      success: true,
+      data: status,
+      timestamp: new Date().toISOString(),
+      requestId,
+    };
   }
 
   @Post('legal-hold/:entityType/:entityId')
   @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMINISTRATOR)
-  @ApiOperation({ summary: 'Place a legal hold on all audit logs for an entity' })
+  @ApiOperation({
+    summary: 'Place a legal hold on all audit logs for an entity',
+  })
   async placeLegalHold(
     @Param('entityType') entityType: AuditEntityType,
     @Param('entityId') entityId: string,
     @Headers('x-request-id') requestId?: string,
   ): Promise<AuditResponse<any>> {
-    const affected = await this.auditTrailService.placeLegalHold(entityType, entityId);
+    const affected = await this.auditTrailService.placeLegalHold(
+      entityType,
+      entityId,
+    );
     return {
       success: true,
       data: { entityType, entityId, affected },
@@ -444,7 +579,10 @@ export class AuditController {
     @Param('entityId') entityId: string,
     @Headers('x-request-id') requestId?: string,
   ): Promise<AuditResponse<any>> {
-    const affected = await this.auditTrailService.removeLegalHold(entityType, entityId);
+    const affected = await this.auditTrailService.removeLegalHold(
+      entityType,
+      entityId,
+    );
     return {
       success: true,
       data: { entityType, entityId, affected },
@@ -463,12 +601,18 @@ export class AuditController {
     @Headers('x-request-id') requestId?: string,
   ): Promise<AuditResponse<any>> {
     const result = await this.auditTrailService.verifyIntegrity(id);
-    return { success: true, data: result, timestamp: new Date().toISOString(), requestId };
+    return {
+      success: true,
+      data: result,
+      timestamp: new Date().toISOString(),
+      requestId,
+    };
   }
 
   @Get('integrity/chain/verify')
   @ApiOperation({
-    summary: 'Verify the audit log hash chain is intact (detects tampering, deletion, and reordering)',
+    summary:
+      'Verify the audit log hash chain is intact (detects tampering, deletion, and reordering)',
   })
   async verifyChain(
     @Query('fromSequence') fromSequence?: string,
@@ -498,6 +642,11 @@ export class AuditController {
       storage: await this.auditTrailService.getStorageStats(),
       queue: await this.auditQueueService.getQueueStats(),
     };
-    return { success: true, data: metrics, timestamp: new Date().toISOString(), requestId };
+    return {
+      success: true,
+      data: metrics,
+      timestamp: new Date().toISOString(),
+      requestId,
+    };
   }
 }

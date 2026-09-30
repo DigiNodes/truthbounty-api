@@ -8,6 +8,10 @@ export class IndexerCheckpoint {
   @Column({ name: 'last_block', type: 'bigint' })
   lastBlock: number;
 
-  @Column({ name: 'updated_at', type: 'datetime', default: () => 'CURRENT_TIMESTAMP' })
+  @Column({
+    name: 'updated_at',
+    type: 'datetime',
+    default: () => 'CURRENT_TIMESTAMP',
+  })
   updatedAt: Date;
 }

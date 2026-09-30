@@ -49,7 +49,10 @@ export class CacheUnavailableException extends Error {
   /**
    * Create a cache unavailable exception for a DELETE operation
    */
-  static forDelete(key: string, originalError?: Error): CacheUnavailableException {
+  static forDelete(
+    key: string,
+    originalError?: Error,
+  ): CacheUnavailableException {
     return new CacheUnavailableException(
       `Cache DELETE failed for key: ${key}`,
       'DELETE',

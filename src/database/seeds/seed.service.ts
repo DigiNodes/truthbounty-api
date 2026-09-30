@@ -17,7 +17,8 @@ export class SeedService implements OnApplicationBootstrap {
 
   async onApplicationBootstrap(): Promise<void> {
     const nodeEnv = this.configService.get<string>('NODE_ENV', 'development');
-    const seedEnabled = this.configService.get<string>('DATABASE_SEED') === 'true';
+    const seedEnabled =
+      this.configService.get<string>('DATABASE_SEED') === 'true';
 
     // Never seed in production
     if (nodeEnv === 'production') {

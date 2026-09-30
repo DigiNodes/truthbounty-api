@@ -15,8 +15,8 @@ export interface Verification {
   claimId: string;
   userId: string;
   verdict: VerificationVerdict;
-  stakeAmount: number;          // integer or fixed-precision
-  reputationWeight: number;     // normalized (e.g. 0-1 or 0-100)
+  stakeAmount: number; // integer or fixed-precision
+  reputationWeight: number; // normalized (e.g. 0-1 or 0-100)
   createdAt: Date;
 }
 

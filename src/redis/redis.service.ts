@@ -1,10 +1,15 @@
-import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleInit,
+  OnModuleDestroy,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 
 /**
  * Redis Service
- * 
+ *
  * Provides Redis caching functionality with graceful degradation.
  * If Redis is unavailable, the service will log warnings but allow the app to continue.
  */
@@ -17,8 +22,9 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   constructor(private configService: ConfigService) {}
 
   async onModuleInit() {
-    const redisEnabled = this.configService.get<string>('REDIS_ENABLED', 'true') === 'true';
-    
+    const redisEnabled =
+      this.configService.get<string>('REDIS_ENABLED', 'true') === 'true';
+
     if (!redisEnabled) {
       this.logger.warn('Redis is disabled via configuration');
       return;
@@ -29,7 +35,8 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       const port = this.configService.get<number>('REDIS_PORT', 6379);
       const password = this.configService.get<string>('REDIS_PASSWORD');
       const db = this.configService.get<number>('REDIS_DB', 0);
-      const tls = this.configService.get<string>('REDIS_TLS', 'false') === 'true';
+      const tls =
+        this.configService.get<string>('REDIS_TLS', 'false') === 'true';
 
       this.client = new Redis({
         host,
@@ -123,7 +130,11 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
    * Set a key only if it does not exist (SETNX) with optional TTL
    * Returns true if key was set (new key), false if key already existed or Redis unavailable.
    */
-  async setnx(key: string, value: string, ttlSeconds?: number): Promise<boolean> {
+  async setnx(
+    key: string,
+    value: string,
+    ttlSeconds?: number,
+  ): Promise<boolean> {
     if (!this.client || !this.isConnected) {
       this.logger.debug(`Redis unavailable, skipping SETNX for key: ${key}`);
       return true; // allow execution when Redis is unavailable (fallback to DB)
@@ -140,59 +151,6 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       this.logger.error(`Redis SETNX error for key ${key}: ${error.message}`);
       return true; // fallback to DB on error
-    }
-  }
-
-  /**
-   * Add a member to a Redis set (SADD). Returns false when Redis is unavailable.
-   */
-  async sAdd(key: string, member: string): Promise<boolean> {
-    if (!this.client || !this.isConnected) {
-      this.logger.debug(`Redis unavailable, skipping SADD for key: ${key}`);
-      return false;
-    }
-
-    try {
-      await this.client.sadd(key, member);
-      return true;
-    } catch (error) {
-      this.logger.error(`Redis SADD error for key ${key}: ${error.message}`);
-      return false;
-    }
-  }
-
-  /**
-   * Remove a member from a Redis set (SREM). Returns false when Redis is unavailable.
-   */
-  async sRemove(key: string, member: string): Promise<boolean> {
-    if (!this.client || !this.isConnected) {
-      this.logger.debug(`Redis unavailable, skipping SREM for key: ${key}`);
-      return false;
-    }
-
-    try {
-      await this.client.srem(key, member);
-      return true;
-    } catch (error) {
-      this.logger.error(`Redis SREM error for key ${key}: ${error.message}`);
-      return false;
-    }
-  }
-
-  /**
-   * Return all members of a Redis set (SMEMBERS). Empty array when unavailable.
-   */
-  async sMembers(key: string): Promise<string[]> {
-    if (!this.client || !this.isConnected) {
-      this.logger.debug(`Redis unavailable, skipping SMEMBERS for key: ${key}`);
-      return [];
-    }
-
-    try {
-      return await this.client.smembers(key);
-    } catch (error) {
-      this.logger.error(`Redis SMEMBERS error for key ${key}: ${error.message}`);
-      return [];
     }
   }
 
@@ -227,7 +185,9 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       await this.client.sadd(key, ...members);
       return true;
     } catch (error) {
-      this.logger.error(`Redis SADD error for key ${key}: ${(error as Error).message}`);
+      this.logger.error(
+        `Redis SADD error for key ${key}: ${(error as Error).message}`,
+      );
       return false;
     }
   }
@@ -245,7 +205,9 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       await this.client.srem(key, ...members);
       return true;
     } catch (error) {
-      this.logger.error(`Redis SREM error for key ${key}: ${(error as Error).message}`);
+      this.logger.error(
+        `Redis SREM error for key ${key}: ${(error as Error).message}`,
+      );
       return false;
     }
   }
@@ -262,7 +224,9 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     try {
       return await this.client.smembers(key);
     } catch (error) {
-      this.logger.error(`Redis SMEMBERS error for key ${key}: ${(error as Error).message}`);
+      this.logger.error(
+        `Redis SMEMBERS error for key ${key}: ${(error as Error).message}`,
+      );
       return [];
     }
   }

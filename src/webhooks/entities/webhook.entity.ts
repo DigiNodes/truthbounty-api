@@ -25,7 +25,8 @@ export enum WebhookEventType {
   STAKING_UPDATED = 'staking.updated',
 }
 
-export const ALL_WEBHOOK_EVENTS: WebhookEventType[] = Object.values(WebhookEventType);
+export const ALL_WEBHOOK_EVENTS: WebhookEventType[] =
+  Object.values(WebhookEventType);
 
 @Entity('webhooks')
 @Index(['ownerId'])

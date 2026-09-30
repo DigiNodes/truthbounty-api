@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, Logger, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  Logger,
+  ForbiddenException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { LlmProviderService } from './llm-provider.service';
 import { RagService } from './rag.service';
@@ -40,7 +45,9 @@ export class AiAssistantService {
     }
 
     if (conversation.userId !== userId) {
-      throw new ForbiddenException('You do not have access to this conversation');
+      throw new ForbiddenException(
+        'You do not have access to this conversation',
+      );
     }
 
     return this.prisma.message.findMany({
@@ -49,7 +56,11 @@ export class AiAssistantService {
     });
   }
 
-  async sendMessage(userId: string, conversationId: string, dto: SendMessageDto) {
+  async sendMessage(
+    userId: string,
+    conversationId: string,
+    dto: SendMessageDto,
+  ) {
     const conversation = await this.prisma.conversation.findUnique({
       where: { id: conversationId },
     });
@@ -59,7 +70,9 @@ export class AiAssistantService {
     }
 
     if (conversation.userId !== userId) {
-      throw new ForbiddenException('You do not have access to this conversation');
+      throw new ForbiddenException(
+        'You do not have access to this conversation',
+      );
     }
 
     // 1. Save user message
@@ -79,7 +92,8 @@ export class AiAssistantService {
     });
 
     // 3. RAG Retrieval
-    const { content: context, citations } = await this.ragService.retrieveContext(dto.content);
+    const { content: context, citations } =
+      await this.ragService.retrieveContext(dto.content);
 
     // 4. Construct Prompt Pipeline
     const systemPrompt = `You are the TruthBounty AI Assistant. You help contributors navigate the protocol.
@@ -89,7 +103,10 @@ Protocol Context:
 ${context}
 `;
 
-    const messagesToLlm: { role: 'user' | 'assistant' | 'system'; content: string }[] = [
+    const messagesToLlm: {
+      role: 'user' | 'assistant' | 'system';
+      content: string;
+    }[] = [
       { role: 'system', content: systemPrompt },
       ...history.map((msg) => ({
         role: msg.role as 'user' | 'assistant' | 'system',
@@ -154,7 +171,9 @@ ${context}
     }
 
     if (conversation.userId !== userId) {
-      throw new ForbiddenException('You do not have access to this conversation');
+      throw new ForbiddenException(
+        'You do not have access to this conversation',
+      );
     }
 
     await this.prisma.conversation.delete({

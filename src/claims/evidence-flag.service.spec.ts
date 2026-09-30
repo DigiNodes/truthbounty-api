@@ -27,8 +27,12 @@ describe('EvidenceFlagService', () => {
     }).compile();
 
     service = module.get<EvidenceFlagService>(EvidenceFlagService);
-    flagRepo = module.get<Repository<EvidenceFlag>>(getRepositoryToken(EvidenceFlag));
-    evidenceRepo = module.get<Repository<Evidence>>(getRepositoryToken(Evidence));
+    flagRepo = module.get<Repository<EvidenceFlag>>(
+      getRepositoryToken(EvidenceFlag),
+    );
+    evidenceRepo = module.get<Repository<Evidence>>(
+      getRepositoryToken(Evidence),
+    );
   });
 
   it('should be defined', () => {
@@ -61,9 +65,16 @@ describe('EvidenceFlagService', () => {
       jest.spyOn(evidenceRepo, 'findOneBy').mockResolvedValue(evidence);
       jest.spyOn(flagRepo, 'create').mockReturnValue(flag);
       jest.spyOn(flagRepo, 'save').mockResolvedValue(flag);
-      const evidenceSaveSpy = jest.spyOn(evidenceRepo, 'save').mockResolvedValue(evidence);
+      const evidenceSaveSpy = jest
+        .spyOn(evidenceRepo, 'save')
+        .mockResolvedValue(evidence);
 
-      const result = await service.createFlag(evidenceId, reason, flaggedBy, false);
+      const result = await service.createFlag(
+        evidenceId,
+        reason,
+        flaggedBy,
+        false,
+      );
 
       expect(result).toEqual(flag);
       expect(evidenceSaveSpy).not.toHaveBeenCalled();
@@ -88,15 +99,24 @@ describe('EvidenceFlagService', () => {
       jest.spyOn(evidenceRepo, 'findOneBy').mockResolvedValue(evidence);
       jest.spyOn(flagRepo, 'create').mockReturnValue(flag);
       jest.spyOn(flagRepo, 'save').mockResolvedValue(flag);
-      const evidenceSaveSpy = jest.spyOn(evidenceRepo, 'save').mockResolvedValue({
-        ...evidence,
-        isHidden: true,
-      } as Evidence);
+      const evidenceSaveSpy = jest
+        .spyOn(evidenceRepo, 'save')
+        .mockResolvedValue({
+          ...evidence,
+          isHidden: true,
+        } as Evidence);
 
-      const result = await service.createFlag(evidenceId, reason, flaggedBy, true);
+      const result = await service.createFlag(
+        evidenceId,
+        reason,
+        flaggedBy,
+        true,
+      );
 
       expect(result).toEqual(flag);
-      expect(evidenceSaveSpy).toHaveBeenCalledWith(expect.objectContaining({ isHidden: true }));
+      expect(evidenceSaveSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ isHidden: true }),
+      );
       expect(flagRepo.create).toHaveBeenCalledWith({
         evidenceId,
         reason,

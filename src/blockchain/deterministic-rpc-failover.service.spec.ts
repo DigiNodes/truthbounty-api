@@ -12,8 +12,13 @@ describe('DeterministicRpcFailoverService', () => {
 
   const mockConfigService = {
     get: jest.fn((key: string, defaultValue?: any) => {
-      if (key === 'blockchain.rpcUrl') return 'https://primary-rpc.optimism.io/v3/secret-key-1234567890';
-      if (key === 'blockchain.fallbackRpcUrls') return ['https://fallback-1.optimism.io', 'https://fallback-2.optimism.io'];
+      if (key === 'blockchain.rpcUrl')
+        return 'https://primary-rpc.optimism.io/v3/secret-key-1234567890';
+      if (key === 'blockchain.fallbackRpcUrls')
+        return [
+          'https://fallback-1.optimism.io',
+          'https://fallback-2.optimism.io',
+        ];
       if (key === 'blockchain.chainId') return 10;
       if (key === 'blockchain.rpcTimeoutMs') return 500;
       return defaultValue;
@@ -29,7 +34,9 @@ describe('DeterministicRpcFailoverService', () => {
       ],
     }).compile();
 
-    service = module.get<DeterministicRpcFailoverService>(DeterministicRpcFailoverService);
+    service = module.get<DeterministicRpcFailoverService>(
+      DeterministicRpcFailoverService,
+    );
   });
 
   describe('Initialization and Redaction', () => {
@@ -76,7 +83,9 @@ describe('DeterministicRpcFailoverService', () => {
     });
 
     it('fails closed and throws RpcFailoverExhaustedException when all providers fail', async () => {
-      const mockOp = jest.fn().mockRejectedValue(new Error('Connection refused'));
+      const mockOp = jest
+        .fn()
+        .mockRejectedValue(new Error('Connection refused'));
 
       await expect(service.execute(mockOp, 'getBlock')).rejects.toThrow(
         RpcFailoverExhaustedException,
@@ -95,9 +104,13 @@ describe('DeterministicRpcFailoverService', () => {
   describe('Chain Verification', () => {
     it('throws ChainMismatchException and marks provider UNHEALTHY if chainId does not match canonical Optimism', async () => {
       const testNode = (service as any).providers[0];
-      jest.spyOn(testNode.provider, 'getNetwork').mockResolvedValue({ chainId: 1n } as any); // Ethereum mainnet instead of Optimism 10
+      jest
+        .spyOn(testNode.provider, 'getNetwork')
+        .mockResolvedValue({ chainId: 1n } as any); // Ethereum mainnet instead of Optimism 10
 
-      await expect(service.verifyChain(testNode)).rejects.toThrow(ChainMismatchException);
+      await expect(service.verifyChain(testNode)).rejects.toThrow(
+        ChainMismatchException,
+      );
       expect(testNode.status).toBe(ProviderHealthStatus.UNHEALTHY);
     });
   });

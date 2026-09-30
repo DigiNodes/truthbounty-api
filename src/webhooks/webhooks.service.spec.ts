@@ -2,11 +2,18 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { getQueueToken } from '@nestjs/bullmq';
 import { Repository } from 'typeorm';
-import { ConflictException, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { WebhooksService } from './webhooks.service';
 import { Webhook, WebhookEventType } from './entities/webhook.entity';
 import { WebhookSubscription } from './entities/webhook-subscription.entity';
-import { WebhookDelivery, DeliveryStatus } from './entities/webhook-delivery.entity';
+import {
+  WebhookDelivery,
+  DeliveryStatus,
+} from './entities/webhook-delivery.entity';
 import { CreateWebhookDto } from './dto/create-webhook.dto';
 import { UpdateWebhookDto } from './dto/update-webhook.dto';
 
@@ -124,8 +131,14 @@ describe('WebhooksService', () => {
       providers: [
         WebhooksService,
         { provide: getRepositoryToken(Webhook), useValue: mockWebhookRepo },
-        { provide: getRepositoryToken(WebhookSubscription), useValue: mockSubscriptionRepo },
-        { provide: getRepositoryToken(WebhookDelivery), useValue: mockDeliveryRepo },
+        {
+          provide: getRepositoryToken(WebhookSubscription),
+          useValue: mockSubscriptionRepo,
+        },
+        {
+          provide: getRepositoryToken(WebhookDelivery),
+          useValue: mockDeliveryRepo,
+        },
         { provide: getQueueToken('webhook-delivery'), useValue: mockQueue },
       ],
     }).compile();
@@ -149,7 +162,10 @@ describe('WebhooksService', () => {
         description: 'Test webhook',
         ownerId: '0x123',
         enabled: true,
-        events: [WebhookEventType.CLAIM_CREATED, WebhookEventType.VERIFICATION_COMPLETED],
+        events: [
+          WebhookEventType.CLAIM_CREATED,
+          WebhookEventType.VERIFICATION_COMPLETED,
+        ],
         maxRetries: 3,
         retryIntervalMs: 30000,
       };
@@ -249,7 +265,9 @@ describe('WebhooksService', () => {
 
     it('should throw NotFoundException for missing webhook', async () => {
       jest.spyOn(webhookRepo, 'findOne').mockResolvedValueOnce(null);
-      await expect(service.findOne('nonexistent')).rejects.toThrow(NotFoundException);
+      await expect(service.findOne('nonexistent')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -263,7 +281,9 @@ describe('WebhooksService', () => {
 
     it('should reject non-HTTPS URL update', async () => {
       const dto: UpdateWebhookDto = { url: 'http://insecure-url.com' };
-      await expect(service.update('wh-001', dto)).rejects.toThrow(BadRequestException);
+      await expect(service.update('wh-001', dto)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('should re-enable webhook when enabled is set to true', async () => {
@@ -278,7 +298,9 @@ describe('WebhooksService', () => {
       };
       const result = await service.update('wh-001', dto);
       expect(result).toBeDefined();
-      expect(subscriptionRepo.delete).toHaveBeenCalledWith({ webhookId: 'wh-001' });
+      expect(subscriptionRepo.delete).toHaveBeenCalledWith({
+        webhookId: 'wh-001',
+      });
     });
   });
 
@@ -290,7 +312,9 @@ describe('WebhooksService', () => {
 
     it('should throw NotFoundException for missing webhook', async () => {
       jest.spyOn(webhookRepo, 'findOne').mockResolvedValueOnce(null);
-      await expect(service.remove('nonexistent')).rejects.toThrow(NotFoundException);
+      await expect(service.remove('nonexistent')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -317,7 +341,9 @@ describe('WebhooksService', () => {
 
   describe('dispatchEvent', () => {
     it('should dispatch event to subscribed webhooks', async () => {
-      jest.spyOn(subscriptionRepo, 'find').mockResolvedValueOnce([mockSubscription]);
+      jest
+        .spyOn(subscriptionRepo, 'find')
+        .mockResolvedValueOnce([mockSubscription]);
 
       const payload = {
         eventType: WebhookEventType.CLAIM_CREATED,
@@ -327,7 +353,10 @@ describe('WebhooksService', () => {
         data: { claimId: 'claim-001' },
       };
 
-      const count = await service.dispatchEvent(WebhookEventType.CLAIM_CREATED, payload);
+      const count = await service.dispatchEvent(
+        WebhookEventType.CLAIM_CREATED,
+        payload,
+      );
       expect(count).toBe(1);
       expect(webhookQueue.add).toHaveBeenCalled();
     });
@@ -343,7 +372,10 @@ describe('WebhooksService', () => {
         data: { claimId: 'claim-001' },
       };
 
-      const count = await service.dispatchEvent(WebhookEventType.CLAIM_CREATED, payload);
+      const count = await service.dispatchEvent(
+        WebhookEventType.CLAIM_CREATED,
+        payload,
+      );
       expect(count).toBe(0);
       expect(webhookQueue.add).not.toHaveBeenCalled();
     });
@@ -371,7 +403,9 @@ describe('WebhooksService', () => {
 
     it('should throw NotFoundException for missing delivery', async () => {
       jest.spyOn(deliveryRepo, 'findOne').mockResolvedValueOnce(null);
-      await expect(service.getDelivery('nonexistent')).rejects.toThrow(NotFoundException);
+      await expect(service.getDelivery('nonexistent')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -413,7 +447,13 @@ describe('WebhooksService', () => {
       hmac.update(`${timestamp}.${nonce}.${JSON.stringify(payload)}`);
       const validSignature = hmac.digest('hex');
 
-      const result = service.verifySignature(payload, validSignature, secret, timestamp, nonce);
+      const result = service.verifySignature(
+        payload,
+        validSignature,
+        secret,
+        timestamp,
+        nonce,
+      );
       expect(result).toBe(true);
     });
 

@@ -75,7 +75,8 @@ describe('ClaimsService', () => {
 
   describe('createClaim', () => {
     it('should create a claim with valid input data', async () => {
-      const createClaimDto: CreateClaimDto = ClaimFactory.createCreateClaimDto();
+      const createClaimDto: CreateClaimDto =
+        ClaimFactory.createCreateClaimDto();
       const expectedClaim = ClaimFactory.createClaim({
         ...createClaimDto,
         resolvedVerdict: null,
@@ -100,7 +101,10 @@ describe('ClaimsService', () => {
         finalized: false,
       });
       expect(claimRepo.save).toHaveBeenCalledWith(expectedClaim);
-      expect(claimsCache.setClaim).toHaveBeenCalledWith(expectedClaim.id, expectedClaim);
+      expect(claimsCache.setClaim).toHaveBeenCalledWith(
+        expectedClaim.id,
+        expectedClaim,
+      );
       expect(redisService.del).toHaveBeenCalledWith('claims:latest');
       expect(result).toEqual(expectedClaim);
     });
@@ -139,13 +143,18 @@ describe('ClaimsService', () => {
     });
 
     it('should handle database errors gracefully', async () => {
-      const createClaimDto: CreateClaimDto = ClaimFactory.createCreateClaimDto();
+      const createClaimDto: CreateClaimDto =
+        ClaimFactory.createCreateClaimDto();
       const expectedClaim = ClaimFactory.createClaim();
 
       jest.spyOn(claimRepo, 'create').mockReturnValue(expectedClaim);
-      jest.spyOn(claimRepo, 'save').mockRejectedValue(new Error('Database error'));
+      jest
+        .spyOn(claimRepo, 'save')
+        .mockRejectedValue(new Error('Database error'));
 
-      await expect(service.createClaim(createClaimDto)).rejects.toThrow('Database error');
+      await expect(service.createClaim(createClaimDto)).rejects.toThrow(
+        'Database error',
+      );
       expect(claimRepo.create).toHaveBeenCalledWith({
         title: createClaimDto.title,
         content: createClaimDto.content,
@@ -158,7 +167,8 @@ describe('ClaimsService', () => {
     });
 
     it('should not set resolvedVerdict and confidenceScore during creation', async () => {
-      const createClaimDto: CreateClaimDto = ClaimFactory.createCreateClaimDto();
+      const createClaimDto: CreateClaimDto =
+        ClaimFactory.createCreateClaimDto();
       const expectedClaim = ClaimFactory.createClaim({
         ...createClaimDto,
         resolvedVerdict: null,
@@ -178,12 +188,13 @@ describe('ClaimsService', () => {
           resolvedVerdict: null,
           confidenceScore: null,
           finalized: false,
-        })
+        }),
       );
     });
 
     it('should invalidate cache when creating new claim', async () => {
-      const createClaimDto: CreateClaimDto = ClaimFactory.createCreateClaimDto();
+      const createClaimDto: CreateClaimDto =
+        ClaimFactory.createCreateClaimDto();
       const expectedClaim = ClaimFactory.createClaim();
 
       jest.spyOn(claimRepo, 'create').mockReturnValue(expectedClaim);
@@ -198,19 +209,27 @@ describe('ClaimsService', () => {
 
     it('should throw BadRequestException if claim content length exceeds 5000 characters', async () => {
       const longContent = 'a'.repeat(5001);
-      const createClaimDto = ClaimFactory.createCreateClaimDto({ content: longContent });
+      const createClaimDto = ClaimFactory.createCreateClaimDto({
+        content: longContent,
+      });
 
       await expect(service.createClaim(createClaimDto)).rejects.toThrow(
-        new BadRequestException('Claim content exceeds maximum length of 5000 characters')
+        new BadRequestException(
+          'Claim content exceeds maximum length of 5000 characters',
+        ),
       );
     });
 
     it('should throw BadRequestException if claim title length exceeds 200 characters', async () => {
       const longTitle = 'a'.repeat(201);
-      const createClaimDto = ClaimFactory.createCreateClaimDto({ title: longTitle });
+      const createClaimDto = ClaimFactory.createCreateClaimDto({
+        title: longTitle,
+      });
 
       await expect(service.createClaim(createClaimDto)).rejects.toThrow(
-        new BadRequestException('Claim title exceeds maximum length of 200 characters')
+        new BadRequestException(
+          'Claim title exceeds maximum length of 200 characters',
+        ),
       );
     });
   });
@@ -255,7 +274,9 @@ describe('ClaimsService', () => {
   describe('findLatest', () => {
     it('should return cached latest claims if available', async () => {
       const cachedClaims = ClaimFactory.createManyClaims(5);
-      jest.spyOn(claimsCache, 'getLatestClaims').mockResolvedValue(cachedClaims);
+      jest
+        .spyOn(claimsCache, 'getLatestClaims')
+        .mockResolvedValue(cachedClaims);
 
       const result = await service.findLatest(10);
 
@@ -283,17 +304,30 @@ describe('ClaimsService', () => {
 
   describe('resolveClaim', () => {
     it('should resolve a claim with verdict and confidence score', async () => {
-      const claim = ClaimFactory.createClaim({ resolvedVerdict: null, confidenceScore: null, resolvedAt: null });
+      const claim = ClaimFactory.createClaim({
+        resolvedVerdict: null,
+        confidenceScore: null,
+        resolvedAt: null,
+      });
       const verdict = true;
       const confidenceScore = 0.85;
       const resolvedAt = new Date();
 
       jest.spyOn(service, 'findOne').mockResolvedValue(claim);
-      jest.spyOn(claimRepo, 'save').mockResolvedValue({ ...claim, resolvedVerdict: verdict, resolvedAt, confidenceScore } as unknown as Claim);
+      jest.spyOn(claimRepo, 'save').mockResolvedValue({
+        ...claim,
+        resolvedVerdict: verdict,
+        resolvedAt,
+        confidenceScore,
+      } as unknown as Claim);
       jest.spyOn(claimsCache, 'invalidateClaim').mockResolvedValue(undefined);
       jest.spyOn(auditTrailService, 'log').mockResolvedValue(undefined);
 
-      const result = await service.resolveClaim(claim.id, verdict, confidenceScore);
+      const result = await service.resolveClaim(
+        claim.id,
+        verdict,
+        confidenceScore,
+      );
 
       expect(service.findOne).toHaveBeenCalledWith(claim.id);
       expect(claimRepo.save).toHaveBeenCalled();
@@ -303,7 +337,11 @@ describe('ClaimsService', () => {
     });
 
     it('sets resolvedAt to a non-null timestamp when resolving a claim (BE-219)', async () => {
-      const claim = ClaimFactory.createClaim({ resolvedVerdict: null, resolvedAt: null, confidenceScore: null });
+      const claim = ClaimFactory.createClaim({
+        resolvedVerdict: null,
+        resolvedAt: null,
+        confidenceScore: null,
+      });
       const before = Date.now();
 
       jest.spyOn(service, 'findOne').mockResolvedValue(claim);
@@ -316,17 +354,26 @@ describe('ClaimsService', () => {
 
       expect(result.resolvedAt).not.toBeNull();
       expect(result.resolvedAt).toBeInstanceOf(Date);
-      expect((result.resolvedAt as Date).getTime()).toBeGreaterThanOrEqual(before);
+      expect((result.resolvedAt as Date).getTime()).toBeGreaterThanOrEqual(
+        before,
+      );
       expect((result.resolvedAt as Date).getTime()).toBeLessThanOrEqual(after);
     });
 
     it('sets resolvedAt and resolvedVerdict atomically (never one without the other, BE-219)', async () => {
-      const claim = ClaimFactory.createClaim({ resolvedVerdict: null, resolvedAt: null, confidenceScore: null });
+      const claim = ClaimFactory.createClaim({
+        resolvedVerdict: null,
+        resolvedAt: null,
+        confidenceScore: null,
+      });
       const savedStates: Partial<Claim>[] = [];
 
       jest.spyOn(service, 'findOne').mockResolvedValue(claim);
       jest.spyOn(claimRepo, 'save').mockImplementation(async (c: any) => {
-        savedStates.push({ resolvedVerdict: c.resolvedVerdict, resolvedAt: c.resolvedAt });
+        savedStates.push({
+          resolvedVerdict: c.resolvedVerdict,
+          resolvedAt: c.resolvedAt,
+        });
         return c;
       });
       jest.spyOn(claimsCache, 'invalidateClaim').mockResolvedValue(undefined);
@@ -341,18 +388,32 @@ describe('ClaimsService', () => {
     });
 
     it('a non-resolved claim always has resolvedAt == null (BE-219)', () => {
-      const claim = ClaimFactory.createClaim({ resolvedVerdict: null, resolvedAt: null, confidenceScore: null, finalized: false });
+      const claim = ClaimFactory.createClaim({
+        resolvedVerdict: null,
+        resolvedAt: null,
+        confidenceScore: null,
+        finalized: false,
+      });
       expect(claim.resolvedVerdict).toBeNull();
       expect(claim.resolvedAt).toBeNull();
     });
 
     it('should invalidate claims:latest cache when resolving a claim', async () => {
-      const claim = ClaimFactory.createClaim({ resolvedVerdict: null, confidenceScore: null, resolvedAt: null });
+      const claim = ClaimFactory.createClaim({
+        resolvedVerdict: null,
+        confidenceScore: null,
+        resolvedAt: null,
+      });
       const verdict = false;
       const confidenceScore = 0.65;
 
       jest.spyOn(service, 'findOne').mockResolvedValue(claim);
-      jest.spyOn(claimRepo, 'save').mockResolvedValue({ ...claim, resolvedVerdict: verdict, resolvedAt: new Date(), confidenceScore } as unknown as Claim);
+      jest.spyOn(claimRepo, 'save').mockResolvedValue({
+        ...claim,
+        resolvedVerdict: verdict,
+        resolvedAt: new Date(),
+        confidenceScore,
+      } as unknown as Claim);
       jest.spyOn(claimsCache, 'invalidateClaim').mockResolvedValue(undefined);
       jest.spyOn(auditTrailService, 'log').mockResolvedValue(undefined);
 
@@ -364,17 +425,28 @@ describe('ClaimsService', () => {
     it('should throw NotFoundException if claim not found when resolving', async () => {
       jest.spyOn(service, 'findOne').mockResolvedValue(null);
 
-      await expect(service.resolveClaim('non-existent-id', true, 0.8)).rejects.toThrow('Claim non-existent-id not found');
+      await expect(
+        service.resolveClaim('non-existent-id', true, 0.8),
+      ).rejects.toThrow('Claim non-existent-id not found');
     });
 
     it('should log audit trail when resolving a claim', async () => {
-      const claim = ClaimFactory.createClaim({ resolvedVerdict: null, confidenceScore: null, resolvedAt: null });
+      const claim = ClaimFactory.createClaim({
+        resolvedVerdict: null,
+        confidenceScore: null,
+        resolvedAt: null,
+      });
       const verdict = true;
       const confidenceScore = 0.75;
       const userId = 'user-123';
 
       jest.spyOn(service, 'findOne').mockResolvedValue(claim);
-      jest.spyOn(claimRepo, 'save').mockResolvedValue({ ...claim, resolvedVerdict: verdict, resolvedAt: new Date(), confidenceScore } as unknown as Claim);
+      jest.spyOn(claimRepo, 'save').mockResolvedValue({
+        ...claim,
+        resolvedVerdict: verdict,
+        resolvedAt: new Date(),
+        confidenceScore,
+      } as unknown as Claim);
       jest.spyOn(claimsCache, 'invalidateClaim').mockResolvedValue(undefined);
       jest.spyOn(auditTrailService, 'log').mockResolvedValue(undefined);
 
@@ -385,12 +457,18 @@ describe('ClaimsService', () => {
 
     // ─── BE-219: resolvedAt invariants ────────────────────────────────────
     it('should set resolvedAt on the claim entity before saving (BE-219)', async () => {
-      const claim = ClaimFactory.createClaim({ resolvedVerdict: null, confidenceScore: null, resolvedAt: null });
+      const claim = ClaimFactory.createClaim({
+        resolvedVerdict: null,
+        confidenceScore: null,
+        resolvedAt: null,
+      });
       const before = new Date();
 
       jest.spyOn(service, 'findOne').mockResolvedValue(claim);
       // Capture the argument passed to save so we can inspect resolvedAt
-      const saveSpy = jest.spyOn(claimRepo, 'save').mockImplementation(async (entity: any) => entity);
+      const saveSpy = jest
+        .spyOn(claimRepo, 'save')
+        .mockImplementation(async (entity: any) => entity);
       jest.spyOn(claimsCache, 'invalidateClaim').mockResolvedValue(undefined);
       jest.spyOn(auditTrailService, 'log').mockResolvedValue(undefined);
 
@@ -399,24 +477,30 @@ describe('ClaimsService', () => {
 
       const savedEntity = saveSpy.mock.calls[0][0] as any;
       expect(savedEntity.resolvedAt).toBeInstanceOf(Date);
-      expect(savedEntity.resolvedAt.getTime()).toBeGreaterThanOrEqual(before.getTime());
-      expect(savedEntity.resolvedAt.getTime()).toBeLessThanOrEqual(after.getTime());
+      expect(savedEntity.resolvedAt.getTime()).toBeGreaterThanOrEqual(
+        before.getTime(),
+      );
+      expect(savedEntity.resolvedAt.getTime()).toBeLessThanOrEqual(
+        after.getTime(),
+      );
     });
 
     it('should not overwrite resolvedAt if claim was already resolved (BE-219)', async () => {
       const existingResolvedAt = new Date('2024-01-01T00:00:00Z');
       const claim = ClaimFactory.createClaim({
         resolvedVerdict: true,
-        confidenceScore: 0.80,
+        confidenceScore: 0.8,
         resolvedAt: existingResolvedAt,
       });
 
       jest.spyOn(service, 'findOne').mockResolvedValue(claim);
-      const saveSpy = jest.spyOn(claimRepo, 'save').mockImplementation(async (entity: any) => entity);
+      const saveSpy = jest
+        .spyOn(claimRepo, 'save')
+        .mockImplementation(async (entity: any) => entity);
       jest.spyOn(claimsCache, 'invalidateClaim').mockResolvedValue(undefined);
       jest.spyOn(auditTrailService, 'log').mockResolvedValue(undefined);
 
-      await service.resolveClaim(claim.id, false, 0.90);
+      await service.resolveClaim(claim.id, false, 0.9);
 
       const savedEntity = saveSpy.mock.calls[0][0] as any;
       // The original resolvedAt must not be overwritten
@@ -446,10 +530,17 @@ describe('ClaimsService', () => {
 
   describe('finalizeClaim', () => {
     it('should finalize a claim', async () => {
-      const claim = ClaimFactory.createClaim({ resolvedVerdict: true, confidenceScore: 0.9, resolvedAt: new Date(), finalized: false });
+      const claim = ClaimFactory.createClaim({
+        resolvedVerdict: true,
+        confidenceScore: 0.9,
+        resolvedAt: new Date(),
+        finalized: false,
+      });
 
       jest.spyOn(service, 'findOne').mockResolvedValue(claim);
-      jest.spyOn(claimRepo, 'save').mockResolvedValue({ ...claim, finalized: true } as unknown as Claim);
+      jest
+        .spyOn(claimRepo, 'save')
+        .mockResolvedValue({ ...claim, finalized: true } as unknown as Claim);
       jest.spyOn(claimsCache, 'invalidateClaim').mockResolvedValue(undefined);
       jest.spyOn(auditTrailService, 'log').mockResolvedValue(undefined);
 
@@ -462,10 +553,17 @@ describe('ClaimsService', () => {
     });
 
     it('should invalidate claims:latest cache when finalizing a claim', async () => {
-      const claim = ClaimFactory.createClaim({ resolvedVerdict: true, confidenceScore: 0.9, resolvedAt: new Date(), finalized: false });
+      const claim = ClaimFactory.createClaim({
+        resolvedVerdict: true,
+        confidenceScore: 0.9,
+        resolvedAt: new Date(),
+        finalized: false,
+      });
 
       jest.spyOn(service, 'findOne').mockResolvedValue(claim);
-      jest.spyOn(claimRepo, 'save').mockResolvedValue({ ...claim, finalized: true } as unknown as Claim);
+      jest
+        .spyOn(claimRepo, 'save')
+        .mockResolvedValue({ ...claim, finalized: true } as unknown as Claim);
       jest.spyOn(claimsCache, 'invalidateClaim').mockResolvedValue(undefined);
       jest.spyOn(auditTrailService, 'log').mockResolvedValue(undefined);
 
@@ -477,15 +575,24 @@ describe('ClaimsService', () => {
     it('should throw error if claim not found when finalizing', async () => {
       jest.spyOn(service, 'findOne').mockResolvedValue(null);
 
-      await expect(service.finalizeClaim('non-existent-id')).rejects.toThrow('Claim non-existent-id not found');
+      await expect(service.finalizeClaim('non-existent-id')).rejects.toThrow(
+        'Claim non-existent-id not found',
+      );
     });
 
     it('should log audit trail when finalizing a claim', async () => {
-      const claim = ClaimFactory.createClaim({ resolvedVerdict: true, confidenceScore: 0.9, resolvedAt: new Date(), finalized: false });
+      const claim = ClaimFactory.createClaim({
+        resolvedVerdict: true,
+        confidenceScore: 0.9,
+        resolvedAt: new Date(),
+        finalized: false,
+      });
       const userId = 'user-123';
 
       jest.spyOn(service, 'findOne').mockResolvedValue(claim);
-      jest.spyOn(claimRepo, 'save').mockResolvedValue({ ...claim, finalized: true } as unknown as Claim);
+      jest
+        .spyOn(claimRepo, 'save')
+        .mockResolvedValue({ ...claim, finalized: true } as unknown as Claim);
       jest.spyOn(claimsCache, 'invalidateClaim').mockResolvedValue(undefined);
       jest.spyOn(auditTrailService, 'log').mockResolvedValue(undefined);
 
@@ -499,13 +606,15 @@ describe('ClaimsService', () => {
       const existingResolvedAt = new Date('2024-06-15T12:00:00Z');
       const claim = ClaimFactory.createClaim({
         resolvedVerdict: true,
-        confidenceScore: 0.80,
+        confidenceScore: 0.8,
         finalized: false,
         resolvedAt: existingResolvedAt,
       });
 
       jest.spyOn(service, 'findOne').mockResolvedValue(claim);
-      const saveSpy = jest.spyOn(claimRepo, 'save').mockImplementation(async (entity: any) => entity);
+      const saveSpy = jest
+        .spyOn(claimRepo, 'save')
+        .mockImplementation(async (entity: any) => entity);
       jest.spyOn(claimsCache, 'invalidateClaim').mockResolvedValue(undefined);
       jest.spyOn(auditTrailService, 'log').mockResolvedValue(undefined);
 
@@ -527,7 +636,9 @@ describe('ClaimsService', () => {
       const before = new Date();
 
       jest.spyOn(service, 'findOne').mockResolvedValue(claim);
-      const saveSpy = jest.spyOn(claimRepo, 'save').mockImplementation(async (entity: any) => entity);
+      const saveSpy = jest
+        .spyOn(claimRepo, 'save')
+        .mockImplementation(async (entity: any) => entity);
       jest.spyOn(claimsCache, 'invalidateClaim').mockResolvedValue(undefined);
       jest.spyOn(auditTrailService, 'log').mockResolvedValue(undefined);
 

@@ -11,18 +11,18 @@ config();
 
 /**
  * Seed Script for TruthBounty API
- * 
+ *
  * Creates sample data for local development and testing:
  * - Test users with varying reputation levels
  * - Multiple wallets per user across different chains
  * - Sample claims with various resolution states
  * - Supporting evidence with version history
- * 
+ *
  * Usage: npm run seed
  */
 
 const dataSource = new DataSource({
-  type: 'sqlite',
+  type: 'better-sqlite3',
   database: process.env.DATABASE_PATH || 'database.sqlite',
   entities: [User, Wallet, Claim, Evidence, EvidenceVersion],
   synchronize: true, // Enable for seeding to create tables if needed
@@ -288,8 +288,12 @@ async function seed() {
       },
     ]);
 
-    console.log(`✅ Created ${await evidenceRepository.count()} evidence entries`);
-    console.log(`✅ Created ${await evidenceVersionRepository.count()} evidence versions`);
+    console.log(
+      `✅ Created ${await evidenceRepository.count()} evidence entries`,
+    );
+    console.log(
+      `✅ Created ${await evidenceVersionRepository.count()} evidence versions`,
+    );
 
     // ========================================
     // SUMMARY & STATISTICS
@@ -300,7 +304,9 @@ async function seed() {
     console.log(`   Wallets: ${await walletRepository.count()}`);
     console.log(`   Claims: ${await claimRepository.count()}`);
     console.log(`   Evidence: ${await evidenceRepository.count()}`);
-    console.log(`   Evidence Versions: ${await evidenceVersionRepository.count()}`);
+    console.log(
+      `   Evidence Versions: ${await evidenceVersionRepository.count()}`,
+    );
 
     console.log('\n📋 Sample Data Created:');
     console.log('\n   Users:');
@@ -324,7 +330,7 @@ async function seed() {
     console.log('   - Claim 4: 1 evidence with 3 versions');
 
     console.log(
-      '\n💡 To clear the database and reseed, use: npm run seed -- --clear'
+      '\n💡 To clear the database and reseed, use: npm run seed -- --clear',
     );
   } catch (error) {
     console.error('❌ Seed failed:', error);

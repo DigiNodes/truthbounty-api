@@ -15,7 +15,9 @@ export function assertBoundedFailure(
     throw new Error(`Retry budget exceeded: ${observation.retryCount}`);
   }
 
-  if (observation.errorMessage?.match(/secret|token|password|private[_ -]?key/i)) {
+  if (
+    observation.errorMessage?.match(/secret|token|password|private[_ -]?key/i)
+  ) {
     throw new Error('Sensitive material appeared in an error observation');
   }
 }
@@ -30,9 +32,7 @@ export function assertIdempotentRecovery(
   }
 }
 
-export function assertFailClosed(
-  observation: RecoveryObservation,
-): void {
+export function assertFailClosed(observation: RecoveryObservation): void {
   if (observation.finalizedFromUntrustedInput) {
     throw new Error('Untrusted chain input was treated as finalized');
   }

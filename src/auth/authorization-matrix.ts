@@ -136,11 +136,18 @@
 export type AppUserRole = 'contributor' | 'moderator' | 'admin';
 
 /** All valid AppUserRole values. */
-export const APP_USER_ROLES: readonly AppUserRole[] = ['contributor', 'moderator', 'admin'] as const;
+export const APP_USER_ROLES: readonly AppUserRole[] = [
+  'contributor',
+  'moderator',
+  'admin',
+] as const;
 
 /**
  * Helper: returns true if the candidate string is a known AppUserRole.
  */
 export function isAppUserRole(value: unknown): value is AppUserRole {
-  return typeof value === 'string' && (APP_USER_ROLES as readonly string[]).includes(value);
+  return (
+    typeof value === 'string' &&
+    (APP_USER_ROLES as readonly string[]).includes(value)
+  );
 }

@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  Logger,
-  OnApplicationBootstrap,
-} from '@nestjs/common';
+import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
 import { ethers } from 'ethers';
@@ -54,12 +50,8 @@ import {
  * falls back to a fabricated or default address — fail closed.
  */
 @Injectable()
-export class ContractManifestValidatorService
-  implements OnApplicationBootstrap
-{
-  private readonly logger = new Logger(
-    ContractManifestValidatorService.name,
-  );
+export class ContractManifestValidatorService implements OnApplicationBootstrap {
+  private readonly logger = new Logger(ContractManifestValidatorService.name);
 
   constructor(private readonly configService: ConfigService) {}
 
@@ -68,9 +60,7 @@ export class ContractManifestValidatorService
    * Throws on any validation error (fail-closed).
    */
   async onApplicationBootstrap(): Promise<void> {
-    if (
-      this.configService.get<string>('MANIFEST_VALIDATION') === 'false'
-    ) {
+    if (this.configService.get<string>('MANIFEST_VALIDATION') === 'false') {
       this.logger.warn(
         'Contract manifest validation disabled via MANIFEST_VALIDATION=false',
       );
@@ -144,9 +134,7 @@ export class ContractManifestValidatorService
       !manifest.manifestChecksum ||
       typeof manifest.manifestChecksum !== 'string'
     ) {
-      errors.push(
-        'manifest.manifestChecksum is required and must be a string',
-      );
+      errors.push('manifest.manifestChecksum is required and must be a string');
     }
     if (!Array.isArray(manifest.contracts)) {
       errors.push('manifest.contracts must be an array');
@@ -154,7 +142,7 @@ export class ContractManifestValidatorService
 
     // ── 2. Chain guard ─────────────────────────────────────────────────────
     const chainId = manifest.chainId;
-    if (!ALLOWED_CHAIN_IDS.includes(chainId as any)) {
+    if (!ALLOWED_CHAIN_IDS.includes(chainId)) {
       errors.push(
         `chainId ${chainId} is not an allowed Optimism chain ID ` +
           `(allowed: ${ALLOWED_CHAIN_IDS.join(', ')})`,
@@ -183,9 +171,8 @@ export class ContractManifestValidatorService
         );
       } else {
         const maxAgeDays =
-          Number(
-            this.configService.get<string>('MANIFEST_MAX_AGE_DAYS'),
-          ) || DEFAULT_MANIFEST_MAX_AGE_DAYS;
+          Number(this.configService.get<string>('MANIFEST_MAX_AGE_DAYS')) ||
+          DEFAULT_MANIFEST_MAX_AGE_DAYS;
         manifestAgeDays = Math.floor(
           (Date.now() - publishedMs) / (1000 * 60 * 60 * 24),
         );
@@ -232,8 +219,7 @@ export class ContractManifestValidatorService
 
     // ── 6. Optional on-chain code verification ────────────────────────────
     if (
-      this.configService.get<string>('BLOCKCHAIN_STARTUP_RPC_CHECK') !==
-      'false'
+      this.configService.get<string>('BLOCKCHAIN_STARTUP_RPC_CHECK') !== 'false'
     ) {
       const rpcErrors = await this.verifyOnChain(
         manifest.contracts,
@@ -326,9 +312,7 @@ export class ContractManifestValidatorService
             }
           }
         } catch (err) {
-          errors.push(
-            `event "${event.name}" ABI is invalid: ${String(err)}`,
-          );
+          errors.push(`event "${event.name}" ABI is invalid: ${String(err)}`);
         }
       }
 
@@ -407,20 +391,14 @@ export class ContractManifestValidatorService
    * Utility exposed so operators can pre-compute checksums for manifest files.
    */
   computeManifestChecksum(contracts: ManifestContractEntry[]): string {
-    return createHash('sha256')
-      .update(JSON.stringify(contracts))
-      .digest('hex');
+    return createHash('sha256').update(JSON.stringify(contracts)).digest('hex');
   }
 
   /**
    * Compute the per-contract ABI checksum.
    * Utility exposed so operators can pre-compute checksums for individual contracts.
    */
-  computeAbiChecksum(
-    events: ManifestContractEntry['events'],
-  ): string {
-    return createHash('sha256')
-      .update(JSON.stringify(events))
-      .digest('hex');
+  computeAbiChecksum(events: ManifestContractEntry['events']): string {
+    return createHash('sha256').update(JSON.stringify(events)).digest('hex');
   }
 }

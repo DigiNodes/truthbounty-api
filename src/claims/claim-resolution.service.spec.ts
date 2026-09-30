@@ -1,4 +1,8 @@
-import { NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
+import {
+  NotFoundException,
+  ConflictException,
+  BadRequestException,
+} from '@nestjs/common';
 import { ClaimResolutionService } from './claim-resolution.service';
 import { Claim } from './entities/claim.entity';
 import { ClaimFactory } from './factories/claim.factory';
@@ -19,12 +23,16 @@ function makeClaimsCacheStub() {
   };
 }
 
-function makeDataSourceStub(claimRepoStub: ReturnType<typeof makeClaimRepoStub>) {
+function makeDataSourceStub(
+  claimRepoStub: ReturnType<typeof makeClaimRepoStub>,
+) {
   return {
-    transaction: jest.fn().mockImplementation(async (cb: (manager: any) => Promise<any>) => {
-      const manager = { save: claimRepoStub.save };
-      return cb(manager);
-    }),
+    transaction: jest
+      .fn()
+      .mockImplementation(async (cb: (manager: any) => Promise<any>) => {
+        const manager = { save: claimRepoStub.save };
+        return cb(manager);
+      }),
   };
 }
 
@@ -48,7 +56,10 @@ describe('ClaimResolutionService.computeConfidenceScore', () => {
   });
 
   it('returns high confidence score for strong consensus', () => {
-    const result = service.computeConfidenceScore({ trueWeight: 180, falseWeight: 20 });
+    const result = service.computeConfidenceScore({
+      trueWeight: 180,
+      falseWeight: 20,
+    });
 
     expect(result).not.toBeNull();
     expect(result!.score).toBeGreaterThan(0.7);
@@ -56,20 +67,29 @@ describe('ClaimResolutionService.computeConfidenceScore', () => {
   });
 
   it('returns low confidence score for split votes', () => {
-    const result = service.computeConfidenceScore({ trueWeight: 110, falseWeight: 90 });
+    const result = service.computeConfidenceScore({
+      trueWeight: 110,
+      falseWeight: 90,
+    });
 
     expect(result).not.toBeNull();
     expect(result!.score).toBeLessThan(0.3);
   });
 
   it('returns null for low participation (below MIN_REQUIRED_WEIGHT)', () => {
-    const result = service.computeConfidenceScore({ trueWeight: 30, falseWeight: 20 });
+    const result = service.computeConfidenceScore({
+      trueWeight: 30,
+      falseWeight: 20,
+    });
 
     expect(result).toBeNull();
   });
 
   it('returns score of 0 for an exact tie (margin is 0)', () => {
-    const result = service.computeConfidenceScore({ trueWeight: 100, falseWeight: 100 });
+    const result = service.computeConfidenceScore({
+      trueWeight: 100,
+      falseWeight: 100,
+    });
 
     expect(result).not.toBeNull();
     expect(result!.score).toBe(0);
@@ -77,7 +97,10 @@ describe('ClaimResolutionService.computeConfidenceScore', () => {
   });
 
   it('returns verdict "false" when false votes dominate', () => {
-    const result = service.computeConfidenceScore({ trueWeight: 20, falseWeight: 180 });
+    const result = service.computeConfidenceScore({
+      trueWeight: 20,
+      falseWeight: 180,
+    });
 
     expect(result).not.toBeNull();
     expect(result!.verdict).toBe('false');
@@ -85,7 +108,10 @@ describe('ClaimResolutionService.computeConfidenceScore', () => {
   });
 
   it('caps participation factor at 1 when total greatly exceeds minimum', () => {
-    const result = service.computeConfidenceScore({ trueWeight: 900, falseWeight: 100 });
+    const result = service.computeConfidenceScore({
+      trueWeight: 900,
+      falseWeight: 100,
+    });
 
     expect(result).not.toBeNull();
     expect(result!.participation).toBe(1);
@@ -160,12 +186,19 @@ describe('ClaimResolutionService.resolveClaim', () => {
     buildService(claim);
 
     const before = new Date();
-    const result = await service.resolveClaim(claim.id, { trueWeight: 160, falseWeight: 40 });
+    const result = await service.resolveClaim(claim.id, {
+      trueWeight: 160,
+      falseWeight: 40,
+    });
     const after = new Date();
 
     expect(result.claim.resolvedAt).toBeInstanceOf(Date);
-    expect(result.claim.resolvedAt!.getTime()).toBeGreaterThanOrEqual(before.getTime());
-    expect(result.claim.resolvedAt!.getTime()).toBeLessThanOrEqual(after.getTime());
+    expect(result.claim.resolvedAt!.getTime()).toBeGreaterThanOrEqual(
+      before.getTime(),
+    );
+    expect(result.claim.resolvedAt!.getTime()).toBeLessThanOrEqual(
+      after.getTime(),
+    );
   });
 
   it('sets resolvedAt on the saved claim for the inconclusive (low participation) path (BE-219)', async () => {
@@ -178,14 +211,21 @@ describe('ClaimResolutionService.resolveClaim', () => {
     buildService(claim);
 
     const before = new Date();
-    const result = await service.resolveClaim(claim.id, { trueWeight: 30, falseWeight: 20 });
+    const result = await service.resolveClaim(claim.id, {
+      trueWeight: 30,
+      falseWeight: 20,
+    });
     const after = new Date();
 
     // Confidence is null (insufficient participation) but resolvedAt must still be set
     expect(result.confidence).toBeNull();
     expect(result.claim.resolvedAt).toBeInstanceOf(Date);
-    expect(result.claim.resolvedAt!.getTime()).toBeGreaterThanOrEqual(before.getTime());
-    expect(result.claim.resolvedAt!.getTime()).toBeLessThanOrEqual(after.getTime());
+    expect(result.claim.resolvedAt!.getTime()).toBeGreaterThanOrEqual(
+      before.getTime(),
+    );
+    expect(result.claim.resolvedAt!.getTime()).toBeLessThanOrEqual(
+      after.getTime(),
+    );
   });
 
   it('resolvedAt in the return value matches the claim entity resolvedAt (BE-219)', async () => {
@@ -197,7 +237,10 @@ describe('ClaimResolutionService.resolveClaim', () => {
     });
     buildService(claim);
 
-    const result = await service.resolveClaim(claim.id, { trueWeight: 150, falseWeight: 50 });
+    const result = await service.resolveClaim(claim.id, {
+      trueWeight: 150,
+      falseWeight: 50,
+    });
 
     expect(result.resolvedAt).toBeInstanceOf(Date);
     // The returned resolvedAt must match what was written onto the entity
@@ -209,13 +252,16 @@ describe('ClaimResolutionService.resolveClaim', () => {
     // Simulate a claim that was already resolved but not yet finalized
     const claim = ClaimFactory.createClaim({
       resolvedVerdict: true,
-      confidenceScore: 0.80,
+      confidenceScore: 0.8,
       finalized: false,
       resolvedAt: existingResolvedAt,
     });
     buildService(claim);
 
-    const result = await service.resolveClaim(claim.id, { trueWeight: 160, falseWeight: 40 });
+    const result = await service.resolveClaim(claim.id, {
+      trueWeight: 160,
+      falseWeight: 40,
+    });
 
     // The original resolvedAt must be preserved — should not be overwritten
     expect(result.claim.resolvedAt).toEqual(existingResolvedAt);
@@ -244,7 +290,10 @@ describe('ClaimResolutionService.resolveClaim', () => {
     });
     buildService(claim);
 
-    const result = await service.resolveClaim(claim.id, { trueWeight: 150, falseWeight: 50 });
+    const result = await service.resolveClaim(claim.id, {
+      trueWeight: 150,
+      falseWeight: 50,
+    });
 
     expect(result.claim.finalized).toBe(true);
     expect(result.claim.resolvedAt).not.toBeNull();
@@ -283,19 +332,28 @@ describe('ClaimResolutionService.resolveClaim — resolvedAt invariant (BE-219)'
         ),
     };
 
-    return { service: new ClaimResolutionService(mockRepo, mockCache, mockDataSource), mockRepo, mockCache };
+    return {
+      service: new ClaimResolutionService(mockRepo, mockCache, mockDataSource),
+      mockRepo,
+      mockCache,
+    };
   }
 
   it('sets resolvedAt to a non-null Date when a claim is resolved (BE-219)', async () => {
     const { service } = makeService();
     const before = Date.now();
 
-    const result = await service.resolveClaim('claim-001', { trueWeight: 150, falseWeight: 50 });
+    const result = await service.resolveClaim('claim-001', {
+      trueWeight: 150,
+      falseWeight: 50,
+    });
 
     const after = Date.now();
     expect(result.resolvedAt).not.toBeNull();
     expect(result.resolvedAt).toBeInstanceOf(Date);
-    expect((result.resolvedAt as Date).getTime()).toBeGreaterThanOrEqual(before);
+    expect((result.resolvedAt as Date).getTime()).toBeGreaterThanOrEqual(
+      before,
+    );
     expect((result.resolvedAt as Date).getTime()).toBeLessThanOrEqual(after);
   });
 
@@ -303,11 +361,17 @@ describe('ClaimResolutionService.resolveClaim — resolvedAt invariant (BE-219)'
     const { service, mockRepo } = makeService();
     const savedArgs: any[] = [];
     mockRepo.save.mockImplementation(async (c: any) => {
-      savedArgs.push({ resolvedVerdict: c.resolvedVerdict, resolvedAt: c.resolvedAt });
+      savedArgs.push({
+        resolvedVerdict: c.resolvedVerdict,
+        resolvedAt: c.resolvedAt,
+      });
       return c;
     });
 
-    await service.resolveClaim('claim-001', { trueWeight: 150, falseWeight: 50 });
+    await service.resolveClaim('claim-001', {
+      trueWeight: 150,
+      falseWeight: 50,
+    });
 
     expect(savedArgs).toHaveLength(1);
     expect(savedArgs[0].resolvedVerdict).not.toBeNull();
@@ -316,7 +380,10 @@ describe('ClaimResolutionService.resolveClaim — resolvedAt invariant (BE-219)'
 
   it('sets finalized = true along with resolvedAt (BE-219)', async () => {
     const { service } = makeService();
-    const result = await service.resolveClaim('claim-001', { trueWeight: 150, falseWeight: 50 });
+    const result = await service.resolveClaim('claim-001', {
+      trueWeight: 150,
+      falseWeight: 50,
+    });
     expect(result.claim.finalized).toBe(true);
     expect(result.resolvedAt).not.toBeNull();
   });
@@ -324,18 +391,26 @@ describe('ClaimResolutionService.resolveClaim — resolvedAt invariant (BE-219)'
   it('throws when claim is not found', async () => {
     const { service, mockRepo } = makeService();
     mockRepo.findOneBy.mockResolvedValue(null);
-    await expect(service.resolveClaim('bad-id', { trueWeight: 100, falseWeight: 50 })).rejects.toThrow('Claim with ID bad-id not found');
+    await expect(
+      service.resolveClaim('bad-id', { trueWeight: 100, falseWeight: 50 }),
+    ).rejects.toThrow('Claim with ID bad-id not found');
   });
 
   it('resolvedVerdict=true when trueWeight > falseWeight', async () => {
     const { service } = makeService();
-    const result = await service.resolveClaim('claim-001', { trueWeight: 150, falseWeight: 50 });
+    const result = await service.resolveClaim('claim-001', {
+      trueWeight: 150,
+      falseWeight: 50,
+    });
     expect(result.claim.resolvedVerdict).toBe(true);
   });
 
   it('resolvedVerdict=false when falseWeight > trueWeight', async () => {
     const { service } = makeService();
-    const result = await service.resolveClaim('claim-001', { trueWeight: 50, falseWeight: 150 });
+    const result = await service.resolveClaim('claim-001', {
+      trueWeight: 50,
+      falseWeight: 150,
+    });
     expect(result.claim.resolvedVerdict).toBe(false);
   });
 });

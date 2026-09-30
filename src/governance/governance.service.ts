@@ -181,7 +181,10 @@ export class GovernanceService {
 
     if (status) qb.andWhere('p.status = :status', { status });
     if (category) qb.andWhere('p.category = :category', { category });
-    if (proposer) qb.andWhere('p.proposer = :proposer', { proposer: proposer.toLowerCase() });
+    if (proposer)
+      qb.andWhere('p.proposer = :proposer', {
+        proposer: proposer.toLowerCase(),
+      });
 
     switch (sort) {
       case 'oldest':
@@ -310,8 +313,10 @@ export class GovernanceService {
     const allProposals = await this.proposalRepository.find();
     const avgParticipation =
       allProposals.length > 0
-        ? allProposals.reduce((sum, p) => sum + Number(p.participationRate), 0) /
-          allProposals.length
+        ? allProposals.reduce(
+            (sum, p) => sum + Number(p.participationRate),
+            0,
+          ) / allProposals.length
         : 0;
     const avgQuorum =
       allProposals.length > 0

@@ -9,7 +9,10 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { Notification } from './notification.entity';
-import { DeliveryChannel, DeliveryStatus } from '../enums/notification-type.enum';
+import {
+  DeliveryChannel,
+  DeliveryStatus,
+} from '../enums/notification-type.enum';
 
 @Entity('notification_deliveries')
 @Index(['notificationId'])
@@ -30,7 +33,11 @@ export class NotificationDelivery {
   @Column({ type: 'varchar', enum: DeliveryChannel })
   channel: DeliveryChannel;
 
-  @Column({ type: 'varchar', enum: DeliveryStatus, default: DeliveryStatus.PENDING })
+  @Column({
+    type: 'varchar',
+    enum: DeliveryStatus,
+    default: DeliveryStatus.PENDING,
+  })
   status: DeliveryStatus;
 
   @Column({ type: 'text', nullable: true })

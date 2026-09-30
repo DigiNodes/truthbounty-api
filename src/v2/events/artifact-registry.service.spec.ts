@@ -10,9 +10,14 @@ describe('ArtifactRegistryService', () => {
   let repo: jest.Mocked<Repository<ContractArtifact>>;
 
   const abi = ['event Foo(uint256 x)'];
-  const checksum = crypto.createHash('sha256').update(JSON.stringify(abi)).digest('hex');
+  const checksum = crypto
+    .createHash('sha256')
+    .update(JSON.stringify(abi))
+    .digest('hex');
 
-  function artifact(overrides: Partial<ContractArtifact> = {}): ContractArtifact {
+  function artifact(
+    overrides: Partial<ContractArtifact> = {},
+  ): ContractArtifact {
     return {
       id: '1',
       chainId: 10,
@@ -67,10 +72,9 @@ describe('ArtifactRegistryService', () => {
   it('fails closed: the query never matches an unapproved row', async () => {
     repo.findOne.mockResolvedValue(null);
     await service.resolve(10, '0x' + 'de'.repeat(20));
-    // eslint-disable-next-line @typescript-eslint/unbound-method -- jest mock assertion, not a real unbound call
+
     expect(repo.findOne).toHaveBeenCalledWith(
       expect.objectContaining({
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- jest matcher typing
         where: expect.objectContaining({ isApproved: true }),
       }),
     );
@@ -81,7 +85,7 @@ describe('ArtifactRegistryService', () => {
 
     await service.resolve(10, artifact().contractAddress);
     await service.resolve(10, artifact().contractAddress);
-    // eslint-disable-next-line @typescript-eslint/unbound-method -- jest mock assertion, not a real unbound call
+
     expect(repo.findOne).toHaveBeenCalledTimes(1);
   });
 
@@ -91,12 +95,14 @@ describe('ArtifactRegistryService', () => {
     await service.resolve(10, artifact().contractAddress);
     service.clearCache();
     await service.resolve(10, artifact().contractAddress);
-    // eslint-disable-next-line @typescript-eslint/unbound-method -- jest mock assertion, not a real unbound call
+
     expect(repo.findOne).toHaveBeenCalledTimes(2);
   });
 
   it('fails closed for an unsupported chain', async () => {
-    await expect(service.resolve(1, artifact().contractAddress)).resolves.toBeNull();
+    await expect(
+      service.resolve(1, artifact().contractAddress),
+    ).resolves.toBeNull();
     expect(repo.findOne).not.toHaveBeenCalled();
   });
 
@@ -107,7 +113,9 @@ describe('ArtifactRegistryService', () => {
 
   it('fails closed when the ABI checksum does not match', async () => {
     repo.findOne.mockResolvedValue(artifact({ abiChecksum: '0'.repeat(64) }));
-    await expect(service.resolve(10, artifact().contractAddress)).resolves.toBeNull();
+    await expect(
+      service.resolve(10, artifact().contractAddress),
+    ).resolves.toBeNull();
   });
 
   it('fails closed when the ABI cannot be parsed', async () => {
@@ -115,9 +123,14 @@ describe('ArtifactRegistryService', () => {
     repo.findOne.mockResolvedValue(
       artifact({
         abi: invalidAbi,
-        abiChecksum: crypto.createHash('sha256').update(JSON.stringify(invalidAbi)).digest('hex'),
+        abiChecksum: crypto
+          .createHash('sha256')
+          .update(JSON.stringify(invalidAbi))
+          .digest('hex'),
       }),
     );
-    await expect(service.resolve(10, artifact().contractAddress)).resolves.toBeNull();
+    await expect(
+      service.resolve(10, artifact().contractAddress),
+    ).resolves.toBeNull();
   });
 });

@@ -2,7 +2,7 @@ import { Injectable, NestMiddleware, Logger } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 
 interface CorsConfig {
-  origin: string | string[] | ((origin: string | undefined, cb: (err: Error | null, origin?: string | false) => void) => void);
+  origin: string | string[];
   methods: string;
   allowedHeaders: string;
   exposedHeaders: string;
@@ -18,7 +18,10 @@ export class CorsMiddleware implements NestMiddleware {
   constructor() {
     const allowedOriginsEnv = process.env.ALLOWED_ORIGINS || '';
     const allowedOrigins = allowedOriginsEnv
-      ? allowedOriginsEnv.split(',').map((o) => o.trim()).filter(Boolean)
+      ? allowedOriginsEnv
+          .split(',')
+          .map((o) => o.trim())
+          .filter(Boolean)
       : [];
 
     // Default to empty array if no origins specified, effectively blocking all CORS
@@ -27,7 +30,8 @@ export class CorsMiddleware implements NestMiddleware {
     this.config = {
       origin: origins,
       methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-      allowedHeaders: 'Content-Type,Authorization,X-Request-ID,X-Forwarded-For,X-Forwarded-Proto',
+      allowedHeaders:
+        'Content-Type,Authorization,X-Request-ID,X-Forwarded-For,X-Forwarded-Proto',
       exposedHeaders: 'X-Request-ID,Retry-After',
       credentials: true,
       maxAge: 600, // 10 minutes
@@ -49,7 +53,11 @@ export class CorsMiddleware implements NestMiddleware {
     next();
   }
 
-  private handleCors(req: Request, res: Response, origin: string | undefined): void {
+  private handleCors(
+    req: Request,
+    res: Response,
+    origin: string | undefined,
+  ): void {
     const allowedOrigins = this.config.origin;
 
     // If no origins are configured, do not set CORS headers (fail closed)
@@ -67,8 +75,14 @@ export class CorsMiddleware implements NestMiddleware {
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Access-Control-Allow-Methods', this.config.methods);
       res.setHeader('Access-Control-Allow-Headers', this.config.allowedHeaders);
-      res.setHeader('Access-Control-Expose-Headers', this.config.exposedHeaders);
-      res.setHeader('Access-Control-Allow-Credentials', this.config.credentials.toString());
+      res.setHeader(
+        'Access-Control-Expose-Headers',
+        this.config.exposedHeaders,
+      );
+      res.setHeader(
+        'Access-Control-Allow-Credentials',
+        this.config.credentials.toString(),
+      );
       res.setHeader('Access-Control-Max-Age', this.config.maxAge.toString());
     } else {
       // Origin not allowed: do not set Access-Control-Allow-Origin

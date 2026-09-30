@@ -1,11 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  IsNumber,
-  IsOptional,
-  IsString,
-  Max,
-  Min,
-} from 'class-validator';
+import { IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
 
 export class QueryReputationDto {
   @ApiPropertyOptional({ description: 'Wallet address to query' })
@@ -19,7 +13,10 @@ export class QueryReputationDto {
   @Min(0)
   minScore?: number;
 
-  @ApiPropertyOptional({ description: 'Maximum reputation score', maximum: 10000 })
+  @ApiPropertyOptional({
+    description: 'Maximum reputation score',
+    maximum: 10000,
+  })
   @IsOptional()
   @IsNumber()
   @Max(10000)

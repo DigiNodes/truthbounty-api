@@ -1,9 +1,14 @@
-/* eslint-disable @typescript-eslint/unbound-method */
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
 import { AuditTrailService } from './audit-trail.service';
-import { AuditLog, AuditActionType, AuditEntityType, AuditSeverity, AuditCategory } from '../entities/audit-log.entity';
+import {
+  AuditLog,
+  AuditActionType,
+  AuditEntityType,
+  AuditSeverity,
+  AuditCategory,
+} from '../entities/audit-log.entity';
 import { AuditChainState } from '../entities/audit-chain-state.entity';
 import { Repository } from 'typeorm';
 import { REQUEST } from '@nestjs/core';
@@ -200,11 +205,13 @@ describe('AuditTrailService', () => {
     it('should not throw when the write fails, and should record it as a metric instead of swallowing it silently', async () => {
       (repository.save as jest.Mock).mockRejectedValue(new Error('DB error'));
 
-      await expect(service.log({
-        actionType: AuditActionType.CLAIM_CREATED,
-        entityType: AuditEntityType.CLAIM,
-        entityId: 'claim-1',
-      })).resolves.toBeUndefined();
+      await expect(
+        service.log({
+          actionType: AuditActionType.CLAIM_CREATED,
+          entityType: AuditEntityType.CLAIM,
+          entityId: 'claim-1',
+        }),
+      ).resolves.toBeUndefined();
 
       expect(metricsService.incrementFailedWrite).toHaveBeenCalledTimes(1);
     });
@@ -316,7 +323,8 @@ describe('AuditTrailService', () => {
         andWhere: jest.fn().mockReturnThis(),
         orderBy: jest.fn().mockReturnThis(),
         take: jest.fn().mockReturnThis(),
-        getMany: jest.fn()
+        getMany: jest
+          .fn()
           .mockResolvedValueOnce(records)
           .mockResolvedValueOnce([]),
       };
@@ -355,7 +363,8 @@ describe('AuditTrailService', () => {
         andWhere: jest.fn().mockReturnThis(),
         orderBy: jest.fn().mockReturnThis(),
         take: jest.fn().mockReturnThis(),
-        getMany: jest.fn()
+        getMany: jest
+          .fn()
           .mockResolvedValueOnce(records)
           .mockResolvedValueOnce([]),
       };
@@ -392,7 +401,9 @@ describe('AuditTrailService', () => {
         getManyAndCount: jest.fn().mockResolvedValue([[mockAuditLog()], 1]),
       } as any;
 
-      (repository.createQueryBuilder as jest.Mock).mockReturnValue(mockQueryBuilder);
+      (repository.createQueryBuilder as jest.Mock).mockReturnValue(
+        mockQueryBuilder,
+      );
 
       const result = await service.query({});
 
@@ -413,7 +424,9 @@ describe('AuditTrailService', () => {
         getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
       } as any;
 
-      (repository.createQueryBuilder as jest.Mock).mockReturnValue(mockQueryBuilder);
+      (repository.createQueryBuilder as jest.Mock).mockReturnValue(
+        mockQueryBuilder,
+      );
 
       await service.query({
         entityType: AuditEntityType.CLAIM,
@@ -432,13 +445,16 @@ describe('AuditTrailService', () => {
       });
 
       expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
-        'audit.entityType = :entityType', { entityType: AuditEntityType.CLAIM },
+        'audit.entityType = :entityType',
+        { entityType: AuditEntityType.CLAIM },
       );
       expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
-        'audit.severity = :severity', { severity: AuditSeverity.HIGH },
+        'audit.severity = :severity',
+        { severity: AuditSeverity.HIGH },
       );
       expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
-        'audit.category = :category', { category: AuditCategory.SECURITY },
+        'audit.category = :category',
+        { category: AuditCategory.SECURITY },
       );
       expect(mockQueryBuilder.skip).toHaveBeenCalledWith(25);
       expect(mockQueryBuilder.take).toHaveBeenCalledWith(25);
@@ -497,12 +513,20 @@ describe('AuditTrailService', () => {
 
       const oldestQueryBuilder = {
         orderBy: jest.fn().mockReturnThis(),
-        getOne: jest.fn().mockResolvedValue(mockAuditLog({ createdAt: new Date('2024-01-01') })),
+        getOne: jest
+          .fn()
+          .mockResolvedValue(
+            mockAuditLog({ createdAt: new Date('2024-01-01') }),
+          ),
       } as any;
 
       const newestQueryBuilder = {
         orderBy: jest.fn().mockReturnThis(),
-        getOne: jest.fn().mockResolvedValue(mockAuditLog({ createdAt: new Date('2024-06-15') })),
+        getOne: jest
+          .fn()
+          .mockResolvedValue(
+            mockAuditLog({ createdAt: new Date('2024-06-15') }),
+          ),
       } as any;
 
       (repository.createQueryBuilder as jest.Mock)
@@ -525,7 +549,9 @@ describe('AuditTrailService', () => {
         execute: jest.fn().mockResolvedValue({ affected: 4 }),
       } as any;
 
-      (repository.createQueryBuilder as jest.Mock).mockReturnValue(mockQueryBuilder);
+      (repository.createQueryBuilder as jest.Mock).mockReturnValue(
+        mockQueryBuilder,
+      );
 
       const deleted = await service.deleteOldLogs(90);
 
@@ -546,7 +572,10 @@ describe('AuditTrailService', () => {
 
       (repository.find as jest.Mock).mockResolvedValue([log]);
 
-      const history = await service.getChangeHistory(AuditEntityType.CLAIM, 'claim-1');
+      const history = await service.getChangeHistory(
+        AuditEntityType.CLAIM,
+        'claim-1',
+      );
 
       expect(history).toHaveLength(1);
       expect(history[0].changes).toEqual({
@@ -569,7 +598,9 @@ describe('AuditTrailService', () => {
         ]),
       } as any;
 
-      (repository.createQueryBuilder as jest.Mock).mockReturnValue(mockQueryBuilder);
+      (repository.createQueryBuilder as jest.Mock).mockReturnValue(
+        mockQueryBuilder,
+      );
 
       const summary = await service.getAuditSummary(AuditEntityType.CLAIM, 7);
 

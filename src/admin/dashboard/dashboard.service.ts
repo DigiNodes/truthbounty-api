@@ -2,8 +2,15 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Admin, AdminRole } from '../entities/admin.entity';
-import { Incident, IncidentStatus, IncidentSeverity } from '../entities/incident.entity';
-import { ModerationReport, ReportStatus } from '../entities/moderation-report.entity';
+import {
+  Incident,
+  IncidentStatus,
+  IncidentSeverity,
+} from '../entities/incident.entity';
+import {
+  ModerationReport,
+  ReportStatus,
+} from '../entities/moderation-report.entity';
 import { AuditLog } from '../../audit/entities/audit-log.entity';
 import { Claim } from '../../claims/entities/claim.entity';
 import { JobsService } from '../../jobs/jobs.service';
@@ -67,7 +74,10 @@ export class DashboardService {
     const criticalIncidents = await this.incidentRepo.count({
       where: [
         { status: IncidentStatus.OPEN, severity: IncidentSeverity.CRITICAL },
-        { status: IncidentStatus.INVESTIGATING, severity: IncidentSeverity.CRITICAL },
+        {
+          status: IncidentStatus.INVESTIGATING,
+          severity: IncidentSeverity.CRITICAL,
+        },
       ],
     });
 
@@ -75,7 +85,7 @@ export class DashboardService {
     today.setHours(0, 0, 0, 0);
 
     const resolvedToday = await this.incidentRepo.count({
-      where: { resolvedAt: today as any },
+      where: { resolvedAt: today },
     });
 
     const reports = await this.reportRepo.find({
@@ -85,10 +95,13 @@ export class DashboardService {
     if (reports.length > 0) {
       const totalHours = reports.reduce((sum, r) => {
         const created = new Date(r.createdAt).getTime();
-        const resolved = r.resolvedAt ? new Date(r.resolvedAt).getTime() : Date.now();
+        const resolved = r.resolvedAt
+          ? new Date(r.resolvedAt).getTime()
+          : Date.now();
         return sum + (resolved - created) / (1000 * 60 * 60);
       }, 0);
-      avgResponseTimeHours = Math.round((totalHours / reports.length) * 100) / 100;
+      avgResponseTimeHours =
+        Math.round((totalHours / reports.length) * 100) / 100;
     }
 
     const pendingAndReview = await this.reportRepo.count({
@@ -125,16 +138,18 @@ export class DashboardService {
     reportsLast24h: number;
     timestamp: string;
   }> {
-    const activeAdmins = await this.adminRepo.count({ where: { isActive: true } });
+    const activeAdmins = await this.adminRepo.count({
+      where: { isActive: true },
+    });
 
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
     const incidentsOpened24h = await this.incidentRepo.count({
-      where: { createdAt: since as any },
+      where: { createdAt: since },
     });
 
     const incidentsResolved24h = await this.incidentRepo.count({
-      where: { resolvedAt: since as any },
+      where: { resolvedAt: since },
     });
 
     const pendingAndReview = await this.reportRepo.count({
@@ -155,10 +170,13 @@ export class DashboardService {
     if (reports.length > 0) {
       const totalHours = reports.reduce((sum, r) => {
         const created = new Date(r.createdAt).getTime();
-        const resolved = r.resolvedAt ? new Date(r.resolvedAt).getTime() : Date.now();
+        const resolved = r.resolvedAt
+          ? new Date(r.resolvedAt).getTime()
+          : Date.now();
         return sum + (resolved - created) / (1000 * 60 * 60);
       }, 0);
-      avgResponseTimeHours = Math.round((totalHours / reports.length) * 100) / 100;
+      avgResponseTimeHours =
+        Math.round((totalHours / reports.length) * 100) / 100;
     }
 
     const securityAlerts = await this.incidentRepo.count({
@@ -169,7 +187,7 @@ export class DashboardService {
     });
 
     const reportsLast24h = await this.reportRepo.count({
-      where: { createdAt: since as any },
+      where: { createdAt: since },
     });
 
     return {
@@ -214,12 +232,18 @@ export class DashboardService {
 
     try {
       const queueMetrics = await this.jobsService.getAllQueueMetrics();
-      queues = queueMetrics.some((queue) => queue.failed > 0) ? 'degraded' : 'healthy';
+      queues = queueMetrics.some((queue) => queue.failed > 0)
+        ? 'degraded'
+        : 'healthy';
     } catch {
       queues = 'degraded';
     }
 
-    if (database === 'connected' && redis === 'connected' && queues === 'healthy') {
+    if (
+      database === 'connected' &&
+      redis === 'connected' &&
+      queues === 'healthy'
+    ) {
       status = 'healthy';
     }
 
@@ -254,7 +278,14 @@ export class DashboardService {
   }
 
   async getOperationalSummary() {
-    const [overview, queueMetrics, notificationMetrics, webhookMetrics, metricsSummary, redisStatus] = await Promise.all([
+    const [
+      overview,
+      queueMetrics,
+      notificationMetrics,
+      webhookMetrics,
+      metricsSummary,
+      redisStatus,
+    ] = await Promise.all([
       this.getOverview(),
       this.jobsService.getAllQueueMetrics(),
       this.notificationService.getMetrics(),
@@ -263,19 +294,41 @@ export class DashboardService {
       this.redisService.getStatus(),
     ]);
 
-    const totalWaiting = queueMetrics.reduce((sum, queue) => sum + queue.waiting, 0);
-    const totalActive = queueMetrics.reduce((sum, queue) => sum + queue.active, 0);
-    const totalFailed = queueMetrics.reduce((sum, queue) => sum + queue.failed, 0);
-    const totalCompleted = queueMetrics.reduce((sum, queue) => sum + queue.completed, 0);
-    const totalDelayed = queueMetrics.reduce((sum, queue) => sum + queue.delayed, 0);
+    const totalWaiting = queueMetrics.reduce(
+      (sum, queue) => sum + queue.waiting,
+      0,
+    );
+    const totalActive = queueMetrics.reduce(
+      (sum, queue) => sum + queue.active,
+      0,
+    );
+    const totalFailed = queueMetrics.reduce(
+      (sum, queue) => sum + queue.failed,
+      0,
+    );
+    const totalCompleted = queueMetrics.reduce(
+      (sum, queue) => sum + queue.completed,
+      0,
+    );
+    const totalDelayed = queueMetrics.reduce(
+      (sum, queue) => sum + queue.delayed,
+      0,
+    );
 
     const databaseHealthy = await this.checkDatabaseHealth();
     const redisHealthy = await this.redisService.isHealthy();
-    const systemStatus = databaseHealthy && redisHealthy && totalFailed === 0 ? 'healthy' : 'degraded';
+    const systemStatus =
+      databaseHealthy && redisHealthy && totalFailed === 0
+        ? 'healthy'
+        : 'degraded';
 
     const totalClaims = await this.claimRepo.count();
-    const activeClaims = await this.claimRepo.count({ where: { finalized: false } });
-    const finalizedClaims = await this.claimRepo.count({ where: { finalized: true } });
+    const activeClaims = await this.claimRepo.count({
+      where: { finalized: false },
+    });
+    const finalizedClaims = await this.claimRepo.count({
+      where: { finalized: true },
+    });
     const pendingClaims = Math.max(activeClaims - finalizedClaims, 0);
 
     return {
@@ -386,12 +439,13 @@ export class DashboardService {
   }
 
   async getDatabaseMetrics() {
-    const [totalAdmins, totalClaims, totalIncidents, totalReports] = await Promise.all([
-      this.adminRepo.count(),
-      this.claimRepo.count(),
-      this.incidentRepo.count(),
-      this.reportRepo.count(),
-    ]);
+    const [totalAdmins, totalClaims, totalIncidents, totalReports] =
+      await Promise.all([
+        this.adminRepo.count(),
+        this.claimRepo.count(),
+        this.incidentRepo.count(),
+        this.reportRepo.count(),
+      ]);
 
     return {
       status: (await this.checkDatabaseHealth()) ? 'healthy' : 'degraded',

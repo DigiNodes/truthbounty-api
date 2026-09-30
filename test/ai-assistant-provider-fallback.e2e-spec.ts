@@ -2,7 +2,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { createGlobalValidationPipe } from '../src/bootstrap';
-import { createAuthenticatedTestUser, TestAuthUser } from './utils/ai-assistant-auth.helper';
+import {
+  createAuthenticatedTestUser,
+  TestAuthUser,
+} from './utils/ai-assistant-auth.helper';
 import { AiAssistantTestModule } from './utils/ai-assistant-test.module';
 import { setupPrismaTestDatabase } from './utils/prisma-test-db.helper';
 
@@ -13,7 +16,8 @@ describe('AI Assistant provider fallback E2E (ai-assistant-provider-fallback.e2e
   let contributor: TestAuthUser;
   let cleanupPrisma: () => void;
 
-  const authHeader = (user: TestAuthUser) => ['Authorization', `Bearer ${user.accessToken}`] as [string, string];
+  const authHeader = (user: TestAuthUser) =>
+    ['Authorization', `Bearer ${user.accessToken}`] as [string, string];
 
   beforeAll(async () => {
     process.env.RATE_LIMIT_AUTH_LIMIT = '50';

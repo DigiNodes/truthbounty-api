@@ -36,17 +36,17 @@ export class AppLoggerService implements LoggerService {
    */
   error(message: string, trace?: string, context?: LogContext | string): void {
     const meta: LogContext = {};
-    
+
     if (trace) {
       meta.trace = trace;
     }
-    
+
     if (typeof context === 'string') {
       meta.context = context;
     } else if (context) {
       Object.assign(meta, context);
     }
-    
+
     this.logger.error(meta, message);
   }
 
@@ -163,16 +163,17 @@ export class AppLoggerService implements LoggerService {
     action: 'calculated' | 'distributed' | 'claimed',
     data: LogContext,
   ): void {
-    this.logger.info(
-      { domain: 'reward', action, ...data },
-      `Reward ${action}`,
-    );
+    this.logger.info({ domain: 'reward', action, ...data }, `Reward ${action}`);
   }
 
   /**
    * Log performance metrics
    */
-  logPerformance(operation: string, durationMs: number, data?: LogContext): void {
+  logPerformance(
+    operation: string,
+    durationMs: number,
+    data?: LogContext,
+  ): void {
     this.logger.info(
       { domain: 'performance', operation, durationMs, ...data },
       `${operation} completed in ${durationMs}ms`,
@@ -183,7 +184,8 @@ export class AppLoggerService implements LoggerService {
    * Log security events
    */
   logSecurityEvent(
-    event: 'rate_limited' | 'sybil_detected' | 'invalid_signature' | 'unauthorized',
+    event:
+      'rate_limited' | 'sybil_detected' | 'invalid_signature' | 'unauthorized',
     data: LogContext,
   ): void {
     this.logger.warn(

@@ -55,7 +55,11 @@ describe('CircuitBreaker — state transitions', () => {
   it('remains CLOSED while failures are below threshold', async () => {
     const cb = makeCb({ failureThreshold: 3 });
     for (let i = 0; i < 2; i++) {
-      try { await cb.call(fail); } catch { /* expected */ }
+      try {
+        await cb.call(fail);
+      } catch {
+        /* expected */
+      }
     }
     expect(cb.currentState).toBe('CLOSED');
   });
@@ -63,20 +67,32 @@ describe('CircuitBreaker — state transitions', () => {
   it('transitions CLOSED → OPEN once failures reach threshold', async () => {
     const cb = makeCb({ failureThreshold: 3 });
     for (let i = 0; i < 3; i++) {
-      try { await cb.call(fail); } catch { /* expected */ }
+      try {
+        await cb.call(fail);
+      } catch {
+        /* expected */
+      }
     }
     expect(cb.currentState).toBe('OPEN');
   });
 
   it('throws CircuitOpenError immediately when OPEN', async () => {
     const cb = makeCb({ failureThreshold: 1 });
-    try { await cb.call(fail); } catch { /* open the circuit */ }
+    try {
+      await cb.call(fail);
+    } catch {
+      /* open the circuit */
+    }
     await expect(cb.call(succeed)).rejects.toBeInstanceOf(CircuitOpenError);
   });
 
   it('transitions OPEN → HALF_OPEN after resetMs', async () => {
     const cb = makeCb({ failureThreshold: 1, resetMs: 10 });
-    try { await cb.call(fail); } catch { /* open */ }
+    try {
+      await cb.call(fail);
+    } catch {
+      /* open */
+    }
     expect(cb.currentState).toBe('OPEN');
     await new Promise((r) => setTimeout(r, 20));
     // Trigger the time check by attempting a call.
@@ -86,7 +102,11 @@ describe('CircuitBreaker — state transitions', () => {
 
   it('transitions HALF_OPEN → CLOSED after successThreshold successful probes', async () => {
     const cb = makeCb({ failureThreshold: 1, resetMs: 5, successThreshold: 2 });
-    try { await cb.call(fail); } catch { /* open */ }
+    try {
+      await cb.call(fail);
+    } catch {
+      /* open */
+    }
     await new Promise((r) => setTimeout(r, 10));
     // First probe — HALF_OPEN, successes = 1
     await cb.call(succeed);
@@ -102,26 +122,50 @@ describe('CircuitBreaker — state transitions', () => {
       successThreshold: 2,
       resetMs: 5,
     });
-    try { await cb.call(fail); } catch { /* open */ }
+    try {
+      await cb.call(fail);
+    } catch {
+      /* open */
+    }
     await new Promise((r) => setTimeout(r, 10));
     // Probe fails → back to OPEN
-    try { await cb.call(fail); } catch { /* expected */ }
+    try {
+      await cb.call(fail);
+    } catch {
+      /* expected */
+    }
     expect(cb.currentState).toBe('OPEN');
   });
 
   it('resets consecutive failure counter on a successful call', async () => {
     const cb = makeCb({ failureThreshold: 3 });
-    try { await cb.call(fail); } catch { /* 1 */ }
-    try { await cb.call(fail); } catch { /* 2 */ }
+    try {
+      await cb.call(fail);
+    } catch {
+      /* 1 */
+    }
+    try {
+      await cb.call(fail);
+    } catch {
+      /* 2 */
+    }
     await cb.call(succeed); // resets failures to 0
-    try { await cb.call(fail); } catch { /* 1 again */ }
+    try {
+      await cb.call(fail);
+    } catch {
+      /* 1 again */
+    }
     // Still only 1 consecutive failure — still CLOSED
     expect(cb.currentState).toBe('CLOSED');
   });
 
   it('manual reset() returns circuit to CLOSED regardless of current state', async () => {
     const cb = makeCb({ failureThreshold: 1 });
-    try { await cb.call(fail); } catch { /* open */ }
+    try {
+      await cb.call(fail);
+    } catch {
+      /* open */
+    }
     expect(cb.currentState).toBe('OPEN');
     cb.reset();
     expect(cb.currentState).toBe('CLOSED');
@@ -135,15 +179,23 @@ describe('CircuitBreaker — state transitions', () => {
 describe('CircuitBreaker — timeout enforcement', () => {
   it('throws DependencyTimeoutError when the call exceeds the budget', async () => {
     const cb = makeCb();
-    await expect(
-      cb.call(() => slow(200), 50),
-    ).rejects.toBeInstanceOf(DependencyTimeoutError);
+    await expect(cb.call(() => slow(200), 50)).rejects.toBeInstanceOf(
+      DependencyTimeoutError,
+    );
   });
 
   it('counts a timeout as a failure toward the threshold', async () => {
     const cb = makeCb({ failureThreshold: 2 });
-    try { await cb.call(() => slow(200), 50); } catch { /* 1 */ }
-    try { await cb.call(() => slow(200), 50); } catch { /* 2 */ }
+    try {
+      await cb.call(() => slow(200), 50);
+    } catch {
+      /* 1 */
+    }
+    try {
+      await cb.call(() => slow(200), 50);
+    } catch {
+      /* 2 */
+    }
     expect(cb.currentState).toBe('OPEN');
   });
 
@@ -190,22 +242,38 @@ describe('CircuitBreaker — snapshot()', () => {
   it('snapshot.totalCalls increments on every call', async () => {
     const cb = makeCb();
     await cb.call(succeed);
-    try { await cb.call(fail); } catch { /* expected */ }
+    try {
+      await cb.call(fail);
+    } catch {
+      /* expected */
+    }
     expect(cb.snapshot().totalCalls).toBe(2);
   });
 
   it('snapshot.totalFailures only counts failures', async () => {
     const cb = makeCb();
     await cb.call(succeed);
-    try { await cb.call(fail); } catch { /* expected */ }
-    try { await cb.call(fail); } catch { /* expected */ }
+    try {
+      await cb.call(fail);
+    } catch {
+      /* expected */
+    }
+    try {
+      await cb.call(fail);
+    } catch {
+      /* expected */
+    }
     expect(cb.snapshot().totalFailures).toBe(2);
   });
 
   it('snapshot.openedAt is set when circuit opens', async () => {
     const cb = makeCb({ failureThreshold: 1 });
     const before = Date.now();
-    try { await cb.call(fail); } catch { /* expected */ }
+    try {
+      await cb.call(fail);
+    } catch {
+      /* expected */
+    }
     const snap = cb.snapshot();
     expect(snap.openedAt).not.toBeNull();
     expect(snap.openedAt!).toBeGreaterThanOrEqual(before);
@@ -218,7 +286,11 @@ describe('CircuitBreaker — snapshot()', () => {
     const afterSuccess = cb.snapshot().lastSuccessAt;
     expect(afterSuccess).not.toBeNull();
 
-    try { await cb.call(fail); } catch { /* expected */ }
+    try {
+      await cb.call(fail);
+    } catch {
+      /* expected */
+    }
     const afterFail = cb.snapshot().lastFailureAt;
     expect(afterFail).not.toBeNull();
     expect(afterFail!).toBeGreaterThanOrEqual(afterSuccess!);
@@ -233,7 +305,11 @@ describe('CircuitBreaker — hooks', () => {
   it('onStateChange is invoked with correct from/to when opening', async () => {
     const onChange = jest.fn();
     const cb = makeCb({ failureThreshold: 1, onStateChange: onChange });
-    try { await cb.call(fail); } catch { /* expected */ }
+    try {
+      await cb.call(fail);
+    } catch {
+      /* expected */
+    }
     expect(onChange).toHaveBeenCalledWith('test', 'CLOSED', 'OPEN');
   });
 
@@ -245,7 +321,11 @@ describe('CircuitBreaker — hooks', () => {
       resetMs: 5,
       onStateChange: onChange,
     });
-    try { await cb.call(fail); } catch { /* open */ }
+    try {
+      await cb.call(fail);
+    } catch {
+      /* open */
+    }
     await new Promise((r) => setTimeout(r, 10));
     await cb.call(succeed); // HALF_OPEN → CLOSED
     const calls = onChange.mock.calls;
@@ -256,22 +336,44 @@ describe('CircuitBreaker — hooks', () => {
     const onCall = jest.fn();
     const cb = makeCb({ onCall });
     await cb.call(succeed);
-    expect(onCall).toHaveBeenCalledWith('test', true, expect.any(Number), 'CLOSED');
+    expect(onCall).toHaveBeenCalledWith(
+      'test',
+      true,
+      expect.any(Number),
+      'CLOSED',
+    );
   });
 
   it('onCall is invoked on failure', async () => {
     const onCall = jest.fn();
     const cb = makeCb({ onCall });
-    try { await cb.call(fail); } catch { /* expected */ }
-    expect(onCall).toHaveBeenCalledWith('test', false, expect.any(Number), expect.any(String));
+    try {
+      await cb.call(fail);
+    } catch {
+      /* expected */
+    }
+    expect(onCall).toHaveBeenCalledWith(
+      'test',
+      false,
+      expect.any(Number),
+      expect.any(String),
+    );
   });
 
   it('onCall is NOT invoked when the circuit is OPEN (call is rejected before execution)', async () => {
     const onCall = jest.fn();
     const cb = makeCb({ failureThreshold: 1, onCall });
-    try { await cb.call(fail); } catch { /* open */ }
+    try {
+      await cb.call(fail);
+    } catch {
+      /* open */
+    }
     onCall.mockClear();
-    try { await cb.call(succeed); } catch { /* CircuitOpenError */ }
+    try {
+      await cb.call(succeed);
+    } catch {
+      /* CircuitOpenError */
+    }
     // The function was never executed so onCall must not fire.
     expect(onCall).not.toHaveBeenCalled();
   });
@@ -301,11 +403,9 @@ describe('withTimeout — standalone', () => {
   });
 
   it('uses the provided name in the DependencyTimeoutError message', async () => {
-    const err = await withTimeout(
-      () => slow(200),
-      50,
-      'postgres',
-    ).catch((e) => e);
+    const err = await withTimeout(() => slow(200), 50, 'postgres').catch(
+      (e) => e,
+    );
     expect(err.message).toMatch(/postgres/i);
   });
 });
@@ -317,7 +417,11 @@ describe('withTimeout — standalone', () => {
 describe('CircuitBreaker — fail-closed invariants', () => {
   it('never returns a value when the circuit is OPEN', async () => {
     const cb = makeCb({ failureThreshold: 1 });
-    try { await cb.call(fail); } catch { /* open */ }
+    try {
+      await cb.call(fail);
+    } catch {
+      /* open */
+    }
 
     let resolved = false;
     try {
@@ -332,14 +436,18 @@ describe('CircuitBreaker — fail-closed invariants', () => {
   it('never swallows the original error from the underlying function', async () => {
     const cb = makeCb();
     const specificError = new Error('very specific RPC error');
-    await expect(
-      cb.call(() => Promise.reject(specificError)),
-    ).rejects.toBe(specificError);
+    await expect(cb.call(() => Promise.reject(specificError))).rejects.toBe(
+      specificError,
+    );
   });
 
   it('CircuitOpenError is never confused with a normal application error', async () => {
     const cb = makeCb({ failureThreshold: 1 });
-    try { await cb.call(fail); } catch { /* open */ }
+    try {
+      await cb.call(fail);
+    } catch {
+      /* open */
+    }
     const err = await cb.call(succeed).catch((e) => e);
     expect(err).toBeInstanceOf(CircuitOpenError);
     expect(err.name).toBe('CircuitOpenError');
@@ -353,7 +461,11 @@ describe('CircuitBreaker — fail-closed invariants', () => {
 
   it('manual reset does not cause a call to return silently — it still executes fn', async () => {
     const cb = makeCb({ failureThreshold: 1 });
-    try { await cb.call(fail); } catch { /* open */ }
+    try {
+      await cb.call(fail);
+    } catch {
+      /* open */
+    }
     cb.reset();
     const result = await cb.call(succeed);
     expect(result).toBe('ok');
@@ -361,14 +473,22 @@ describe('CircuitBreaker — fail-closed invariants', () => {
 
   it('boundary: failureThreshold=1 opens after exactly one failure', async () => {
     const cb = makeCb({ failureThreshold: 1 });
-    try { await cb.call(fail); } catch { /* expected */ }
+    try {
+      await cb.call(fail);
+    } catch {
+      /* expected */
+    }
     expect(cb.currentState).toBe('OPEN');
   });
 
   it('boundary: failureThreshold=10 stays CLOSED through 9 failures', async () => {
     const cb = makeCb({ failureThreshold: 10 });
     for (let i = 0; i < 9; i++) {
-      try { await cb.call(fail); } catch { /* expected */ }
+      try {
+        await cb.call(fail);
+      } catch {
+        /* expected */
+      }
     }
     expect(cb.currentState).toBe('CLOSED');
   });

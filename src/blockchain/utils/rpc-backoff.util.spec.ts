@@ -64,7 +64,11 @@ describe('rpc-backoff', () => {
         .mockResolvedValue('recovered');
 
       const onRetry = jest.fn();
-      const result = await withRpcBackoff(fn, { sleep, onRetry, jitter: false });
+      const result = await withRpcBackoff(fn, {
+        sleep,
+        onRetry,
+        jitter: false,
+      });
 
       expect(result).toBe('recovered');
       expect(fn).toHaveBeenCalledTimes(3);
@@ -100,7 +104,10 @@ describe('rpc-backoff', () => {
     });
 
     it('does not retry non-retryable errors', async () => {
-      const reverted = { code: 'CALL_EXCEPTION', message: 'execution reverted' };
+      const reverted = {
+        code: 'CALL_EXCEPTION',
+        message: 'execution reverted',
+      };
       const fn = jest.fn().mockRejectedValue(reverted);
 
       await expect(withRpcBackoff(fn, { sleep })).rejects.toBe(reverted);
@@ -121,11 +128,14 @@ describe('rpc-backoff', () => {
         getBlockNumber: jest.fn().mockResolvedValue(42),
       };
 
-      const manager = new RpcProviderManager([primary as any, secondary as any], {
-        chainId: 10,
-        maxRetries: 0,
-        rateLimitMs: 0,
-      });
+      const manager = new RpcProviderManager(
+        [primary as any, secondary as any],
+        {
+          chainId: 10,
+          maxRetries: 0,
+          rateLimitMs: 0,
+        },
+      );
 
       await expect(manager.call('getBlockNumber')).resolves.toBe(42);
       expect(primary.getBlockNumber).toHaveBeenCalledTimes(1);
@@ -142,17 +152,22 @@ describe('rpc-backoff', () => {
         getBlockNumber: jest.fn().mockResolvedValue(9),
       };
 
-      const manager = new RpcProviderManager([primary as any, secondary as any], {
-        chainId: 10,
-        circuitBreakerThreshold: 2,
-        circuitBreakerResetMs: 60000,
-        maxRetries: 0,
-        rateLimitMs: 0,
-      });
+      const manager = new RpcProviderManager(
+        [primary as any, secondary as any],
+        {
+          chainId: 10,
+          circuitBreakerThreshold: 2,
+          circuitBreakerResetMs: 60000,
+          maxRetries: 0,
+          rateLimitMs: 0,
+        },
+      );
 
       await expect(manager.call('getBlockNumber')).resolves.toBe(9);
       await expect(manager.call('getBlockNumber')).resolves.toBe(9);
-      expect(manager.getProviderState('primary')).toMatchObject({ status: 'open' });
+      expect(manager.getProviderState('primary')).toMatchObject({
+        status: 'open',
+      });
     });
 
     it('validates chain id and block hash before trusting a read result', async () => {

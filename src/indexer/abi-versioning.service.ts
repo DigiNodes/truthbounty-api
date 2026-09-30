@@ -2,7 +2,16 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { DataSource, QueryRunner } from 'typeorm';
 import { ethers, Interface, EventFragment, FunctionFragment } from 'ethers';
-import { createHash } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
+
+/**
+ * ethers v6 types `Interface.fragments` as the base `Fragment` class, which
+ * does not expose `name`/`topicHash`. Narrow to `EventFragment` at the few
+ * call sites that have already established the fragment is an event.
+ */
+function asEvent(fragment: ethers.Fragment): EventFragment {
+  return fragment as EventFragment;
+}
 
 export interface ABIManifest {
   contractName: string;
@@ -28,6 +37,7 @@ export interface ABIRegistryEntry {
   deployedAt: Date;
   deploymentBlock: bigint;
   sourceHash?: string;
+  metadata?: Record<string, any>;
   isActive: boolean;
   deprecatedAt?: Date;
   deprecatedReason?: string;
@@ -85,7 +95,9 @@ export class ABIVersioningService implements OnModuleInit {
 
   async onModuleInit(): Promise<void> {
     await this.loadRegistry();
-    this.logger.log(`ABI Versioning Service initialized with ${this.abiRegistry.size} contracts`);
+    this.logger.log(
+      `ABI Versioning Service initialized with ${this.abiRegistry.size} contracts`,
+    );
   }
 
   /**
@@ -100,14 +112,22 @@ export class ABIVersioningService implements OnModuleInit {
 
     if (existing && !options.force) {
       if (existing.abiHash === manifest.abiHash) {
-        this.logger.log(`ABI already registered for ${manifest.contractName} at ${manifest.contractAddress} (chain ${manifest.chainId})`);
+        this.logger.log(
+          `ABI already registered for ${manifest.contractName} at ${manifest.contractAddress} (chain ${manifest.chainId})`,
+        );
         return existing;
       }
 
       if (options.deprecatePrevious) {
-        await this.deprecateContract(manifest.chainId, manifest.contractAddress, 'New version deployed');
+        await this.deprecateContract(
+          manifest.chainId,
+          manifest.contractAddress,
+          'New version deployed',
+        );
       } else {
-        throw new Error(`ABI already registered with different hash. Use force=true or deprecatePrevious=true`);
+        throw new Error(
+          `ABI already registered with different hash. Use force=true or deprecatePrevious=true`,
+        );
       }
     }
 
@@ -123,7 +143,7 @@ export class ABIVersioningService implements OnModuleInit {
       await this.registerEventDecoder({
         contractAddress: manifest.contractAddress,
         chainId: manifest.chainId,
-        eventName: event.name,
+        eventName: asEvent(event).name,
         abi: [event],
         strictMode: true,
         unknownEventBehavior: 'reject',
@@ -168,7 +188,7 @@ export class ABIVersioningService implements OnModuleInit {
           entry.deploymentBlock.toString(),
           entry.sourceHash || null,
           JSON.stringify(entry.metadata || {}),
-        ]
+        ],
       );
 
       await queryRunner.commitTransaction();
@@ -182,7 +202,9 @@ export class ABIVersioningService implements OnModuleInit {
     // Update in-memory registry
     this.abiRegistry.set(key, entry);
 
-    this.logger.log(`Registered ABI for ${manifest.contractName} v${manifest.version} at ${manifest.contractAddress} (chain ${manifest.chainId})`);
+    this.logger.log(
+      `Registered ABI for ${manifest.contractName} v${manifest.version} at ${manifest.contractAddress} (chain ${manifest.chainId})`,
+    );
     return entry;
   }
 
@@ -202,13 +224,17 @@ export class ABIVersioningService implements OnModuleInit {
     const decoder = this.eventDecoders.get(key);
 
     if (!decoder) {
-      this.logger.warn(`No decoder registered for ${contractAddress} on chain ${chainId}`);
+      this.logger.warn(
+        `No decoder registered for ${contractAddress} on chain ${chainId}`,
+      );
       return null;
     }
 
     // Find matching event by topic0
     const topic0 = topics[0];
-    const eventFragment = decoder.abi.find((f) => f.type === 'event' && f.topicHash === topic0);
+    const eventFragment = decoder.abi.find(
+      (f) => f.type === 'event' && asEvent(f).topicHash === topic0,
+    ) as EventFragment | undefined;
 
     if (!eventFragment) {
       // Unknown event - handle according to config
@@ -232,7 +258,9 @@ export class ABIVersioningService implements OnModuleInit {
     try {
       decoded = iface.decodeEventLog(eventFragment, data, topics);
     } catch (error) {
-      this.logger.error(`Failed to decode event ${eventFragment.name}: ${error.message}`);
+      this.logger.error(
+        `Failed to decode event ${eventFragment.name}: ${error.message}`,
+      );
       await this.handleUnknownEvent(
         chainId,
         contractAddress,
@@ -277,7 +305,12 @@ export class ABIVersioningService implements OnModuleInit {
       // Merge ABIs
       const newEvents = config.abi.filter((f) => f.type === 'event');
       for (const event of newEvents) {
-        if (!existing.abi.some((e) => e.type === 'event' && e.name === event.name)) {
+        if (
+          !existing.abi.some(
+            (e) =>
+              e.type === 'event' && asEvent(e).name === asEvent(event).name,
+          )
+        ) {
           existing.abi.push(event);
         }
       }
@@ -285,13 +318,18 @@ export class ABIVersioningService implements OnModuleInit {
       this.eventDecoders.set(key, config);
     }
 
-    this.logger.debug(`Registered event decoder for ${config.contractAddress} on chain ${config.chainId}: ${config.eventName}`);
+    this.logger.debug(
+      `Registered event decoder for ${config.contractAddress} on chain ${config.chainId}: ${config.eventName}`,
+    );
   }
 
   /**
    * Get registry entry
    */
-  getRegistryEntry(chainId: number, contractAddress: string): ABIRegistryEntry | undefined {
+  getRegistryEntry(
+    chainId: number,
+    contractAddress: string,
+  ): ABIRegistryEntry | undefined {
     return this.abiRegistry.get(this.getRegistryKey(chainId, contractAddress));
   }
 
@@ -373,7 +411,7 @@ export class ABIVersioningService implements OnModuleInit {
 
       await queryRunner.query(
         `UPDATE "v2_quarantined_events" SET "resolved" = TRUE, "resolution" = $1 WHERE "id" = $2`,
-        [action, eventId]
+        [action, eventId],
       );
 
       await queryRunner.commitTransaction();
@@ -394,7 +432,7 @@ export class ABIVersioningService implements OnModuleInit {
 
     try {
       const result = await queryRunner.query(
-        `SELECT * FROM "v2_abi_registry" WHERE "is_active" = TRUE`
+        `SELECT * FROM "v2_abi_registry" WHERE "is_active" = TRUE`,
       );
 
       for (const row of result) {
@@ -408,7 +446,7 @@ export class ABIVersioningService implements OnModuleInit {
           await this.registerEventDecoder({
             contractAddress: entry.contractAddress,
             chainId: entry.chainId,
-            eventName: event.name,
+            eventName: asEvent(event).name,
             abi: [event],
             strictMode: true,
             unknownEventBehavior: 'reject',
@@ -416,7 +454,9 @@ export class ABIVersioningService implements OnModuleInit {
         }
       }
 
-      this.logger.log(`Loaded ${this.abiRegistry.size} contracts from ABI registry`);
+      this.logger.log(
+        `Loaded ${this.abiRegistry.size} contracts from ABI registry`,
+      );
     } finally {
       await queryRunner.release();
     }
@@ -425,7 +465,11 @@ export class ABIVersioningService implements OnModuleInit {
   /**
    * Deprecate a contract version
    */
-  private async deprecateContract(chainId: number, contractAddress: string, reason: string): Promise<void> {
+  private async deprecateContract(
+    chainId: number,
+    contractAddress: string,
+    reason: string,
+  ): Promise<void> {
     const key = this.getRegistryKey(chainId, contractAddress);
     const existing = this.abiRegistry.get(key);
 
@@ -438,7 +482,7 @@ export class ABIVersioningService implements OnModuleInit {
     try {
       await queryRunner.query(
         `UPDATE "v2_abi_registry" SET "is_active" = FALSE, "deprecated_at" = NOW(), "deprecated_reason" = $1 WHERE "id" = $2`,
-        [reason, existing.id]
+        [reason, existing.id],
       );
 
       await queryRunner.commitTransaction();
@@ -447,7 +491,9 @@ export class ABIVersioningService implements OnModuleInit {
       existing.deprecatedAt = new Date();
       existing.deprecatedReason = reason;
 
-      this.logger.log(`Deprecated contract ${existing.contractName} at ${contractAddress} (chain ${chainId}): ${reason}`);
+      this.logger.log(
+        `Deprecated contract ${existing.contractName} at ${contractAddress} (chain ${chainId}): ${reason}`,
+      );
     } catch (error) {
       await queryRunner.rollbackTransaction();
       throw error;
@@ -471,18 +517,32 @@ export class ABIVersioningService implements OnModuleInit {
   ): Promise<void> {
     const topic0 = topics[0];
 
-    this.logger.warn(`Unknown event from ${contractAddress} on chain ${chainId}: topic0=${topic0}`);
+    this.logger.warn(
+      `Unknown event from ${contractAddress} on chain ${chainId}: topic0=${topic0}`,
+    );
 
     if (behavior === 'reject') {
-      throw new Error(`Unknown event selector ${topic0} from ${contractAddress} on chain ${chainId}`);
+      throw new Error(
+        `Unknown event selector ${topic0} from ${contractAddress} on chain ${chainId}`,
+      );
     }
 
     if (behavior === 'quarantine') {
-      await this.quarantineEvent(chainId, contractAddress, topics, data, blockNumber, transactionHash, logIndex);
+      await this.quarantineEvent(
+        chainId,
+        contractAddress,
+        topics,
+        data,
+        blockNumber,
+        transactionHash,
+        logIndex,
+      );
     }
 
     // Log behavior always logs
-    this.logger.log(`Unknown event quarantined/logged: ${topic0} from ${contractAddress}`);
+    this.logger.log(
+      `Unknown event quarantined/logged: ${topic0} from ${contractAddress}`,
+    );
   }
 
   /**
@@ -520,7 +580,7 @@ export class ABIVersioningService implements OnModuleInit {
           logIndex,
           `Unknown event selector: ${topics[0]}`,
           JSON.stringify(possibleMatches),
-        ]
+        ],
       );
 
       await queryRunner.commitTransaction();
@@ -535,17 +595,22 @@ export class ABIVersioningService implements OnModuleInit {
   /**
    * Find possible matches for unknown event selector
    */
-  private findPossibleMatches(topic0: string): Array<{ name: string; similarity: number }> {
+  private findPossibleMatches(
+    topic0: string,
+  ): Array<{ name: string; similarity: number }> {
     const matches: Array<{ name: string; similarity: number }> = [];
 
     for (const [, decoder] of this.eventDecoders) {
       for (const fragment of decoder.abi) {
         if (fragment.type === 'event') {
           // Simple similarity based on topic hash prefix
-          if (fragment.topicHash.startsWith(topic0.slice(0, 10))) {
+          if (asEvent(fragment).topicHash.startsWith(topic0.slice(0, 10))) {
             matches.push({
-              name: `${decoder.contractAddress}:${fragment.name}`,
-              similarity: this.calculateSimilarity(fragment.topicHash, topic0),
+              name: `${decoder.contractAddress}:${asEvent(fragment).name}`,
+              similarity: this.calculateSimilarity(
+                asEvent(fragment).topicHash,
+                topic0,
+              ),
             });
           }
         }
@@ -613,10 +678,10 @@ export class ABIVersioningService implements OnModuleInit {
     const events = abi.filter((f) => f.type === 'event');
     const eventNames = new Set<string>();
     for (const event of events) {
-      if (eventNames.has(event.name)) {
-        throw new Error(`Duplicate event name: ${event.name}`);
+      if (eventNames.has(asEvent(event).name)) {
+        throw new Error(`Duplicate event name: ${asEvent(event).name}`);
       }
-      eventNames.add(event.name);
+      eventNames.add(asEvent(event).name);
     }
   }
 
@@ -651,7 +716,9 @@ export class ABIVersioningService implements OnModuleInit {
       logIndex: parseInt(row.log_index, 10),
       timestamp: new Date(row.timestamp),
       reason: row.reason,
-      possibleMatches: row.possible_matches ? JSON.parse(row.possible_matches) : undefined,
+      possibleMatches: row.possible_matches
+        ? JSON.parse(row.possible_matches)
+        : undefined,
     };
   }
 }

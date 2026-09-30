@@ -56,14 +56,20 @@ export class ProjectionRebuildService {
       metadata?: Record<string, any>;
     },
   ): Promise<RebuildDigest> {
-    const { blockRangeStart, blockRangeEnd, rebuildType, previousDigestId, metadata } = options;
+    const {
+      blockRangeStart,
+      blockRangeEnd,
+      rebuildType,
+      previousDigestId,
+      metadata,
+    } = options;
 
     // Fetch all records for the projection in the block range
     const records = await queryRunner.query(
       `SELECT * FROM "v2_projections" 
       WHERE "entity_type" = $1 AND "updated_at_block" BETWEEN $2 AND $3
       ORDER BY "entity_id"`,
-      [projectionName, blockRangeStart, blockRangeEnd]
+      [projectionName, blockRangeStart, blockRangeEnd],
     );
 
     // Normalize records for deterministic hashing
@@ -102,11 +108,11 @@ export class ProjectionRebuildService {
         digest.rebuildType,
         digest.previousDigestId || null,
         JSON.stringify(digest.metadata || {}),
-      ]
+      ],
     );
 
     this.logger.log(
-      `Generated ${rebuildType} digest for ${projectionName}: ${digest.datasetHash.slice(0, 16)}... (${normalizedRecords.length} records)`
+      `Generated ${rebuildType} digest for ${projectionName}: ${digest.datasetHash.slice(0, 16)}... (${normalizedRecords.length} records)`,
     );
 
     return digest;
@@ -133,13 +139,18 @@ export class ProjectionRebuildService {
         throw new Error('One or both digests not found');
       }
 
-      if (incremental.projectionName !== projectionName || fullRebuild.projectionName !== projectionName) {
+      if (
+        incremental.projectionName !== projectionName ||
+        fullRebuild.projectionName !== projectionName
+      ) {
         throw new Error('Digest projection name mismatch');
       }
 
       const isEquivalent = incremental.datasetHash === fullRebuild.datasetHash;
 
-      let differences: Array<{ field: string; incrementalValue: any; fullRebuildValue: any }> | undefined;
+      let differences:
+        | Array<{ field: string; incrementalValue: any; fullRebuildValue: any }>
+        | undefined;
 
       if (!isEquivalent) {
         // For detailed diff, we'd need to fetch and compare records
@@ -187,7 +198,7 @@ export class ProjectionRebuildService {
         `SELECT * FROM "v2_projections" 
         WHERE "entity_type" = $1 AND "updated_at_block" BETWEEN $2 AND $3
         ORDER BY "entity_id"`,
-        [projectionName, blockRangeStart, blockRangeEnd]
+        [projectionName, blockRangeStart, blockRangeEnd],
       );
 
       const normalizedRecords = this.normalizeRecords(records);
@@ -206,10 +217,13 @@ export class ProjectionRebuildService {
   /**
    * Get digest by ID
    */
-  async getDigestById(queryRunner: QueryRunner, id: string): Promise<RebuildDigest | null> {
+  async getDigestById(
+    queryRunner: QueryRunner,
+    id: string,
+  ): Promise<RebuildDigest | null> {
     const result = await queryRunner.query(
       `SELECT * FROM "v2_projection_digests" WHERE "id" = $1`,
-      [id]
+      [id],
     );
     return result[0] ? this.mapToDigest(result[0]) : null;
   }
@@ -217,7 +231,10 @@ export class ProjectionRebuildService {
   /**
    * Get latest digest for a projection
    */
-  async getLatestDigest(projectionName: string, rebuildType?: 'incremental' | 'full'): Promise<RebuildDigest | null> {
+  async getLatestDigest(
+    projectionName: string,
+    rebuildType?: 'incremental' | 'full',
+  ): Promise<RebuildDigest | null> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
 
@@ -242,7 +259,10 @@ export class ProjectionRebuildService {
   /**
    * Get digest history for a projection
    */
-  async getDigestHistory(projectionName: string, limit = 50): Promise<RebuildDigest[]> {
+  async getDigestHistory(
+    projectionName: string,
+    limit = 50,
+  ): Promise<RebuildDigest[]> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
 
@@ -251,7 +271,7 @@ export class ProjectionRebuildService {
         `SELECT * FROM "v2_projection_digests" 
         WHERE "projection_name" = $1 
         ORDER BY "rebuilt_at" DESC LIMIT $2`,
-        [projectionName, limit]
+        [projectionName, limit],
       );
       return result.map(this.mapToDigest);
     } finally {
@@ -262,7 +282,10 @@ export class ProjectionRebuildService {
   /**
    * Run full rebuild and generate digest
    */
-  async runFullRebuild(projectionName: string, projectorFn: () => Promise<void>): Promise<RebuildDigest> {
+  async runFullRebuild(
+    projectionName: string,
+    projectorFn: () => Promise<void>,
+  ): Promise<RebuildDigest> {
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -283,11 +306,15 @@ export class ProjectionRebuildService {
 
       await queryRunner.commitTransaction();
 
-      this.logger.log(`Full rebuild completed for ${projectionName}: ${digest.datasetHash.slice(0, 16)}...`);
+      this.logger.log(
+        `Full rebuild completed for ${projectionName}: ${digest.datasetHash.slice(0, 16)}...`,
+      );
       return digest;
     } catch (error) {
       await queryRunner.rollbackTransaction();
-      this.logger.error(`Full rebuild failed for ${projectionName}: ${error.message}`);
+      this.logger.error(
+        `Full rebuild failed for ${projectionName}: ${error.message}`,
+      );
       throw error;
     } finally {
       await queryRunner.release();
@@ -309,7 +336,10 @@ export class ProjectionRebuildService {
 
     try {
       // Get previous digest for chaining
-      const previousDigest = await this.getLatestDigest(projectionName, 'incremental');
+      const previousDigest = await this.getLatestDigest(
+        projectionName,
+        'incremental',
+      );
 
       // Run the projector
       await projectorFn();
@@ -324,11 +354,15 @@ export class ProjectionRebuildService {
 
       await queryRunner.commitTransaction();
 
-      this.logger.log(`Incremental rebuild completed for ${projectionName}: ${digest.datasetHash.slice(0, 16)}...`);
+      this.logger.log(
+        `Incremental rebuild completed for ${projectionName}: ${digest.datasetHash.slice(0, 16)}...`,
+      );
       return digest;
     } catch (error) {
       await queryRunner.rollbackTransaction();
-      this.logger.error(`Incremental rebuild failed for ${projectionName}: ${error.message}`);
+      this.logger.error(
+        `Incremental rebuild failed for ${projectionName}: ${error.message}`,
+      );
       throw error;
     } finally {
       await queryRunner.release();
@@ -342,7 +376,11 @@ export class ProjectionRebuildService {
     return records
       .map((record) => {
         // Remove volatile fields
-        const { updated_at, integrity_hash: _integrityHash, ...normalized } = record;
+        const {
+          updated_at,
+          integrity_hash: _integrityHash,
+          ...normalized
+        } = record;
         return normalized;
       })
       .sort((a, b) => {
@@ -358,11 +396,13 @@ export class ProjectionRebuildService {
    */
   private computeDatasetHash(records: any[]): string {
     // Create canonical representation
-    const canonical = records.map((r) => {
-      // Ensure consistent key ordering
-      const keys = Object.keys(r).sort();
-      return keys.map((k) => `${k}:${JSON.stringify(r[k])}`).join('|');
-    }).join('||');
+    const canonical = records
+      .map((r) => {
+        // Ensure consistent key ordering
+        const keys = Object.keys(r).sort();
+        return keys.map((k) => `${k}:${JSON.stringify(r[k])}`).join('|');
+      })
+      .join('||');
 
     return createHash('sha256').update(canonical).digest('hex');
   }

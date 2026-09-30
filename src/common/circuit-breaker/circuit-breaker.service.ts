@@ -34,11 +34,7 @@ export interface CircuitBreakerOptions {
   /** Time in ms before an OPEN circuit transitions to HALF_OPEN. Default: 30_000. */
   resetMs?: number;
   /** Optional hook called on every state transition. */
-  onStateChange?: (
-    name: string,
-    from: CircuitState,
-    to: CircuitState,
-  ) => void;
+  onStateChange?: (name: string, from: CircuitState, to: CircuitState) => void;
   /** Optional hook called after every protected call (success or failure). */
   onCall?: (
     name: string,
@@ -59,9 +55,7 @@ export class CircuitOpenError extends Error {
 /** Thrown when a protected call exceeds its timeout budget. */
 export class DependencyTimeoutError extends Error {
   constructor(name: string, timeoutMs: number) {
-    super(
-      `Call to "${name}" timed out after ${timeoutMs}ms — failing closed`,
-    );
+    super(`Call to "${name}" timed out after ${timeoutMs}ms — failing closed`);
     this.name = 'DependencyTimeoutError';
   }
 }

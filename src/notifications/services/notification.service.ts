@@ -34,7 +34,9 @@ export class NotificationService {
   ) {}
 
   async create(dto: CreateNotificationDto): Promise<Notification> {
-    const preferences = await this.preferencesRepo.findOne({ where: { userId: dto.userId } });
+    const preferences = await this.preferencesRepo.findOne({
+      where: { userId: dto.userId },
+    });
 
     const notification = this.notificationRepo.create({
       recipientId: dto.userId,
@@ -89,7 +91,7 @@ export class NotificationService {
   async processDelivery(notificationId: string): Promise<void> {
     const notification = await this.notificationRepo.findOne({
       where: { id: notificationId },
-    } as any);
+    });
 
     if (!notification) {
       return;
@@ -98,10 +100,17 @@ export class NotificationService {
     const deliveries = (notification as any).deliveries ?? [];
 
     for (const delivery of deliveries) {
-      if (delivery.channel === DeliveryChannel.WEBHOOK && !delivery.destination) {
+      if (
+        delivery.channel === DeliveryChannel.WEBHOOK &&
+        !delivery.destination
+      ) {
         delivery.status = DeliveryStatus.FAILED;
         await this.deliveryRepo.save(delivery);
-        await this.queue.add('deliver-notification', { notificationId }, { attempts: 5 });
+        await this.queue.add(
+          'deliver-notification',
+          { notificationId },
+          { attempts: 5 },
+        );
         continue;
       }
 
@@ -112,7 +121,9 @@ export class NotificationService {
     await this.notificationRepo.save(notification);
   }
 
-  async getOrCreatePreferences(userId: string): Promise<UserNotificationPreference> {
+  async getOrCreatePreferences(
+    userId: string,
+  ): Promise<UserNotificationPreference> {
     const existing = await this.preferencesRepo.findOne({ where: { userId } });
     if (existing) return existing;
 
@@ -137,8 +148,13 @@ export class NotificationService {
     return this.preferencesRepo.save(preferences);
   }
 
-  async updatePreferences(userId: string, updateDto: Partial<UserNotificationPreference>): Promise<UserNotificationPreference> {
-    const preferences = await this.preferencesRepo.findOne({ where: { userId } });
+  async updatePreferences(
+    userId: string,
+    updateDto: Partial<UserNotificationPreference>,
+  ): Promise<UserNotificationPreference> {
+    const preferences = await this.preferencesRepo.findOne({
+      where: { userId },
+    });
     if (!preferences) {
       throw new NotFoundException('Preferences not found');
     }
@@ -147,10 +163,13 @@ export class NotificationService {
     return this.preferencesRepo.save(preferences);
   }
 
-  async markAsRead(notificationId: string, userId: string): Promise<Notification> {
+  async markAsRead(
+    notificationId: string,
+    userId: string,
+  ): Promise<Notification> {
     const notification = await this.notificationRepo.findOne({
       where: { id: notificationId, recipientId: userId },
-    } as any);
+    });
 
     if (!notification) {
       throw new NotFoundException('Notification not found');
@@ -169,14 +188,19 @@ export class NotificationService {
     return (result as any).affected ?? 0;
   }
 
-  async scheduleNotification(dto: CreateNotificationDto): Promise<Notification> {
+  async scheduleNotification(
+    dto: CreateNotificationDto,
+  ): Promise<Notification> {
     return this.create(dto);
   }
 
-  async cancelScheduled(notificationId: string, userId: string): Promise<Notification> {
+  async cancelScheduled(
+    notificationId: string,
+    userId: string,
+  ): Promise<Notification> {
     const notification = await this.notificationRepo.findOne({
       where: { id: notificationId, recipientId: userId },
-    } as any);
+    });
 
     if (!notification) {
       throw new NotFoundException('Notification not found');
@@ -191,9 +215,12 @@ export class NotificationService {
     return this.notificationRepo.save(notification);
   }
 
-  async getUserNotifications(userId: string, query: Record<string, unknown>): Promise<{ notifications: Notification[]; total: number }> {
+  async getUserNotifications(
+    userId: string,
+    query: Record<string, unknown>,
+  ): Promise<{ notifications: Notification[]; total: number }> {
     const [notifications, total] = await this.notificationRepo.findAndCount({
-      where: { recipientId: userId } as any,
+      where: { recipientId: userId },
     });
 
     return {
@@ -202,7 +229,7 @@ export class NotificationService {
     };
   }
 
-async getWebhookMetrics(): Promise<{
+  async getWebhookMetrics(): Promise<{
     total: number;
     delivered: number;
     pending: number;
@@ -210,9 +237,24 @@ async getWebhookMetrics(): Promise<{
   }> {
     const [total, delivered, pending, failed] = await Promise.all([
       this.deliveryRepo.count({ where: { channel: DeliveryChannel.WEBHOOK } }),
-      this.deliveryRepo.count({ where: { channel: DeliveryChannel.WEBHOOK, status: DeliveryStatus.DELIVERED } }),
-      this.deliveryRepo.count({ where: { channel: DeliveryChannel.WEBHOOK, status: DeliveryStatus.PENDING } }),
-      this.deliveryRepo.count({ where: { channel: DeliveryChannel.WEBHOOK, status: DeliveryStatus.FAILED } }),
+      this.deliveryRepo.count({
+        where: {
+          channel: DeliveryChannel.WEBHOOK,
+          status: DeliveryStatus.DELIVERED,
+        },
+      }),
+      this.deliveryRepo.count({
+        where: {
+          channel: DeliveryChannel.WEBHOOK,
+          status: DeliveryStatus.PENDING,
+        },
+      }),
+      this.deliveryRepo.count({
+        where: {
+          channel: DeliveryChannel.WEBHOOK,
+          status: DeliveryStatus.FAILED,
+        },
+      }),
     ]);
 
     return {
@@ -242,7 +284,9 @@ async getWebhookMetrics(): Promise<{
     }
 
     if (preferences.frequency === NotificationFrequency.INSTANT) {
-      const channels = preferences.enabledChannels.map((c) => c as DeliveryChannel);
+      const channels = preferences.enabledChannels.map(
+        (c) => c as DeliveryChannel,
+      );
       return channels.length > 0 ? channels : [DeliveryChannel.IN_APP];
     }
 
@@ -250,22 +294,38 @@ async getWebhookMetrics(): Promise<{
   }
 
   async getUnreadCount(userId: string): Promise<number> {
-    return this.notificationRepo.count({ where: { recipientId: userId, read: false } as any });
+    return this.notificationRepo.count({
+      where: { recipientId: userId, read: false },
+    });
   }
 
-  async getDeliveryHistory(notificationId: string): Promise<NotificationDelivery[]> {
-    return this.deliveryRepo.find({ where: { notificationId } as any });
+  async getDeliveryHistory(
+    notificationId: string,
+  ): Promise<NotificationDelivery[]> {
+    return this.deliveryRepo.find({ where: { notificationId } });
   }
 
-  async getMetrics(): Promise<{ queued: number; delivered: number; failed: number; queueDepth: number }> {
-    const [queued, delivered, failed, waiting, active, delayed] = await Promise.all([
-      this.deliveryRepo.count({ where: { status: DeliveryStatus.QUEUED } as any }),
-      this.deliveryRepo.count({ where: { status: DeliveryStatus.DELIVERED } as any }),
-      this.deliveryRepo.count({ where: { status: DeliveryStatus.FAILED } as any }),
-      this.queue.getWaitingCount(),
-      this.queue.getActiveCount(),
-      this.queue.getDelayedCount(),
-    ]);
+  async getMetrics(): Promise<{
+    queued: number;
+    delivered: number;
+    failed: number;
+    queueDepth: number;
+  }> {
+    const [queued, delivered, failed, waiting, active, delayed] =
+      await Promise.all([
+        this.deliveryRepo.count({
+          where: { status: DeliveryStatus.QUEUED } as any,
+        }),
+        this.deliveryRepo.count({
+          where: { status: DeliveryStatus.DELIVERED } as any,
+        }),
+        this.deliveryRepo.count({
+          where: { status: DeliveryStatus.FAILED } as any,
+        }),
+        this.queue.getWaitingCount(),
+        this.queue.getActiveCount(),
+        this.queue.getDelayedCount(),
+      ]);
 
     return {
       queued,

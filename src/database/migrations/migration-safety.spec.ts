@@ -12,9 +12,9 @@ describe('migration safety (issue #464)', () => {
   });
 
   it('requires increasing timestamps', () => {
-    expect(() =>
-      assertStrictlyIncreasing(['2-b', '1-a']),
-    ).toThrow(/MIGRATION_ORDER_VIOLATION/);
+    expect(() => assertStrictlyIncreasing(['2-b', '1-a'])).toThrow(
+      /MIGRATION_ORDER_VIOLATION/,
+    );
   });
 
   it('round-trips forward and backward order', () => {

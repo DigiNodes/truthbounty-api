@@ -1,7 +1,11 @@
 import { ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { RolesGuard } from './guards/roles.guard';
-import { APP_USER_ROLES, AppUserRole, isAppUserRole } from './authorization-matrix';
+import {
+  APP_USER_ROLES,
+  AppUserRole,
+  isAppUserRole,
+} from './authorization-matrix';
 
 /**
  * Authorization Matrix regression tests (issue #458 — V2-BE-104).
@@ -19,7 +23,11 @@ import { APP_USER_ROLES, AppUserRole, isAppUserRole } from './authorization-matr
  */
 describe('Authorization Matrix — AppUserRole type helpers', () => {
   it('APP_USER_ROLES contains exactly contributor, moderator, admin', () => {
-    expect([...APP_USER_ROLES].sort()).toEqual(['admin', 'contributor', 'moderator']);
+    expect([...APP_USER_ROLES].sort()).toEqual([
+      'admin',
+      'contributor',
+      'moderator',
+    ]);
   });
 
   it('isAppUserRole returns true for all valid roles', () => {
@@ -72,20 +80,20 @@ describe('Authorization Matrix — RolesGuard per-route enforcement', () => {
     // AUTHN-only routes don't use RolesGuard at all; this verifies pass-through.
     new RolesGuard(reflector(undefined));
 
-  const moderatorOrAdminGuard = () => new RolesGuard(reflector(['moderator', 'admin']));
+  const moderatorOrAdminGuard = () =>
+    new RolesGuard(reflector(['moderator', 'admin']));
 
   const adminOnlyGuard = () => new RolesGuard(reflector(['admin']));
 
   // ─── Public routes — no role restriction ─────────────────────────────────
 
   describe('PUBLIC routes (no role restriction)', () => {
-    it.each([
-      ['contributor'],
-      ['moderator'],
-      ['admin'],
-    ])('%s is allowed through with no required roles', (role) => {
-      expect(publicRouteGuard().canActivate(ctx(role))).toBe(true);
-    });
+    it.each([['contributor'], ['moderator'], ['admin']])(
+      '%s is allowed through with no required roles',
+      (role) => {
+        expect(publicRouteGuard().canActivate(ctx(role))).toBe(true);
+      },
+    );
 
     it('unauthenticated caller is allowed through with no required roles', () => {
       // RolesGuard passes when requiredRoles is undefined — JWT guard handles auth
@@ -117,9 +125,9 @@ describe('Authorization Matrix — RolesGuard per-route enforcement', () => {
     });
 
     it('contributor is denied — fail-closed', () => {
-      expect(() => moderatorOrAdminGuard().canActivate(ctx('contributor'))).toThrow(
-        ForbiddenException,
-      );
+      expect(() =>
+        moderatorOrAdminGuard().canActivate(ctx('contributor')),
+      ).toThrow(ForbiddenException);
     });
 
     it('unauthenticated is denied — fail-closed', () => {
@@ -208,9 +216,18 @@ describe('Authorization Matrix — RolesGuard per-route enforcement', () => {
     it('guard never silently permits — always throws or returns true', () => {
       // Enumerate all failure cases and confirm they throw, never return false
       const guard = new RolesGuard(reflector(['admin']));
-      const failureCases = [null, undefined, 'contributor', 'moderator', '', 'root'];
+      const failureCases = [
+        null,
+        undefined,
+        'contributor',
+        'moderator',
+        '',
+        'root',
+      ];
       for (const role of failureCases) {
-        expect(() => guard.canActivate(ctx(role as any))).toThrow(ForbiddenException);
+        expect(() => guard.canActivate(ctx(role as any))).toThrow(
+          ForbiddenException,
+        );
       }
     });
   });
@@ -247,8 +264,8 @@ describe('Authorization Matrix — RolesGuard per-route enforcement', () => {
         switchToHttp: () => ({
           getRequest: () => ({
             user: {
-              roles: ['admin'],   // JWT claim — NOT the Prisma user.role
-              user: null,         // no Prisma User record
+              roles: ['admin'], // JWT claim — NOT the Prisma user.role
+              user: null, // no Prisma User record
             },
           }),
         }),
@@ -268,7 +285,9 @@ describe('Authorization Matrix — RolesGuard per-route enforcement', () => {
     });
 
     it('all three valid roles pass a full-list required-roles check', () => {
-      const guard = new RolesGuard(reflector(['contributor', 'moderator', 'admin']));
+      const guard = new RolesGuard(
+        reflector(['contributor', 'moderator', 'admin']),
+      );
       for (const role of APP_USER_ROLES) {
         expect(guard.canActivate(ctx(role))).toBe(true);
       }

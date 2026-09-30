@@ -1,4 +1,10 @@
-import { IsOptional, IsString, IsDateString, IsNumber, IsIn } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  IsDateString,
+  IsNumber,
+  IsIn,
+} from 'class-validator';
 import { Transform } from 'class-transformer';
 
 export class AnalyticsQueryDto {

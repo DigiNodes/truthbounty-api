@@ -59,7 +59,9 @@ export class IndexerController {
    */
   @Post('restart')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Restart the indexer from the persisted checkpoint' })
+  @ApiOperation({
+    summary: 'Restart the indexer from the persisted checkpoint',
+  })
   async restart(): Promise<any> {
     try {
       this.eventIndexerService.stop();
@@ -86,16 +88,23 @@ export class IndexerController {
   @Post('backfill')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Backfill events from a specific block' })
-  @ApiResponse({ status: 400, description: 'blockNumber predates contract deployment' })
+  @ApiResponse({
+    status: 400,
+    description: 'blockNumber predates contract deployment',
+  })
   async backfill(@Body() request: BackfillRequest): Promise<any> {
     const { contractAddress, blockNumber } = request;
 
     if (!contractAddress || blockNumber == null) {
-      throw new BadRequestException('contractAddress and blockNumber are required');
+      throw new BadRequestException(
+        'contractAddress and blockNumber are required',
+      );
     }
 
     if (!Number.isInteger(blockNumber) || blockNumber < 0) {
-      throw new BadRequestException('blockNumber must be a non-negative integer');
+      throw new BadRequestException(
+        'blockNumber must be a non-negative integer',
+      );
     }
 
     // Fix 1.6: reject if blockNumber precedes the contract's deployment block.
@@ -116,7 +125,10 @@ export class IndexerController {
     }
 
     try {
-      await this.eventIndexerService.backfillFromBlock(contractAddress, blockNumber);
+      await this.eventIndexerService.backfillFromBlock(
+        contractAddress,
+        blockNumber,
+      );
       return {
         success: true,
         message: `Backfill started from block ${blockNumber} for contract ${contractAddress}`,

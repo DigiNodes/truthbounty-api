@@ -17,17 +17,9 @@ import { DataState } from '../../common/data-state.enum';
  * protocol outcome logic in the API is an explicit non-goal of this issue.
  * All three are decimal strings, never floating point.
  */
-@Entity('v2_project_participant_position', {
-  foreignKeys: [
-    {
-      columnNames: ['roundId'],
-      referencedTableName: 'v2_project_verification_round',
-      referencedColumnNames: ['roundId'],
-      onDelete: 'CASCADE',
-      onUpdate: 'CASCADE',
-    },
-  ],
-})
+// NOTE: TypeORM 1 dropped the `foreignKeys` EntityOptions key. The round
+// cascade is documented here and enforced by the V2 verification migrations.
+@Entity('v2_project_participant_position')
 @Unique('uq_v2_position_event', ['eventTxHash', 'eventLogIndex'])
 @Unique('uq_v2_position_participant_round', ['roundId', 'participant'])
 @Index(['roundId'])

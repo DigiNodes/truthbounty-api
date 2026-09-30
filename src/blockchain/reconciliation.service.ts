@@ -93,7 +93,7 @@ export class ReconciliationService {
     if (pendingEvents.length !== state.pendingEventCount) {
       issues.push(
         `Pending event count mismatch: stored=${state.pendingEventCount}, ` +
-        `actual=${pendingEvents.length}`,
+          `actual=${pendingEvents.length}`,
       );
     }
 
@@ -101,7 +101,7 @@ export class ReconciliationService {
     if (orphanedEvents.length !== state.orphanedEventCount) {
       issues.push(
         `Orphaned event count mismatch: stored=${state.orphanedEventCount}, ` +
-        `actual=${orphanedEvents.length}`,
+          `actual=${orphanedEvents.length}`,
       );
     }
 

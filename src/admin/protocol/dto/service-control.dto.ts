@@ -35,11 +35,13 @@ export class ControlServiceDto {
     enum: [...Object.values(QueueAction), ...Object.values(ServiceAction)],
     description: 'Action to perform on the service',
   })
-  @IsEnum({ ...QueueAction, ...ServiceAction } as any)
+  @IsEnum({ ...QueueAction, ...ServiceAction })
   @IsNotEmpty()
   action: QueueAction | ServiceAction;
 
-  @ApiPropertyOptional({ description: 'Specific queue name (for queue operations)' })
+  @ApiPropertyOptional({
+    description: 'Specific queue name (for queue operations)',
+  })
   @IsString()
   @IsOptional()
   queueName?: string;

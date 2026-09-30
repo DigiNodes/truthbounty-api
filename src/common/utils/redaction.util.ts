@@ -3,7 +3,7 @@ import * as crypto from 'crypto';
 // Patterns to redact sensitive information
 const SENSITIVE_PATTERNS = [
   // Credentials and Tokens
-  /(?i)(password|passwd|pwd|secret|token|api_key|apikey|access_token|refresh_token|authorization)\s*[:=]\s*['"]?[^\s'"]+/g,
+  /(password|passwd|pwd|secret|token|api_key|apikey|access_token|refresh_token|authorization)\s*[:=]\s*['"]?[^\s'"]+/gi,
   // Credit Cards
   /\b(?:\d{4}[- ]?){3}\d{4}\b/g,
   // SSN
@@ -16,7 +16,7 @@ const SENSITIVE_PATTERNS = [
   /\b(?:0x)?[a-f0-9]{64}\b/gi,
 ];
 
-export function redactSensitiveData(input: string): string {
+export function redactSensitiveData(input: unknown): string {
   if (typeof input !== 'string') {
     return String(input);
   }

@@ -42,10 +42,10 @@ describe('EvidenceProjectorService (integration)', () => {
     moduleRef = await Test.createTestingModule({
       imports: [
         TypeOrmModule.forRoot({
-          type: 'sqlite',
+          type: 'better-sqlite3',
           database: ':memory:',
           // eslint-disable-next-line @typescript-eslint/no-require-imports
-          driver: require('sqlite3'),
+          driver: require('better-sqlite3'),
           entities: [
             CanonicalEvent,
             ProjectEvidence,
@@ -209,8 +209,6 @@ describe('EvidenceProjectorService (integration)', () => {
     expect(secondPage.items).toHaveLength(1);
     expect(secondPage.nextCursor).toBeNull();
   });
-});
-
 
   describe('Integrity Hash Stamping (V2-BE-013)', () => {
     it('stamps integrity hash on version when projecting EvidenceRegistered', async () => {
@@ -316,9 +314,8 @@ describe('EvidenceProjectorService (integration)', () => {
       expect(evidence!.integrityHash).toHaveLength(64);
 
       // Verify hash is valid for REMOVED status
-      const verification = await integrityService.verifyEvidenceIntegrity(
-        claimId,
-      );
+      const verification =
+        await integrityService.verifyEvidenceIntegrity(claimId);
       expect(verification.valid).toBe(true);
     });
 
@@ -395,9 +392,8 @@ describe('EvidenceProjectorService (integration)', () => {
         { contentDigest: '0xcorrupted' },
       );
 
-      const verification = await integrityService.verifyEvidenceIntegrity(
-        claimId,
-      );
+      const verification =
+        await integrityService.verifyEvidenceIntegrity(claimId);
       expect(verification.valid).toBe(false);
       expect(verification.reason).toBe('hash_mismatch');
       expect(verification.details).toContain('Expected');
@@ -567,3 +563,4 @@ describe('EvidenceProjectorService (integration)', () => {
       expect(results[1].valid).toBe(true);
     });
   });
+});

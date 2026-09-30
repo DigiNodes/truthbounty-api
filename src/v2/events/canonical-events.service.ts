@@ -28,7 +28,7 @@ export class CanonicalEventsService {
 
   private getFinalizedBlock(currentEventBlock: bigint): bigint {
     const config = this.indexerConfig.getEventIndexerConfig();
-    return currentEventBlock - BigInt(config.confirmationsRequired);
+    return currentEventBlock - BigInt(config.confirmations.finalized);
   }
 
   /**
@@ -115,7 +115,7 @@ export class CanonicalEventsService {
         });
       } catch (err) {
         if (this.isUniqueViolation(err)) {
-          return { status: 'duplicate' } as IngestOutcome;
+          return { status: 'duplicate' };
         }
         throw err;
       }
@@ -126,15 +126,17 @@ export class CanonicalEventsService {
       const newBlock = normalized.event.blockNumber;
       const newBlockStr = newBlock.toString();
       const finalizedBlock = this.getFinalizedBlock(newBlock);
-      const finalizedBlockStr = finalizedBlock > 0n ? finalizedBlock.toString() : '0';
-      
+      const finalizedBlockStr =
+        finalizedBlock > 0n ? finalizedBlock.toString() : '0';
+
       // First try to update existing checkpoint atomically
       const updateResult = await manager
         .createQueryBuilder()
         .update(EventCheckpoint)
         .set({
           lastSafeBlock: () => `GREATEST("lastSafeBlock", '${newBlockStr}')`,
-          lastFinalizedBlock: () => `GREATEST("lastFinalizedBlock", '${finalizedBlockStr}')`
+          lastFinalizedBlock: () =>
+            `GREATEST("lastFinalizedBlock", '${finalizedBlockStr}')`,
         })
         .where('chainId = :chainId AND contractAddress = :contractAddress', {
           chainId: log.chainId,
@@ -152,7 +154,7 @@ export class CanonicalEventsService {
         });
       }
 
-      return { status: 'ingested', event: normalized.event } as IngestOutcome;
+      return { status: 'ingested', event: normalized.event };
     });
   }
 

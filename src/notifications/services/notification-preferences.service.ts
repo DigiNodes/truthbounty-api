@@ -3,10 +3,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { NotificationPreference } from '../entities/notification-preference.entity';
 import { UpdatePreferencesDto } from '../dto';
-import { 
-  UserPreferenceSettings, 
-  DeliveryChannel, 
-  NotificationCategory 
+import {
+  UserPreferenceSettings,
+  DeliveryChannel,
+  NotificationCategory,
 } from '../interfaces/notification.types';
 
 @Injectable()
@@ -33,8 +33,8 @@ export class NotificationPreferencesService {
   }
 
   async updateUserPreferences(
-    userId: string, 
-    updateDto: UpdatePreferencesDto
+    userId: string,
+    updateDto: UpdatePreferencesDto,
   ): Promise<NotificationPreference> {
     const preferences = await this.getUserPreferences(userId);
 
@@ -52,51 +52,56 @@ export class NotificationPreferencesService {
         securityAlerts: true,
       };
     }
-    
+
     if (updateDto.enabledChannels) {
       preferences.settings.enabledChannels = updateDto.enabledChannels;
     }
-    
+
     if (updateDto.emailPreferences) {
       preferences.settings.emailPreferences = {
         ...preferences.settings.emailPreferences,
         ...updateDto.emailPreferences,
       };
     }
-    
+
     if (updateDto.governanceAlerts !== undefined) {
       preferences.settings.governanceAlerts = updateDto.governanceAlerts;
     }
-    
+
     if (updateDto.stakingAlerts !== undefined) {
       preferences.settings.stakingAlerts = updateDto.stakingAlerts;
     }
-    
+
     if (updateDto.rewardNotifications !== undefined) {
       preferences.settings.rewardNotifications = updateDto.rewardNotifications;
     }
-    
+
     if (updateDto.securityAlerts !== undefined) {
       preferences.settings.securityAlerts = updateDto.securityAlerts;
     }
-    
+
     if (updateDto.categorySettings) {
       preferences.settings.categories = {
         ...preferences.settings.categories,
         ...updateDto.categorySettings,
       };
     }
-    
+
     preferences.updatedAt = new Date();
-    const updatedPreferences = await this.preferencesRepository.save(preferences);
-    
+    const updatedPreferences =
+      await this.preferencesRepository.save(preferences);
+
     this.logger.log(`Updated preferences for user ${userId}`);
     return updatedPreferences;
   }
 
   private createDefaultPreferences(userId: string): NotificationPreference {
     const defaultSettings: UserPreferenceSettings = {
-      enabledChannels: [DeliveryChannel.IN_APP, DeliveryChannel.WEBSOCKET, DeliveryChannel.EMAIL],
+      enabledChannels: [
+        DeliveryChannel.IN_APP,
+        DeliveryChannel.WEBSOCKET,
+        DeliveryChannel.EMAIL,
+      ],
       categories: this.getDefaultCategorySettings(),
       emailPreferences: {
         digestEnabled: false,
@@ -113,15 +118,18 @@ export class NotificationPreferencesService {
     preferences.settings = defaultSettings;
     preferences.createdAt = new Date();
     preferences.updatedAt = new Date();
-    
+
     return preferences;
   }
 
   private getDefaultCategorySettings(): Record<NotificationCategory, boolean> {
     const categories = Object.values(NotificationCategory);
-    return categories.reduce((acc, category) => {
-      acc[category] = true;
-      return acc;
-    }, {} as Record<NotificationCategory, boolean>);
+    return categories.reduce(
+      (acc, category) => {
+        acc[category] = true;
+        return acc;
+      },
+      {} as Record<NotificationCategory, boolean>,
+    );
   }
 }

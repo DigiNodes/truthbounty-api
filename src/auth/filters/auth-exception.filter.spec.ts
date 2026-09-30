@@ -1,7 +1,4 @@
-import {
-  AuthExceptionFilter,
-  AuthErrorCode,
-} from './auth-exception.filter';
+import { AuthExceptionFilter, AuthErrorCode } from './auth-exception.filter';
 import {
   HttpException,
   UnauthorizedException,
@@ -106,7 +103,9 @@ describe('AuthExceptionFilter', () => {
       // issue-416: only 401s collapse to the generic message; other statuses
       // (e.g. 403) preserve their message.
       const expectedMessage =
-        exception.getStatus() === 401 ? 'Invalid credentials' : exception.message;
+        exception.getStatus() === 401
+          ? 'Invalid credentials'
+          : exception.message;
       expect(json).toHaveBeenCalledWith(
         expect.objectContaining({
           code: expectedCode,
@@ -136,7 +135,9 @@ describe('AuthExceptionFilter', () => {
         error: 'Bad Request',
         code: AuthErrorCode.INVALID_SIGNATURE,
         message: 'Invalid signature format',
-        timestamp: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/),
+        timestamp: expect.stringMatching(
+          /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
+        ),
         path: '/auth/login',
       }),
     );

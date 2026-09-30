@@ -7,7 +7,10 @@ import { EmailService } from './email.service';
 import { WebhookService } from './webhook.service';
 import { DeliveryHistoryService } from './delivery-history.service';
 import { RedisService } from '../../redis/redis.service';
-import { DeliveryChannel, DeliveryStatus } from '../interfaces/notification.types';
+import {
+  DeliveryChannel,
+  DeliveryStatus,
+} from '../interfaces/notification.types';
 
 describe('NotificationProcessor', () => {
   let processor: NotificationProcessor;
@@ -37,7 +40,9 @@ describe('NotificationProcessor', () => {
     };
 
     deliveryHistoryService = {
-      findPendingDeliveryByNotificationAndChannel: jest.fn().mockResolvedValue(mockDeliveryRecord),
+      findPendingDeliveryByNotificationAndChannel: jest
+        .fn()
+        .mockResolvedValue(mockDeliveryRecord),
       findByIdempotencyKey: jest.fn().mockResolvedValue(null),
       createDeliveryRecord: jest.fn().mockResolvedValue(mockDeliveryRecord),
       updateDeliveryStatus: jest.fn().mockResolvedValue(mockDeliveryRecord),
@@ -51,10 +56,22 @@ describe('NotificationProcessor', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         NotificationProcessor,
-        { provide: getRepositoryToken(Notification), useValue: notificationRepository },
-        { provide: WebSocketService, useValue: { broadcastNotification: jest.fn() } },
-        { provide: EmailService, useValue: { sendNotificationEmail: jest.fn() } },
-        { provide: WebhookService, useValue: { getUserWebhooks: jest.fn().mockResolvedValue([]) } },
+        {
+          provide: getRepositoryToken(Notification),
+          useValue: notificationRepository,
+        },
+        {
+          provide: WebSocketService,
+          useValue: { broadcastNotification: jest.fn() },
+        },
+        {
+          provide: EmailService,
+          useValue: { sendNotificationEmail: jest.fn() },
+        },
+        {
+          provide: WebhookService,
+          useValue: { getUserWebhooks: jest.fn().mockResolvedValue([]) },
+        },
         { provide: DeliveryHistoryService, useValue: deliveryHistoryService },
         { provide: RedisService, useValue: redisService },
       ],
@@ -75,7 +92,11 @@ describe('NotificationProcessor', () => {
 
     const result = await processor.process(job);
 
-    expect(redisService.setnx).toHaveBeenCalledWith('idempotency:notification:key-123', '1', 86400);
+    expect(redisService.setnx).toHaveBeenCalledWith(
+      'idempotency:notification:key-123',
+      '1',
+      86400,
+    );
     expect(result).toEqual(
       expect.objectContaining({
         success: true,
@@ -107,7 +128,9 @@ describe('NotificationProcessor', () => {
   });
 
   it('should suppress duplicate job execution when DB check shows DELIVERED status', async () => {
-    (deliveryHistoryService.findByIdempotencyKey as jest.Mock).mockResolvedValueOnce({
+    (
+      deliveryHistoryService.findByIdempotencyKey as jest.Mock
+    ).mockResolvedValueOnce({
       status: DeliveryStatus.DELIVERED,
     });
 

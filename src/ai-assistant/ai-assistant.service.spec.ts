@@ -13,7 +13,9 @@ describe('AiAssistantService', () => {
       conversation: {
         create: jest.fn().mockResolvedValue({ id: 'conv-1', userId: 'user-1' }),
         findMany: jest.fn().mockResolvedValue([]),
-        findUnique: jest.fn().mockResolvedValue({ id: 'conv-1', userId: 'user-1' }),
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ id: 'conv-1', userId: 'user-1' }),
         update: jest.fn().mockResolvedValue({}),
         delete: jest.fn().mockResolvedValue({}),
       },
@@ -57,12 +59,16 @@ describe('AiAssistantService', () => {
   });
 
   it('should create a conversation', async () => {
-    const result = await service.createConversation('user-1', { title: 'Test' });
+    const result = await service.createConversation('user-1', {
+      title: 'Test',
+    });
     expect(result).toHaveProperty('id', 'conv-1');
   });
 
   it('should send a message and save to history', async () => {
-    const result = await service.sendMessage('user-1', 'conv-1', { content: 'Hello' });
+    const result = await service.sendMessage('user-1', 'conv-1', {
+      content: 'Hello',
+    });
     expect(result.message).toBeDefined();
     expect(result.metadata.provider).toBe('mock');
   });

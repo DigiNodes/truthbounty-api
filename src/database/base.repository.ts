@@ -1,4 +1,9 @@
-import { Repository, EntityManager, FindOptionsWhere, FindManyOptions } from 'typeorm';
+import {
+  Repository,
+  EntityManager,
+  FindOptionsWhere,
+  FindManyOptions,
+} from 'typeorm';
 
 /**
  * BaseRepository — generic repository base class providing common CRUD
@@ -42,7 +47,9 @@ export class BaseRepository<T extends object> {
   protected readonly repo: Repository<T>;
 
   constructor(
-    private readonly dataSourceOrManager: { getRepository: (target: new () => T) => Repository<T> },
+    private readonly dataSourceOrManager: {
+      getRepository: (target: new () => T) => Repository<T>;
+    },
     private readonly entityClass: new () => T,
   ) {
     this.repo = dataSourceOrManager.getRepository(entityClass);
@@ -77,7 +84,7 @@ export class BaseRepository<T extends object> {
   }
 
   async count(where?: FindOptionsWhere<T>): Promise<number> {
-    return this.repo.countBy(where ?? ({} as FindOptionsWhere<T>));
+    return this.repo.countBy(where ?? {});
   }
 
   // ── Write ─────────────────────────────────────────────────────────
@@ -90,16 +97,13 @@ export class BaseRepository<T extends object> {
     return this.repo.save(entities);
   }
 
-  async update(
-    id: string | number,
-    partial: Partial<T>,
-  ): Promise<T | null> {
-    await this.repo.update(id as any, partial as any);
+  async update(id: string | number, partial: Partial<T>): Promise<T | null> {
+    await this.repo.update(id, partial as any);
     return this.findById(id);
   }
 
   async delete(id: string | number): Promise<boolean> {
-    const result = await this.repo.delete(id as any);
+    const result = await this.repo.delete(id);
     return (result.affected ?? 0) > 0;
   }
 }

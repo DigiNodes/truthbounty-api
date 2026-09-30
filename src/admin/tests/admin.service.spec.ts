@@ -1,5 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConflictException, NotFoundException, ForbiddenException } from '@nestjs/common';
+import {
+  ConflictException,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AdminService } from '../admin.service';
@@ -45,7 +49,9 @@ describe('AdminService', () => {
     }).compile();
 
     service = module.get<AdminService>(AdminService);
-    repo = module.get<Repository<Admin>>(getRepositoryToken(Admin)) as jest.Mocked<Repository<Admin>>;
+    repo = module.get<Repository<Admin>>(
+      getRepositoryToken(Admin),
+    ) as jest.Mocked<Repository<Admin>>;
   });
 
   it('should be defined', () => {
@@ -123,7 +129,9 @@ describe('AdminService', () => {
     it('should throw NotFoundException if admin not found', async () => {
       repo.findOneBy.mockResolvedValue(null);
 
-      await expect(service.findById('nonexistent')).rejects.toThrow(NotFoundException);
+      await expect(service.findById('nonexistent')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -199,7 +207,9 @@ describe('AdminService', () => {
     it('should throw NotFoundException if admin not found', async () => {
       repo.findOne.mockResolvedValue(null);
 
-      await expect(service.recordLogin('0x999')).rejects.toThrow(NotFoundException);
+      await expect(service.recordLogin('0x999')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 });

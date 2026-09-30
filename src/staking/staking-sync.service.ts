@@ -1,8 +1,8 @@
-import { Injectable } from "@nestjs/common";
-import { Repository } from "typeorm"; // Import Repository from typeorm
-import { StakeEvent } from "./entities/stake-event.entity";
-import { StakingEventType } from "./types/staking-event.type";
-import { Stake } from "./entities/stake.entity";
+import { Injectable } from '@nestjs/common';
+import { Repository } from 'typeorm'; // Import Repository from typeorm
+import { StakeEvent } from './entities/stake-event.entity';
+import { StakingEventType } from './types/staking-event.type';
+import { Stake } from './entities/stake.entity';
 
 @Injectable()
 export class StakingSyncService {

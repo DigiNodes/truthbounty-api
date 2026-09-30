@@ -1,8 +1,14 @@
-import { DataSource, DataSourceOptions, NamingStrategyInterface } from 'typeorm';
+import {
+  DataSource,
+  DataSourceOptions,
+  NamingStrategyInterface,
+} from 'typeorm';
 import { config } from 'dotenv';
 import { DefaultNamingStrategy } from 'typeorm/naming-strategy/DefaultNamingStrategy';
 
-class SnakeNamingStrategy extends DefaultNamingStrategy implements NamingStrategyInterface {}
+class SnakeNamingStrategy
+  extends DefaultNamingStrategy
+  implements NamingStrategyInterface {}
 
 config();
 
@@ -58,8 +64,14 @@ function buildOptions(): DataSourceOptions {
       // Connection pooling configuration
       extra: {
         max: parseInt(process.env.DB_POOL_MAX ?? '20', 10),
-        idleTimeoutMillis: parseInt(process.env.DB_POOL_IDLE_TIMEOUT ?? '30000', 10),
-        connectionTimeoutMillis: parseInt(process.env.DB_POOL_ACQUIRE_TIMEOUT ?? '60000', 10),
+        idleTimeoutMillis: parseInt(
+          process.env.DB_POOL_IDLE_TIMEOUT ?? '30000',
+          10,
+        ),
+        connectionTimeoutMillis: parseInt(
+          process.env.DB_POOL_ACQUIRE_TIMEOUT ?? '60000',
+          10,
+        ),
         // Retry strategy
         maxRetries: parseInt(process.env.DB_POOL_RETRIES ?? '3', 10),
         retryDelay: parseInt(process.env.DB_POOL_RETRY_DELAY ?? '1000', 10),
@@ -69,7 +81,7 @@ function buildOptions(): DataSourceOptions {
 
   // Fallback to SQLite (development)
   return {
-    type: 'sqlite',
+    type: 'better-sqlite3',
     database: process.env.SQLITE_PATH ?? 'database.sqlite',
     entities: ['src/**/*.entity.ts'],
     migrations: ['src/database/migrations/*.ts'],

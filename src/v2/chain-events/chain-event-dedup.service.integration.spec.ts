@@ -65,7 +65,10 @@ describe('ChainEventDedupService (integration)', () => {
 
     const rows = await service.findAcrossBlockHashes(10, '0xtx3', 0);
     expect(rows).toHaveLength(2);
-    expect(rows.map((r) => r.blockHash).sort()).toEqual(['0xblocka', '0xblockb']);
+    expect(rows.map((r) => r.blockHash).sort()).toEqual([
+      '0xblocka',
+      '0xblockb',
+    ]);
   });
 
   it('treats different logIndex values within the same tx as distinct events', async () => {

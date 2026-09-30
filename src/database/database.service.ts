@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
@@ -119,7 +124,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
            WHERE state = 'active'`,
         );
         result.poolActive = Number(poolStats?.[0]?.active ?? 0);
-        result.poolTotal = (this.dataSource.options.extra as any)?.max ?? null;
+        result.poolTotal = this.dataSource.options.extra?.max ?? null;
       }
     } catch {
       // Pool stats are only available for PostgreSQL
@@ -171,7 +176,9 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     pending: number;
     migrations: Array<{ name: string; timestamp: number }>;
   }> {
-    const migrations = await this.dataSource.runMigrations({ transaction: 'none' });
+    const migrations = await this.dataSource.runMigrations({
+      transaction: 'none',
+    });
     const allMigrations = this.dataSource.migrations;
     const appliedMigrations = await this.dataSource.query(
       'SELECT name, "timestamp" FROM migrations ORDER BY "timestamp"',
@@ -180,10 +187,12 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     return {
       applied: appliedMigrations.length,
       pending: allMigrations.length - appliedMigrations.length,
-      migrations: appliedMigrations.map((m: { name: string; timestamp: number }) => ({
-        name: m.name,
-        timestamp: m.timestamp,
-      })),
+      migrations: appliedMigrations.map(
+        (m: { name: string; timestamp: number }) => ({
+          name: m.name,
+          timestamp: m.timestamp,
+        }),
+      ),
     };
   }
 

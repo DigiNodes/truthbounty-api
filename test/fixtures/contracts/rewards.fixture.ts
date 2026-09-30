@@ -1,7 +1,12 @@
 import { Reward } from '../../../src/rewards/entities/reward.entity';
 import { RewardDistribution } from '../../../src/rewards/entities/reward-distribution.entity';
 import { RewardClaim } from '../../../src/rewards/entities/reward-claim.entity';
-import { createTestWallet, getContractAddress, createMockLog, createMockTransactionReceipt } from './blockchain.fixture';
+import {
+  createTestWallet,
+  getContractAddress,
+  createMockLog,
+  createMockTransactionReceipt,
+} from './blockchain.fixture';
 
 /**
  * Rewards Contract Test Fixtures
@@ -60,7 +65,9 @@ export interface MockRewardClaimData {
 /**
  * Create mock reward entity
  */
-export function createMockReward(overrides: Partial<MockRewardData> = {}): Reward {
+export function createMockReward(
+  overrides: Partial<MockRewardData> = {},
+): Reward {
   const defaultData: MockRewardData = {
     title: 'Test Reward Distribution',
     description: 'Reward for participating in the protocol',
@@ -73,7 +80,7 @@ export function createMockReward(overrides: Partial<MockRewardData> = {}): Rewar
   };
 
   const rewardData = { ...defaultData, ...overrides };
-  
+
   return {
     id: rewardData.id || `reward_${Math.random().toString(36).substr(2, 9)}`,
     title: rewardData.title,
@@ -94,7 +101,7 @@ export function createMockReward(overrides: Partial<MockRewardData> = {}): Rewar
  */
 export function createMockRewardDistribution(
   reward: Reward,
-  overrides: Partial<MockRewardDistributionData> = {}
+  overrides: Partial<MockRewardDistributionData> = {},
 ): RewardDistribution {
   const defaultData: MockRewardDistributionData = {
     rewardId: (reward as any).id,
@@ -104,9 +111,10 @@ export function createMockRewardDistribution(
   };
 
   const distributionData = { ...defaultData, ...overrides };
-  
+
   return {
-    id: distributionData.id || `dist_${Math.random().toString(36).substr(2, 9)}`,
+    id:
+      distributionData.id || `dist_${Math.random().toString(36).substr(2, 9)}`,
     rewardId: distributionData.rewardId,
     recipientAddress: distributionData.recipientAddress,
     amount: distributionData.amount,
@@ -124,7 +132,7 @@ export function createMockRewardDistribution(
 export function createMockRewardClaim(
   distribution: RewardDistribution,
   userId: string,
-  overrides: Partial<MockRewardClaimData> = {}
+  overrides: Partial<MockRewardClaimData> = {},
 ): RewardClaim {
   const defaultData: MockRewardClaimData = {
     distributionId: (distribution as any).id,
@@ -136,7 +144,7 @@ export function createMockRewardClaim(
   };
 
   const claimData = { ...defaultData, ...overrides };
-  
+
   return {
     id: claimData.id || `claim_${Math.random().toString(36).substr(2, 9)}`,
     distributionId: claimData.distributionId,
@@ -153,25 +161,28 @@ export function createMockRewardClaim(
  * Create multiple mock rewards
  */
 export function createMockRewards(count: number = 3): Reward[] {
-  return Array.from({ length: count }, (_, i) => 
+  return Array.from({ length: count }, (_, i) =>
     createMockReward({
       title: `Test Reward ${i + 1}`,
       totalAmount: ((i + 1) * 50).toString() + '0000000000000000000', // 50, 100, 150 ETH
       createdAt: new Date(Date.now() - i * 86400000), // Created 0-2 days ago
-    })
+    }),
   );
 }
 
 /**
  * Create multiple reward distributions for a reward
  */
-export function createMockDistributions(reward: Reward, count: number = 5): RewardDistribution[] {
-  return Array.from({ length: count }, (_, i) => 
+export function createMockDistributions(
+  reward: Reward,
+  count: number = 5,
+): RewardDistribution[] {
+  return Array.from({ length: count }, (_, i) =>
     createMockRewardDistribution(reward, {
       recipientAddress: createTestWallet(`recipient${i}`).address,
       amount: Math.floor((i + 1) * 10).toString() + '000000000000000000', // 10, 20, 30, 40, 50 ETH
       claimed: i < 3, // First 3 are claimed
-    })
+    }),
   );
 }
 
@@ -181,7 +192,7 @@ export function createMockDistributions(reward: Reward, count: number = 5): Rewa
 export function createMockRewardsEventLog(
   eventType: string,
   params: any,
-  blockNumber: number = 1
+  blockNumber: number = 1,
 ) {
   const contractAddress = getContractAddress('REWARDS');
   let topics: string[];
@@ -196,7 +207,7 @@ export function createMockRewardsEventLog(
       ];
       data = '0x' + BigInt(params.amount).toString(16).padStart(64, '0');
       break;
-      
+
     case 'RewardsDistributed':
       topics = [
         REWARDS_EVENT_SIGNATURES.REWARDS_DISTRIBUTED,
@@ -204,7 +215,7 @@ export function createMockRewardsEventLog(
       ];
       data = '0x' + BigInt(params.amount).toString(16).padStart(64, '0');
       break;
-      
+
     case 'RewardClaimed':
       topics = [
         REWARDS_EVENT_SIGNATURES.REWARD_CLAIMED,
@@ -213,7 +224,7 @@ export function createMockRewardsEventLog(
       ];
       data = '0x' + BigInt(params.amount).toString(16).padStart(64, '0');
       break;
-      
+
     case 'ClaimPeriodExtended':
       topics = [
         REWARDS_EVENT_SIGNATURES.CLAIM_PERIOD_EXTENDED,
@@ -221,7 +232,7 @@ export function createMockRewardsEventLog(
       ];
       data = '0x' + BigInt(params.newExpiry).toString(16).padStart(64, '0');
       break;
-      
+
     default:
       throw new Error(`Unknown event type: ${eventType}`);
   }
@@ -236,12 +247,10 @@ export function createMockRewardsTransactionReceipt(
   eventType: string,
   params: any,
   txHash: string,
-  blockNumber: number = 1
+  blockNumber: number = 1,
 ) {
   const receipt = createMockTransactionReceipt(txHash, blockNumber);
-  receipt.logs = [
-    createMockRewardsEventLog(eventType, params, blockNumber)
-  ];
+  receipt.logs = [createMockRewardsEventLog(eventType, params, blockNumber)];
   return receipt;
 }
 
@@ -260,7 +269,9 @@ export interface MockRewardsState {
 /**
  * Create mock rewards contract state
  */
-export function createMockRewardsState(overrides: Partial<MockRewardsState> = {}): MockRewardsState {
+export function createMockRewardsState(
+  overrides: Partial<MockRewardsState> = {},
+): MockRewardsState {
   const defaultState: MockRewardsState = {
     totalRewards: '10000000000000000000000', // 10000 ETH
     totalDistributed: '2500000000000000000000', // 2500 ETH
@@ -271,14 +282,20 @@ export function createMockRewardsState(overrides: Partial<MockRewardsState> = {}
   };
 
   const state = { ...defaultState, ...overrides };
-  
+
   // Add some default distributions if none provided
   if (state.distributionMap.size === 0) {
     const reward1 = createMockReward({ id: 'reward_1' });
     const reward2 = createMockReward({ id: 'reward_2' });
-    
-    state.distributionMap.set((reward1 as any).id, createMockDistributions(reward1, 3));
-    state.distributionMap.set((reward2 as any).id, createMockDistributions(reward2, 2));
+
+    state.distributionMap.set(
+      (reward1 as any).id,
+      createMockDistributions(reward1, 3),
+    );
+    state.distributionMap.set(
+      (reward2 as any).id,
+      createMockDistributions(reward2, 2),
+    );
   }
 
   return state;

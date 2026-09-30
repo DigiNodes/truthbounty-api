@@ -1,11 +1,17 @@
-import { assertValidExternalRequest, normalizeExternalRequest } from './external-request';
+import {
+  assertValidExternalRequest,
+  normalizeExternalRequest,
+} from './external-request';
 
 describe('external request normalization (issue #462)', () => {
   it('normalizes method/path and strips dangerous keys', () => {
     const n = normalizeExternalRequest({
       method: 'post',
       path: '/v2/claims',
-      headers: { Authorization: 'Bearer x', __proto__: { polluted: true } as unknown as string },
+      headers: {
+        Authorization: 'Bearer x',
+        __proto__: { polluted: true } as unknown as string,
+      },
       query: { limit: '10' },
       body: { ok: true, nested: { a: 'b' } },
     });
@@ -16,8 +22,8 @@ describe('external request normalization (issue #462)', () => {
   });
 
   it('fails closed on invalid path', () => {
-    expect(() => assertValidExternalRequest({ method: 'GET', path: 'nope' })).toThrow(
-      /INVALID_EXTERNAL_REQUEST_PATH/,
-    );
+    expect(() =>
+      assertValidExternalRequest({ method: 'GET', path: 'nope' }),
+    ).toThrow(/INVALID_EXTERNAL_REQUEST_PATH/);
   });
 });
