@@ -30,7 +30,7 @@ jobs:
           ISSUE_PREFIX: V2-BE
           MAX_TASK: "150"
         run: node .github/scripts/issue-audit.mjs
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@v7.0.1
         with:
           name: v2-issue-inventory-report
           path: reports/
