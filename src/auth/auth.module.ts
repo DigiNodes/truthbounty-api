@@ -7,6 +7,7 @@ import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { SiweService } from './services/siwe.service';
 import { TokenService } from './services/token.service';
+import { WalletRateLimiterService } from './wallet-rate-limiter.service';
 import { AuthorizationPolicyService } from './authorization-policy.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { JwtAuthGuard } from './jwt-auth.guard';
@@ -38,6 +39,7 @@ import { ServiceAuthGuard } from './guards/service-auth.guard';
     AuthService,
     SiweService,
     TokenService,
+    WalletRateLimiterService,
     AuthorizationPolicyService,
     JwtStrategy,
     JwtAuthGuard,
@@ -50,6 +52,7 @@ import { ServiceAuthGuard } from './guards/service-auth.guard';
     AuthService,
     SiweService,
     TokenService,
+    WalletRateLimiterService,
     AuthorizationPolicyService,
     JwtAuthGuard,
     OptionalJwtAuthGuard,
