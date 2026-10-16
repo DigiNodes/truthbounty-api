@@ -1,0 +1,852 @@
+{
+  "issue": 624,
+  "parentCommit": "b58707b4537309a51412d87a56ed0fc9f8419f03",
+  "reviewedAt": "2026-10-16",
+  "ownerSource": ".github/CODEOWNERS",
+  "before": {
+    "info": 0,
+    "low": 0,
+    "moderate": 22,
+    "high": 7,
+    "critical": 3,
+    "total": 32
+  },
+  "after": {
+    "info": 0,
+    "low": 0,
+    "moderate": 20,
+    "high": 0,
+    "critical": 0,
+    "total": 20
+  },
+  "approvedExceptions": [],
+  "findings": [
+    {
+      "package": "@humanfs/node",
+      "severity": "moderate",
+      "direct": false,
+      "advisories": ["GHSA-p498-v437-472g"],
+      "beforeVersions": ["0.16.7"],
+      "resolutions": [
+        {
+          "path": "node_modules/@humanfs/node",
+          "version": "0.16.8"
+        }
+      ],
+      "parents": ["node_modules/eslint (dependencies: ^0.16.6)"],
+      "reachability": "dev-only",
+      "evidence": [
+        "package-lock.json: reviewed resolutions; absent from production-only audit",
+        "package.json: lint/test/build tooling; image absence still requires container validation"
+      ],
+      "owner": "@dDevAhmed",
+      "status": "fixed"
+    },
+    {
+      "package": "@istanbuljs/load-nyc-config",
+      "severity": "moderate",
+      "direct": false,
+      "advisories": ["GHSA-hp3w-g68c-fv3c"],
+      "beforeVersions": ["1.1.0"],
+      "resolutions": [
+        {
+          "path": "node_modules/@istanbuljs/load-nyc-config",
+          "version": "1.1.0"
+        }
+      ],
+      "parents": ["node_modules/babel-plugin-istanbul (dependencies: ^1.0.0)"],
+      "reachability": "dev-only",
+      "evidence": [
+        "package-lock.json: reviewed resolutions; absent from production-only audit",
+        "package.json: lint/test/build tooling; image absence still requires container validation"
+      ],
+      "owner": "@dDevAhmed",
+      "status": "open"
+    },
+    {
+      "package": "@jest/core",
+      "severity": "moderate",
+      "direct": false,
+      "advisories": ["GHSA-hp3w-g68c-fv3c"],
+      "beforeVersions": ["30.5.2"],
+      "resolutions": [
+        {
+          "path": "node_modules/@jest/core",
+          "version": "30.5.2"
+        }
+      ],
+      "parents": [
+        "node_modules/jest (dependencies: 30.5.2)",
+        "node_modules/jest-cli (dependencies: 30.5.2)"
+      ],
+      "reachability": "dev-only",
+      "evidence": [
+        "package-lock.json: reviewed resolutions; absent from production-only audit",
+        "package.json: lint/test/build tooling; image absence still requires container validation"
+      ],
+      "owner": "@dDevAhmed",
+      "status": "open"
+    },
+    {
+      "package": "@jest/expect",
+      "severity": "moderate",
+      "direct": false,
+      "advisories": ["GHSA-hp3w-g68c-fv3c"],
+      "beforeVersions": ["30.5.2"],
+      "resolutions": [
+        {
+          "path": "node_modules/@jest/expect",
+          "version": "30.5.2"
+        }
+      ],
+      "parents": [
+        "node_modules/@jest/globals (dependencies: 30.5.2)",
+        "node_modules/jest-circus (dependencies: 30.5.2)"
+      ],
+      "reachability": "dev-only",
+      "evidence": [
+        "package-lock.json: reviewed resolutions; absent from production-only audit",
+        "package.json: lint/test/build tooling; image absence still requires container validation"
+      ],
+      "owner": "@dDevAhmed",
+      "status": "open"
+    },
+    {
+      "package": "@jest/globals",
+      "severity": "moderate",
+      "direct": false,
+      "advisories": ["GHSA-hp3w-g68c-fv3c"],
+      "beforeVersions": ["30.5.2"],
+      "resolutions": [
+        {
+          "path": "node_modules/@jest/globals",
+          "version": "30.5.2"
+        }
+      ],
+      "parents": ["node_modules/jest-runtime (dependencies: 30.5.2)"],
+      "reachability": "dev-only",
+      "evidence": [
+        "package-lock.json: reviewed resolutions; absent from production-only audit",
+        "package.json: lint/test/build tooling; image absence still requires container validation"
+      ],
+      "owner": "@dDevAhmed",
+      "status": "open"
+    },
+    {
+      "package": "@jest/reporters",
+      "severity": "moderate",
+      "direct": false,
+      "advisories": ["GHSA-hp3w-g68c-fv3c"],
+      "beforeVersions": ["30.5.2"],
+      "resolutions": [
+        {
+          "path": "node_modules/@jest/reporters",
+          "version": "30.5.2"
+        }
+      ],
+      "parents": ["node_modules/@jest/core (dependencies: 30.5.2)"],
+      "reachability": "dev-only",
+      "evidence": [
+        "package-lock.json: reviewed resolutions; absent from production-only audit",
+        "package.json: lint/test/build tooling; image absence still requires container validation"
+      ],
+      "owner": "@dDevAhmed",
+      "status": "open"
+    },
+    {
+      "package": "@jest/transform",
+      "severity": "moderate",
+      "direct": false,
+      "advisories": ["GHSA-hp3w-g68c-fv3c"],
+      "beforeVersions": ["30.5.2"],
+      "resolutions": [
+        {
+          "path": "node_modules/@jest/transform",
+          "version": "30.5.2"
+        }
+      ],
+      "parents": [
+        "node_modules/@jest/core (dependencies: 30.5.2)",
+        "node_modules/@jest/reporters (dependencies: 30.5.2)",
+        "node_modules/babel-jest (dependencies: 30.5.2)",
+        "node_modules/jest-runner (dependencies: 30.5.2)",
+        "node_modules/jest-runtime (dependencies: 30.5.2)",
+        "node_modules/jest-snapshot (dependencies: 30.5.2)",
+        "node_modules/ts-jest (peerDependencies: ^29.0.0 || ^30.0.0)"
+      ],
+      "reachability": "dev-only",
+      "evidence": [
+        "package-lock.json: reviewed resolutions; absent from production-only audit",
+        "package.json: lint/test/build tooling; image absence still requires container validation"
+      ],
+      "owner": "@dDevAhmed",
+      "status": "open"
+    },
+    {
+      "package": "@prisma/config",
+      "severity": "high",
+      "direct": false,
+      "advisories": ["GHSA-ggr8-5vv4-36mx"],
+      "beforeVersions": ["7.10.0"],
+      "resolutions": [
+        {
+          "path": "node_modules/@prisma/config",
+          "version": "7.10.1"
+        }
+      ],
+      "parents": ["node_modules/prisma (dependencies: 7.10.0)"],
+      "reachability": "production-transitive",
+      "evidence": [
+        "package-lock.json: present in production dependency graph",
+        "prisma.config.ts: defineConfig build-time entrypoint",
+        "src/prisma/prisma.service.ts: generated client uses libsql",
+        "src/config/data-source.ts: postgres or SQLite; no configured MySQL connection in this entrypoint",
+        "Runtime exploitability not asserted; fixed regardless of reachability"
+      ],
+      "owner": "@dDevAhmed",
+      "status": "fixed"
+    },
+    {
+      "package": "argparse",
+      "severity": "moderate",
+      "direct": false,
+      "advisories": ["GHSA-hp3w-g68c-fv3c"],
+      "beforeVersions": ["1.0.10"],
+      "resolutions": [
+        {
+          "path": "node_modules/@istanbuljs/load-nyc-config/node_modules/argparse",
+          "version": "1.0.10"
+        },
+        {
+          "path": "node_modules/argparse",
+          "version": "2.0.1"
+        }
+      ],
+      "parents": [
+        "node_modules/@istanbuljs/load-nyc-config/node_modules/js-yaml (dependencies: ^1.0.7)",
+        "node_modules/@nestjs/swagger/node_modules/js-yaml (dependencies: ^2.0.1)",
+        "node_modules/js-yaml (dependencies: ^2.0.1)"
+      ],
+      "reachability": "production-transitive",
+      "evidence": [
+        "package-lock.json: present in production dependency graph",
+        "package.json: lint/test/build tooling; image absence still requires container validation"
+      ],
+      "owner": "@dDevAhmed",
+      "status": "open"
+    },
+    {
+      "package": "babel-jest",
+      "severity": "moderate",
+      "direct": false,
+      "advisories": ["GHSA-hp3w-g68c-fv3c"],
+      "beforeVersions": ["30.5.2"],
+      "resolutions": [
+        {
+          "path": "node_modules/babel-jest",
+          "version": "30.5.2"
+        }
+      ],
+      "parents": [
+        "node_modules/jest-config (dependencies: 30.5.2)",
+        "node_modules/ts-jest (peerDependencies: ^29.0.0 || ^30.0.0)"
+      ],
+      "reachability": "dev-only",
+      "evidence": [
+        "package-lock.json: reviewed resolutions; absent from production-only audit",
+        "package.json: lint/test/build tooling; image absence still requires container validation"
+      ],
+      "owner": "@dDevAhmed",
+      "status": "open"
+    },
+    {
+      "package": "babel-plugin-istanbul",
+      "severity": "moderate",
+      "direct": false,
+      "advisories": ["GHSA-hp3w-g68c-fv3c"],
+      "beforeVersions": ["8.0.0"],
+      "resolutions": [
+        {
+          "path": "node_modules/babel-plugin-istanbul",
+          "version": "8.0.0"
+        }
+      ],
+      "parents": [
+        "node_modules/@jest/transform (dependencies: ^8.0.0)",
+        "node_modules/babel-jest (dependencies: ^8.0.0)"
+      ],
+      "reachability": "dev-only",
+      "evidence": [
+        "package-lock.json: reviewed resolutions; absent from production-only audit",
+        "package.json: lint/test/build tooling; image absence still requires container validation"
+      ],
+      "owner": "@dDevAhmed",
+      "status": "open"
+    },
+    {
+      "package": "brace-expansion",
+      "severity": "high",
+      "direct": false,
+      "advisories": [
+        "GHSA-3jxr-9vmj-r5cp",
+        "GHSA-6j4f-fj2g-mc7p",
+        "GHSA-f886-m6hf-6m8v",
+        "GHSA-mh99-v99m-4gvg",
+        "GHSA-q2hr-2g5m-vwhr",
+        "GHSA-qhr7-859c-m2p7",
+        "GHSA-rgw5-rvv9-x895"
+      ],
+      "beforeVersions": ["1.1.12", "2.1.3", "5.0.9"],
+      "resolutions": [
+        {
+          "path": "node_modules/@eslint/config-array/node_modules/brace-expansion",
+          "version": "5.0.12"
+        },
+        {
+          "path": "node_modules/@nestjs/cli/node_modules/brace-expansion",
+          "version": "5.0.12"
+        },
+        {
+          "path": "node_modules/@swc/cli/node_modules/brace-expansion",
+          "version": "2.1.7"
+        },
+        {
+          "path": "node_modules/brace-expansion",
+          "version": "1.1.21"
+        },
+        {
+          "path": "node_modules/eslint/node_modules/brace-expansion",
+          "version": "5.0.12"
+        },
+        {
+          "path": "node_modules/glob/node_modules/brace-expansion",
+          "version": "5.0.12"
+        },
+        {
+          "path": "node_modules/test-exclude/node_modules/brace-expansion",
+          "version": "5.0.12"
+        },
+        {
+          "path": "node_modules/test-exclude/node_modules/glob/node_modules/brace-expansion",
+          "version": "2.1.7"
+        },
+        {
+          "path": "node_modules/typescript-eslint/node_modules/brace-expansion",
+          "version": "5.0.12"
+        }
+      ],
+      "parents": [
+        "node_modules/@eslint/config-array/node_modules/minimatch (dependencies: ^5.0.8)",
+        "node_modules/@nestjs/cli/node_modules/minimatch (dependencies: ^5.0.8)",
+        "node_modules/@swc/cli/node_modules/minimatch (dependencies: ^2.0.2)",
+        "node_modules/eslint/node_modules/minimatch (dependencies: ^5.0.8)",
+        "node_modules/glob/node_modules/minimatch (dependencies: ^5.0.8)",
+        "node_modules/minimatch (dependencies: ^1.1.7)",
+        "node_modules/test-exclude/node_modules/glob/node_modules/minimatch (dependencies: ^2.0.2)",
+        "node_modules/test-exclude/node_modules/minimatch (dependencies: ^5.0.8)",
+        "node_modules/typescript-eslint/node_modules/minimatch (dependencies: ^5.0.8)"
+      ],
+      "reachability": "dev-only",
+      "evidence": [
+        "package-lock.json: reviewed resolutions; absent from production-only audit",
+        "package.json: lint/test/build tooling; image absence still requires container validation"
+      ],
+      "owner": "@dDevAhmed",
+      "status": "fixed"
+    },
+    {
+      "package": "deepmerge-ts",
+      "severity": "high",
+      "direct": false,
+      "advisories": ["GHSA-ggr8-5vv4-36mx"],
+      "beforeVersions": ["7.1.5"],
+      "resolutions": [
+        {
+          "path": "node_modules/deepmerge-ts",
+          "version": "8.0.2"
+        }
+      ],
+      "parents": ["node_modules/@prisma/config (dependencies: 7.1.5)"],
+      "reachability": "production-transitive",
+      "evidence": [
+        "package-lock.json: present in production dependency graph",
+        "prisma.config.ts: defineConfig build-time entrypoint",
+        "src/prisma/prisma.service.ts: generated client uses libsql",
+        "src/config/data-source.ts: postgres or SQLite; no configured MySQL connection in this entrypoint",
+        "Runtime exploitability not asserted; fixed regardless of reachability"
+      ],
+      "owner": "@dDevAhmed",
+      "status": "fixed"
+    },
+    {
+      "package": "fast-uri",
+      "severity": "high",
+      "direct": false,
+      "advisories": [
+        "GHSA-5jgf-p345-68v8",
+        "GHSA-7p8r-x3mc-p8w7",
+        "GHSA-f65p-4m7j-42xc",
+        "GHSA-fph4-wmhf-6fwf",
+        "GHSA-hrr3-gc8f-f4qj",
+        "GHSA-jqff-g426-hqxp",
+        "GHSA-qw65-cvwx-89v3"
+      ],
+      "beforeVersions": ["3.1.4"],
+      "resolutions": [
+        {
+          "path": "node_modules/fast-uri",
+          "version": "3.1.8"
+        }
+      ],
+      "parents": [
+        "node_modules/@angular-devkit/core/node_modules/ajv (dependencies: ^3.0.1)",
+        "node_modules/@prisma/streams-local/node_modules/ajv (dependencies: ^3.0.1)",
+        "node_modules/ajv-formats/node_modules/ajv (dependencies: ^3.0.1)",
+        "node_modules/schema-utils/node_modules/ajv (dependencies: ^3.0.1)"
+      ],
+      "reachability": "production-transitive",
+      "evidence": [
+        "package-lock.json: present in production dependency graph",
+        "prisma.config.ts: defineConfig build-time entrypoint",
+        "src/prisma/prisma.service.ts: generated client uses libsql",
+        "src/config/data-source.ts: postgres or SQLite; no configured MySQL connection in this entrypoint",
+        "Runtime exploitability not asserted; fixed regardless of reachability"
+      ],
+      "owner": "@dDevAhmed",
+      "status": "fixed"
+    },
+    {
+      "package": "handlebars",
+      "severity": "critical",
+      "direct": false,
+      "advisories": [
+        "GHSA-8r5x-fm3f-whwj",
+        "GHSA-p8wg-vrv2-v86f",
+        "GHSA-xw65-4hp5-5hc7"
+      ],
+      "beforeVersions": ["4.7.9"],
+      "resolutions": [
+        {
+          "path": "node_modules/handlebars",
+          "version": "4.7.10"
+        }
+      ],
+      "parents": ["node_modules/ts-jest (dependencies: ^4.7.9)"],
+      "reachability": "dev-only",
+      "evidence": [
+        "package-lock.json: reviewed resolutions; absent from production-only audit",
+        "package.json: lint/test/build tooling; image absence still requires container validation"
+      ],
+      "owner": "@dDevAhmed",
+      "status": "fixed"
+    },
+    {
+      "package": "http-cache-semantics",
+      "severity": "high",
+      "direct": false,
+      "advisories": ["GHSA-ch52-4w7c-c8xp"],
+      "beforeVersions": ["4.2.0"],
+      "resolutions": [
+        {
+          "path": "node_modules/http-cache-semantics",
+          "version": "4.3.0"
+        }
+      ],
+      "parents": ["node_modules/cacheable-request (dependencies: ^4.2.0)"],
+      "reachability": "dev-only",
+      "evidence": [
+        "package-lock.json: reviewed resolutions; absent from production-only audit",
+        "package.json: lint/test/build tooling; image absence still requires container validation"
+      ],
+      "owner": "@dDevAhmed",
+      "status": "fixed"
+    },
+    {
+      "package": "jest",
+      "severity": "moderate",
+      "direct": true,
+      "advisories": ["GHSA-hp3w-g68c-fv3c"],
+      "beforeVersions": ["30.5.2"],
+      "resolutions": [
+        {
+          "path": "node_modules/jest",
+          "version": "30.5.2"
+        }
+      ],
+      "parents": [
+        "node_modules/ts-jest (peerDependencies: ^29.0.0 || ^30.0.0)"
+      ],
+      "reachability": "dev-only",
+      "evidence": [
+        "package-lock.json: reviewed resolutions; absent from production-only audit",
+        "package.json: lint/test/build tooling; image absence still requires container validation"
+      ],
+      "owner": "@dDevAhmed",
+      "status": "open"
+    },
+    {
+      "package": "jest-circus",
+      "severity": "moderate",
+      "direct": false,
+      "advisories": ["GHSA-hp3w-g68c-fv3c"],
+      "beforeVersions": ["30.5.2"],
+      "resolutions": [
+        {
+          "path": "node_modules/jest-circus",
+          "version": "30.5.2"
+        }
+      ],
+      "parents": ["node_modules/jest-config (dependencies: 30.5.2)"],
+      "reachability": "dev-only",
+      "evidence": [
+        "package-lock.json: reviewed resolutions; absent from production-only audit",
+        "package.json: lint/test/build tooling; image absence still requires container validation"
+      ],
+      "owner": "@dDevAhmed",
+      "status": "open"
+    },
+    {
+      "package": "jest-cli",
+      "severity": "moderate",
+      "direct": false,
+      "advisories": ["GHSA-hp3w-g68c-fv3c"],
+      "beforeVersions": ["30.5.2"],
+      "resolutions": [
+        {
+          "path": "node_modules/jest-cli",
+          "version": "30.5.2"
+        }
+      ],
+      "parents": ["node_modules/jest (dependencies: 30.5.2)"],
+      "reachability": "dev-only",
+      "evidence": [
+        "package-lock.json: reviewed resolutions; absent from production-only audit",
+        "package.json: lint/test/build tooling; image absence still requires container validation"
+      ],
+      "owner": "@dDevAhmed",
+      "status": "open"
+    },
+    {
+      "package": "jest-config",
+      "severity": "moderate",
+      "direct": false,
+      "advisories": ["GHSA-hp3w-g68c-fv3c"],
+      "beforeVersions": ["30.5.2"],
+      "resolutions": [
+        {
+          "path": "node_modules/jest-config",
+          "version": "30.5.2"
+        }
+      ],
+      "parents": [
+        "node_modules/@jest/core (dependencies: 30.5.2)",
+        "node_modules/jest-cli (dependencies: 30.5.2)"
+      ],
+      "reachability": "dev-only",
+      "evidence": [
+        "package-lock.json: reviewed resolutions; absent from production-only audit",
+        "package.json: lint/test/build tooling; image absence still requires container validation"
+      ],
+      "owner": "@dDevAhmed",
+      "status": "open"
+    },
+    {
+      "package": "jest-resolve-dependencies",
+      "severity": "moderate",
+      "direct": false,
+      "advisories": ["GHSA-hp3w-g68c-fv3c"],
+      "beforeVersions": ["30.5.2"],
+      "resolutions": [
+        {
+          "path": "node_modules/jest-resolve-dependencies",
+          "version": "30.5.2"
+        }
+      ],
+      "parents": ["node_modules/@jest/core (dependencies: 30.5.2)"],
+      "reachability": "dev-only",
+      "evidence": [
+        "package-lock.json: reviewed resolutions; absent from production-only audit",
+        "package.json: lint/test/build tooling; image absence still requires container validation"
+      ],
+      "owner": "@dDevAhmed",
+      "status": "open"
+    },
+    {
+      "package": "jest-runner",
+      "severity": "moderate",
+      "direct": false,
+      "advisories": ["GHSA-hp3w-g68c-fv3c"],
+      "beforeVersions": ["30.5.2"],
+      "resolutions": [
+        {
+          "path": "node_modules/jest-runner",
+          "version": "30.5.2"
+        }
+      ],
+      "parents": [
+        "node_modules/@jest/core (dependencies: 30.5.2)",
+        "node_modules/jest-config (dependencies: 30.5.2)"
+      ],
+      "reachability": "dev-only",
+      "evidence": [
+        "package-lock.json: reviewed resolutions; absent from production-only audit",
+        "package.json: lint/test/build tooling; image absence still requires container validation"
+      ],
+      "owner": "@dDevAhmed",
+      "status": "open"
+    },
+    {
+      "package": "jest-runtime",
+      "severity": "moderate",
+      "direct": false,
+      "advisories": ["GHSA-hp3w-g68c-fv3c"],
+      "beforeVersions": ["30.5.2"],
+      "resolutions": [
+        {
+          "path": "node_modules/jest-runtime",
+          "version": "30.5.2"
+        }
+      ],
+      "parents": [
+        "node_modules/@jest/core (dependencies: 30.5.2)",
+        "node_modules/jest-circus (dependencies: 30.5.2)",
+        "node_modules/jest-runner (dependencies: 30.5.2)"
+      ],
+      "reachability": "dev-only",
+      "evidence": [
+        "package-lock.json: reviewed resolutions; absent from production-only audit",
+        "package.json: lint/test/build tooling; image absence still requires container validation"
+      ],
+      "owner": "@dDevAhmed",
+      "status": "open"
+    },
+    {
+      "package": "jest-snapshot",
+      "severity": "moderate",
+      "direct": false,
+      "advisories": ["GHSA-hp3w-g68c-fv3c"],
+      "beforeVersions": ["30.5.2"],
+      "resolutions": [
+        {
+          "path": "node_modules/jest-snapshot",
+          "version": "30.5.2"
+        }
+      ],
+      "parents": [
+        "node_modules/@jest/core (dependencies: 30.5.2)",
+        "node_modules/@jest/expect (dependencies: 30.5.2)",
+        "node_modules/jest-circus (dependencies: 30.5.2)",
+        "node_modules/jest-resolve-dependencies (dependencies: 30.5.2)",
+        "node_modules/jest-runtime (dependencies: 30.5.2)"
+      ],
+      "reachability": "dev-only",
+      "evidence": [
+        "package-lock.json: reviewed resolutions; absent from production-only audit",
+        "package.json: lint/test/build tooling; image absence still requires container validation"
+      ],
+      "owner": "@dDevAhmed",
+      "status": "open"
+    },
+    {
+      "package": "js-yaml",
+      "severity": "moderate",
+      "direct": false,
+      "advisories": ["GHSA-hp3w-g68c-fv3c"],
+      "beforeVersions": ["3.15.2"],
+      "resolutions": [
+        {
+          "path": "node_modules/@istanbuljs/load-nyc-config/node_modules/js-yaml",
+          "version": "3.15.2"
+        },
+        {
+          "path": "node_modules/@nestjs/swagger/node_modules/js-yaml",
+          "version": "5.4.2"
+        },
+        {
+          "path": "node_modules/js-yaml",
+          "version": "4.3.2"
+        }
+      ],
+      "parents": [
+        "node_modules/@eslint/eslintrc (dependencies: ^4.3.2)",
+        "node_modules/@istanbuljs/load-nyc-config (dependencies: ^3.13.1)",
+        "node_modules/@nestjs/swagger (dependencies: 5.4.2)",
+        "node_modules/cosmiconfig (dependencies: ^4.1.0)"
+      ],
+      "reachability": "production-transitive",
+      "evidence": [
+        "package-lock.json: present in production dependency graph",
+        "package.json: lint/test/build tooling; image absence still requires container validation"
+      ],
+      "owner": "@dDevAhmed",
+      "status": "open"
+    },
+    {
+      "package": "mysql2",
+      "severity": "high",
+      "direct": false,
+      "advisories": ["GHSA-3f6p-5ww8-9rcr", "GHSA-rgwj-5xj2-c3m3"],
+      "beforeVersions": ["3.15.3"],
+      "resolutions": [
+        {
+          "path": "node_modules/mysql2",
+          "version": "3.24.4"
+        }
+      ],
+      "parents": [
+        "node_modules/prisma (dependencies: 3.15.3)",
+        "node_modules/typeorm (peerDependencies: ^3.15.3)"
+      ],
+      "reachability": "production-transitive",
+      "evidence": [
+        "package-lock.json: present in production dependency graph",
+        "prisma.config.ts: defineConfig build-time entrypoint",
+        "src/prisma/prisma.service.ts: generated client uses libsql",
+        "src/config/data-source.ts: postgres or SQLite; no configured MySQL connection in this entrypoint",
+        "Runtime exploitability not asserted; fixed regardless of reachability"
+      ],
+      "owner": "@dDevAhmed",
+      "status": "fixed"
+    },
+    {
+      "package": "piscina",
+      "severity": "critical",
+      "direct": false,
+      "advisories": ["GHSA-67c8-pqhq-4rmx"],
+      "beforeVersions": ["4.9.3"],
+      "resolutions": [
+        {
+          "path": "node_modules/piscina",
+          "version": "4.9.4"
+        }
+      ],
+      "parents": ["node_modules/@swc/cli (dependencies: ^4.3.1)"],
+      "reachability": "dev-only",
+      "evidence": [
+        "package-lock.json: reviewed resolutions; absent from production-only audit",
+        "package.json: lint/test/build tooling; image absence still requires container validation"
+      ],
+      "owner": "@dDevAhmed",
+      "status": "fixed"
+    },
+    {
+      "package": "prisma",
+      "severity": "high",
+      "direct": true,
+      "advisories": [
+        "GHSA-3f6p-5ww8-9rcr",
+        "GHSA-ggr8-5vv4-36mx",
+        "GHSA-rgwj-5xj2-c3m3"
+      ],
+      "beforeVersions": ["7.10.0"],
+      "resolutions": [
+        {
+          "path": "node_modules/prisma",
+          "version": "7.10.1"
+        }
+      ],
+      "parents": ["node_modules/@prisma/client (peerDependencies: *)"],
+      "reachability": "production-transitive",
+      "evidence": [
+        "package-lock.json: present in production dependency graph",
+        "prisma.config.ts: defineConfig build-time entrypoint",
+        "src/prisma/prisma.service.ts: generated client uses libsql",
+        "src/config/data-source.ts: postgres or SQLite; no configured MySQL connection in this entrypoint",
+        "Runtime exploitability not asserted; fixed regardless of reachability"
+      ],
+      "owner": "@dDevAhmed",
+      "status": "fixed"
+    },
+    {
+      "package": "proxy-addr",
+      "severity": "critical",
+      "direct": false,
+      "advisories": ["GHSA-jqcg-44mw-7w3h"],
+      "beforeVersions": ["2.0.7"],
+      "resolutions": [
+        {
+          "path": "node_modules/proxy-addr",
+          "version": "2.0.8"
+        }
+      ],
+      "parents": ["node_modules/express (dependencies: ^2.0.7)"],
+      "reachability": "reachable",
+      "evidence": [
+        "package-lock.json: present in production dependency graph",
+        "src/bootstrap.ts: TRUSTED_PROXIES configures Express trust proxy",
+        "src/auth/wallet-rate-limiter.service.ts: IP used for throttling"
+      ],
+      "owner": "@dDevAhmed",
+      "status": "fixed"
+    },
+    {
+      "package": "qs",
+      "severity": "moderate",
+      "direct": false,
+      "advisories": ["GHSA-4mjr-xmp4-gh2g", "GHSA-x5fp-wj9c-mxmx"],
+      "beforeVersions": ["6.15.3"],
+      "resolutions": [
+        {
+          "path": "node_modules/qs",
+          "version": "6.16.1"
+        }
+      ],
+      "parents": [
+        "node_modules/body-parser (dependencies: ^6.15.2)",
+        "node_modules/express (dependencies: ^6.14.0)",
+        "node_modules/superagent (dependencies: ^6.14.1)"
+      ],
+      "reachability": "reachable",
+      "evidence": [
+        "package-lock.json: present in production dependency graph",
+        "src/bootstrap.ts: urlencoded({ extended: true }) parses incoming request bodies"
+      ],
+      "owner": "@dDevAhmed",
+      "status": "fixed"
+    },
+    {
+      "package": "sprintf-js",
+      "severity": "moderate",
+      "direct": false,
+      "advisories": ["GHSA-hp3w-g68c-fv3c"],
+      "beforeVersions": ["1.0.3"],
+      "resolutions": [
+        {
+          "path": "node_modules/sprintf-js",
+          "version": "1.0.3"
+        }
+      ],
+      "parents": [
+        "node_modules/@istanbuljs/load-nyc-config/node_modules/argparse (dependencies: ~1.0.2)"
+      ],
+      "reachability": "dev-only",
+      "evidence": [
+        "package-lock.json: reviewed resolutions; absent from production-only audit",
+        "package.json: lint/test/build tooling; image absence still requires container validation"
+      ],
+      "owner": "@dDevAhmed",
+      "status": "open"
+    },
+    {
+      "package": "ts-jest",
+      "severity": "moderate",
+      "direct": true,
+      "advisories": ["GHSA-hp3w-g68c-fv3c"],
+      "beforeVersions": ["29.4.14"],
+      "resolutions": [
+        {
+          "path": "node_modules/ts-jest",
+          "version": "29.4.14"
+        }
+      ],
+      "parents": [],
+      "reachability": "dev-only",
+      "evidence": [
+        "package-lock.json: reviewed resolutions; absent from production-only audit",
+        "package.json: lint/test/build tooling; image absence still requires container validation"
+      ],
+      "owner": "@dDevAhmed",
+      "status": "open"
+    }
+  ]
+}
