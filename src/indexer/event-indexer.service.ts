@@ -3,6 +3,8 @@ import { Repository } from 'typeorm';
 import { ethers, EventLog } from 'ethers';
 import { IndexedEvent, IndexingState } from '../entities';
 import { EventIndexerConfig } from '../config';
+import { SpanKind } from '@opentelemetry/api';
+import { TracingService } from '../tracing/tracing.service';
 
 /**
  * Core event indexing service
@@ -18,6 +20,7 @@ export class EventIndexerService {
     private config: EventIndexerConfig,
     private eventRepository: Repository<IndexedEvent>,
     private stateRepository: Repository<IndexingState>,
+    private tracingService?: TracingService,
   ) {
     this.provider = new ethers.JsonRpcProvider(config.rpcUrl);
   }
@@ -46,7 +49,7 @@ export class EventIndexerService {
       // Start the main indexing loop
       this.startIndexingLoop();
     } catch (error) {
-      this.logger.error('Failed to start indexer:', error);
+      this.logger.error('Failed to start indexer');
       this.isIndexing = false;
       throw error;
     }
@@ -70,6 +73,7 @@ export class EventIndexerService {
           return;
         }
 
+        await this.runIndexingSpan('indexer.poll', async () => {
         // Get current block number
         const blockNumber = await this.provider.getBlockNumber();
         this.currentBlockNumber = blockNumber;
@@ -84,8 +88,9 @@ export class EventIndexerService {
 
         // Retry failed events
         await this.retryFailedEvents();
-      } catch (error) {
-        this.logger.error('Error in indexing loop:', error);
+        });
+      } catch {
+        this.logger.error('Indexer poll failed');
       } finally {
         // Schedule next poll
         if (this.isIndexing) {
@@ -107,8 +112,8 @@ export class EventIndexerService {
       )?.events || []) {
         await this.indexEventType(contractAddress, eventConfig, currentBlockNumber);
       }
-    } catch (error) {
-      this.logger.error(`Failed to index contract ${contractAddress}:`, error);
+    } catch {
+      this.logger.error('Contract indexing failed');
     }
   }
 
@@ -116,6 +121,20 @@ export class EventIndexerService {
    * Index a specific event type from a contract
    */
   private async indexEventType(
+    contractAddress: string,
+    eventConfig: any,
+    currentBlockNumber: number,
+  ): Promise<void> {
+    return this.runIndexingSpan('indexer.event_batch', () =>
+      this.indexEventTypeWithinSpan(
+        contractAddress,
+        eventConfig,
+        currentBlockNumber,
+      ),
+    );
+  }
+
+  private async indexEventTypeWithinSpan(
     contractAddress: string,
     eventConfig: any,
     currentBlockNumber: number,
@@ -167,15 +186,19 @@ export class EventIndexerService {
       this.logger.log(
         `Indexed ${events.length} ${eventConfig.name} events from blocks ${startBlock}-${endBlock}`,
       );
-    } catch (error) {
+    } catch {
       state.status = 'error';
-      state.errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      state.errorMessage = 'Indexing failed';
       await this.stateRepository.save(state);
-      this.logger.error(
-        `Error indexing ${eventConfig.name} from ${contractAddress}:`,
-        error,
-      );
+      this.logger.error('Event batch indexing failed');
     }
+  }
+
+  private runIndexingSpan<T>(name: string, operation: () => Promise<T>): Promise<T> {
+    if (!this.tracingService) return operation();
+    return this.tracingService.runSpan(name, operation, {
+      kind: SpanKind.INTERNAL,
+    });
   }
 
   /**
@@ -197,10 +220,7 @@ export class EventIndexerService {
 
       return logs as EventLog[];
     } catch (error) {
-      this.logger.error(
-        `Failed to fetch events from blocks ${fromBlock}-${toBlock}:`,
-        error,
-      );
+      this.logger.error('Failed to fetch indexed event batch');
       throw error;
     }
   }
@@ -265,11 +285,8 @@ export class EventIndexerService {
       this.logger.debug(
         `Stored event: ${eventConfig.name} from ${contractAddress}:${log.blockNumber}:${log.index}`,
       );
-    } catch (error) {
-      this.logger.error(
-        `Failed to process event ${log.transactionHash}:${log.index}:`,
-        error,
-      );
+    } catch {
+      this.logger.error('Failed to process indexed contract event');
     }
   }
 
@@ -299,8 +316,8 @@ export class EventIndexerService {
           await this.eventRepository.save(event);
         }
       }
-    } catch (error) {
-      this.logger.error('Error reconciling reorgs:', error);
+    } catch {
+      this.logger.error('Indexer reorg reconciliation failed');
     }
   }
 
@@ -322,7 +339,7 @@ export class EventIndexerService {
         this.logger.warn(`${failedEvents.length} events failed after max retries`);
       }
     } catch (error) {
-      this.logger.error('Error retrying failed events:', error);
+      this.logger.error('Indexer retry scan failed');
     }
   }
 

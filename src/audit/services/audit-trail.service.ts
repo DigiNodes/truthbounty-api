@@ -3,6 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { REQUEST } from '@nestjs/core';
 import { Request } from 'express';
+import { randomUUID } from 'node:crypto';
+import { TracingService } from '../../tracing/tracing.service';
 import {
   AuditLog,
   AuditActionType,
@@ -31,6 +33,7 @@ export class AuditTrailService {
     private readonly auditLogRepo: Repository<AuditLog>,
     @Inject(REQUEST)
     private readonly request: Request,
+    private readonly tracingService: TracingService,
   ) {}
 
   /**
@@ -48,17 +51,19 @@ export class AuditTrailService {
         beforeState: input.beforeState,
         afterState: input.afterState,
         metadata: input.metadata,
-        correlationId: input.correlationId || this.getCorrelationId(),
+        correlationId: this.getCorrelationId(),
         ipAddress: this.getClientIp(),
         userAgent: this.request?.get('user-agent'),
       });
 
-      await this.auditLogRepo.save(auditLog);
-      this.logger.debug(
-        `Audit logged: ${input.actionType} on ${input.entityType} ${input.entityId}`,
+      await this.tracingService.runDatabaseSpan('insert', () =>
+        this.auditLogRepo.save(auditLog),
       );
-    } catch (error) {
-      this.logger.error(`Failed to log audit: ${error.message}`, error.stack);
+      this.logger.debug(
+        `Audit logged: ${input.actionType} on ${input.entityType}`,
+      );
+    } catch {
+      this.logger.error('Failed to write audit record');
       // Don't throw - audit logging should not break the application
     }
   }
@@ -262,14 +267,8 @@ export class AuditTrailService {
   }
 
   private getCorrelationId(): string {
-    if (this.request?.headers['x-correlation-id']) {
-      return this.request.headers['x-correlation-id'] as string;
-    }
-    return this.generateCorrelationId();
-  }
-
-  private generateCorrelationId(): string {
-    return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const traceId = this.tracingService.getSupportReference();
+    return traceId && /^[a-f0-9]{32}$/i.test(traceId) ? traceId : randomUUID();
   }
 
   private computeChanges(

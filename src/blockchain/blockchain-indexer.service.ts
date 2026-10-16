@@ -5,6 +5,8 @@ import { ProcessedEvent } from './entities/processed-event.entity';
 import { TokenBalance } from './entities/token-balance.entity';
 import { IndexerCheckpoint } from './entities/indexer-checkpoint.entity';
 import { BlockchainEvent, TransferEventData } from './interfaces/blockchain-event.interface';
+import { SpanKind } from '@opentelemetry/api';
+import { TracingService } from '../tracing/tracing.service';
 
 @Injectable()
 export class BlockchainIndexerService {
@@ -18,9 +20,22 @@ export class BlockchainIndexerService {
     @InjectRepository(IndexerCheckpoint)
     private checkpointRepo: Repository<IndexerCheckpoint>,
     private dataSource: DataSource,
+    private tracingService: TracingService,
   ) {}
 
   async processEvent(event: BlockchainEvent): Promise<void> {
+    return this.tracingService.runSpan(
+      'indexer.process_event',
+      () =>
+        this.tracingService.runDatabaseSpan(
+          'transaction',
+          () => this.processEventWithinSpan(event),
+        ),
+      { kind: SpanKind.INTERNAL },
+    );
+  }
+
+  private async processEventWithinSpan(event: BlockchainEvent): Promise<void> {
     const { txHash, logIndex, blockNumber, eventType, data } = event;
 
     // Check if event already processed
@@ -29,7 +44,7 @@ export class BlockchainIndexerService {
     });
 
     if (existing) {
-      this.logger.log(`Event already processed: ${txHash}:${logIndex}:${blockNumber}`);
+      this.logger.log('Indexed event was already processed');
       return;
     }
 
@@ -67,10 +82,10 @@ export class BlockchainIndexerService {
       );
 
       await queryRunner.commitTransaction();
-      this.logger.log(`Processed event: ${eventType} at block ${blockNumber}`);
+      this.logger.log('Indexed event processed');
     } catch (error) {
       await queryRunner.rollbackTransaction();
-      this.logger.error(`Failed to process event: ${error.message}`, error.stack);
+      this.logger.error('Failed to process indexed event');
       throw error;
     } finally {
       await queryRunner.release();

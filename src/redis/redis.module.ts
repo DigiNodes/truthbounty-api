@@ -1,6 +1,7 @@
 import { Module, Global } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { RedisService } from './redis.service';
+import { TracingModule } from '../tracing/tracing.module';
 
 /**
  * Redis Module
@@ -10,7 +11,7 @@ import { RedisService } from './redis.service';
  */
 @Global()
 @Module({
-  imports: [ConfigModule],
+  imports: [ConfigModule, TracingModule],
   providers: [RedisService],
   exports: [RedisService],
 })

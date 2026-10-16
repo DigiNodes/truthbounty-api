@@ -5,10 +5,12 @@ import { AuditLog } from '../entities/audit-log.entity';
 import { Repository } from 'typeorm';
 import { REQUEST } from '@nestjs/core';
 import { AuditActionType, AuditEntityType } from '../entities/audit-log.entity';
+import { TracingService } from '../../tracing/tracing.service';
 
 describe('AuditTrailService - IP Security', () => {
   let service: AuditTrailService;
-  let repository: jest.Mocked<Repository<AuditLog>>;
+  let repository: any;
+  let tracingService: TracingService;
   let mockRequest: any;
 
   beforeEach(async () => {
@@ -36,11 +38,19 @@ describe('AuditTrailService - IP Security', () => {
           provide: REQUEST,
           useValue: mockRequest,
         },
+        {
+          provide: TracingService,
+          useValue: {
+            getSupportReference: jest.fn().mockReturnValue('a'.repeat(32)),
+            runDatabaseSpan: jest.fn((_, operation) => operation()),
+          },
+        },
       ],
     }).compile();
 
     service = module.get<AuditTrailService>(AuditTrailService);
     repository = module.get(getRepositoryToken(AuditLog));
+    tracingService = module.get<TracingService>(TracingService);
   });
 
   describe(' getClientIp() - IP Spoofing Protection', () => {
@@ -48,6 +58,7 @@ describe('AuditTrailService - IP Security', () => {
       // Simulate direct connection with spoofed x-forwarded-for
       mockRequest.headers['x-forwarded-for'] = '192.168.1.100';
       mockRequest.headers['x-real-ip'] = '10.0.0.1';
+      mockRequest.headers['x-correlation-id'] = 'private-user-value';
       mockRequest.socket.remoteAddress = '203.0.113.45'; // Real client IP
       mockRequest.ip = '203.0.113.45'; // Express sets this when trust proxy is false
 
@@ -69,7 +80,12 @@ describe('AuditTrailService - IP Security', () => {
       expect(repository.create).toHaveBeenCalledWith(
         expect.objectContaining({
           ipAddress: '203.0.113.45', // Should use real IP, not spoofed header
+          correlationId: 'a'.repeat(32),
         }),
+      );
+      expect(tracingService.runDatabaseSpan).toHaveBeenCalledWith(
+        'insert',
+        expect.any(Function),
       );
     });
 
@@ -148,11 +164,21 @@ describe('AuditTrailService - IP Security', () => {
               provide: REQUEST,
               useValue: null,
             },
+            {
+              provide: TracingService,
+              useValue: {
+                getSupportReference: jest.fn().mockReturnValue(undefined),
+                runDatabaseSpan: jest.fn((_, operation) => operation()),
+              },
+            },
           ],
         }).compile();
 
       const serviceWithoutRequest =
         moduleWithoutRequest.get<AuditTrailService>(AuditTrailService);
+      const repositoryWithoutRequest = moduleWithoutRequest.get(
+        getRepositoryToken(AuditLog),
+      ) as any;
 
       const auditInput = {
         actionType: AuditActionType.CLAIM_CREATED,
@@ -161,15 +187,15 @@ describe('AuditTrailService - IP Security', () => {
         description: 'Test without request',
       };
 
-      repository.create.mockReturnValue({
+      repositoryWithoutRequest.create.mockReturnValue({
         ...auditInput,
         ipAddress: undefined,
       });
-      repository.save.mockResolvedValue({ id: 'audit-4' });
+      repositoryWithoutRequest.save.mockResolvedValue({ id: 'audit-4' });
 
       await serviceWithoutRequest.log(auditInput);
 
-      expect(repository.create).toHaveBeenCalledWith(
+      expect(repositoryWithoutRequest.create).toHaveBeenCalledWith(
         expect.objectContaining({
           ipAddress: undefined,
         }),

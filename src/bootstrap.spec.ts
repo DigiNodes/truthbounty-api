@@ -1,5 +1,6 @@
 import { ValidationPipe } from '@nestjs/common';
 import { configureApp } from './bootstrap';
+import { TracingService } from './tracing/tracing.service';
 
 jest.mock('@nestjs/swagger', () => {
   const actual = jest.requireActual('@nestjs/swagger');
@@ -17,10 +18,16 @@ describe('configureApp', () => {
     const httpAdapter = { set: jest.fn() };
     const app = {
       useLogger: jest.fn(),
+      use: jest.fn(),
       get: jest.fn(),
       getHttpAdapter: jest.fn().mockReturnValue({ getInstance: () => httpAdapter }),
       useGlobalPipes: jest.fn(),
     } as any;
+    app.get.mockImplementation((token: unknown) =>
+      token === TracingService
+        ? { createHttpMiddleware: jest.fn().mockReturnValue(jest.fn()) }
+        : { log: jest.fn() },
+    );
 
     configureApp(app);
 

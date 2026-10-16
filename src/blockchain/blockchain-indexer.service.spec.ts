@@ -6,6 +6,7 @@ import { ProcessedEvent } from './entities/processed-event.entity';
 import { TokenBalance } from './entities/token-balance.entity';
 import { IndexerCheckpoint } from './entities/indexer-checkpoint.entity';
 import { BlockchainEvent } from './interfaces/blockchain-event.interface';
+import { TracingService } from '../tracing/tracing.service';
 
 describe('BlockchainIndexerService', () => {
   let service: BlockchainIndexerService;
@@ -13,6 +14,7 @@ describe('BlockchainIndexerService', () => {
   let tokenBalanceRepo: Repository<TokenBalance>;
   let checkpointRepo: Repository<IndexerCheckpoint>;
   let dataSource: DataSource;
+  let tracingService: { runSpan: jest.Mock; runDatabaseSpan: jest.Mock };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -36,6 +38,15 @@ describe('BlockchainIndexerService', () => {
             createQueryRunner: jest.fn(),
           },
         },
+        {
+          provide: TracingService,
+          useValue: {
+            runSpan: jest.fn((_, operation) =>
+              operation({ setAttribute: jest.fn(), setStatus: jest.fn() }),
+            ),
+            runDatabaseSpan: jest.fn((_, operation) => operation()),
+          },
+        },
       ],
     }).compile();
 
@@ -44,6 +55,7 @@ describe('BlockchainIndexerService', () => {
     tokenBalanceRepo = module.get<Repository<TokenBalance>>(getRepositoryToken(TokenBalance));
     checkpointRepo = module.get<Repository<IndexerCheckpoint>>(getRepositoryToken(IndexerCheckpoint));
     dataSource = module.get<DataSource>(DataSource);
+    tracingService = module.get(TracingService);
   });
 
   it('should be defined', () => {
@@ -80,6 +92,18 @@ describe('BlockchainIndexerService', () => {
       jest.spyOn(dataSource, 'createQueryRunner').mockReturnValue(mockQueryRunner as any);
 
       await service.processEvent(event);
+
+      expect(tracingService.runSpan).toHaveBeenCalledWith(
+        'indexer.process_event',
+        expect.any(Function),
+        expect.objectContaining({
+          kind: expect.any(Number),
+        }),
+      );
+      expect(tracingService.runDatabaseSpan).toHaveBeenCalledWith(
+        'transaction',
+        expect.any(Function),
+      );
 
       expect(processedEventRepo.findOne).toHaveBeenCalledWith({
         where: { txHash: event.txHash, logIndex: event.logIndex, blockNumber: event.blockNumber },

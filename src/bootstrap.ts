@@ -1,6 +1,7 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Logger } from 'nestjs-pino';
+import { TracingService } from './tracing/tracing.service';
 
 export function createGlobalValidationPipe() {
   return new ValidationPipe({
@@ -15,6 +16,7 @@ export function createGlobalValidationPipe() {
 
 export function configureApp(app: INestApplication) {
   app.useLogger(app.get(Logger));
+  app.use(app.get(TracingService).createHttpMiddleware());
 
   const httpAdapter = app.getHttpAdapter().getInstance();
 

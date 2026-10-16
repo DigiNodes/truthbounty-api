@@ -27,6 +27,7 @@ import { LoggingInterceptor } from './logger/logging.interceptor';
 import { AuthModule } from './auth/auth.module';
 import { GlobalAuthGuard } from './auth/global-auth.guard';
 import { MetricsModule } from './metrics/metrics.module';
+import { TracingModule } from './tracing/tracing.module';
 
 // In-memory storage for development (no Redis needed)
 class ThrottlerMemoryStorage {
@@ -221,6 +222,7 @@ async function createThrottlerStorage(configService: ConfigService): Promise<any
       load: [blockchainConfig, throttlerConfig],
       envFilePath: ['.env.local', '.env'],
     }),
+    TracingModule,
     TypeOrmModule.forRoot({
       type: 'sqlite',
       database: 'database.sqlite',

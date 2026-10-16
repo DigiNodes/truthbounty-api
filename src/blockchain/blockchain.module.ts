@@ -9,11 +9,13 @@ import { EventIndexingService } from './event-indexing.service';
 import { WeightedVoteResolutionService } from './weighted-vote-resolution.service';
 import { BlockchainController } from './blockchain.controller';
 import { SybilResistanceModule } from '../sybil-resistance/sybil-resistance.module';
+import { TracingModule } from '../tracing/tracing.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([ProcessedEvent, TokenBalance, IndexerCheckpoint]),
     SybilResistanceModule,
+    TracingModule,
   ],
   providers: [
     BlockchainIndexerService,

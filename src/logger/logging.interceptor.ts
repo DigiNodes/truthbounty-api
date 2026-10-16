@@ -3,74 +3,73 @@ import {
   NestInterceptor,
   ExecutionContext,
   CallHandler,
+  HttpException,
 } from '@nestjs/common';
 import { Observable, tap } from 'rxjs';
 import { PinoLogger } from 'nestjs-pino';
+import { TracingService } from '../tracing/tracing.service';
 
 /**
  * Interceptor to log request/response timing and metadata
  */
 @Injectable()
 export class LoggingInterceptor implements NestInterceptor {
-  constructor(private readonly logger: PinoLogger) {
+  constructor(
+    private readonly logger: PinoLogger,
+    private readonly tracingService: TracingService,
+  ) {
     this.logger.setContext('HTTP');
   }
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
-    const request = context.switchToHttp().getRequest();
-    const { method, url, body, query, params } = request;
+    const request = context.switchToHttp().getRequest<{ method?: string }>();
+    const { method } = request;
     const startTime = Date.now();
-    const requestId = request.id || crypto.randomUUID();
+    const traceId = this.tracingService.getSupportReference();
 
     // Log incoming request
     this.logger.info(
       {
         type: 'request',
-        requestId,
+        traceId,
         method,
-        url,
-        query: Object.keys(query || {}).length ? query : undefined,
-        params: Object.keys(params || {}).length ? params : undefined,
-        hasBody: !!body && Object.keys(body).length > 0,
-        userAgent: request.headers['user-agent'],
-        ip: request.ip,
       },
-      `Incoming ${method} ${url}`,
+      'Incoming HTTP request',
     );
 
     return next.handle().pipe(
       tap({
         next: () => {
-          const response = context.switchToHttp().getResponse();
+          const response = context
+            .switchToHttp()
+            .getResponse<{ statusCode: number }>();
           const duration = Date.now() - startTime;
 
           this.logger.info(
             {
               type: 'response',
-              requestId,
+              traceId,
               method,
-              url,
               statusCode: response.statusCode,
               durationMs: duration,
             },
-            `${method} ${url} ${response.statusCode} - ${duration}ms`,
+            `HTTP response ${response.statusCode} - ${duration}ms`,
           );
         },
-        error: (error) => {
+        error: (error: unknown) => {
           const duration = Date.now() - startTime;
+          const statusCode =
+            error instanceof HttpException ? error.getStatus() : 500;
 
           this.logger.error(
             {
               type: 'error',
-              requestId,
+              traceId,
               method,
-              url,
               durationMs: duration,
-              errorType: error.constructor?.name,
-              errorMessage: error.message,
-              statusCode: error.status || 500,
+              statusCode,
             },
-            `${method} ${url} ERROR - ${duration}ms`,
+            `HTTP request failed - ${duration}ms`,
           );
         },
       }),
