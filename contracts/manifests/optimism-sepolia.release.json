@@ -1,14 +1,16 @@
 {
-  "version": "2.0.0-rc.3",
+  "version": "2.0.0-rc.4",
   "releaseId": "rel-opsepolia-20261015-v2",
   "chainId": 11155420,
   "publishedAt": "2026-10-15T16:56:32.141Z",
-  "manifestChecksum": "f183dd1270bacc47f49f05f3d2ac0c8f021b41138da06d822377a2845cddb22f",
+  "manifestChecksum": "f90b9f46af2620d7d3d4b2f7710545dd38f196176689f53e0319bcab180c1a99",
+  "deploymentFloor": 24800000,
   "contracts": [
     {
       "name": "ClaimRegistry",
       "address": "0x0000000000000000000000000000000000001001",
       "deployBlock": 24850000,
+      "releaseId": "rel-opsepolia-20261015-v2",
       "events": [
         {
           "name": "ClaimSubmitted",
@@ -27,6 +29,7 @@
       "name": "VerificationEngine",
       "address": "0x0000000000000000000000000000000000001002",
       "deployBlock": 24850000,
+      "releaseId": "rel-opsepolia-20261015-v2",
       "events": [
         {
           "name": "VerificationRecorded",
@@ -45,6 +48,7 @@
       "name": "EvidenceRegistry",
       "address": "0x0000000000000000000000000000000000001003",
       "deployBlock": 24850000,
+      "releaseId": "rel-opsepolia-20261015-v2",
       "events": [
         {
           "name": "EvidenceSubmitted",
@@ -58,6 +62,12 @@
       "name": "StakingToken",
       "address": "0x0000000000000000000000000000000000001004",
       "deployBlock": 24850000,
+      "releaseId": "rel-opsepolia-20261015-v2",
+      "proxy": {
+        "proxyAdmin": "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
+        "implementationAddress": "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359",
+        "implementationCodeHash": "0xaabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccdd"
+      },
       "events": [
         {
           "name": "Staked",

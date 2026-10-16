@@ -22,6 +22,14 @@
  *   MANIFEST_MAX_AGE_DAYS (default 90) days ago; stale manifests are
  *   rejected to prevent operators from deploying with outdated contract
  *   registrations.
+ * - Release binding: every contract entry must carry the same releaseId as
+ *   the manifest-level releaseId; mixed-release manifests are rejected.
+ * - Deployment floor: every contract's deployBlock must be >= the manifest-
+ *   level deploymentFloor to prevent stale/pre-release addresses.
+ * - Proxy provenance: when any proxy field (proxyAdmin, implementationAddress,
+ *   implementationCodeHash) is present, all three must be present (all-or-
+ *   nothing). An implementation code hash mismatch triggers a fail-closed
+ *   rejection during on-chain verification.
  */
 
 /** Allowed Optimism chain IDs. */
@@ -51,6 +59,33 @@ export interface ManifestEventFragment {
   topic0?: string;
 }
 
+/**
+ * Optional proxy / implementation provenance block.
+ *
+ * When any one of these fields is present, all three must be present
+ * (all-or-nothing). When the on-chain code check is enabled the service will
+ * also verify that the bytecode hash at implementationAddress matches
+ * implementationCodeHash.
+ */
+export interface ManifestProxyProvenance {
+  /**
+   * EIP-55 checksummed address of the proxy admin (ProxyAdmin contract or
+   * multisig that controls upgrades).
+   */
+  proxyAdmin: string;
+  /**
+   * EIP-55 checksummed address of the current implementation contract behind
+   * the proxy.
+   */
+  implementationAddress: string;
+  /**
+   * keccak256 hex digest of the implementation contract's deployed bytecode.
+   * Used to detect implementation swaps that have not been reflected in the
+   * manifest.
+   */
+  implementationCodeHash: string;
+}
+
 /** A single contract entry inside the manifest. */
 export interface ManifestContractEntry {
   /**
@@ -66,6 +101,20 @@ export interface ManifestContractEntry {
   abiChecksum: string;
   /** The ABI events this contract exposes for indexing. */
   events: ManifestEventFragment[];
+  /**
+   * Release identifier that this contract belongs to.
+   * Must match the manifest-level releaseId; mixed-release manifests are
+   * rejected.
+   * Optional on the entry — the manifest-level releaseId is used when
+   * per-entry releaseId is absent (backwards compat).
+   */
+  releaseId?: string;
+  /**
+   * Optional proxy / implementation provenance.
+   * When any sub-field is present, all three (proxyAdmin, implementationAddress,
+   * implementationCodeHash) must be present.
+   */
+  proxy?: ManifestProxyProvenance;
 }
 
 /** Top-level structure of the contract address manifest JSON file. */
@@ -75,6 +124,12 @@ export interface ContractAddressManifest {
    * Used to detect stale manifests or rollback scenarios.
    */
   version: string;
+  /**
+   * Opaque release identifier — e.g. "rel-opsepolia-20261015-v2".
+   * Must be a non-empty string. All contracts in this manifest belong to this
+   * release; cross-release manifests are rejected at validation time.
+   */
+  releaseId: string;
   /**
    * Optimism chain ID this manifest targets.
    * Must be one of ALLOWED_CHAIN_IDS.
@@ -90,6 +145,12 @@ export interface ContractAddressManifest {
    * integrity verification.
    */
   manifestChecksum: string;
+  /**
+   * Minimum deploy block that any contract in this manifest is permitted to
+   * have. Contracts with deployBlock < deploymentFloor are rejected.
+   * Must be a non-negative integer.
+   */
+  deploymentFloor: number;
   /** The set of contracts registered in this manifest. */
   contracts: ManifestContractEntry[];
 }
@@ -106,6 +167,7 @@ export interface ManifestContractValidationResult {
 export interface ManifestValidationReport {
   valid: boolean;
   version: string;
+  releaseId: string;
   chainId: number;
   contractCount: number;
   contractResults: ManifestContractValidationResult[];
