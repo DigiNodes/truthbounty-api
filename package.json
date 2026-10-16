@@ -32,7 +32,8 @@
     "seed:ai": "ts-node src/scripts/seed-ai-knowledge-base.ts",
     "benchmark:indexes": "ts-node scripts/benchmark-indexes.ts",
     "benchmark:compare": "ts-node scripts/compare-benchmarks.ts",
-    "security:dependencies": "node scripts/dependency-audit.mjs"
+    "security:dependencies": "node scripts/dependency-audit.mjs",
+    "security:dependencies:test": "node --test scripts/dependency-security.test.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",

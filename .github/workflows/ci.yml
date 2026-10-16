@@ -72,6 +72,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Dependency remediation regression and inventory checks
+        run: npm run security:dependencies:test
+
       # Canonical dependency scanner. `pipefail` keeps npm's non-zero exit on a
       # high-or-critical finding, so this step still fails the workflow. The
       # report is written to a file and uploaded below as retained evidence.
