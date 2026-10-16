@@ -27,7 +27,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: '20'
+          node-version: '22.22.3'
           cache: 'npm'
 
       - name: Install dependencies
@@ -64,13 +64,16 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: '20'
+          node-version: '22.22.3'
           cache: 'npm'
 
       # Installed from the lockfile so the audit is evaluated against the exact
       # tree that ships, and so this job installs deterministically like the rest.
       - name: Install dependencies
         run: npm ci
+
+      - name: Dependency remediation regression and inventory checks
+        run: npm run security:dependencies:test
 
       # Canonical dependency scanner. `pipefail` keeps npm's non-zero exit on a
       # high-or-critical finding, so this step still fails the workflow. The

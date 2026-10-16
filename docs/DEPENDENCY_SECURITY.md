@@ -1,5 +1,13 @@
 # Dependency Security
 
+For the measured #624 remediation on the #608 install baseline, see
+[the remediation report](security/DEPENDENCY_BASELINE_624.md) and its machine-checked
+[finding inventory](security/dependency-baseline.json). The sections below preserve
+the original #518 procedure and historical, unpopulated inventory; they are not the
+current vulnerability result.
+
+## Original #518 procedure
+
 Working document for STAB-BE-004 (issue #518, "Remediate API Dependency Vulnerabilities in
 Reviewable Batches").
 
