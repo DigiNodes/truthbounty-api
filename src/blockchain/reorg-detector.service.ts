@@ -1,11 +1,87 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadImplementationException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { BlockchainStateService } from './state.service';
 import { ClaimsCache } from '../cache/claims.cache';
 import { BlockInfo, ReorgEvent, PendingEvent } from './types';
 
 /**
- * Detects and handles chain reorganizations
+ * Provenance metadata bound to a chain-derived cursor advancement.
+ * Every advance must carry the block hash, finalized head, deployment floor,
+ * and checkpoint provenance so stale or ambiguous writes fail closed.
+ */
+export interface CursorProvenance {
+  chainId: string;
+  releaseId: string;
+  projectionId: string;
+  artifactChecksum: string;
+  deploymentBlock: number;
+  blockHash: string;
+  finalizedHead: number;
+  checkpointId: string;
+  checkpointHash: string;
+}
+
+export interface CursorState {
+  height: number;
+  blockHash: string;
+  finalizedHead: number;
+  deploymentBlock: number;
+  chainid: string;
+  releaseId: string;
+  projectionId: string;
+  artifactChecksum: string;
+  checkpointId: string;
+  checkpointHash: string;
+  updatedAt: Date;
+  rollbackGeneration: number;
+}
+
+export interface CursorAdvanceRequest {
+  chainId: string;
+  releaseId: string;
+  projectionId: string;
+  artifactChecksum: string;
+  deploymentBlock: number;
+  targetHeight: number;
+  targetBlockHash: string;
+  finalizedHead: number;
+  checkpointId: string;
+  checkpointHash: string;
+  /** Optional expected current height for optimistic concurrency control. */
+  expectedCurrentHeight?: number;
+  /** Optional expected current hash for optimistic concurrency control. */
+  expectedCurrentHash?: string;
+}
+
+export interface CursorRollbackRequest {
+  chainId: string;
+  releaseId: string;
+  projectionId: string;
+  artifactChecksum: string;
+  targetHeight: number;
+  targetBlockHash: string;
+  authorizationId: string;
+  reason: string;
+}
+
+export interface CursorRollbackAuditRecord {
+  authorizationId: string;
+  reason: string;
+  chainId: string;
+  releaseId: string;
+  projectionId: string;
+  artifactChecksum: string;
+  fromHeight: number;
+  fromBlockHash: string;
+  toHeight: number;
+  toBlockHash: string;
+  rollbackGeneration: number;
+  recordedAt: Date;
+}
+
+/**
+ * Detects and handles chain reorganizations and enforces monotonic,
+ * atomic block cursor advancement per chain/release/projection.
  */
 @Injectable()
 export class ReorgDetectorService {
@@ -17,10 +93,23 @@ export class ReorgDetectorService {
    */
   private confirmationDepth: number;
 
+  /**
+   * Authorized rollback audit trail. Rollbacks are only permitted through
+   * the dedicated authorized entrypoint and are always recorded.
+   */
+  private readonly rollbackAudit: CursorRollbackAuditRecord[] = [];
+
+  /**
+   * Per-cursor mutex chain to serialize competing writers within this process.
+   * This is not sufficient alone for multi-process concurrency; the compare-and-swap
+   * in advanceCursor is the authoritative guard.
+   */
+  private readonly cursorLocks = new Map<string, Promise<void>>();
+
   constructor(
-    private stateService: BlockchainStateService,
-    private configService: ConfigService,
-    private claimsCache: ClaimsCache,
+    private readonly stateService: BlockchainStateService,
+    private readonly configService: ConfigService,
+    private readonly claimsCache: ClaimsCache,
   ) {
     this.confirmationDepth = this.configService.get<number>(
       'BLOCKCHAIN_CONFIRMATION_DEPTH',
@@ -28,6 +117,452 @@ export class ReorgDetectorService {
     );
 
     this.logger.log(`Confirmation depth set to ${this.confirmationDepth}`);
+  }
+
+  /**
+   * Build a stable identity key for a cursor scoped to chain/release/projection.
+   */
+  private cursorKey(
+    chainId: string,
+    releaseId: string,
+    projectionId: string,
+  ): string {
+    return `${chainId}::${releaseId}::${projectionId}`;
+  }
+
+  /**
+   * Serialize writes for a single cursor within this process. The compare-and-swap
+   * inside the critical section remains the authoritative guard against stale
+   * writers and skipped ranges.
+   */
+  private async withCursorLock<T>(
+    key: string,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    const previous = this.cursorLocks.get(key) ?? Promise.resolve();
+    let release!: () => void;
+    const next = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const chained = previous.then(() => next);
+    this.cursorLocks.set(key, chained);
+    await previous;
+    try {
+      return await fn();
+    } finally {
+      release();
+      if (this.cursorLocks.get(key) === chained) {
+        this.cursorLocks.delete(key);
+      }
+    }
+  }
+
+  /**
+   * Return the current cursor for a chain/release/projection scope, or null if no
+   * cursor has been established yet.
+   */
+  async getCursor(
+    chainId: string,
+    releaseId: string,
+    projectionId: string,
+  ): Promise<CursorState | null> {
+    const state = await this.stateService.getCursorState(
+      chainId,
+      releaseId,
+      projectionId,
+    );
+    return state ?? null;
+  }
+
+  /**
+   * Atomically advance the cursor for a chain/release/projection scope.
+   *
+   * Guarantees:
+   * - Monotonic forward only; any target at or below the current height is rejected
+   *   unless it is an identical replay (no-op).
+   * - Same height with a different hash fails closed as a conflict.
+   * - Wrong release/projection/checksum/chain binding fails closed.
+   * - No range skipping: targetHeight must be exactly currentHeight + 1 on the
+   *   first advance (from deployment floor) and on every subsequent advance.
+   * - Finalized head must not regress and must be >= targetHeight.
+   */
+  async advanceCursor(request: CursorAdvanceRequest): Promise<CursorState> {
+    this.assertRequestShape(request);
+
+    const key = this.cursorKey(
+      request.chainId,
+      request.releaseId,
+      request.projectionId,
+    );
+
+    return this.withCursorLock(key, async () => {
+      const current = await this.stateService.getCursorState(
+        request.chainId,
+        request.releaseId,
+        request.projectionId,
+      );
+
+      if (!current) {
+        return this.initializeCursor(request);
+      }
+
+      this.assertBindingMatches(current, request);
+
+      // Optimistic concurrency: callers may pin the expected current state.
+      // Any disagreement means another writer advanced first -> stale writer.
+      if (
+        request.expectedCurrentHeight !== undefined &&
+        request.expectedCurrentHeight !== current.height
+      ) {
+        throw new ConflictException(
+          `Stale cursor writer: expected height ${request.expectedCurrentHeight} but current is ${current.height}`,
+        );
+      }
+      if (
+        request.expectedCurrentHash !== undefined &&
+        request.expectedCurrentHash !== current.blockHash
+      ) {
+        throw new ConflictException(
+          `Stale cursor writer: expected hash ${request.expectedCurrentHash} but current is ${current.blockHash}`,
+        );
+      }
+
+      // Identical replay (no-op): same height, same hash, same finalized head.
+      // This is not a movement and is safe to acknowledge.
+      if (
+        request.targetHeight === current.height &&
+        request.targetBlockHash === current.blockHash
+      ) {
+        if (request.finalizedHead < current.finalizedHead) {
+          throw new ConflictException(
+            `Finalized head cannot regress: current ${current.finalizedHead}, requested ${request.finalizedHead}`,
+          );
+        }
+        return current;
+      }
+
+      // Same height, different hash => conflict. Hash disagreement fails closed.
+      if (request.targetHeight === current.height) {
+        throw new ConflictException(
+          `Hash disagreement at height ${current.height}: current ${current.blockHash}, requested ${request.targetBlockHash}`,
+        );
+      }
+
+      // Backward movement is only possible through the authorized rollback path.
+      if (request.targetHeight < current.height) {
+        throw new ConflictException(
+          `Cursor cannot move backward outside explicit rollback: current ${current.height}, requested ${request.targetHeight}`,
+        );
+      }
+
+      // No range skipping: the target must be exactly the next block.
+      if (request.targetHeight !== current.height + 1) {
+        throw new ConflictException(
+          `Cursor advance would skip ranges: current ${current.height}, requested ${request.targetHeight}`,
+        );
+      }
+
+      // Finalized head must not regress and must cover the target.
+      if (request.finalizedHead < current.finalizedHead) {
+        throw new ConflictException(
+          `Finalized head cannot regress: current ${current.finalizedHead}, requested ${request.finalizedHead}`,
+        );
+      }
+      if (request.finalizedHead < request.targetHeight) {
+        throw new BadImplementationException(
+          `Finalized head ${request.finalizedHead} cannot be below target height ${request.targetHeight}`,
+        );
+      }
+
+      // Checkpoint provenance must move monotonically with the cursor.
+      if (
+        request.checkpointHash === current.checkpointHash &&
+        request.checkpointId !== current.checkpointId
+      ) {
+        throw new ConflictException(
+          `Checkpoint hash collision across different checkpoint ids: ${current.checkpointId} vs ${request.checkpointId}`,
+        );
+      }
+
+      const nextState: CursorState = {
+        height: request.targetHeight,
+        blockHash: request.targetBlockHash,
+        finalizedHead: request.finalizedHead,
+        deploymentBlock: current.deploymentBlock,
+        chainid: current.chainid,
+        releaseId: current.releaseId,
+        projectionId: current.projectionId,
+        artifactChecksum: current.artifactChecksum,
+        checkpointId: request.checkpointId,
+        checkpointHash: request.checkpointHash,
+        updatedAt: new Date(),
+        rollbackGeneration: current.rollbackGeneration,
+      };
+
+      // Atomic compare-and-swap: the state layer must reject the write if the
+      // current stored state no longer matches the expected previous state.
+      const committed = await this.stateService.compareAndSwapCursorState(
+        {
+          chainId: current.chainid,
+          releaseId: current.releaseId,
+          projectionId: current.projectionId,
+        },
+        {
+          height: current.height,
+          blockHash: current.blockHash,
+        },
+        nextState,
+      );
+
+      if (!committed) {
+        throw new ConflictException(
+          `Concurrent cursor writer detected for ${key}; compare-and-swap rejected`,
+        );
+      }
+
+      this.logger.log(
+        `Cursor advanced for ${key} to height ${nextState.height} (${nextState.blockHash})`,
+      );
+      return nextState;
+    });
+  }
+
+  /**
+   * Explicitly authorized rollback. This is the only path allowed to move the
+   * cursor backward. Requires an authorization ID and a reason, and records an
+   * audit entry for the transition.
+   */
+  async rollbackCursor(request: CursorRollbackRequest): Promise<CursorState> {
+    this.assertRollbackRequestShape(request);
+
+    const key = this.cursorKey(
+      request.chainId,
+      request.releaseId,
+      request.projectionId,
+    );
+
+    return this.withCursorLock(key, async () => {
+      const current = await this.stateService.getCursorState(
+        request.chainId,
+        request.releaseId,
+        request.projectionId,
+      );
+
+      if (!current) {
+        throw new BadImplementationException(
+          `Cannot rollback cursor ${key}: no cursor exists`,
+        );
+      }
+
+      this.assertBindingMatches(current, {
+        chainId: request.chainId,
+        releaseId: request.releaseId,
+        projectionId: request.projectionId,
+        artifactChecksum: request.artifactChecksum,
+      });
+
+      if (request.targetHeight >= current.height) {
+        throw new BadImplementationException(
+          `Rollback target ${request.targetHeight} must be below current height ${current.height}`,
+        );
+      }
+      if (request.targetHeight < current.deploymentBlock) {
+        throw new BadImplementationException(
+          `Rollback target ${request.targetHeight} is below deployment floor ${current.deploymentBlock}`,
+        );
+      }
+
+      const nextGeneration = current.rollbackGeneration + 1;
+      const nextState: CursorState = {
+        height: request.targetHeight,
+        blockHash: request.targetBlockHash,
+        finalizedHead: Math.min(current.finalizedHead, request.targetHeight),
+        deploymentBlock: current.deploymentBlock,
+        chainid: current.chainid,
+        releaseId: current.releaseId,
+        projectionId: current.projectionId,
+        artifactChecksum: current.artifactChecksum,
+        checkpointId: current.checkpointId,
+        checkpointHash: current.checkpointHash,
+        updatedAt: new Date(),
+        rollbackGeneration: nextGeneration,
+      };
+
+      const committed = await this.stateService.compareAndSwapCursorState(
+        {
+          chainId: current.chainid,
+          releaseId: current.releaseId,
+          projectionId: current.projectionId,
+        },
+        {
+          height: current.height,
+          blockHash: current.blockHash,
+        },
+        nextState,
+      );
+
+      if (!committed) {
+        throw new ConflictException(
+          `Concurrent cursor writer detected during rollback for ${key}; compare-and-swap rejected`,
+        );
+      }
+
+      const audit: CursorRollbackAuditRecord = {
+        authorizationId: request.authorizationId,
+        reason: request.reason,
+        chainId: current.chainid,
+        releaseId: current.releaseId,
+        projectionId: current.projectionId,
+        artifactChecksum: current.artifactChecksum,
+        fromHeight: current.height,
+        fromBlockHash: current.blockHash,
+        toHeight: nextState.height,
+        toBlockHash: nextState.blockHash,
+        rollbackGeneration: nextGeneration,
+        recordedAt: new Date(),
+      };
+      this.rollbackAudit.push(audit);
+
+      await this.stateService.recordCursorRollbackAudit(audit);
+
+      this.logger.warn(
+        `Cursor rollback for ${key} from ${current.height} to ${nextState.height} authorized by ${request.authorizationId}`,
+      );
+      return nextState;
+    });
+  }
+
+  /**
+   * Return a copy of the rollback audit trail recorded by this service instance.
+   */
+  getRollbackAuditTrail(): CursorRollbackAuditRecord[] {
+    return this.rollbackAudit.map((record) => ({ ...record }));
+  }
+
+  private async initializeCursor(
+    request: CursorAdvanceRequest,
+  ): Promise<CursorState> {
+    // The first advance must land on the deployment floor or the block immediately
+    // after it. This prevents a writer from skipping the deployment floor.
+    if (request.targetHeight !== request.deploymentBlock + 1) {
+      throw new BadImplementationException(
+        `Initial cursor advance must be deployment floor + 1 (${request.deploymentBlock + 1}), received ${request.targetHeight}`,
+      );
+    }
+    if (request.finalizedHead < request.targetHeight) {
+      throw new BadImplementationException(
+        `Finalized head ${request.finalizedHead} cannot be below target height ${request.targetHeight}`,
+      );
+    }
+
+    const initialState: CursorState = {
+      height: request.targetHeight,
+      blockHash: request.targetBlockHash,
+      finalizedHead: request.finalizedHead,
+      deploymentBlock: request.deploymentBlock,
+      chainid: request.chainId,
+      releaseId: request.releaseId,
+      projectionId: request.projectionId,
+      artifactChecksum: request.artifactChecksum,
+      checkpointId: request.checkpointId,
+      checkpointHash: request.checkpointHash,
+      updatedAt: new Date(),
+      rollbackGeneration: 0,
+    };
+
+    const committed = await this.stateService.compareAndSwapCursorState(
+      {
+        chainId: request.chainId,
+        releaseId: request.releaseId,
+        projectionId: request.projectionId,
+      },
+      null,
+      initialState,
+    );
+
+    if (!committed) {
+      throw new ConflictException(
+        `Concurrent cursor initialization detected for ${request.chainId}::${request.releaseId}::${request.projectionId}; compare-and-swap rejected`,
+      );
+    }
+
+    this.logger.log(
+      `Cursor initialized for ${request.chainId}::${request.releaseId}::${request.projectionId} at height ${initialState.height}`,
+    );
+    return initialState;
+  }
+
+  private assertRequestShape(request: CursorAdvanceRequest): void {
+    this.assertNonEmptyString(request.chainId, 'chainId');
+    this.assertNonEmptyString(request.releaseId, 'releaseId');
+    this.assertNonEmptyString(request.projectionId, 'projectionId');
+    this.assertNonEmptyString(request.artifactChecksum, 'artifactChecksum');
+    this.assertNonEmptyString(request.targetBlockHash, 'targetBlockHash');
+    this.assertNonEmptyString(request.checkpointId, 'checkpointId');
+    this.assertNonEmptyString(request.checkpointHash, 'checkpointHash');
+    this.assertNonNegativeInteger(request.deploymentBlock, 'deploymentBlock');
+    this.assertPositiveInteger(request.targetHeight, 'targetHeight');
+    this.assertNonNegativeInteger(request.finalizedHead, 'finalizedHead');
+  }
+
+  private assertRollbackRequestShape(request: CursorRollbackRequest): void {
+    this.assertNonEmptyString(request.chainId, 'chainId');
+    this.assertNonEmptyString(request.releaseId, 'releaseId');
+    this.assertNonEmptyString(request.projectionId, 'projectionId');
+    this.assertNonEmptyString(request.artifactChecksum, 'artifactChecksum');
+    this.assertNonEmptyString(request.targetBlockHash, 'targetBlockHash');
+    this.assertNonEmptyString(request.authorizationId, 'authorizationId');
+    this.assertNonEmptyString(request.reason, 'reason');
+    this.assertPositiveInteger(request.targetHeight, 'targetHeight');
+  }
+
+  private assertBindingMatches(
+    current: CursorState,
+    request: Pick<
+      CursorAdvanceRequest,
+      'chainId' | 'releaseId' | 'projectionId' | 'artifactChecksum'
+    >,
+  ): void {
+    if (current.chainid !== request.chainId) {
+      throw new ForbiddenException(
+        `Cursor chain binding mismatch: stored ${current.chainid}, requested ${request.chainId}`,
+      );
+    }
+    if (current.releaseId !== request.releaseId) {
+      throw new ForbiddenException(
+        `Cursor release binding mismatch: stored ${current.releaseId}, requested ${request.releaseId}`,
+      );
+    }
+    if (current.projectionId !== request.projectionId) {
+      throw new ForbiddenException(
+        `Cursor projection binding mismatch: stored ${current.projectionId}, requested ${request.projectionId}`,
+      );
+    }
+    if (current.artifactChecksum !== request.artifactChecksum) {
+      throw new ForbiddenException(
+        `Cursor artifact checksum mismatch: stored ${current.artifactChecksum}, requested ${request.artifactChecksum}`,
+      );
+    }
+  }
+
+  private assertNonEmptyString(value: unknown, field: string): void {
+    if (typeof value !== 'string' || value.trim().length === 0) {
+      throw new BadImplementationException(`${field} must be a non-empty string`);
+    }
+  }
+
+  private assertNonNegativeInteger(value: unknown, field: string): void {
+    if (!Number.isInteger(value) || (value as number) < 0) {
+      throw new BadImplementationException(
+        `${field} must be a non-negative integer`,
+      );
+    }
+  }
+
+  private assertPositiveInteger(value: unknown, field: string): void {
+    if (!Number.isInteger(value) || (value as number) < 1) {
+      throw new BadImplementationException(`${field} must be a positive integer`);
+    }
   }
 
   /**

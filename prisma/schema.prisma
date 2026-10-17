@@ -291,13 +291,25 @@ model BlockCursor {
   finalizedHeight BigInt @default(0)
   finalizedHash   String @default("")
 
+  // Monotonic CAS guard (PREWAVE-BE-038): the release/projection this cursor
+  // belongs to, plus the deployment floor and checkpoint provenance. A writer
+  // may only advance the cursor when its (releaseId, projection) matches and
+  // its height is strictly greater than processedHeight.
+  releaseId       String @default("")
+  projection      String @default("")
+  deploymentBlock BigInt @default(0)
+  artifactChecksum String @default("")
+  artifactChecksum String @default("")
+  checkpointSource String @default("")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   ancestors BlockCursorAncestor[]
 
-  @@unique([chainId, source])
+  @@unique([chainId, source, releaseId, projection])
   @@index([chainId])
+  @@index([chainId, releaseId, projection])
 }
 
 model BlockCursorAncestor {
@@ -312,11 +324,15 @@ model BlockCursorAncestor {
   confirmation String    @default("observed")
   // False once this height is known to belong to an orphaned branch
   isCanonical Boolean   @default(true)
+  // Provenance of the checkpoint that produced this ancestor row.
+  releaseId       String @default("")
+  artifactChecksum String @default("")
 
   createdAt DateTime @default(now())
 
   @@unique([cursorId, height, hash])
   @@index([cursorId, isCanonical])
+  @@index([cursorId, releaseId])
 }
 
 // ---------------------------------------------------------------------------
@@ -342,7 +358,7 @@ model ChainEvent {
   // JSON-encoded RawChainLog.rawArgs
   rawArgs         String
 
-ingestedAt DateTime @default(now())
+  ingestedAt DateTime @default(now())
 
   @@unique([chainId, blockHash, txHash, logIndex])
   @@index([chainId, txHash, logIndex])
