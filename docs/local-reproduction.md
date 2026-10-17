@@ -13,7 +13,7 @@ npm run type-check
 
 ### 2. Linting
 ```bash
-npm run lint
+npx eslint "{src,apps,libs,test}/**/*.ts"
 ```
 
 ### 3. Unit & Integration Tests with Coverage

@@ -358,10 +358,10 @@ describe('Claim Creation (Integration)', () => {
 
 ```bash
 # Enable TypeORM logging
-NODE_DEBUG=typeorm:* npm run start:dev
+NODE_DEBUG=typeorm:* npx nest start --watch
 
 # Enable component logging
-DEBUG=truthbounty:* npm run start:dev
+DEBUG=truthbounty:* npx nest start --watch
 ```
 
 ### Check Component Health
@@ -395,11 +395,11 @@ sqlite3 database.sqlite "SELECT * FROM audit_logs WHERE correlationId='req-123-4
 
 ## 📚 Additional Resources
 
-- **[Architecture Overview](../../ARCHITECTURE.md)** - System design & boundaries
-- **[API Reference](../../docs/API_REFERENCE.md)** - Endpoint documentation
-- **[Database Schema](../../prisma/schema.prisma)** - Data model
-- **[Audit Implementation](../../AUDIT_IMPLEMENTATION.md)** - Audit system details
-- **[Security Guide](../../SECURITY.md)** - Security best practices
+- **[Architecture Overview](../ARCHITECTURE.md)** - System design & boundaries
+- **[API Reference](../docs/API_REFERENCE.md)** - Endpoint documentation
+- **[Database Schema](../prisma/schema.prisma)** - Data model
+- **[Audit Implementation](../AUDIT_IMPLEMENTATION.md)** - Audit system details
+- **[Security Guide](../SECURITY.md)** - Security best practices
 
 ---
 
@@ -444,7 +444,7 @@ sqlite3 database.sqlite "SELECT * FROM audit_logs WHERE correlationId='req-123-4
 1. **Quick question?** → Check [COMPONENTS_QUICK_REFERENCE.md](./COMPONENTS_QUICK_REFERENCE.md)
 2. **Deep dive needed?** → Read [COMPONENTS.md](./COMPONENTS.md)
 3. **Code example?** → Search `src/{component}/**.spec.ts`
-4. **Architecture question?** → Review [ARCHITECTURE.md](../../ARCHITECTURE.md)
+4. **Architecture question?** → Review [ARCHITECTURE.md](../ARCHITECTURE.md)
 
 ### Contributing Documentation
 
@@ -477,6 +477,6 @@ sqlite3 database.sqlite "SELECT * FROM audit_logs WHERE correlationId='req-123-4
 
 - 📖 [Full Component Documentation](./COMPONENTS.md)
 - ⚡ [Quick Reference Guide](./COMPONENTS_QUICK_REFERENCE.md)
-- 🏗️ [Architecture Overview](../../ARCHITECTURE.md)
-- 📊 [API Documentation](../../docs/API_REFERENCE.md)
-- 🔐 [Security Guide](../../SECURITY.md)
+- 🏗️ [Architecture Overview](../ARCHITECTURE.md)
+- 📊 [API Documentation](../docs/API_REFERENCE.md)
+- 🔐 [Security Guide](../SECURITY.md)

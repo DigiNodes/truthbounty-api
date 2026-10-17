@@ -364,7 +364,7 @@ versionCompatibility.logPinnedRelease(
 
 ## References
 
-- [ARCHITECTURE.md](./ARCHITECTURE.md) - System architecture
+- [ARCHITECTURE.md](../ARCHITECTURE.md) - System architecture
 - [API_REFERENCE.md](./API_REFERENCE.md) - API endpoints
 - [DEPLOYMENT.md](./DEPLOYMENT.md) - Deployment procedures
 - Post-Wave-9 Production Readiness Audit

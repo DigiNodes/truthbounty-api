@@ -256,7 +256,7 @@ npm run typeorm migration:run
 
 ### 2. Start Application
 ```bash
-npm run start
+npx nest start
 ```
 
 ### 3. Test Audit Logging

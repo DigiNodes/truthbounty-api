@@ -108,8 +108,8 @@ async function seed() {
         userId: user1.id,
       },
       {
-        address: 'GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
-        chain: 'stellar',
+        address: '0x1234567890123456789012345678901234567891',
+        chain: 'optimism',
         userId: user1.id,
       },
     ]);

@@ -23,7 +23,7 @@ The TruthBounty Backend Profiling Architecture relies on Node.js `AsyncLocalStor
 │  Database    │             │    Redis     │             │  Blockchain  │
 │  Profiler    │             │   Profiler   │             │   Profiler   │
 │ (TypeORM/    │             │  (Cache Ops  │             │ (Ethers/     │
-│  Prisma)     │             │   Hit/Miss)  │             │  Soroban)    │
+│  Prisma)     │             │   Hit/Miss)  │             │  Optimism)   │
 └──────────────┘             └──────────────┘             └──────────────┘
         │                           │                            │
         └───────────────────────────┴────────────────────────────┘

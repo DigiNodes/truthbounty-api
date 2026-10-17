@@ -1,7 +1,7 @@
 # 🔍 TruthBounty API
 
 **Decentralized News Verification Infrastructure**  
-*An open-source public good for incentivizing truth across Ethereum and Stellar ecosystems*
+*An open-source public good for incentivizing truth on Ethereum and Optimism*
 
 
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -26,7 +26,7 @@ By aligning incentives with truth, TruthBounty enables communities to collective
 
 ---
 
-## 🌱 Ecosystem Alignment (Ethereum, Stellar & Public Goods)
+## 🌱 Ecosystem Alignment (Ethereum, Optimism & Public Goods)
 
 TruthBounty is intentionally built within the **Ethereum ecosystem** and aligned with open-source public-good values:
 
@@ -46,28 +46,18 @@ This API is designed to be **forkable, composable, and reusable** by:
 
 ---
 
-## 🌟 Stellar Ecosystem Alignment (Planned & Compatible)
+## 🔗 Runtime Authority
 
-TruthBounty is designed as a **chain-agnostic verification protocol**, with first-class compatibility for ecosystems that prioritize **low-cost transactions, public goods, and global accessibility** — making **Stellar a natural extension target**.
+TruthBounty's runtime authority is **Optimism/EVM**. Deployed Optimism contracts and finalized canonical events are the source of protocol truth. This API indexes, projects and serves them.
 
-### Why Stellar?
+- **Chain:** Optimism Mainnet (chain ID 10) and Optimism Sepolia (chain ID 11155420)
+- **Persistence:** PostgreSQL via TypeORM. SQLite is a local development and test fallback only.
+- **Deployment and release manifest:** [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
+- **Protocol and authorization boundaries:** [docs/API_AUTHORIZATION_MATRIX.md](docs/API_AUTHORIZATION_MATRIX.md)
+- **Contract artifact routing:** [docs/V2_ARTIFACT_ROUTING.md](docs/V2_ARTIFACT_ROUTING.md)
+- **Legacy persistence inventory:** [docs/PRISMA_INVENTORY.md](docs/PRISMA_INVENTORY.md)
 
-- **Ultra-low fees** enable high-frequency verification without economic friction  
-- **Global accessibility** aligns with TruthBounty’s mission to fight misinformation worldwide  
-- **Soroban smart contracts** are well-suited for:
-  - Reward distribution
-  - Reputation state updates
-  - Verifier staking logic  
-- **Stellar’s public-good focus** mirrors TruthBounty’s commitment to open infrastructure
-
-### Planned Stellar Integrations
-
-- Optional reward settlement on Stellar for micro-incentives  
-- Cross-chain verification proofs (Ethereum ↔ Stellar)  
-- Soroban-based reputation and reward modules  
-- Support for Stellar-native wallets for verifier onboarding  
-
-TruthBounty treats **blockchains as infrastructure, not lock-in**, enabling communities to verify truth wherever participation is most accessible.
+Stellar appears in this repository only as the Drips Wave funding program that coordinates contributions. It is not a runtime, wallet, settlement or deployment target.
 
 ---
 
@@ -139,12 +129,12 @@ TruthBounty treats **truth as infrastructure**, not opinion.
 | Docker | Containerization |
 | GitHub Actions | CI/CD |
 
-### Multi-Chain Support
+### Runtime Chain
 
 | Network | Role |
 |-------|-----|
-| Ethereum / Optimism | Primary reward settlement |
-| Stellar (planned) | Low-cost verification & micro-rewards |
+| Optimism (chain ID 10; Sepolia 11155420) | Only runtime and settlement chain |
+| Optimism (chain ID 10, Sepolia 11155420) | Only runtime and settlement chain |
 
 ---
 
@@ -152,7 +142,7 @@ TruthBounty treats **truth as infrastructure**, not opinion.
 
 ### Prerequisites
 
-- Node.js v18+
+- Node.js 20 LTS and npm 10 (see docs/DEPLOYMENT.md)
 - PostgreSQL 14+
 - Redis 6+
 - Git
@@ -177,7 +167,7 @@ cp .env.example .env
 # - Worldcoin App ID and Action ID
 
 # Start in development mode
-npm run start:dev
+npx nest start --watch
 
 # Access API documentation at http://localhost:3000/api
 ```
@@ -246,4 +236,4 @@ We take security seriously. If you discover any security vulnerabilities, please
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License.

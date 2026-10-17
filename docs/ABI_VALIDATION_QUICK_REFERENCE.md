@@ -236,5 +236,5 @@ node scripts/generate-manifest.js --network optimism-sepolia
 ## See Also
 
 - [ABI_VALIDATION_PRODUCTION_READINESS.md](./ABI_VALIDATION_PRODUCTION_READINESS.md) - Full documentation
-- [ARCHITECTURE.md](./ARCHITECTURE.md) - System architecture
+- [ARCHITECTURE.md](../ARCHITECTURE.md) - System architecture
 - [DEPLOYMENT.md](./DEPLOYMENT.md) - Deployment procedures
