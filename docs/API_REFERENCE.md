@@ -1,6 +1,5 @@
-# TruthBounty API Documentation
 
-## Overview
+# TruthBounty API Documentation
 
 This document provides a comprehensive reference for all API endpoints in the TruthBounty API. TruthBounty is a decentralized news verification infrastructure that allows users to submit claims, provide evidence, resolve disputes, and earn rewards.
 
@@ -49,7 +48,7 @@ Manage claims and their evidence.
 
 **Path Parameters:**
 - `:wallet` - Wallet address
-- `:id` - Claim ID
+-  `:id` - Claim ID
 - `:claimId` - Claim ID
 - `:evidenceId` - Evidence ID
 
@@ -93,7 +92,7 @@ Manage evidence with flagging capabilities.
 ```
 
 **Query Parameters:**
-- `admin` - Set to `true` to access flags (admin only)
+-  `admin` - Set to `true` to access flags (admin only)
 
 ---
 
@@ -117,7 +116,7 @@ Create and resolve disputes.
 
 **Query Parameters:**
 - `status` - Filter by dispute status
-- `trigger` - Filter by dispute trigger
+-  `trigger` - Filter by dispute trigger
 
 **Request Body (POST /disputes):**
 ```json
@@ -189,7 +188,7 @@ Worldcoin ID verification.
 
 **Path Parameters:**
 - `:userId` - User ID
-- `:nullifierHash` - Nullifier hash
+-  `:nullifierHash` - Nullifier hash
 
 **Request Body (POST /identity/worldcoin/verify):**
 ```json
@@ -364,7 +363,7 @@ User leaderboard rankings.
 | GET | `/leaderboard` | Get leaderboard rankings |
 
 **Query Parameters:**
-- `type` - Leaderboard type: `global` or `weekly` (default: `global`)
+-  `type` - Leaderboard type: `global` or `weekly` (default: `global`)
 
 ---
 
@@ -382,18 +381,65 @@ Audit log retrieval.
 | GET | `/audit/summary` | Get audit summary for an entity type |
 
 **Path Parameters:**
-- `:entityType` - Entity type (e.g., CLAIM, USER, DISPUTE)
-- `:entityId` - Entity ID
-- `:userId` - User ID
+-  `:entityType` - Entity type (e.g., CLAIM, USER, DISPUTE)
+-  `:entityId` - Entity ID
+-  `:userId` - User ID
 - `:actionType` - Action type (e.g., CLAIM_CREATED, EVIDENCE_ADDED)
 
 **Query Parameters:**
-- `entityType` - Filter by entity type
-- `actionType` - Filter by action type
-- `userId` - Filter by user ID
-- `limit` - Number of results (default: 100, max: 500)
-- `offset` - Offset for pagination
-- `days` - Number of days for summary (default: 7)
+-  `entityType` - Filter by entity type
+-  `actionType` - Filter by action type
+-  `userId` - Filter by user ID
+-  `limit` - Number of results (default: 100, max: 500)
+-  `offset` - Offset for pagination
+-  `days` - Number of days for summary (default: 7)
+
+---
+
+### Inbound Webhooks
+
+Signed inbound webhook delivery from external providers. All requests are verified before any state is committed.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/webhooks/:provider` | Receive a signed webhook delivery from a provider |
+
+**Path Parameters:**
+- `:provider` - Provider identifier. Unknown providers fail closed with `404`.
+
+**Request Headers:**
+- `Content-Type: application/json`
+-  `<provider-signature-header>` - Provider-specific signature header (see below)
+- `<provider-timestamp-header>` - Provider-specific timestamp header (see below)
+- `<provider-delivery-id-header>` - Provider-specific delivery ID header (see below)
+
+**Signed bytes and headers by provider:**
+
+| Provider | Signature header | Timestamp header | Delivery ID header | Signed bytes | Algorithm |
+|----------|------------------|------------------|------------------|--------------|----------|
+| `stellar` | `Stellar-Signature` | `Stellar-Timestamp` | `Stellar-Delivery-ID` | `<timestamp>.<raw-body-bytes>` | HMAC-SHA256 |
+| `coinbase` | `CB-Signature` | `CB-Timestamp` | `CB-Delivery-ID` | `<timestamp>.<raw-body-bytes>` | HMAC-SHA256 |
+| `github` | `X-Hub-Signature-256` | (No timestamp header; timestamp is taken from the signed payload) | `X-GitHub-Delivery` | `<raw-body-bytes>` | HMAC-SHA256 |
+
+**Signature verification rules:**
+- The signature is computed over the exact raw request body bytes as received. The body is not re-serialized, re-ordered, or normalized before verification.
+- Timestamps are validated against a provider-specific tolerance window (default 300 seconds). Deliveries outside the window are rejected with `401`.
+- Signatures are compared using a constant-time comparison. Mismatches are rejected with `401`.
+- Keys are rotated via a key set per provider. Verification succeeds if any active key in the set verifies the signature; keys are identified by a key ID prefix when present.
+-  Delivery IDs are unique per provider. A repeated delivery ID is rejected with `409` and no state change is committed (transactional replay rejection).
+- Request body size is limited to 1 MiB (configurable per provider). Oversized requests are rejected with `413`.
+-  Secrets are never included in responses or logs. Verification failures log only the provider, delivery ID, and a reason code.
+
+**Responses:**
+
+| Status | Description |
+|--------|-------------|
+| `200` | Delivery accepted and processed |
+| `400` | Malformed headers or payload |
+| `401` | Invalid signature, body mutation, or timestamp outside tolerance window |
+| `404` | Unknown provider (fails closed) |
+| `409` | Duplicate delivery ID (replay) |
+| `413` | Request body exceeds size limit |
 
 ---
 
@@ -451,49 +497,3 @@ Audit log retrieval.
 
 ---
 
-### AI Assistant
-
-Conversational AI assistance over protocol knowledge, with context retrieval, streaming, safety guardrails, and usage analytics. All routes require a JWT (`Authorization: Bearer <token>`), including GETs — conversations are private per user. Responses are wrapped in a standard envelope: `{ success, requestId, timestamp, data, error, meta? }`. Full request/response schemas are in Swagger under the `ai-assistant` tag. See [AI_ASSISTANT_ARCHITECTURE.md](./AI_ASSISTANT_ARCHITECTURE.md), [AI_ASSISTANT_OPERATIONS.md](./AI_ASSISTANT_OPERATIONS.md), and [AI_ASSISTANT_SECURITY.md](./AI_ASSISTANT_SECURITY.md) for details.
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/ai-assistant/conversations` | Create a conversation (`mode`: general / moderation_assist / admin_analytics, role-gated) |
-| GET | `/ai-assistant/conversations` | List the current user's conversations |
-| GET | `/ai-assistant/conversations/:id` | Get a single conversation |
-| GET | `/ai-assistant/conversations/:id/messages` | Get a conversation's message history |
-| PATCH | `/ai-assistant/conversations/:id/archive` | Archive a conversation |
-| DELETE | `/ai-assistant/conversations/:id` | Delete (soft) a conversation |
-| POST | `/ai-assistant/conversations/:id/messages` | Send a message, get a non-streaming assistant reply with citations |
-| POST | `/ai-assistant/conversations/:id/messages/stream` | Stage a message for a streamed reply; returns `messageId` + `streamUrl` |
-| GET | `/ai-assistant/conversations/:id/stream/:messageId` | Server-Sent Events stream (`citation`, `chunk`, `done`/`error` events) |
-| GET | `/ai-assistant/knowledge-base` | List knowledge-base documents used for context retrieval |
-| GET | `/ai-assistant/knowledge-base/:id` | Get a single knowledge-base document |
-| POST | `/ai-assistant/knowledge-base` | Create a document (moderator/admin only) |
-| PATCH | `/ai-assistant/knowledge-base/:id` | Update a document (moderator/admin only) |
-| DELETE | `/ai-assistant/knowledge-base/:id` | Deactivate a document (moderator/admin only) |
-| GET | `/ai-assistant/analytics/usage` | Usage analytics summary (admin only) |
-
-Rate limits: `POST .../messages` uses the `ai` throttle bucket; streaming (`.../messages/stream` and the SSE GET) uses the stricter `aiStream` bucket. Both are configurable via `RATE_LIMIT_AI_*`/`RATE_LIMIT_AI_STREAM_*` env vars.
-
----
-
-## Error Responses
-
-All endpoints may return the following error responses:
-
-| Status Code | Description |
-|-------------|-------------|
-| `400` | Bad Request - Invalid parameters |
-| `403` | Forbidden - Access denied |
-| `404` | Not Found - Resource not found |
-| `409` | Conflict - Resource already exists |
-| `500` | Internal Server Error |
-
----
-
-## Notes
-
-- This API uses JSON for request and response bodies.
-- Some endpoints are rate-limited using wallet-based throttling.
-- The API is built with NestJS and uses Prisma for database operations.
-- Blockchain events are indexed and tracked for audit purposes.

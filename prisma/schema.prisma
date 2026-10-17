@@ -444,3 +444,83 @@ model QuarantineAuditLog {
   @@index([targetType, targetId])
   @@index([actorId, createdAt])
 }
+
+// ----------------------------------------------------------------------------
+// PREWAVE-BE-058: Inbound webhook signature verification & replay protection.
+// Raw signed bytes are preserved so provider-specific HMAC/canonicalization
+// can be recomputed exactly. Delivery-ID uniqueness is enforced at the DB
+// level so replays are rejected transactionally. Secrets are never stored
+// here — only opaque key identifiers for rotation bookkeeping.
+// ----------------------------------------------------------------------------
+
+model WebhookProviderConfig {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Provider identifier, e.g. "github", "stripe", "stellar". Unknown
+  // providers must fail closed at the service layer.
+  provider String @unique
+
+  // Timestamp tolerance in seconds for replay-window enforcement.
+  timestampToleranceSeconds Int @default(300)
+
+  // Maximum accepted raw body size in bytes; oversized bodies are rejected
+  // before signature verification.
+  maxBodyBytes Int @default(1048576)
+
+  // Whether this provider is currently active. Inactive providers fail closed.
+  isActive Boolean @default(true)
+
+  // Opaque reference to the current signing secret in the secret store.
+  // Never the secret material itself.
+  activeSecretRef String?
+
+  // JSON array of opaque secret refs retained for rotation grace windows.
+  rotatedSecretRefs String @default("[]")
+
+  deliveries WebhookDelivery[]
+
+  @@index([isActive])
+}
+
+model WebhookDelivery {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  // Provider identifier (denormalized for fast lookup / audit).
+  provider String
+
+  // Provider-supplied delivery identifier; uniqueness per provider enforces
+  // transactional replay rejection.
+  deliveryId String
+
+  // Opaque secret ref used to verify this delivery (supports rotation audit).
+  secretRef String?
+
+  // Provider-supplied timestamp (epoch seconds or ISO, provider-specific).
+  // Stored as DateTime for tolerance checks; raw value preserved in headers.
+  eventTimestamp DateTime?
+
+  // SHA-256 of the raw signed body, for integrity and dedup diagnostics.
+  bodySha256 String
+
+  // Size of the raw body in bytes.
+  bodyBytes Int
+
+  // Verification outcome: "accepted" | "rejected". Rejected rows are kept
+  // for audit; accepted rows are the transactional replay guard.
+  status String @default("accepted")
+
+  // Non-sensitive rejection reason (e.g. "bad_signature", "stale_timestamp",
+  // "oversized_body", "unknown_provider"). Never contains secret material.
+  rejectionReason String?
+
+  // Server receipt time used for replay-window and tolerance auditing.
+  receivedAt DateTime @default(now())
+
+  @@unique([provider, deliveryId])
+  @@index([provider, createdAt])
+  @@index([status, createdAt])
+  @@index([provider, receivedAt])
+}
