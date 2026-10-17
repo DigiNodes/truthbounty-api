@@ -1,10 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { InjectMetric } from '@willsoto/nestjs-prometheus';
-import { Counter, Gauge, Histogram } from 'prom-client';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { DeliveryHistory } from '../entities/delivery-history.entity';
 import { OutboxEvent } from '../../outbox/entities/outbox-event.entity';
+import { MetricsService } from '../../metrics/metrics.service';
+import {
+  recordNotificationSent,
+  recordNotificationDelivered,
+  recordNotificationFailed,
+  recordNotificationRetryAttempt,
+} from '../metrics/notification-metrics.registry';
 
 /**
  * NotificationMetricsService
@@ -27,26 +32,15 @@ export class NotificationMetricsService {
     private deliveryHistoryRepository: Repository<DeliveryHistory>,
     @InjectRepository(OutboxEvent)
     private outboxRepository: Repository<OutboxEvent>,
-    // Prometheus metrics - will be injected if prometheus is configured
-    // Otherwise, these will be no-ops
-  ) {
-    this.initializeMetrics();
-  }
-
-  private initializeMetrics(): void {
-    // Metrics will be registered via decorators in module
-  }
+    private readonly metricsService: MetricsService,
+  ) {}
 
   /**
    * Record notification sent
    */
-  recordNotificationSent(
-    eventType: string,
-    channel: string,
-    userId?: string,
-  ): void {
+  recordNotificationSent(eventType: string, channel: string): void {
     try {
-      // Counter: notifications_sent_total
+      recordNotificationSent({ channel, eventType });
       this.logger.debug(
         `Metric: notification sent (${eventType}, ${channel})`,
       );
@@ -64,8 +58,7 @@ export class NotificationMetricsService {
     latencyMs: number,
   ): void {
     try {
-      // Counter: notifications_delivered_total
-      // Histogram: notification_delivery_duration_ms
+      recordNotificationDelivered({ channel, eventType, latencyMs });
       this.logger.debug(
         `Metric: notification delivered (${eventType}, ${channel}, ${latencyMs}ms)`,
       );
@@ -83,7 +76,7 @@ export class NotificationMetricsService {
     reason: string,
   ): void {
     try {
-      // Counter: notifications_failed_total
+      recordNotificationFailed({ channel, eventType, reason });
       this.logger.debug(
         `Metric: notification failed (${eventType}, ${channel}, ${reason})`,
       );
@@ -97,7 +90,7 @@ export class NotificationMetricsService {
    */
   recordRetryAttempt(eventType: string, channel: string): void {
     try {
-      // Counter: notifications_retried_total
+      recordNotificationRetryAttempt({ channel, eventType });
       this.logger.debug(
         `Metric: notification retried (${eventType}, ${channel})`,
       );
@@ -111,7 +104,7 @@ export class NotificationMetricsService {
    */
   recordOutboxDispatched(eventType: string): void {
     try {
-      // Counter: outbox_events_dispatched_total
+      this.metricsService.incrementCounter('outbox_events_dispatched_total', 1);
       this.logger.debug(`Metric: outbox event dispatched (${eventType})`);
     } catch (error) {
       this.logger.warn(`Failed to record metric: ${error.message}`);
@@ -123,7 +116,10 @@ export class NotificationMetricsService {
    */
   recordOutboxDeadLettered(eventType: string): void {
     try {
-      // Counter: outbox_events_dead_lettered_total
+      this.metricsService.incrementCounter(
+        'outbox_events_dead_lettered_total',
+        1,
+      );
       this.logger.debug(
         `Metric: outbox event dead-lettered (${eventType})`,
       );

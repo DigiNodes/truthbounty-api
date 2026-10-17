@@ -8,6 +8,7 @@ import { HttpModule } from '@nestjs/axios';
 import { RedisModule } from '../redis/redis.module';
 import { OutboxModule } from '../outbox/outbox.module';
 import { AuthModule } from '../auth/auth.module';
+import { MetricsModule } from '../metrics/metrics.module';
 
 // Entities
 import { Notification } from './entities/notification.entity';
@@ -103,6 +104,7 @@ import { NotificationsService } from './services/notifications.service';
     RedisModule,
     OutboxModule,
     AuthModule,
+    MetricsModule,
   ],
 
   controllers: [

@@ -16,6 +16,30 @@ Users define their notification preferences (`NotificationPreference` entity):
 - **Categories**: `CLAIM`, `VERIFICATION`, `DISPUTEa, `GOVERNANCE`, `REWARD`, etc.
 - **Quiet Hours & Digest Mode**: Settings stored for intelligent delivery windows.
 
+#### Quiet-Hours Timezone Handling
+
+Quiet hours are evaluated as wall-clock `HH:mm` windows in the user's stored
+IANA timezone using the platform's built-in `Intl.DateTimeFormat` — not
+`moment-timezone`, which this service no longer depends on:
+
+- **Zero new runtime dependencies.** Node.js ships full ICU data, so
+  `Intl.DateTimeFormat` resolves any IANA zone with no additional package,
+  keeping the install graph deterministic (see the install-determinism work
+  tracked by #584/#608).
+- **Maintained implementation.** moment is in maintenance mode; the Intl API
+  is maintained by the Node.js project and tracks IANA releases with the
+  runtime.
+- **Deterministic under DST.** Wall-clock minutes are derived per instant from
+  the zone database, so spring-forward and fall-back transitions evaluate
+  consistently (see the DST cases in `preference-enforcer.service.spec.ts`).
+
+Boundary rule (minute granularity): a same-day window `[start, end]` is
+inclusive of both boundary minutes; an overnight window (start > end) covers
+`[start, 24:00) ∪ [00:00, end)`. An invalid timezone falls back to UTC with a
+warning; malformed `HH:mm` values evaluate as not-quiet so delivery is never
+blocked by a timing error. The canonical preference-level boundary rules are
+tracked separately by #616.
+
 ### 3. Delivery Tracking
 The `Notification` entity tracks the lifecycle of every generated event:
 - `QUEUED`, `DELIVERED`, `FAILED`, `READ`, `DISMISSED`
@@ -26,6 +50,17 @@ Accessible via `GET /notifications/metrics` to expose:
 - Delivery success rate
 - Total processed notifications
 - Queued / Failed events
+
+Prometheus series are emitted on the shared `GET /metrics` endpoint via
+`prom-client` (no separate metrics library): `notifications_sent_total`,
+`notifications_delivered_total`, `notifications_failed_total`,
+`notifications_retried_total` (labels: `channel`, `event_type`, plus `reason`
+on failures), and `notification_delivery_duration_seconds` (label: `channel`).
+Labels are constrained to closed allow-lists — channel and event type come
+from their canonical enums, and free-text failure reasons are normalized to a
+fixed taxonomy. No user, wallet, email, claim, or secret value ever becomes a
+label. Metrics can be disabled only through the explicit `METRICS_ENABLED`
+mode (default enabled).
 
 ## Event Type Templates
 

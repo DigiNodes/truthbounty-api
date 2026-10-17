@@ -110,6 +110,24 @@ curl -H "Authorization: Bearer wrong_token" http://localhost:3000/metrics
 # Should return: {"statusCode": 401, "message": "Invalid metrics token"}
 ```
 
+## Explicit Disable Mode (`METRICS_ENABLED`)
+
+Authentication (`METRICS_TOKEN`) and enablement are separate controls:
+
+- `METRICS_ENABLED` (default: enabled) is the **only** supported way to turn
+  metrics off. Only the exact value `false` (case-insensitive) disables them:
+  `GET /metrics` then returns `404 Not Found`, and notification metric
+  recording becomes a no-op. This satisfies the "explicit supported mode"
+  requirement from PREWAVE-BE-023 — a missing dependency or silent misconfig
+  can no longer leave metrics half-enabled.
+- `METRICS_TOKEN` continues to authenticate scrapers while metrics are
+  enabled; it does not disable the endpoint.
+
+```bash
+# Disable metrics entirely
+METRICS_ENABLED=false
+```
+
 ## Alternative: IP-Based Restriction
 
 For deployment environments that support it, you can also restrict access by IP address at the network level (e.g., using nginx, AWS Security Groups, or Kubernetes Network Policies) in addition to token-based authentication.

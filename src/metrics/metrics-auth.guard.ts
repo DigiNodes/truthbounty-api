@@ -2,16 +2,24 @@ import {
   Injectable,
   CanActivate,
   ExecutionContext,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
+import { isMetricsExplicitlyDisabled } from './metrics-enabled';
 
 @Injectable()
 export class MetricsAuthGuard implements CanActivate {
   constructor(private readonly configService: ConfigService) {}
 
   canActivate(context: ExecutionContext): boolean {
+    const metricsEnabled = this.configService.get<string>('METRICS_ENABLED');
+
+    if (isMetricsExplicitlyDisabled(metricsEnabled)) {
+      throw new NotFoundException('Not Found');
+    }
+
     const request = context.switchToHttp().getRequest<Request>();
     const metricsToken = this.configService.get<string>('METRICS_TOKEN');
 
