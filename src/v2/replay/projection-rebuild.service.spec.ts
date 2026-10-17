@@ -30,8 +30,8 @@ class MemoryProjector implements ProjectorAdapter {
   name = 'test-projector';
   rows: CanonicalEventLike[] = [];
   async apply(event: CanonicalEventLike) {
-    const key = `\( {event.txHash}: \){event.logIndex}`;
-    if (this.rows.some((r) => `\( {r.txHash}: \){r.logIndex}` === key)) {
+    const key = `${event.txHash}:${event.logIndex}`;
+    if (this.rows.some((r) => `${r.txHash}:${r.logIndex}` === key)) {
       return 'skipped' as const;
     }
     this.rows.push(event);
@@ -111,6 +111,7 @@ describe('ProjectionRebuildService (#597)', () => {
       binding,
       targetSchema: 'replay_shadow',
       batchSize: 1,
+      maxBatches: 1,
     });
     expect(partial.checkpoint?.lastEventId).toBe('1');
 

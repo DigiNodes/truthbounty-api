@@ -3,6 +3,7 @@ import { digestProjector } from './projection-digest';
 import {
   CanonicalEventLike,
   ProjectorAdapter,
+  ProjectionDigest,
   RebuildMode,
   ReplayBinding,
   ReplayCheckpoint,
@@ -18,6 +19,7 @@ export interface RebuildOptions {
   /** Isolated target label; production names are rejected unless allowed. */
   targetSchema: string;
   batchSize?: number;
+  maxBatches?: number | null;
   /** Required for cutover into a protected schema. */
   confirmCutover?: boolean;
   /** Existing checkpoint for resume. */
@@ -125,9 +127,18 @@ export class ProjectionRebuildService {
     let eventsRead = 0;
     let eventsApplied = 0;
     let eventsSkipped = 0;
+    let batchesProcessed = 0;
 
     // Bounded batches until source returns fewer than batchSize
     for (;;) {
+      if (
+        options.maxBatches !== undefined &&
+        options.maxBatches !== null &&
+        batchesProcessed >= options.maxBatches
+      ) {
+        break;
+      }
+
       let batch: CanonicalEventLike[];
       try {
         batch = await this.eventSource.readFrom(
@@ -155,7 +166,7 @@ export class ProjectionRebuildService {
             eventsApplied,
             eventsSkipped,
             checkpoint,
-            digests: await this.computeDigests(),
+            digests: await this.computeDigests(options),
             digestsMatch: false,
             cutoverApplied: false,
             errors,
@@ -190,10 +201,19 @@ export class ProjectionRebuildService {
         };
       }
 
+      batchesProcessed += 1;
+      if (
+        options.maxBatches !== undefined &&
+        options.maxBatches !== null &&
+        batchesProcessed >= options.maxBatches
+      ) {
+        break;
+      }
+
       if (batch.length < batchSize) break;
     }
 
-    const digests = await this.computeDigests();
+    const digests = await this.computeDigests(options);
     let digestsMatch: boolean | null = null;
     let cutoverApplied = false;
 
@@ -248,10 +268,20 @@ export class ProjectionRebuildService {
     return n === 'public' || n === 'production' || n === 'prod';
   }
 
-  private async computeDigests() {
-    const out = [];
+  private async computeDigests(
+    options?: RebuildOptions,
+  ): Promise<ProjectionDigest[]> {
+    const out: ProjectionDigest[] = [];
     for (const p of this.projectors) {
-      out.push(await digestProjector(p.name, await p.snapshot()));
+      out.push(
+        await digestProjector(p.name, await p.snapshot(), {
+          schema: options?.targetSchema,
+          releaseId: options?.binding?.releaseId,
+          chainId: options?.binding?.chainId,
+          deploymentBlock: options?.binding?.deploymentBlock,
+          artifactChecksum: options?.binding?.artifactChecksum,
+        }),
+      );
     }
     return out;
   }

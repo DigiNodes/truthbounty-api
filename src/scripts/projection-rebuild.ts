@@ -31,13 +31,32 @@ async function main() {
     [],
   );
 
+  let expectedDigests: { projector: string; digest: string; rowCount: number }[] | undefined;
+  const expectedFile = arg('expectedDigestsFile') || arg('expected-digests');
+  if (expectedFile) {
+    const fs = await import('fs');
+    const path = await import('path');
+    const raw = fs.readFileSync(path.resolve(process.cwd(), expectedFile), 'utf8');
+    const parsed = JSON.parse(raw);
+    expectedDigests = Array.isArray(parsed)
+      ? parsed
+      : (parsed as { digests?: { projector: string; digest: string; rowCount: number }[] }).digests;
+  }
+
+  const runMode = mode === 'compare' ? 'verify' : mode;
+
   const report = await service.run({
-    mode,
+    mode: runMode,
     binding,
     targetSchema: arg('targetSchema', 'replay_shadow')!,
     confirmCutover: process.argv.includes('--confirm-cutover'),
     rpcAvailable: !process.argv.includes('--rpc-down'),
+    expectedDigests,
   });
+
+  if (mode === 'compare') {
+    report.mode = 'compare';
+  }
 
   // Auditable report only (already secret-safe by construction).
   process.stdout.write(JSON.stringify(report, null, 2) + '\n');

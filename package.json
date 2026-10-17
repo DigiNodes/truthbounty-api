@@ -36,7 +36,9 @@
     "audit:verify": "ts-node src/scripts/audit-chain.ts verify",
     "audit:checkpoint": "ts-node src/scripts/audit-chain.ts checkpoint",
     "audit:export": "ts-node src/scripts/audit-chain.ts export",
-    "audit:corruption-report": "ts-node src/scripts/audit-chain.ts corruption-report"
+    "audit:corruption-report": "ts-node src/scripts/audit-chain.ts corruption-report",
+    "projection:rebuild": "ts-node src/scripts/projection-rebuild.ts",
+    "projection:compare": "ts-node src/scripts/projection-compare.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",
