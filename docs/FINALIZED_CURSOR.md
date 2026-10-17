@@ -1,6 +1,6 @@
 # Canonical Finalized-Block Ingestion Cursor (PREWAVE-BE-001)
 
-`src/indexer/finalized-cursor/` persists one monotonic cursor per
+```src/indexer/finalized-cursor/` persists one monotonic cursor per
 `(chain_id, release_id)` in `v2_finalized_cursors`
 (migration `1725000002000-CreateV2FinalizedCursors`).
 
@@ -33,17 +33,17 @@ Any call whose binding differs fails with `WRONG_RELEASE`.
 
 ## Readiness and metrics
 
-Once a binding is configured, `/health/ready` gains a critical
+Once a binding is configured,  `/health/ready` gains a critical
 `finalized_cursor` check that fails on `CURSOR_MISSING`, `WRONG_RELEASE`,
 `HEADS_NEVER_OBSERVED`, `HEADS_STALE` or `INDEX_LAG_EXCEEDED`.
 
 Prometheus gauges are labelled only by `chain_id`, `release_id` and a fixed
 `boundary` or `kind`:
 
-- `indexer_finalized_cursor_block{boundary="observed|safe|finalized|indexed"}`
-- `indexer_finalized_cursor_lag_blocks{kind="finality|index"}`
-- `indexer_finalized_cursor_head_age_seconds`
-- `indexer_finalized_cursor_ready`
+- "indexer_finalized_cursor_block" {boundary="observed|safe|finalized|indexed"}
+- "indexer_finalized_cursor_lag_blocks" {kind="finality|index"}
+- "indexer_finalized_cursor_head_age_seconds"
+- "indexer_finalized_cursor_ready"
 
 ## Configuration
 
@@ -61,8 +61,8 @@ The binding is all-or-nothing; a partial binding fails startup.
 ## Tests
 
 ```bash
-npx jest finalized-cursor
-OP_SEPOLIA_RPC_URL=https://sepolia.optimism.io npx jest finalized-cursor.op-sepolia
+n pjest finalized-cursor
+OP_SEPOLIA_RPC_URL=https://sepolia.optimism.io n pjest finalized-cursor.op-sepolia
 ```
 
 The Optimism Sepolia integration test is skipped unless `OP_SEPOLIA_RPC_URL` is set.

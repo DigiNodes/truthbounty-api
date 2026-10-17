@@ -24,7 +24,23 @@ export class ProcessedEvent {
    * backwards compatibility with rows written before this column existed.
    */
   @Column({ name: 'payload', type: 'simple-json', nullable: true })
-  payload: Record<string, any> | null;
+  payload: Record<string, unknown> | null;
+
+  /**
+   * Monotonic cursor assigned at ingestion time. Used to build opaque resume
+   * tokens and to detect gaps/duplicates on WebSocket reconnect.
+   */
+  @Column({ name: 'cursor', type: 'bigint', nullable: true })
+  @Index()
+  cursor: number | null;
+
+  @Column({ name: 'chain_id', type: 'int', nullable: true })
+  @Index()
+  chainId: number | null;
+
+  @Column({ name: 'release_id', length: 100, nullable: true })
+  @Index()
+  releaseId: string | null;
 
   @Column({
     name: 'processed_at',

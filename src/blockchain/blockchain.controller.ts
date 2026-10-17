@@ -1,10 +1,18 @@
-import { Controller, Get, Post, Body, Param } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, Headers, HttpException, HttpStatus } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { EventIndexingService } from './event-indexing.service';
 import { ReconciliationService } from './reconciliation.service';
 import { BlockchainStateService } from './state.service';
 import { WeightedVoteResolutionService } from './weighted-vote-resolution.service';
 import { BlockInfo, ResolutionConfig, VerificationVote } from './types';
+import {
+  StreamEnvelope,
+  StreamEnvelopeVersion,
+  StreamResumeTokenPayload,
+  StreamBackfillResponse,
+  StreamReconciliationRequirement,
+} from './stream.types';
+import { StreamResumeService } from './stream-resume.service';
 
 @ApiTags('blockchain')
 @Controller('api/v1/blockchain')
@@ -14,6 +22,7 @@ export class BlockchainController {
     private reconciliation: ReconciliationService,
     private stateService: BlockchainStateService,
     private voteResolver: WeightedVoteResolutionService,
+    private streamResume: StreamResumeService,
   ) {}
 
   /**
@@ -205,6 +214,94 @@ export class BlockchainController {
   }
 
   /**
+   * Get the current stream envelope metadata and a fresh resume token.
+   * GET /api/v1/blockchain/streams/envelope
+   */
+  @Get('streams/envelope')
+  async getStreamEnvelope(): Promise<StreamEnvelope> {
+    return this.streamResume.getCurrentEnvelope();
+  }
+
+  /**
+   * Resume a stream from an opaque resume token.
+   * POST /api/v1/blockchain/streams/resume
+   */
+  @Post('streams/resume')
+  async resumeStream(
+    @Body() body: { resumeToken: string },
+  ): Promise<StreamBackfillResponse> {
+    if (!body || typeof body.resumeToken !== 'string' || body.resumeToken.length === 0) {
+      throw new HttpException(
+        {
+          error: 'invalid_resume_token',
+          message: 'resumeToken is required',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const result = await this.streamResume.resume(body.resumeToken);
+    if (!result.ok) {
+      throw new HttpException(result.body, result.status);
+    }
+    return result.body;
+  }
+
+  /**
+   * Bounded HTTP backfill from a cursor.
+   * GET /api/v1/blockchain/streams/backfill?cursor=...&limit=...
+   */
+  @Get('streams/backfill')
+  async backfillStream(
+    @Query('cursor') cursor: string,
+    @Query('limit') limit?: string,
+    @Headers('if-none-match') etag?: string,
+  ): Promise<StreamBackfillResponse> {
+    if (!cursor || cursor.length === 0) {
+      throw new HttpException(
+        { error: 'invalid_cursor', message: 'cursor is required' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const parsedLimit = limit === undefined ? undefined : Number(limit);
+    if (
+      parsedLimit !== undefined &&
+      (!Number.isFinite(parsedLimit) || parsedLimit <= 0)
+    ) {
+      throw new HttpException(
+        { error: 'invalid_limit', message: 'limit must be a positive integer' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const result = await this.streamResume.backfill(cursor, parsedLimit, etag);
+    if (!result.ok) {
+      throw new HttpException(result.body, result.status);
+    }
+    return result.body;
+  }
+
+  /**
+   * Decode a resume token for observability / client reconciliation.
+   * Tokens are opaque to clients but can be inspected to determine whether a
+   * canonical resync is required. No protected payload is returned.
+   * GET /api/v1/blockchain/streams/token/inspect?token=...
+   */
+  @Get('streams/token/inspect')
+  async inspectResumeToken(
+    @Query('token') token: string,
+  ): Promise<StreamReconciliationRequirement> {
+    if (!token || token.length === 0) {
+      throw new HttpException(
+        { error: 'invalid_resume_token', message: 'token is required' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    return this.streamResume.inspectToken(token);
+  }
+
+  /**
    * Helper method to generate test votes for simulation
    */
   private generateTestVotes(scenario: string): VerificationVote[] {
@@ -252,7 +349,7 @@ export class BlockchainController {
           {
             ...baseVote,
             userId: 'user2',
-            verdict: 'FALSE',
+            verdict: 'ALSE',
             userReputation: 70,
             stakeAmount: '100',
           },

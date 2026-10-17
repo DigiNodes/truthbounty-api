@@ -342,9 +342,116 @@ model ChainEvent {
   // JSON-encoded RawChainLog.rawArgs
   rawArgs         String
 
-ingestedAt DateTime @default(now())
+  ingestedAt DateTime @default(now())
 
   @@unique([chainId, blockHash, txHash, logIndex])
   @@index([chainId, txHash, logIndex])
   @@index([eventName, blockNumber])
+}
+
+// ---------------------------------------------------------------------------
+// PREWAVE-BE-008: Resumable WebSocket streams with backfill tokens.
+//
+// A StreamSession is opened by a client subscribing to a projection stream.
+// Each delivered envelope is persisted as a StreamEvent so that a reconnect
+// can be resumed from an opaque resume token. Resume tokens are stored
+// hashed (never the raw token) and are bound to chain/release/block/
+// projection version so that a wrong-release or wrong-chain resume fails
+// closed. Backfill is served from StreamEvent rows within a bounded window.
+//
+// Security: envelopes carry only routing metadata and a projection payload
+// reference — no secrets, authorization material, or protected rationale.
+// ---------------------------------------------------------------------------
+
+model StreamSession {
+  id String @id @default(uuid())
+
+  // Chain-derived binding — every session is pinned to a single chain,
+  // release, deployment block, and artifact checksum.
+  chainId          Int
+  releaseId        String
+  deploymentBlock  BigInt
+  artifactChecksum String
+
+  // Logical projection stream, e.g. "claims", "rewards"
+  projection       String
+  projectionVersion Int
+
+  // Opaque resume token, stored hashed. Raw token is only returned to client.
+  resumeTokenHash String @unique
+  // When the current resume token expires; expired tokens force bounded resync.
+  resumeTokenExpiresAt DateTime
+
+  // Last event successfully acknowledged by the client (cursor).
+  lastAckedEventId String?
+  lastAckedCursor  BigInt @default(0)
+
+  // Lifecycle: ACTIVE | CLOSED | EXPIRED | RESYNC_REQUIRED
+  status String @default("ACTIVE")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  events StreamEvent[]
+
+  @@index([chainId, releaseId, projection])
+  @@index([status, resumeTokenExpiresAt])
+  @@index([resumeTokenHash])
+}
+
+model StreamEvent {
+  id String @id @default(uuid())
+
+  sessionId String
+  session   StreamSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  // Monotonic per-session cursor used for gap/duplicate detection.
+  cursor BigInt
+
+  // Versioned envelope fields (see stream-envelope.types.ts).
+  envelopeVersion   Int
+  eventId           String
+  chainId           Int
+  releaseId         String
+  blockNumber       BigInt
+  blockHash         String
+  freshness         String // "observed" | "safe" | "finalized"
+  projectionVersion Int
+
+  // Reference to the canonical read-model row this envelope projects.
+  // The actual payload is resolved from the canonical read model on
+  // delivery — never stored inline here.
+  projectionRef String
+
+  // JSON-encoded routing metadata only (no protected payload).
+  metadata String @default("{}")
+
+  // Delivery state for backfill and idempotency.
+  deliveredAt DateTime?
+  createdAt   DateTime @default(now())
+
+  @@unique([sessionId, cursor])
+  @@unique([sessionId, eventId])
+  @@index([sessionId, cursor])
+  @@index([chainId, releaseId, blockNumber])
+}
+
+model StreamBackfillRequest {
+  id String @id @default(uuid())
+
+  sessionId String
+
+  // Bounded backfill window requested by the client.
+  fromCursor BigInt
+  toCursor   BigInt
+
+  // Outcome: PENDING | SERVED | REJECTED_GAP | REJECTED_EXPIRED | REJECTED_RELEASE
+  status String @default("PENDING")
+  reason String?
+
+  requestedAt DateTime @default(now())
+  servedAt    DateTime?
+
+  @@index([sessionId, requestedAt])
+  @@index([status])
 }

@@ -189,3 +189,135 @@ export interface ResolutionConfig {
   maxReputationShare: number; // Max % one user can contribute (0.0-1.0)
   tieThreshold: number; // Margin threshold for ties
 }
+
+/**
+ * Resumable WebSocket Stream Types (PREWAVE-BE-008)
+ *
+ * Versioned stream envelopes carry event IDs, cursors, chain/release binding,
+ * block metadata, freshness, and projection version so clients can reconcile
+ * against canonical read models and detect gaps, duplicates, expiry, and
+ * release rollovers. Envelopes expose no protected payload.
+ */
+
+/** Current envelope schema version. Bump on any breaking change. */
+export const STREAM_ENVELOPE_VERSION = 1 as const;
+export type StreamEnvelopeVersion = typeof STREAM_ENVELOPE_VERSION;
+
+/** Freshness class of the data carried by an envelope. */
+export type StreamFreshness = 'pending' | 'confirmed' | 'finalized' | 'orphaned';
+
+/**
+ * Chain and release binding for all chain-derived stream data.
+ */
+export interface StreamChainBinding {
+  /** EIP-155 chain ID (e.g. 11155420 for Optimism Sepolia). */
+  chainId: number;
+  /** Opaque release identifier for the deployment artifact set. */
+  releaseId: string;
+  /** Block number at which the release contracts were deployed. */
+  deploymentBlock: number;
+  /** Hex-encoded artifact checksum binding the release artifacts. */
+  artifactChecksum: string;
+}
+
+/**
+ * Opaque cursor position within the stream. Cursors are monotonically
+ * increasing within a chain/release binding.
+ */
+export interface StreamCursor {
+  /** Monotonically increasing sequence number within the binding. */
+  sequence: number;
+  /** Block number of the last delivered event. */
+  blockNumber: number;
+  /** Log index within the block (for deterministic ordering). */
+  logIndex: number;
+}
+
+/**
+ * Versioned stream envelope. Exposes only operational metadata and a
+ * public event reference — never protected payload, secrets, or authorization
+ * material.
+ */
+export interface StreamEnvelope {
+  /** Envelope schema version. */
+  version: StreamEnvelopeVersion;
+  /** Stable event ID derived from chain data (txHash:logIndex). */
+  eventId: string;
+  /** Cursor position of this event in the stream. */
+  cursor: StreamCursor;
+  /** Chain and release binding. */
+  binding: StreamChainBinding;
+  /** Block number of the event. */
+  blockNumber: number;
+  /** Block hash of the event (for reorg detection). */
+  blockHash: string;
+  /** Freshness class of the event. */
+  freshness: StreamFreshness;
+  /** Projection version the event was applied to. */
+  projectionVersion: number;
+  /** Public event type (e.g. 'ClaimCreated'). */
+  eventType: string;
+  /** ISO timestamp of envelope creation. */
+  emittedAt: string;
+}
+
+/**
+ * Opaque resume token issued to clients for reconnection. Tokens are
+ * bound to a chain/release binding and expire after a bounded window.
+ */
+export interface ResumeToken {
+  /** Opaque token string (never contains secrets). */
+  token: string;
+  /** Cursor to resume from. */
+  cursor: StreamCursor;
+  /** Binding the token was issued for. */
+  binding: StreamChainBinding;
+  /** ISO timestamp at which the token expires. */
+  expiresAt: string;
+}
+
+/** Reason a resume attempt was rejected. */
+export type ResumeRejectionReason =
+  | 'expired-token'
+  | 'release-changed'
+  | 'chain-changed'
+  | 'gap-detected'
+  | 'invalid-token';
+
+/**
+ * Result of a resume attempt. Fails closed: any anomaly forces a bounded
+ * canonical resync rather than silently continuing.
+ */
+export type ResumeResult =
+  | { ok: true; cursor: StreamCursor }
+  | { ok: false; reason: ResumeRejectionReason; resyncFrom: StreamCursor };
+
+/**
+ * Bounded backfill request for HTTP resync after a gap, expiry, or release
+ * rollover. Requests are clamped to a maximum count and must carry the
+ * binding to prevent cross-chain or cross-release contamination.
+ */
+export interface BackfillRequest {
+  /** Binding the request is scoped to. */
+  binding: StreamChainBinding;
+  /** Cursor to begin backfill from (exclusive). */
+  fromCursor: StreamCursor;
+  /** Maximum number of envelopes to return. */
+  limit: number;
+  /** ISO timestamp of request creation. */
+  requestedAt: string;
+}
+
+/** Bounded backfill response. */
+export interface BackfillResponse {
+  /** Binding the response is scoped to. */
+  binding: StreamChainBinding;
+  /** Envelopes in the backfill window. */
+  envelopes: StreamEnvelope[];
+  /** True when the backfill window is exhausted and a full resync is required. */
+  resyncRequired: boolean;
+  /** Reason for resync when resyncRequired is true. */
+  resyncReason?: ResumeRejectionReason;
+  /** Next resume token for continuation. */
+  nextResumeToken?: ResumeToken;
+}
