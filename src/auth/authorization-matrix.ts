@@ -151,3 +151,128 @@ export function isAppUserRole(value: unknown): value is AppUserRole {
     (APP_USER_ROLES as readonly string[]).includes(value)
   );
 }
+
+/**
+ * Dead-letter replay authorization contract (PREWAVE-BE-049).
+ *
+ * Replay is a privileged, auditable, idempotent operation. This section is the
+ * machine-readable source of truth for the replay capability boundary. It is
+ * intentionally fail-closed: any missing, stale, ambiguous, or unauthorized
+ * field denies the replay.
+ *
+ * DESIGN INVARIANTS
+ * ─────────────────
+ * • Replay is DENIED BY DEFAULT. Absence of an explicit grant is denial.
+ * • A replay MUST bind to the original message: original payload hash, chain ID,
+ *   release ID, deployment block, and artifact checksum.
+ * • Replay across release/schema incompatibility is refused.
+ * • One message cannot produce duplicate effects (idempotent replay).
+ * • Original and replay references are linked immutably via an audit record.
+ * • Operators can stop/resume bounded batches.
+ */
+
+/**
+ * Replay capability required to authorize a dead-letter replay.
+ */
+export const DEAD_LETTER_REPLAY_CAPABILITY = 'dead_letter:replay' as const;
+
+/**
+ * Bounds applied to a replay batch. Fail-closed when exceeded.
+ */
+export interface ReplayBounds {
+  /** Maximum number of messages that may be replayed in a single batch. */
+  readonly maxBatchSize: number;
+  /** Maximum number of messages per operator-initiated resume window. */
+  readonly maxResumeWindow: number;
+}
+
+/** Default, conservative replay bounds. */
+export const DEFAULT_REPLAY_BOUNDS: ReplayBounds = {
+  maxBatchSize: 100,
+  maxResumeWindow: 1000,
+} as const;
+
+/**
+ * Immutable binding of a replay request to chain-derived and release state.
+ */
+export interface ReplayBinding {
+  readonly chainId: number;
+  readonly releaseId: string;
+  readonly deploymentBlock: number;
+  readonly artifactChecksum: string;
+  readonly originalPayloadHash: string;
+}
+
+/**
+ * A replay request as submitted by an operator.
+ */
+export interface ReplayRequest {
+  readonly capability: string;
+  readonly reason: string;
+  readonly dryRun: boolean;
+  readonly bounds: ReplayBounds;
+  readonly binding: ReplayBinding;
+  readonly auditRecordId: string;
+}
+
+/**
+ * Result of evaluating a replay request. Fail-closed by construction.
+ */
+export type ReplayDecision =
+  | { readonly allowed: true; readonly dryRun: boolean }
+  | { readonly allowed: false; readonly code: ReplayDenialCode };
+
+/** Machine-readable denial reasons for replay. */
+export type ReplayDenialCode =
+  | 'UNAUTHORIZED'
+  | 'MISSING_CAPABILITY'
+  | 'MISSING_REASON'
+  | 'INVALID_BOUNDS'
+  | 'MISSING_AUDIT_RECORD'
+  | 'MISSING_PAYLOAD_HASH'
+  | 'STALE_RELEASE'
+  | 'SCHEMA_INCOMPATIBLE'
+  | 'DUPLICATE_REPLAY';
+
+/**
+ * Authorize a dead-letter replay. Denied by default; every field must be present
+ * and consistent with the current release/schema binding.
+ */
+export function authorizeDeadLetterReplay(
+  request: ReplayRequest,
+  current: ReplayBinding,
+  alreadyReplayed: boolean,
+): ReplayDecision {
+  if (request.capability !== DEAD_LETTER_REPLAY_CAPABILITY) {
+    return { allowed: false, code: 'MISSING_CAPABILITY' };
+  }
+  if (!request.reason || request.reason.trim().length === 0) {
+    return { allowed: false, code: 'MISSING_REASON' };
+  }
+  if (!request.auditRecordId) {
+    return { allowed: false, code: 'MISSING_AUDIT_RECORD' };
+  }
+  if (!request.binding.originalPayloadHash) {
+    return { allowed: false, code: 'MISSING_PAYLOAD_HASH' };
+  }
+  if (
+    request.bounds.maxBatchSize <= 0 ||
+    request.bounds.maxResumeWindow <= 0 ||
+    request.bounds.maxBatchSize > DEFAULT_REPLAY_BOUNDS.maxBatchSize ||
+    request.bounds.maxResumeWindow > DEFAULT_REPLAY_BOUNDS.maxResumeWindow
+  ) {
+    return { allowed: false, code: 'INVALID_BOUNDS' };
+  }
+  if (
+    request.binding.chainId !== current.chainId ||
+    request.binding.releaseId !== current.releaseId ||
+    request.binding.deploymentBlock !== current.deploymentBlock ||
+    request.binding.artifactChecksum !== current.artifactChecksum
+  ) {
+    return { allowed: false, code: 'STALE_RELEASE' };
+  }
+  if (alreadyReplayed) {
+    return { allowed: false, code: 'DUPLICATE_REPLAY' };
+  }
+  return { allowed: true, dryRun: request.dryRun };
+}

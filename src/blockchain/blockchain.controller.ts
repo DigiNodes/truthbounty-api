@@ -1,11 +1,30 @@
-import { Controller, Get, Post, Body, Param } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Headers } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { EventIndexingService } from './event-indexing.service';
 import { ReconciliationService } from './reconciliation.service';
 import { BlockchainStateService } from './state.service';
 import { WeightedVoteResolutionService } from './weighted-vote-resolution.service';
 import { ReadinessService } from './readiness.service';
-import { BlockInfo, ResolutionConfig, VerificationVote } from './types';
+import { DeadLetterReplayService } from './dead-letter-replay.service';
+import {
+  BlockInfo,
+  ResolutionConfig,
+  VerificationVote,
+  DeadLetterReplayRequest,
+  DeadLetterReplayResult,
+  DeadLetterBatchControlRequest,
+  DeadLetterBatchControlResult,
+} from './types';
+
+/**
+ * Request headers required for dead-letter replay authorization.
+ * The capability token is validated by the replay service against the
+ * configured protected capability and is never logged or echoed back.
+ */
+export interface ReplayAuthorizationHeaders {
+  'operator-id'?: string;
+  'replay-capability'?: string;
+}
 
 @ApiTags('blockchain')
 @Controller('api/v1/blockchain')
@@ -16,13 +35,14 @@ export class BlockchainController {
     private stateService: BlockchainStateService,
     private voteResolver: WeightedVoteResolutionService,
     private readinessService: ReadinessService,
+    private replayService: DeadLetterReplayService,
   ) {}
 
   /**
    * Process a new block and its events
    */
   @Post('blocks/process')
-  async processBlocd(
+  async processBlock(
     @Body()
     payload: {
       block: BlockInfo;
@@ -49,7 +69,7 @@ export class BlockchainController {
   /**
    * Get chain state
    */
-  @Det('chain/state')
+  @Get('chain/state')
   async getChainState() {
     return this.stateService.getChainState();
   }
@@ -73,7 +93,7 @@ export class BlockchainController {
   /**
    * Get all pending events
    */
-  @Det('events/pending')
+  @Get('events/pending')
   async getPendingEvents() {
     return this.stateService.getPendingEvents();
   }
@@ -81,7 +101,7 @@ export class BlockchainController {
   /**
    * Get all confirmed events
    */
-  @Det('events/confirmed')
+  @Get('events/confirmed')
   async getConfirmedEvents() {
     return this.eventIndexing.getConfirmedEvents();
   }
@@ -89,7 +109,7 @@ export class BlockchainController {
   /**
    * Get all orphaned events
    */
-  @Det('events/orphaned')
+  @Get('events/orphaned')
   async getOrphanedEvents() {
     return this.stateService.getOrphanedEvents();
   }
@@ -97,7 +117,7 @@ export class BlockchainController {
   /**
    * Get event by ID
    */
-  @Det('events/:eventId')
+  @Get('events/:eventId')
   async getEvent(@Param('eventId') eventId: string) {
     const event = await this.stateService.getEvent(eventId);
     if (!event) {
@@ -125,7 +145,7 @@ export class BlockchainController {
   /**
    * Verify state consistency
    */
-  @Det('state/verify')
+  @Get('state/verify')
   async verifyStateConsistency() {
     return this.reconciliation.verifyStateConsistency();
   }
@@ -133,7 +153,7 @@ export class BlockchainController {
   /**
    * Get events at a specific block
    */
-  @Det('blocks/:blockNumber/events')
+  @Get('blocks/:blockNumber/events')
   async getBlockEvents(@Param('blockNumber') blockNumber: number) {
     return this.stateService.getEventsByBlock(blockNumber);
   }
@@ -163,7 +183,7 @@ export class BlockchainController {
    * Get current resolution configuration
    * GET /api/v1/blockchain/config/resolution
    */
-  @Det('config/resolution')
+  @Get('config/resolution')
   async getResolutionConfig() {
     return this.voteResolver.getConfig();
   }
@@ -184,7 +204,7 @@ export class BlockchainController {
     } catch (error) {
       return {
         success: false,
-        error: error.message,
+        error: (error as Error).message,
       };
     }
   }
@@ -220,6 +240,86 @@ export class BlockchainController {
       votes: testVotes,
       resolution,
     };
+  }
+
+  /**
+   * Replay a single dead-letter message.
+   *
+   * Replay is denied by default: the caller must supply the protected
+   * capability header, an explicit reason, bounds, a dry-run flag, and the
+   * original payload hash. The service enforces release/schema compatibility,
+   * idempotency, and audit recording.
+   */
+  @Post('dead-letter/replay')
+  @ApiTags('dead-letter')
+  async replayDeadLetter(
+    @Body() request: DeadLetterReplayRequest,
+    @Headers() headers: ReplayAuthorizationHeaders,
+  ): Promise<DeadLetterReplayResult> {
+    return this.replayService.replaySingle(request, {
+      capability: headers['replay-capability'],
+      operatorId: headers['operator-id'],
+    });
+  }
+
+  /**
+   * Replay a bounded batch of dead-letter messages.
+   */
+  @Post('dead-letter/replay/batch')
+  @ApiTags('dead-letter')
+  async replayDeadLetterBatch(
+    @Body() request: DeadLetterBatchControlRequest,
+    @Headers() headers: ReplayAuthorizationHeaders,
+  ): Promise<DeadLetterBatchControlResult> {
+    return this.replayService.replayBatch(request, {
+      capability: headers['replay-capability'],
+      operatorId: headers['operator-id'],
+    });
+  }
+
+  /**
+   * Stop an in-flight bounded replay batch.
+   */
+  @Post('dead-letter/replay/batch/:replayId/stop')
+  @ApiTags('dead-letter')
+  async stopDeadLetterReplayBatch(
+    @Param('replayId') replayId: string,
+    @Headers() headers: ReplayAuthorizationHeaders,
+  ): Promise<DeadLetterBatchControlResult> {
+    return this.replayService.stopBatch(replayId, {
+      capability: headers['replay-capability'],
+      operatorId: headers['operator-id'],
+    });
+  }
+
+  /**
+   * Resume a stopped bounded replay batch.
+   */
+  @Post('dead-letter/replay/batch/:replayId/resume')
+  @ApiTags('dead-letter')
+  async resumeDeadLetterReplayBatch(
+    @Param('replayId') replayId: string,
+    @Headers() headers: ReplayAuthorizationHeaders,
+  ): Promise<DeadLetterBatchControlResult> {
+    return this.replayService.resumeBatch(replayId, {
+      capability: headers['replay-capability'],
+      operatorId: headers['operator-id'],
+    });
+  }
+
+  /**
+   * Get the immutable audit record for a replay (original -> replay linkage).
+   */
+  @Get('dead-letter/replay/:replayId/audit')
+  @ApiTags('dead-letter')
+  async getDeadLetterReplayAudit(
+    @Param('replayId') replayId: string,
+    @Headers() headers: ReplayAuthorizationHeaders,
+  ) {
+    return this.replayService.getAuditRecord(replayId, {
+      capability: headers['replay-capability'],
+      operatorId: headers['operator-id'],
+    });
   }
 
   /**

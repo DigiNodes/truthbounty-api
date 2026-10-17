@@ -181,7 +181,7 @@ model AnalyticsEvent {
   userId    String?
   data        Json?
   occurredAt  DateTime @default(now())
-  createdAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
 
   @@index([eventType, occurredAt])
   @@index([entityType, entityId])
@@ -232,9 +232,9 @@ model MonitoringMetric {
   @@index([name, recordedAt])
 }
 
-// ----------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 // Transactional Outbox (V2-BE-048)
-// ----------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 // OutboxEvent rows are written inside the same DB transaction as any
 // projection change. A background poller claims PENDING rows and relays
 // them to BullMQ, then marks them DISPATCHED.  The processor enforces
@@ -243,7 +243,7 @@ model MonitoringMetric {
 // Security: payload stores only non-sensitive routing metadata (aggregateId,
 // eventType, recipientIds). No private claim text, user PII, or settlement
 // data is persisted here.
-// ----------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 model OutboxEvent {
   id             String   @id @default(uuid())
   // Domain event type, e.g. "notification.send", "webhook.deliver"
@@ -254,7 +254,7 @@ model OutboxEvent {
   payload        String   // JSON-encoded OutboxEventPayload
   // Stable key used by the processor for exactly-once delivery
   idempotencyKey String   @unique
-  status         String   @default("PENDING") // PENDING | DISPATCHED | DEAD_LETTER
+  status         String   @default("PENDING") // PENDING | DISAPTCHED | DEAD_LETTER
   // BullMQ job id once dispatched (for observability)
   jobId          String?
   retryCount     Int      @default(0)
@@ -262,8 +262,8 @@ model OutboxEvent {
   lastError      String?
   scheduledAt    DateTime @default(now())
   processedAt    DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   @@index([status, scheduledAt])
   @@index([aggregateId])
@@ -271,12 +271,12 @@ model OutboxEvent {
   @@index([eventType, status])
 }
 
-// ----------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 // V2 indexer: block cursor + reorg ancestry
 // Supports src/v2/block-cursor (reorg detection y walking parentHash back to
 // a common ancestor). Heights are BigInt because some EVM chains exceed
 // Number.MAX_SAFE_INTEGER.
-// ----------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 model BlockCursor {
   id     String @id @default(uuid())
@@ -319,12 +319,12 @@ model BlockCursorAncestor {
   @@index([cursorId, isCanonical])
 }
 
-// ----------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 // V2 indexer: canonical-identity dedup for raw EVM logs.
 // A replay of the same (chainId, blockHash, txHash, logIndex) is rejected;
 // the same log position under a different block hash is retained so reorgs
 // stay diagnosable.
-// ----------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 model ChainEvent {
   id              String   @id @default(uuid())
@@ -349,14 +349,14 @@ model ChainEvent {
   @@index([eventName, blockNumber])
 }
 
-// ----------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 // PREWAVE-BE-079: Secret detection & quarantine for support submissions.
 // Support text/attachments are scanned for seed phrases, private keys,
 // tokens, auth headers, credentials, and protected evidence before
 // persistence or forwarding. High-confidence detections are quarantined
 // here instead of being stored inline, and access is restricted/audited.
 // Detected secret material is never echoed into logs/notifications.
-// ----------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 model SupportSubmission {
   id        String   @id @default(uuid())
@@ -368,79 +368,72 @@ model SupportSubmission {
 
   // Sanitized/redacted text safe for persistence and forwarding.
   sanitizedText String @default("")
-
-  // Quarantine status for this submission.
-  // clean | quarantined | released
-  status String @default("clean")
-
-  // High-confidence detection count (secret material redacted before storage).
-  detectionCount Int @default(0)
-
-  // Detection categories found (JSON array of classifier labels, no secret values).
-  detectionTypes String @default("[]")
-
-  // Opaque reference to quarantined attachment blob, if any.
-  quarantineRef String?
-
-  // Secure remediation guidance surfaced to the user (no secret material).
-  remediationGuidance String?
-
-  // Audit trail for quarantine access.
-  quarantinedAt DateTime?
-  reviewedBy    String?
-  reviewedAt    DateTime?
-
-  attachments SupportAttachment[]
-
-  @@index([status, createdAt])
-  @@index([userId])
 }
 
-model SupportAttachment {
-  id           String   @id @default(uuid())
-  createdAt      DateTime @default(now())
+// ---------------------------------------------------------------------------
+// PREWAVE-BE-049: Dead-letter replay authorization + idempotency.
+// Replay is denied by default. Each authorized replay is bound to the
+// original dead-letter record via an immutable reference, requires a
+// protected capability, reason, bounds, dry-run flag, original payload
+// hash, and an audit record. Replays are rejected across release/schema
+// incompatibility and duplicate replays of the same original are blocked.
+// ---------------------------------------------------------------------------
 
-  submissionId String
-  submission   SupportSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
-
-  // Original filename (not trusted for path resolution).
-  filename     String
-  // MIME type as declared by the client.
-  contentType  String
-  // Size in bytes.
-  size         Int
-
-  // Sha256 of the attachment content for deduplication and integrity.
-  contentHash  String
-
-  // Storage key for the quarantined blob (never inline in this row).
-  quarantineKey String?
-
-  // clean | quarantined | released
-  status        String @default("clean")
-
-  // Detection categories (JSON array of classifier labels, no secret values).
-  detectionTypes String @default("[]")
-
-  @@index([submissionId])
-  @@index([contentHash])
-  @@index([status])
-}
-
-model QuarantineAuditLog {
+model DeadLetterReplay {
   id        String   @id @default(uuid())
-  createdAt  DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  // Opaque actor reference (user id or system actor).
-  actorId    String?
-  // read | release | delete | create
-  action      String
-  // Opaque reference to the quarantined record (submission or attachment).
-  targetType  String
-  targetId    String
-  // Non-sensitive context (JSON); never contains secret material.
-  context     String @default("{}")
+  // Immutable reference to the original dead-letter record.
+  originalDeadLetterId String
+  // SHA-256 of the original payload; replay must match this exactly.
+  originalPayloadHash  String
+  // Chain/release binding — replay is rejected if any of these drift.
+  chainId              Int
+  releaseId            String
+  deploymentBlock      BigInt
+  artifactChecksum     String
 
-  @@index([targetType, targetId])
-  @@index([actorId, createdAt])
+  // Operator-supplied authorization context.
+  capability           String
+  reason               String
+  requestedBy          String
+  dryRun               Boolean  @default(true)
+
+  // Bounded batch execution.
+  batchId              String?
+  batchSize            Int      @default(1)
+  batchOffset          Int      @default(0)
+
+  // Lifecycle: PENDING | AUTHORIZED | RUNNING | PAUSED | COMPLETED | FAILED | REJECTED
+  status               String   @default("PENDING")
+  // Idempotency key derived from (originalDeadLetterId, originalPayloadHash).
+  idempotencyKey       String   @unique
+  // Set once a replay has produced effects; prevents duplicate effects.
+  effectAppliedAt      DateTime?
+  lastError            String?
+
+  auditRecords DeadLetterReplayAudit[]
+
+  @@unique([originalDeadLetterId, originalPayloadHash])
+  @@index([status, createdAt])
+  @@index([batchId])
+  @@index([chainId, releaseId])
+}
+
+model DeadLetterReplayAudit {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  replayId String
+  replay   DeadLetterReplay @relation(fields: [replayId], references: [id], onDelete: Cascade)
+
+  // Actor + action for immutable audit trail.
+  actor     String
+  action    String
+  // JSON-encoded structured detail; never contains private payload data.
+  detail    String   @default("{}")
+
+  @@index([replayId, createdAt])
+  @@index([actor])
 }

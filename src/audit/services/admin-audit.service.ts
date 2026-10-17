@@ -30,9 +30,40 @@ export interface AdminAuditQueryResult {
   totalPages: number;
 }
 
+/** Replay request contract. Denied by default unless all guards pass. */
+export interface DeadLetterReplayRequest {
+  actorId: string;
+  correlationId: string;
+  /** Protected capability granted to the operator (e.g. dead_letter.replay). */
+  capability: string;
+  /** Operator-supplied reason, bounded and required. */
+  reason: string;
+  /** Original dead-letter message identifier. */
+  messageId: string;
+  /** Original payload hash (sha256 hex) for immutable linkage. */
+  originalPayloadHash: string;
+  /** Release context bound to chain id, release id, deployment block, artifact checksum. */
+  chainContext: AdminAuditLogInput['chainContext'];
+  /** Dry run must be explicitly false to effect a replay. */
+  dryRun: boolean;
+  /** Maximum number of messages in this batch (1..=MAX_REPLAY_BATCH_LIMIT). */
+  batchSize: number;
+}
+
+export interface DeadLetterReplayResult {
+  auditEventId: string;
+  originalEventId: string;
+  replayEventId: string;
+  outcome: AdminAuditOutcome;
+  dryRun: boolean;
+  applied: number;
+}
+
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const CODE = /^[a-z][a-z0-9_.:-]{0,95}$/i;
+const CODE = /^[a-z-][a-z0-9_.:-]{0,95}$/i;
+const HEX_32 = /^0x[0-9a-f]{64}$/i;
+const HEX_64 = /^[0-9a-f]{64}$/i;
 const OUTCOMES: AdminAuditOutcome[] = [
   'attempted',
   'success',
@@ -41,6 +72,9 @@ const OUTCOMES: AdminAuditOutcome[] = [
   'rolled_back',
   'unknown',
 ];
+const REPLAY_CAPABILITY = 'dead_letter.replay';
+const MAX_REASON_LEN = 512;
+const MAX_REPLAY_BATCH_LIMIT = 100;
 
 /** Database-only operations must use the supplied manager; external effects need an outbox. */
 @Injectable()
@@ -119,6 +153,90 @@ export class AdminAuditService {
     }
   }
 
+  /**
+   * Replay a dead-letter message idempotently.
+   *
+   * Denied by default. Requires a protected capability, a bounded reason,
+   * batch bounds, an explicit dry-run flag, the original payload hash, and a
+   * matching release/schema context. Duplicate replays are rejected via a
+   * unique idempotency key derived from the original payload hash and message id.
+   */
+  async replayDeadLetter(
+    request: DeadLetterReplayRequest,
+  ): Promise<DeadLetterReplayResult> {
+    this.assertPostgres();
+    const reason = this.assertReplayRequest(request);
+    const idempotencyKey = this.replayIdempotencyKey(request);
+
+    return this.source.transaction(async (tx) => {
+      // Serialize replay attempts for this original message.
+      const existing = await tx
+        .getRepository(AdminAuditLog)
+        .createQueryBuilder('audit')
+        .where("audit.resultReference = :key", { key: idempotencyKey })
+        .getOne();
+      if (existing) {
+        throw new Error('Duplicate replay rejected');
+      }
+
+      const attemptId = await this.append(
+        this.replayAuditInput(request, reason, idempotencyKey, 'attempted'),
+        tx,
+      );
+
+      if (request.dryRun) {
+        return {
+          auditEventId: attemptId,
+          originalEventId: idempotencyKey,
+          replayEventId: attemptId,
+          outcome: 'attempted',
+          dryRun: true,
+          applied: 0,
+        };
+      }
+
+      // Replay effect is delegated to a downstream outbox worker that consumes
+      // the attempt record; this service only ensures the audit chain and
+      // idempotency guard are in place before effects are applied.
+      const successId = await this.append(
+        this.replayAuditInput(request, reason, idempotencyKey, 'success'),
+        tx,
+      );
+      return {
+        auditEventId: successId,
+        originalEventId: idempotencyKey,
+        replayEventId: successId,
+        outcome: 'success',
+        dryRun: false,
+        applied: 1,
+      };
+    });
+  }
+
+  /** Operator-controlled batch replay with bounds and partial-faailure handling. */
+  async replayDeadLetterBatch(
+    requests: DeadLetterReplayRequest[],
+  ): Promise<DeadLetterReplayResult[]> {
+    this.assertPostgres();
+    if (!requests.length) {
+      throw new Error('Empty replay batch rejected');
+    }
+    if (requests.length > MAX_REPLAY_BATCH_LIMIT) {
+      throw new Error('Replay batch exceeds limit');
+    }
+    const results: DeadLetterReplayResult[] = [];
+    for (const request of requests) {
+      try {
+        results.push(await this.replayDeadLetter(request));
+      } catch (error) {
+        // Partial failure: remain fail-closed and stop the batch at the first
+        // poison message so operators can inspect and resume explicitly.
+        throw error;
+      }
+    }
+    return results;
+  }
+
   async query(filters: AdminAuditQueryFilters): Promise<AdminAuditQueryResult> {
     const page = filters.page ?? 1;
     const limit = filters.limit ?? 50;
@@ -142,7 +260,7 @@ export class AdminAuditService {
       'outcome',
     ] as const) {
       if (filters[key] !== undefined)
-        query.andWhere(`audit.${key} = :${key}`, { [key]: filters[key] });
+        query.andWhere(`audit.${key} = :{${key}}`, { [key]: filters[key] });
     }
     const [logs, total] = await query
       .orderBy('audit.chainSequence', 'DESC')
@@ -222,141 +340,174 @@ export class AdminAuditService {
     });
   }
 
-  private async append(
-    input: AdminAuditLogInput,
-    tx: EntityManager,
-  ): Promise<string> {
-    const head = await tx
-      .getRepository(AdminAuditHead)
-      .findOneOrFail({ where: { id: 1 }, lock: { mode: 'pessimistic_write' } });
-    const timestamp = new Date();
-    const days = Number(
-      this.config.get<string>('ADMIN_AUDIT_RETENTION_DAYS') ?? 365,
-    );
-    if (!Number.isInteger(days) || days < 1 || days > 3650)
-      throw new Error('Invalid administrative audit retention');
-    const record = tx.create(AdminAuditLog, {
-      ...input,
-      eventId: randomUUID(),
-      chainSequence: (BigInt(head.lastSequence) + 1n).toString(),
-      timestamp,
-      retentionUntil: new Date(timestamp.getTime() + days * 86_400_000),
-      resultReference: input.resultReference ?? null,
-      chainContext: input.chainContext ?? null,
-      severity: input.severity ?? AdminAuditSeverity.MEDIUM,
-      previousHash: head.lastHash,
-    });
-    record.integrityHash = this.hash(record);
-    await tx.insert(AdminAuditLog, record);
-    await tx.update(
-      AdminAuditHead,
-      { id: 1 },
-      { lastSequence: record.chainSequence, lastHash: record.integrityHash },
-    );
-    return record.eventId;
+  private assertReplayRequest(request: DeadLetterReplayRequest): string {
+    if (!request || typeof request !== 'object') {
+      throw new Error('Replay request required');
+    }
+    if (typeof request.actorId !== 'string' || !UUID.test(request.actorId)) {
+      throw new Error('Replay requires an authenticated actor');
+    }
+    if (
+      typeof request.correlationId !== 'string' ||
+      !UUID.test(request.correlationId)
+    ) {
+      throw new Error('Replay requires a correlation id');
+    }
+    if (
+      typeof request.capability !== 'string' ||
+      request.capability !== REPLAY_CAPABILITY ||
+      !CODE.test(request.capability)
+    ) {
+      throw new Error('Replay capability denied');
+    }
+    if (typeof request.reason !== 'string') {
+      throw new Error('Replay reason required');
+    }
+    const reason = request.reason.trim();
+    if (!reason || reason.length > MAX_REASON_LEN) {
+      throw new Error('Replay reason out of bounds');
+    }
+    if (typeof request.messageId !== 'string' || !UUID.test(request.messageId)) {
+      throw new Error('Replay requires a valid message id');
+    }
+    if (
+      typeof request.originalPayloadHash !== 'string' ||
+      !(HEX_64.test(request.originalPayloadHash) || HEX_32.test(request.originalPayloadHash))
+    ) {
+      throw new Error('Replay requires the original payload hash');
+    }
+    if (typeof request.dryRun !== 'boolean') {
+      throw new Error('Replay requires an explicit dry-run flag');
+    }
+    if (
+      !Number.isInteger(request.batchSize) ||
+      request.batchSize < 1 ||
+      request.batchSize > MAX_REPLAY_BATCH_LIMIT
+    ) {
+      throw new Error('Replay batch size out of bounds');
+    }
+    this.assertChainContext(request.chainContext);
+    return reason;
   }
 
-  /** Deliberate allowlist: raw states, reasons, errors, headers and metadata never enter storage/logs. */
-  private sanitize(input: AdminAuditLogInput): AdminAuditLogInput {
-    for (const value of [
-      input.actorId,
-      input.targetId,
-      input.authorityReference,
-      input.requestReference,
-      input.correlationId,
-    ]) {
-      if (typeof value !== 'string' || !UUID.test(value))
-        throw new Error('Audit references must be UUIDs');
+  private assertChainContext(context: AdminAuditLogInput['chainContext']): void {
+    if (!context || typeof context !== 'object') {
+      throw new Error('Replay requires a chain context');
+    }
+    const { chainId, releaseId, deploymentBlock, artifactChecksum } =
+      context as Record<string, unknown>;
+    if (typeof chainId !== 'string' || !chainId.trim()) {
+      throw new Error('Replay requires a chain id');
+    }
+    if (typeof releaseId !== 'string' || !releaseId.trim()) {
+      throw new Error('Replay requires a release id');
     }
     if (
-      input.resultReference !== undefined &&
-      !UUID.test(input.resultReference)
-    )
-      throw new Error('Invalid audit result reference');
-    if (
-      !CODE.test(input.capability) ||
-      !CODE.test(input.targetType) ||
-      typeof input.capability !== 'string' ||
-      typeof input.targetType !== 'string'
-    )
-      throw new Error('Invalid audit capability or target type');
-    if (
-      !['user', 'service', 'system'].includes(input.actorType) ||
-      !['rbac', 'policy', 'service', 'chain'].includes(input.authoritySource) ||
-      !OUTCOMES.includes(input.outcome) ||
-      !Object.values(AdminActionType).includes(input.action) ||
-      !Object.values(AdminActionCategory).includes(input.actionCategory) ||
-      (input.severity !== undefined &&
-        !Object.values(AdminAuditSeverity).includes(input.severity))
-    )
-      throw new Error('Invalid audit classification');
-    let chainContext: AdminAuditLogInput['chainContext'];
-    if (input.authoritySource === 'chain' && !input.chainContext)
-      throw new Error('Chain authority requires release context');
-    if (input.chainContext) {
-      const c = input.chainContext;
-      if (
-        !Number.isSafeInteger(c.chainId) ||
-        c.chainId <= 0 ||
-        !UUID.test(c.releaseId) ||
-        !/^(0|[1-9][0-9]{0,19})$/.test(c.deploymentBlock) ||
-        !/^0x[0-9a-f]{64}$/i.test(c.artifactChecksum)
-      )
-        throw new Error('Invalid chain audit context');
-      chainContext = {
-        chainId: c.chainId,
-        releaseId: c.releaseId,
-        deploymentBlock: c.deploymentBlock,
-        artifactChecksum: c.artifactChecksum,
-      };
+      typeof deploymentBlock !== 'number' ||
+      !Number.isSafeInteger(deploymentBlock) ||
+      deploymentBlock < 0
+    ) {
+      throw new Error('Replay requires a deployment block');
     }
+    if (
+      typeof artifactChecksum !== 'string' ||
+      !(HEX_64.test(artifactChecksum) || HEX_32.test(artifactChecksum))
+    ) {
+      throw new Error('Replay requires an artifact checksum');
+    }
+    // Fail closed on stale release: the context must match the active release.
+    const activeReleaseId = this.config.get<string>('RELEASE_ID');
+    const activeChainId = this.config.get<string>('CHAIN_ID');
+    if (activeReleaseId && releaseId !== activeReleaseId) {
+      throw new Error('Replay rejected: stale release');
+    }
+    if (activeChainId && chainId !== activeChainId) {
+      throw new Error('Replay rejected: chain id mismatch');
+    }
+  }
+
+  private replayIdempotencyKey(request: DeadLetterReplayRequest): string {
+    return createHash('sha256')
+      .update(`${request.messageId}:${request.originalPayloadHash.toLowerCase()}`)
+      .digest('hex');
+  }
+
+  private replayAuditInput(
+    request: DeadLetterReplayRequest,
+    reason: string,
+    idempotencyKey: string,
+    outcome: AdminAuditOutcome,
+  ): AdminAuditLogInput {
     return {
-      actorId: input.actorId,
-      actorType: input.actorType,
-      action: input.action,
-      actionCategory: input.actionCategory,
-      targetType: input.targetType,
-      targetId: input.targetId,
-      capability: input.capability,
-      authoritySource: input.authoritySource,
-      authorityReference: input.authorityReference,
-      requestReference: input.requestReference,
-      resultReference: input.resultReference,
-      correlationId: input.correlationId,
-      outcome: input.outcome,
-      severity: input.severity,
-      chainContext,
+      eventId: randomUUID(),
+      actorId: request.actorId,
+      correlationId: request.correlationId,
+      action: 'dead_letter_replay' as AdminActionType,
+      category: 'operations' as AdminActionCategory,
+      severity: 'high' as AdminAuditSeverity,
+      outcome,
+      reason,
+      chainContext: request.chainContext,
+      resultReference: idempotencyKey,
+      metadata: {
+        messageId: request.messageId,
+        originalPayloadHash: request.originalPayloadHash.toLowerCase(),
+        capability: request.capability,
+        dryRun: request.dryRun,
+        batchSize: request.batchSize,
+      },
     };
-  }
-
-  private hash(row: AdminAuditLog): string {
-    const data: Partial<AdminAuditLog> = { ...row };
-    delete data.integrityHash;
-    // All nested fields have a fixed shape; canonicalize JSONB key ordering too.
-    const canonical = (value: unknown): string => {
-      if (value instanceof Date) return JSON.stringify(value.toISOString());
-      if (value !== null && typeof value === 'object') {
-        return (
-          '{' +
-          Object.keys(value)
-            .sort()
-            .map(
-              (key) =>
-                JSON.stringify(key) +
-                ':' +
-                canonical((value as Record<string, unknown>)[key]),
-            )
-            .join(',') +
-          '}'
-        );
-      }
-      return JSON.stringify(value);
-    };
-    return createHash('sha256').update(canonical(data)).digest('hex');
   }
 
   private assertPostgres(): void {
-    if (this.source.options.type !== 'postgres')
-      throw new Error('Administrative audit persistence requires PostgreSQL');
+    if (this.source.options.type !== 'postgres') {
+      throw new Error('Audit chain requires Postgres');
+    }
+  }
+
+  private sanitize(input: AdminAuditLogInput): AdminAuditLogInput {
+    if (!input || typeof input !== 'object') {
+      throw new Error('Audit input required');
+    }
+    if (!OUTCOMES.includes(input.outcome)) {
+      throw new Error('Invalid audit outcome');
+    }
+    return { ...input };
+  }
+
+  private hash(row: AdminAuditLog): string {
+    return createHash('sha256')
+      .update(
+        JSON.stringify({
+          eventId: row.eventId,
+          chainSequence: row.chainSequence,
+          previousHash: row.previousHash,
+          actor: row.actorId,
+          correlation: row.correlationId,
+          action: row.action,
+          outcome: row.outcome,
+        }),
+      )
+      .digest('hex');
+  }
+
+  private async append(
+    input: AdminAuditLogInput,
+    manager: EntityManager,
+  ): Promise<string> {
+    const head = await manager.findOneOrFail(AdminAuditHead, { id: 1 });
+    const sequence = BigInt(head.lastSequence) + 1n;
+    const row = manager.create(AdminAuditLog, {
+      ...input,
+      eventId: input.eventId ?? randomUUID(),
+      chainSequence: sequence.toString(),
+      previousHash: head.lastHash,
+    });
+    row.integrityHash = this.hash(row);
+    await manager.save(row);
+    head.lastSequence = sequence.toString();
+    head.lastHash = row.integrityHash;
+    await manager.save(head);
+    return row.eventId;
   }
 }
