@@ -29,6 +29,7 @@ import {
   PostIncidentReportDto,
   IncidentQueryDto,
 } from '../dto/incident.dto';
+import { PublishIncidentProjectionDto } from '../dto/public-incident-publish.dto';
 
 @ApiTags('admin / incidents')
 @ApiBearerAuth()
@@ -169,5 +170,55 @@ export class IncidentController {
   @ApiOperation({ summary: 'Get incident statistics' })
   async getStats() {
     return this.incidentService.getStats();
+  }
+
+  @Post(':id/publish')
+  @Roles(
+    AdminRole.SUPER_ADMIN,
+    AdminRole.ADMINISTRATOR,
+    AdminRole.SECURITY_ANALYST,
+  )
+  @ApiOperation({
+    summary: 'Publish or update sanitized public incident projection',
+  })
+  @ApiParam({ name: 'id', description: 'Internal Incident ID' })
+  async publishProjection(
+    @Param('id') id: string,
+    @Body() publishDto: PublishIncidentProjectionDto,
+    @CurrentAdmin() admin: Admin,
+  ) {
+    return this.incidentService.publishProjection(id, publishDto, admin);
+  }
+
+  @Post(':id/projection/draft')
+  @Roles(
+    AdminRole.SUPER_ADMIN,
+    AdminRole.ADMINISTRATOR,
+    AdminRole.SECURITY_ANALYST,
+  )
+  @ApiOperation({
+    summary: 'Save draft of public incident projection without publishing',
+  })
+  @ApiParam({ name: 'id', description: 'Internal Incident ID' })
+  async saveDraftProjection(
+    @Param('id') id: string,
+    @Body() draftDto: PublishIncidentProjectionDto,
+    @CurrentAdmin() admin: Admin,
+  ) {
+    return this.incidentService.saveDraftProjection(id, draftDto, admin);
+  }
+
+  @Get(':id/projection')
+  @Roles(
+    AdminRole.SUPER_ADMIN,
+    AdminRole.ADMINISTRATOR,
+    AdminRole.SECURITY_ANALYST,
+    AdminRole.MODERATOR,
+    AdminRole.AUDITOR,
+  )
+  @ApiOperation({ summary: 'Get projection for an incident' })
+  @ApiParam({ name: 'id', description: 'Internal Incident ID' })
+  async getProjection(@Param('id') id: string) {
+    return this.incidentService.getProjection(id);
   }
 }

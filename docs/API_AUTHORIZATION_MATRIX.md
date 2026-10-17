@@ -197,6 +197,15 @@ Notation:
 | GET | `/v2/verification/*` | PUBLIC |
 | GET | `/v2/disputes/*` | PUBLIC |
 
+### Public Status & Incidents (UX-BE-001, UX-BE-002)
+
+| Method | Route | Authorization |
+|-------|-------|--------------|
+| GET | `/status/public` | PUBLIC + rate-limited |
+| GET | `/status/incidents` | PUBLIC + rate-limited |
+| GET | `/status/incidents/:incidentId` | PUBLIC + rate-limited |
+
+
 ### Admin (operator plane)
 
 | Method | Route | Authorization |

@@ -1,0 +1,249 @@
+{
+  "schemaVersion": "public-incidents.v1",
+  "scenarios": {
+    "monitoring": {
+      "id": "inc-001-monitoring-uuid",
+      "title": "API Gateway Latency Degradation",
+      "status": "monitoring",
+      "impact": "minor",
+      "affectedComponents": [
+        "api",
+        "web"
+      ],
+      "startedAt": "2026-10-16T11:15:00.000Z",
+      "updatedAt": "2026-10-16T11:50:00.000Z",
+      "resolvedAt": null,
+      "publicationSequence": 2,
+      "description": "We observed elevated response times on verification endpoints. Connection pooling was adjusted and we are monitoring stability.",
+      "mitigation": "Scaled backend API workers and recycled connection pool. Service latency returned to baseline.",
+      "postIncidentLinks": [
+        {
+          "title": "Real-time telemetry dashboard",
+          "url": "https://status.truthbounty.io/telemetry/api-gateway"
+        }
+      ],
+      "publicationHistory": [
+        {
+          "id": "pub-001-1",
+          "status": "investigating",
+          "message": "Investigating elevated response times on verification endpoints.",
+          "publishedAt": "2026-10-16T11:15:00.000Z",
+          "affectedComponents": [
+            "api"
+          ]
+        },
+        {
+          "id": "pub-001-2",
+          "status": "monitoring",
+          "message": "Mitigation applied. Traffic is nominal; ongoing monitoring in effect.",
+          "publishedAt": "2026-10-16T11:50:00.000Z",
+          "affectedComponents": [
+            "api",
+            "web"
+          ]
+        }
+      ]
+    },
+    "resolved": {
+      "id": "inc-002-resolved-uuid",
+      "title": "Database Replica Failover Recovery",
+      "status": "resolved",
+      "impact": "major",
+      "affectedComponents": [
+        "database"
+      ],
+      "startedAt": "2026-10-16T10:00:00.000Z",
+      "updatedAt": "2026-10-16T11:30:00.000Z",
+      "resolvedAt": "2026-10-16T11:30:00.000Z",
+      "publicationSequence": 3,
+      "description": "A hardware fault caused an automated database failover to the standby replica.",
+      "mitigation": "Standby replica assumed primary leadership within 12 seconds. Re-synchronization verified and complete.",
+      "postIncidentLinks": [
+        {
+          "title": "Post-Mortem Writeup: Database Failover",
+          "url": "https://docs.truthbounty.io/reports/inc-002-failover-postmortem"
+        }
+      ],
+      "publicationHistory": [
+        {
+          "id": "pub-002-1",
+          "status": "investigating",
+          "message": "Investigating database failover trigger.",
+          "publishedAt": "2026-10-16T10:00:00.000Z",
+          "affectedComponents": [
+            "database"
+          ]
+        },
+        {
+          "id": "pub-002-2",
+          "status": "monitoring",
+          "message": "Standby promoted to primary. Sync verification in progress.",
+          "publishedAt": "2026-10-16T11:00:00.000Z",
+          "affectedComponents": [
+            "database"
+          ]
+        },
+        {
+          "id": "pub-002-3",
+          "status": "resolved",
+          "message": "Failover recovery complete. All integrity checks passed without data loss.",
+          "publishedAt": "2026-10-16T11:30:00.000Z",
+          "affectedComponents": [
+            "database"
+          ]
+        }
+      ]
+    },
+    "stale": {
+      "schemaVersion": "public-incidents.v1",
+      "generatedAt": "2026-10-16T12:00:00.000Z",
+      "freshness": "stale",
+      "data": [
+        {
+          "id": "inc-003-stale-uuid",
+          "title": "Indexer Catch-up Lag",
+          "status": "investigating",
+          "impact": "minor",
+          "affectedComponents": [
+            "indexer"
+          ],
+          "startedAt": "2026-10-16T09:00:00.000Z",
+          "updatedAt": "2026-10-16T09:00:00.000Z",
+          "resolvedAt": null,
+          "publicationSequence": 1
+        }
+      ],
+      "pagination": {
+        "page": 1,
+        "limit": 10,
+        "total": 1,
+        "totalPages": 1,
+        "hasNext": false,
+        "hasPrevious": false
+      }
+    },
+    "unavailable": {
+      "schemaVersion": "public-incidents.v1",
+      "generatedAt": "2026-10-16T12:00:00.000Z",
+      "freshness": "fresh",
+      "data": [],
+      "pagination": {
+        "page": 1,
+        "limit": 10,
+        "total": 0,
+        "totalPages": 1,
+        "hasNext": false,
+        "hasPrevious": false
+      }
+    },
+    "pagination": {
+      "schemaVersion": "public-incidents.v1",
+      "generatedAt": "2026-10-16T12:00:00.000Z",
+      "freshness": "fresh",
+      "data": [
+        {
+          "id": "inc-001-monitoring-uuid",
+          "title": "API Gateway Latency Degradation",
+          "status": "monitoring",
+          "impact": "minor",
+          "affectedComponents": [
+            "api",
+            "web"
+          ],
+          "startedAt": "2026-10-16T11:15:00.000Z",
+          "updatedAt": "2026-10-16T11:50:00.000Z",
+          "resolvedAt": null,
+          "publicationSequence": 2
+        },
+        {
+          "id": "inc-002-resolved-uuid",
+          "title": "Database Replica Failover Recovery",
+          "status": "resolved",
+          "impact": "major",
+          "affectedComponents": [
+            "database"
+          ],
+          "startedAt": "2026-10-16T10:00:00.000Z",
+          "updatedAt": "2026-10-16T11:30:00.000Z",
+          "resolvedAt": "2026-10-16T11:30:00.000Z",
+          "publicationSequence": 3
+        }
+      ],
+      "pagination": {
+        "page": 1,
+        "limit": 2,
+        "total": 5,
+        "totalPages": 3,
+        "hasNext": true,
+        "hasPrevious": false
+      }
+    },
+    "unknownId": {
+      "statusCode": 404,
+      "message": "Incident with ID inc-unknown-uuid not found",
+      "error": "Not Found"
+    },
+    "publicationHistory": [
+      {
+        "id": "pub-002-1",
+        "status": "investigating",
+        "message": "Investigating database failover trigger.",
+        "publishedAt": "2026-10-16T10:00:00.000Z",
+        "affectedComponents": [
+          "database"
+        ]
+      },
+      {
+        "id": "pub-002-2",
+        "status": "monitoring",
+        "message": "Standby promoted to primary. Sync verification in progress.",
+        "publishedAt": "2026-10-16T11:00:00.000Z",
+        "affectedComponents": [
+          "database"
+        ]
+      },
+      {
+        "id": "pub-002-3",
+        "status": "resolved",
+        "message": "Failover recovery complete. All integrity checks passed without data loss.",
+        "publishedAt": "2026-10-16T11:30:00.000Z",
+        "affectedComponents": [
+          "database"
+        ]
+      }
+    ],
+    "sanitizedUntrustedAndRedacted": {
+      "id": "inc-004-untrusted-uuid",
+      "title": "Potential XSS & Internal Leak Probe",
+      "status": "monitoring",
+      "impact": "critical",
+      "affectedComponents": [
+        "evidence_gateway",
+        "rpc"
+      ],
+      "startedAt": "2026-10-16T11:10:00.000Z",
+      "updatedAt": "2026-10-16T11:45:00.000Z",
+      "resolvedAt": null,
+      "publicationSequence": 1,
+      "description": "Investigating probe on http://ipfs-node-7.[REDACTED]:5001 with secret [REDACTED] and [exploit](#). Connection string [REDACTED].",
+      "mitigation": "Query routing secured and credentials rotated.",
+      "postIncidentLinks": [
+        {
+          "title": "Safe public writeup",
+          "url": "https://docs.truthbounty.io/security/disclosure-2026"
+        }
+      ],
+      "publicationHistory": [
+        {
+          "id": "pub-004-1",
+          "status": "investigating",
+          "message": "Received report from admin-7 regarding probe.",
+          "publishedAt": "2026-10-16T11:10:00.000Z",
+          "affectedComponents": [
+            "evidence_gateway"
+          ]
+        }
+      ]
+    }
+  }
+}

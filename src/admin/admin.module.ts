@@ -25,6 +25,8 @@ import { ProtocolAdminController } from './protocol/protocol-admin.controller';
 import { FeatureFlagsModule } from '../feature-flags/feature-flags.module';
 import { QueueName } from '../jobs/jobs.types';
 
+import { PublicIncidentsModule } from '../health/public-incidents/public-incidents.module';
+
 @Module({
   imports: [
     TypeOrmModule.forFeature([
@@ -34,6 +36,7 @@ import { QueueName } from '../jobs/jobs.types';
       AuditLog,
       Claim,
     ]),
+    PublicIncidentsModule,
     FeatureFlagsModule,
     JobsModule,
     RedisModule,

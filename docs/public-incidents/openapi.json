@@ -1,0 +1,515 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/status/incidents": {
+      "get": {
+        "operationId": "PublicIncidentController_getPublicIncidents",
+        "summary": "List published sanitized incidents",
+        "description": "Returns a paginated list of published, sanitized incidents with immutable timestamps, affected public components, impact, and current status. Draft and unapproved records are omitted.",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "Page number (default 1)",
+            "schema": {
+              "type": "number",
+              "default": 1,
+              "minimum": 1
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Items per page (default 20, max 100)",
+            "schema": {
+              "type": "number",
+              "default": 20,
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "description": "Filter incidents by current status",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "investigating",
+                "identified",
+                "monitoring",
+                "resolved"
+              ]
+            }
+          },
+          {
+            "name": "component",
+            "required": false,
+            "in": "query",
+            "description": "Filter incidents by affected component",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "web",
+                "api",
+                "rpc",
+                "indexer",
+                "database",
+                "evidence_gateway"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicIncidentListResponseDto"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Per-client rate limit exceeded."
+          }
+        },
+        "tags": [
+          "Public Incidents"
+        ]
+      }
+    },
+    "/status/incidents/{incidentId}": {
+      "get": {
+        "operationId": "PublicIncidentController_getPublicIncidentDetail",
+        "summary": "Get published sanitized incident details",
+        "description": "Returns sanitized incident details including narrative, mitigation, approved post-incident links, and immutable publication audit history. Unknown or unapproved IDs return 404.",
+        "parameters": [
+          {
+            "name": "incidentId",
+            "required": true,
+            "in": "path",
+            "description": "Public incident identifier or slug",
+            "schema": {
+              "type": "string",
+              "example": "inc-9b2f6c01-7e8a-4d2a-a5c3-1289fe943201"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicIncidentDetailDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Incident not found, unapproved, or unconfigured."
+          },
+          "429": {
+            "description": "Per-client rate limit exceeded."
+          }
+        },
+        "tags": [
+          "Public Incidents"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "TruthBounty Public Incidents",
+    "description": "Sanitized public incident projections and publication audit history (UX-BE-002).",
+    "version": "public-incidents.v1",
+    "contact": {}
+  },
+  "tags": [],
+  "servers": [],
+  "components": {
+    "schemas": {
+      "PublicIncidentLinkDto": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Title or descriptive label of the approved post-incident link",
+            "example": "Post-Mortem Analysis Report"
+          },
+          "url": {
+            "type": "string",
+            "description": "Sanitized public HTTPS link",
+            "example": "https://docs.truthbounty.io/reports/inc-2026-10-postmortem"
+          }
+        },
+        "required": [
+          "title",
+          "url"
+        ]
+      },
+      "PublicIncidentHistoryRecordDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique audit identifier for this publication event",
+            "example": "pub-8f92b7c1-01"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "investigating",
+              "identified",
+              "monitoring",
+              "resolved"
+            ],
+            "description": "Status of the incident at the time of this publication update",
+            "example": "monitoring"
+          },
+          "message": {
+            "type": "string",
+            "description": "Sanitized Markdown update message explaining progress or status change",
+            "example": "Database failover completed successfully. All queries are executing normally; monitoring connection latency."
+          },
+          "publishedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Immutable ISO 8601 timestamp when this update was published",
+            "example": "2026-10-16T12:30:00.000Z"
+          },
+          "affectedComponents": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "web",
+                "api",
+                "rpc",
+                "indexer",
+                "database",
+                "evidence_gateway"
+              ]
+            },
+            "description": "Components affected at the time of this update",
+            "example": [
+              "database",
+              "api"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "message",
+          "publishedAt",
+          "affectedComponents"
+        ]
+      },
+      "PublicIncidentSummaryDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique public incident identifier",
+            "example": "inc-9b2f6c01-7e8a-4d2a-a5c3-1289fe943201"
+          },
+          "title": {
+            "type": "string",
+            "description": "Sanitized public incident title",
+            "example": "Database Connection Pool Degradation"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "investigating",
+              "identified",
+              "monitoring",
+              "resolved"
+            ],
+            "description": "Current public incident status",
+            "example": "resolved"
+          },
+          "impact": {
+            "type": "string",
+            "enum": [
+              "none",
+              "minor",
+              "major",
+              "critical"
+            ],
+            "description": "Assessed user-facing impact level",
+            "example": "minor"
+          },
+          "affectedComponents": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "web",
+                "api",
+                "rpc",
+                "indexer",
+                "database",
+                "evidence_gateway"
+              ]
+            },
+            "description": "Public components affected by this incident",
+            "example": [
+              "database",
+              "api"
+            ]
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Immutable ISO 8601 timestamp when the incident started or was observed",
+            "example": "2026-10-16T11:45:00.000Z"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Immutable ISO 8601 timestamp of the latest publication event",
+            "example": "2026-10-16T13:00:00.000Z"
+          },
+          "resolvedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Immutable ISO 8601 timestamp when the incident was marked resolved; null if ongoing",
+            "example": "2026-10-16T13:00:00.000Z"
+          },
+          "publicationSequence": {
+            "type": "number",
+            "description": "Monotonically increasing sequence number for publication auditability",
+            "example": 3
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "status",
+          "impact",
+          "affectedComponents",
+          "startedAt",
+          "updatedAt",
+          "resolvedAt",
+          "publicationSequence"
+        ]
+      },
+      "PublicIncidentDetailDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique public incident identifier",
+            "example": "inc-9b2f6c01-7e8a-4d2a-a5c3-1289fe943201"
+          },
+          "title": {
+            "type": "string",
+            "description": "Sanitized public incident title",
+            "example": "Database Connection Pool Degradation"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "investigating",
+              "identified",
+              "monitoring",
+              "resolved"
+            ],
+            "description": "Current public incident status",
+            "example": "resolved"
+          },
+          "impact": {
+            "type": "string",
+            "enum": [
+              "none",
+              "minor",
+              "major",
+              "critical"
+            ],
+            "description": "Assessed user-facing impact level",
+            "example": "minor"
+          },
+          "affectedComponents": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "web",
+                "api",
+                "rpc",
+                "indexer",
+                "database",
+                "evidence_gateway"
+              ]
+            },
+            "description": "Public components affected by this incident",
+            "example": [
+              "database",
+              "api"
+            ]
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Immutable ISO 8601 timestamp when the incident started or was observed",
+            "example": "2026-10-16T11:45:00.000Z"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Immutable ISO 8601 timestamp of the latest publication event",
+            "example": "2026-10-16T13:00:00.000Z"
+          },
+          "resolvedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Immutable ISO 8601 timestamp when the incident was marked resolved; null if ongoing",
+            "example": "2026-10-16T13:00:00.000Z"
+          },
+          "publicationSequence": {
+            "type": "number",
+            "description": "Monotonically increasing sequence number for publication auditability",
+            "example": 3
+          },
+          "description": {
+            "type": "string",
+            "description": "Sanitized Markdown narrative describing the incident overview",
+            "example": "We experienced transient query latency spikes on the secondary database pool following an index compaction."
+          },
+          "mitigation": {
+            "type": "string",
+            "nullable": true,
+            "description": "Sanitized Markdown summary of mitigations applied or underway",
+            "example": "Query routing was diverted to the primary pool and replica pool connections were recycled."
+          },
+          "postIncidentLinks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublicIncidentLinkDto"
+            },
+            "description": "Approved post-incident documentation and post-mortem links"
+          },
+          "publicationHistory": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublicIncidentHistoryRecordDto"
+            },
+            "description": "Chronological publication history with immutable timestamps"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "status",
+          "impact",
+          "affectedComponents",
+          "startedAt",
+          "updatedAt",
+          "resolvedAt",
+          "publicationSequence",
+          "description",
+          "mitigation",
+          "postIncidentLinks",
+          "publicationHistory"
+        ]
+      },
+      "PublicIncidentPaginationMetaDto": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "number",
+            "description": "Current page number (1-indexed)",
+            "example": 1
+          },
+          "limit": {
+            "type": "number",
+            "description": "Number of items per page",
+            "example": 20
+          },
+          "total": {
+            "type": "number",
+            "description": "Total count of publishable incidents matching filter",
+            "example": 1
+          },
+          "totalPages": {
+            "type": "number",
+            "description": "Total number of pages",
+            "example": 1
+          },
+          "hasNext": {
+            "type": "boolean",
+            "description": "True if a subsequent page exists",
+            "example": false
+          },
+          "hasPrevious": {
+            "type": "boolean",
+            "description": "True if a preceding page exists",
+            "example": false
+          }
+        },
+        "required": [
+          "page",
+          "limit",
+          "total",
+          "totalPages",
+          "hasNext",
+          "hasPrevious"
+        ]
+      },
+      "PublicIncidentListResponseDto": {
+        "type": "object",
+        "properties": {
+          "schemaVersion": {
+            "type": "string",
+            "enum": [
+              "public-incidents.v1"
+            ],
+            "example": "public-incidents.v1"
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 timestamp when this projection was generated",
+            "example": "2026-10-16T12:00:00.000Z"
+          },
+          "freshness": {
+            "type": "string",
+            "enum": [
+              "fresh",
+              "stale",
+              "unknown"
+            ],
+            "description": "Projection freshness indicator (fresh, stale, unknown)",
+            "example": "fresh"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublicIncidentSummaryDto"
+            },
+            "description": "List of published sanitized incident summaries"
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/PublicIncidentPaginationMetaDto"
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "generatedAt",
+          "freshness",
+          "data",
+          "pagination"
+        ]
+      }
+    }
+  }
+}

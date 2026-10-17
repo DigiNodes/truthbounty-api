@@ -237,4 +237,25 @@ describe('IncidentService', () => {
       expect(stats.byClassification).toBeDefined();
     });
   });
+
+  describe('publishProjection and draft', () => {
+    it('throws ServiceUnavailableException if publicIncidentService is not provided', async () => {
+      incidentRepo.findOneBy.mockResolvedValue(mockIncident);
+
+      await expect(
+        service.publishProjection(
+          'inc-1',
+          {
+            title: 'Public notice',
+            status: 'investigating',
+            impact: 'minor',
+            affectedComponents: ['api'],
+            description: 'Incident occurred',
+          },
+          mockAdmin,
+        ),
+      ).rejects.toThrow();
+    });
+  });
 });
+
