@@ -342,9 +342,157 @@ model ChainEvent {
   // JSON-encoded RawChainLog.rawArgs
   rawArgs         String
 
-ingestedAt DateTime @default(now())
+  ingestedAt DateTime @default(now())
 
   @@unique([chainId, blockHash, txHash, logIndex])
   @@index([chainId, txHash, logIndex])
   @@index([eventName, blockNumber])
+}
+
+// ---------------------------------------------------------------------------
+// Outbound webhook delivery (PREWAVE-BE-059)
+// ---------------------------------------------------------------------------
+// Signed, versioned, idempotent webhook delivery. Each WebhookEndpoint is a
+// receiver URL owned by an operator; WebhookDelivery is one logical event
+// (identified by a stable deliveryId) fanned out to one endpoint. Retries
+// are bounded by maxAttempts and tracked per-attempt in WebhookAttempt so
+// audit history is queryable and replay-safe.
+//
+// Security: signing secrets are stored only as references to the secret
+// manager (secretRef); plaintext keys never touch this table. Payloads
+// store only the canonical envelope (eventType, aggregateId, provenance)
+// and never private claim text or user PII.
+// ---------------------------------------------------------------------------
+
+model WebhookEndpoint {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Human-readable label for operator dashboards
+  name String
+  // Receiver URL; validated at registration and re-validated before delivery
+  url  String
+
+  // Active | Disabled | Quarantined (SSRF or repeated failures)
+  status String @default("Active")
+
+  // Versioned signing key reference (e.g. "whsec_v1_2024_11"). Rotation
+  // creates a new row; old rows remain for verification during overlap.
+  secretRef String
+  // Envelope version this endpoint expects, e.g. "2024-11-01"
+  envelopeVersion String @default("2024-11-01")
+
+  // Bounded retry policy
+  maxAttempts      Int @default(5)
+  timeoutMs        Int @default(10000)
+  backoffBaseMs    Int @default(500)
+  backoffMaxMs     Int @default(60000)
+
+  // SSRF guard: resolved IPs must not be private/loopback/link-local.
+  // Populated by the validator; empty means "not yet validated".
+  resolvedIps String @default("[]") // JSON array of validated IPs
+  lastValidatedAt DateTime?
+
+  // Optional filter: only deliver matching eventTypes (JSON array, empty = all)
+  eventTypes String @default("[]")
+
+  deliveries WebhookDelivery[]
+
+  @@index([status])
+  @@index([url])
+}
+
+model WebhookDelivery {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Stable logical-event identity. Same event fanned to N endpoints shares
+  // this deliveryId so receivers can dedupe across endpoints.
+  deliveryId String
+
+  endpointId String
+  endpoint   WebhookEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+
+  // Canonical envelope fields (mirrors OutboxEvent for provenance)
+  eventType       String
+  aggregateId     String
+  envelopeVersion String
+  // JSON-encoded signed envelope (headers + body hash + provenance)
+  payload         String
+  // SHA-256 of the canonical body, for receiver integrity checks
+  bodySha256      String
+  // HMAC signature over (timestamp + "." + body) using the endpoint key
+  signature       String
+  // Unix seconds; receivers reject if outside tolerance window
+  timestamp       Int
+
+  // Chain/release/artifact provenance binding (fail-closed on mismatch)
+  chainId         Int?
+  releaseId       String?
+  artifactDigest  String?
+
+  // Pending | Delivering | Delivered | Failed | DeadLettered
+  status String @default("Pending")
+
+  attemptCount Int @default(0)
+  maxAttempts  Int @default(5)
+  nextAttemptAt DateTime @default(now())
+  lastError    String?
+  lastStatusCode Int?
+  deliveredAt  DateTime?
+
+  attempts WebhookAttempt[]
+
+  // One logical event per endpoint — prevents duplicate fan-out
+  @@unique([deliveryId, endpointId])
+  @@index([status, nextAttemptAt])
+  @@index([deliveryId])
+  @@index([endpointId, status])
+  @@index([eventType, createdAt])
+}
+
+model WebhookAttempt {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  deliveryId String
+  delivery   WebhookDelivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+
+  attemptNumber Int
+  // HTTP status (null on network error/timeout)
+  statusCode    Int?
+  // ok | timeout | network | redirect | ssrf | 4xx | 5xx
+  outcome       String
+  errorMessage  String?
+  durationMs    Int
+
+  @@index([deliveryId, attemptNumber])
+  @@index([outcome, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Webhook signing key rotation history (PREWAVE-BE-059)
+// ---------------------------------------------------------------------------
+// Tracks versioned signing keys per endpoint so receivers can verify during
+// overlap windows. Plaintext key material lives in the secret manager; this
+// table stores only the reference and validity window.
+// ---------------------------------------------------------------------------
+model WebhookSigningKey {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  endpointId String
+  // Versioned reference, e.g. "whsec_v2_2024_12"
+  secretRef  String
+  version    Int
+
+  // Validity window for verification (overlap during rotation)
+  validFrom DateTime @default(now())
+  validTo   DateTime?
+  revokedAt DateTime?
+
+  @@unique([endpointId, version])
+  @@index([endpointId, validTo])
 }

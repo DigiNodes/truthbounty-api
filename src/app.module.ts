@@ -62,6 +62,8 @@ import { IndexerModule } from './indexer/indexer.module';
 import { V2OutboxModule } from './v2/outbox/v2-outbox.module';
 import { CredentialRotationModule } from './security/credential-rotation.module';
 import { OperationsModule } from './operations/operations.module';
+import { WebhooksModule } from './webhooks/webhooks.module';
+import { NotificationsModule as OutboundWebhooksNotificationsModule } from './notifications/notifications.module';
 
 // In-memory storage for development (no Redis needed)
 class ThrottlerMemoryStorage {
@@ -365,6 +367,8 @@ async function createThrottlerStorage(
     // V2-BE-113: TypeORM-side Transactional Outbox
     V2OutboxModule,
     CredentialRotationModule,
+    // PREWAVE-BE-059: Signed, idempotent outbound webhook delivery
+    WebhooksModule,
     // UX-BE-004 (#595): protected operations, safe-retry and audit interfaces
     OperationsModule,
   ],
