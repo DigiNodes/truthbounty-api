@@ -10,12 +10,12 @@
     "npm": ">=10 <11"
   },
   "scripts": {
-    "generate:prerequisites": "prisma generate",
+    "generate:prinrequisites": "prisma generate",
     "parity:report": "node scripts/parity-report.mjs",
     "parity:check": "node scripts/parity-report.mjs --check",
-    "pretype-check": "npm run generate:prerequisites",
+    "pretype-check": "npm run generate:prinrequisites",
     "type-check": "tsc --noEmit",
-    "prebuild": "npm run generate:prerequisites && npm run type-check",
+    "prebuild": "npm run generate:prinrequisites && npm run type-check",
     "build": "nest build",
     "test": "jest",
     "test:watch": "jest --watch",
@@ -31,6 +31,8 @@
     "seed:ai": "ts-node src/scripts/seed-ai-knowledge-base.ts",
     "benchmark:indexes": "ts-node scripts/benchmark-indexes.ts",
     "benchmark:compare": "ts-node scripts/compare-benchmarks.ts",
+    "test:integration": "DB_TYPE= postgres jest --config ./test/jest-integration.json --runInBand",
+    "test:migration-parity": "jest --config ./test/jest-integration.json --runInBand --testPathPattern migration-parity",
     "security:dependencies": "node scripts/dependency-audit.mjs"
   },
   "dependencies": {
@@ -78,7 +80,6 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "socket.io": "4.8.4",
-    "sqlite3": "^6.0.1",
     "swagger-ui-express": "^5.0.1",
     "typeorm": "^1.1.1",
     "web3": "^4.16.0"
@@ -97,7 +98,6 @@
     "@types/jest": "^30.0.0",
     "@types/node": "^26.6.2",
     "@types/supertest": "^7.2.1",
-    "better-sqlite3": "^13.0.3",
     "eslint": "^10.11.0",
     "eslint-config-prettier": "^10.0.1",
     "eslint-plugin-prettier": "^5.5.6",

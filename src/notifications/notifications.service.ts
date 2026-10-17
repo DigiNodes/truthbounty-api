@@ -1,6 +1,13 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DeepPartial } from 'typeorm';
+import {
+  Repository,
+  DeepPartial,
+  Between,
+  MoreThanOrEqual,
+  LessThanOrEqual,
+  FindOptionsWhere,
+} from 'typeorm';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { Notification } from './entities/notification.entity';
@@ -71,9 +78,19 @@ export class NotificationsService {
     userId: string,
     skip = 0,
     take = 50,
+    from?: Date,
+    to?: Date,
   ): Promise<[Notification[], number]> {
+    const where: FindOptionsWhere<Notification> = { userId };
+    if (from && to) {
+      where.createdAt = Between(from, to);
+    } else if (from) {
+      where.createdAt = MoreThanOrEqual(from);
+    } else if (to) {
+      where.createdAt = LessThanOrEqual(to);
+    }
     return this.notificationRepository.findAndCount({
-      where: { userId },
+      where,
       order: { createdAt: 'DESC' },
       skip,
       take,
