@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { NotificationChannel, ChannelDeliveryResult, RenderedNotificationPayload } from './channel.interface';
+import { DeliveryChannel } from '../interfaces/notification.types';
 import { PreferenceEnforcer } from '../services/preference-enforcer.service';
 import { firstValueFrom } from 'rxjs';
 
@@ -24,7 +25,7 @@ import { firstValueFrom } from 'rxjs';
  */
 @Injectable()
 export class EmailChannel implements NotificationChannel {
-  readonly channelType = 'EMAIL';
+  readonly channelType: DeliveryChannel = DeliveryChannel.EMAIL;
   private readonly logger = new Logger(EmailChannel.name);
 
   private readonly emailProvider: string;

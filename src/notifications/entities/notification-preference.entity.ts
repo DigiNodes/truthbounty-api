@@ -7,9 +7,16 @@ import {
   Index,
   OneToOne,
   JoinColumn,
+  AfterLoad,
+  BeforeInsert,
+  BeforeUpdate,
 } from 'typeorm';
 import { User } from '../../entities/user.entity';
 import { DeliveryChannel } from '../interfaces/notification.types';
+import {
+  normalizeChannelPreferences,
+  serializeChannelPreferences,
+} from '../delivery/delivery-channel';
 
 export interface QuietHours {
   enabled: boolean;
@@ -30,6 +37,13 @@ export interface ChannelPreferences {
   [DeliveryChannel.PUSH]?: boolean;
   [DeliveryChannel.WEBHOOK]?: boolean;
   [DeliveryChannel.WEBSOCKET]?: boolean;
+  [DeliveryChannel.SMS]?: boolean;
+  IN_APP?: boolean;
+  EMAIL?: boolean;
+  PUSH?: boolean;
+  WEBHOOK?: boolean;
+  WEBSOCKET?: boolean;
+  SMS?: boolean;
 }
 
 export interface CategorySubscriptions {
@@ -52,10 +66,35 @@ export class NotificationPreference {
 
   /**
    * Per-channel enablement
-   * Default: IN_APP and EMAIL enabled
+   * Canonical default: IN_APP, EMAIL, and WEBSOCKET enabled
    */
-  @Column({ type: 'jsonb', default: { IN_APP: true, EMAIL: true, PUSH: false, WEBHOOK: false, WEBSOCKET: true } })
+  @Column({
+    type: 'jsonb',
+    default: {
+      [DeliveryChannel.IN_APP]: true,
+      [DeliveryChannel.EMAIL]: true,
+      [DeliveryChannel.PUSH]: false,
+      [DeliveryChannel.WEBHOOK]: false,
+      [DeliveryChannel.WEBSOCKET]: true,
+      [DeliveryChannel.SMS]: false,
+    },
+  })
   channels: ChannelPreferences;
+
+  @AfterLoad()
+  normalizeLoadedChannels(): void {
+    if (this.channels) {
+      this.channels = normalizeChannelPreferences(this.channels);
+    }
+  }
+
+  @BeforeInsert()
+  @BeforeUpdate()
+  persistNormalizedChannels(): void {
+    if (this.channels) {
+      this.channels = serializeChannelPreferences(this.channels);
+    }
+  }
 
   /**
    * Per-event-type subscriptions

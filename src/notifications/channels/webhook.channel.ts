@@ -24,7 +24,7 @@ import * as crypto from 'crypto';
  */
 @Injectable()
 export class WebhookChannel implements NotificationChannel {
-  readonly channelType = 'WEBHOOK';
+  readonly channelType: DeliveryChannel = DeliveryChannel.WEBHOOK;
   private readonly logger = new Logger(WebhookChannel.name);
 
   private readonly webhookTimeout: number;

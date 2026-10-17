@@ -15,6 +15,7 @@ import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { PreferenceEnforcer } from '../services/preference-enforcer.service';
 import { NotificationPreference } from '../entities/notification-preference.entity';
 import { DeliveryChannel } from '../interfaces/notification.types';
+import { requireDeliveryChannel } from '../delivery/delivery-channel';
 
 @ApiTags('Notifications - Preferences')
 @Controller('api/v2/notifications/preferences')
@@ -65,8 +66,9 @@ export class PreferencesController {
   @ApiOperation({ summary: 'Enable notification channel' })
   async enableChannel(
     @CurrentUser('id') userId: string,
-    @Param('channel') channel: DeliveryChannel,
+    @Param('channel') rawChannel: string,
   ): Promise<NotificationPreference> {
+    const channel = requireDeliveryChannel(rawChannel);
     const prefs = await this.preferenceEnforcer.getPreferences(userId);
     prefs.channels[channel] = true;
     return this.preferenceEnforcer.updatePreferences(userId, prefs);
@@ -79,8 +81,9 @@ export class PreferencesController {
   @ApiOperation({ summary: 'Disable notification channel' })
   async disableChannel(
     @CurrentUser('id') userId: string,
-    @Param('channel') channel: DeliveryChannel,
+    @Param('channel') rawChannel: string,
   ): Promise<NotificationPreference> {
+    const channel = requireDeliveryChannel(rawChannel);
     const prefs = await this.preferenceEnforcer.getPreferences(userId);
     prefs.channels[channel] = false;
     return this.preferenceEnforcer.updatePreferences(userId, prefs);

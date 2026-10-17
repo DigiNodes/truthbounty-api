@@ -21,11 +21,13 @@ export interface ChannelDeliveryResult {
  * Implementations handle the specifics of their delivery mechanism
  * (email, push, webhook, etc.) while conforming to this contract.
  */
+import { DeliveryChannel } from '../interfaces/notification.types';
+
 export interface NotificationChannel {
   /**
-   * Unique identifier for the channel
+   * Unique identifier for the channel (canonical DeliveryChannel)
    */
-  readonly channelType: string;
+  readonly channelType: DeliveryChannel | string;
 
   /**
    * Check if this channel is enabled for a specific user

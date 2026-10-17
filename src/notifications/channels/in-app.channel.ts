@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { NotificationChannel, ChannelDeliveryResult, RenderedNotificationPayload } from './channel.interface';
+import { DeliveryChannel } from '../interfaces/notification.types';
 import { Notification } from '../entities/notification.entity';
 import { NotificationStatus } from '../enums/notification-status.enum';
 
@@ -19,7 +20,7 @@ import { NotificationStatus } from '../enums/notification-status.enum';
  */
 @Injectable()
 export class InAppChannel implements NotificationChannel {
-  readonly channelType = 'IN_APP';
+  readonly channelType: DeliveryChannel = DeliveryChannel.IN_APP;
   private readonly logger = new Logger(InAppChannel.name);
 
   constructor(

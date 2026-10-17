@@ -7,9 +7,12 @@ import {
   Index,
   OneToOne,
   JoinColumn,
+  AfterLoad,
 } from 'typeorm';
 import { User } from '../../entities/user.entity';
 import { NotificationFrequency } from '../enums/notification-type.enum';
+import { DeliveryChannel } from '../interfaces/notification.types';
+import { parseDeliveryChannel } from '../delivery/delivery-channel';
 
 @Entity('user_notification_preferences')
 @Index(['userId'])
@@ -24,8 +27,17 @@ export class UserNotificationPreference {
   @JoinColumn({ name: 'userId' })
   user: User;
 
-  @Column({ type: 'simple-array', default: 'IN_APP' })
+  @Column({ type: 'simple-array', default: 'in_app' })
   enabledChannels: string[];
+
+  @AfterLoad()
+  normalizeChannels(): void {
+    if (this.enabledChannels && Array.isArray(this.enabledChannels)) {
+      this.enabledChannels = this.enabledChannels
+        .map((ch) => parseDeliveryChannel(ch))
+        .filter((ch): ch is DeliveryChannel => ch !== null);
+    }
+  }
 
   @Column({
     type: 'varchar',

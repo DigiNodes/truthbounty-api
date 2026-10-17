@@ -23,13 +23,8 @@ export enum NotificationType {
   SECURITY_ALERT = 'security_alert',
 }
 
-export enum NotificationChannel {
-  IN_APP = 'in_app',
-  WEBSOCKET = 'websocket',
-  PUSH = 'push',
-  EMAIL = 'email',
-  WEBHOOK = 'webhook',
-}
+import { DeliveryChannel } from '../interfaces/notification.types';
+export { DeliveryChannel as NotificationChannel };
 
 export enum DeliveryStatus {
   PENDING = 'pending',

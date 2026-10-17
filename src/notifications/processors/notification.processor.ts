@@ -92,7 +92,7 @@ export class NotificationProcessor extends WorkerHost {
     let deliveryHistory = await this.deliveryHistoryRepository.findOne({
       where: {
         notificationId,
-        channel: channelType as ChannelType,
+        channel: canonicalChannel as ChannelType,
       },
     });
 
@@ -100,7 +100,7 @@ export class NotificationProcessor extends WorkerHost {
       deliveryHistory = this.deliveryHistoryRepository.create({
         notificationId,
         recipientId: notification.recipientId,
-        channel: channelType as ChannelType,
+        channel: canonicalChannel as ChannelType,
         status: DeliveryStatus.RETRYING,
         retryAttempts: retryCount,
       });

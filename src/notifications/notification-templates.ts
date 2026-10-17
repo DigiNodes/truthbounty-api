@@ -1,9 +1,8 @@
 import { EventType } from './notification-events';
+import { DeliveryChannel } from './interfaces/notification.types';
+import { parseDeliveryChannel } from './delivery/delivery-channel';
 
-export enum NotificationChannel {
-  IN_APP = 'IN_APP',
-  EMAIL = 'EMAIL',
-}
+export { DeliveryChannel as NotificationChannel };
 
 export interface NotificationTemplate {
   readonly subject: string;
@@ -39,8 +38,8 @@ export function escapeMarkdown(value: unknown): string {
 export function renderTemplate(
   template: string,
   variables: TemplateVariables,
-  channel: NotificationChannel,
-  escaper: (value: unknown) => string = channel === NotificationChannel.EMAIL ? escapeHtml : escapeMarkdown,
+  channel: DeliveryChannel | NotificationChannel | string,
+  escaper: (value: unknown) => string = parseDeliveryChannel(channel) === DeliveryChannel.EMAIL ? escapeHtml : escapeMarkdown,
 ): string {
   return template.replace(/\{\{([a-zA-Z0-9_]+)\}\}/g, (_match, key: string) => {
     if (!Object.prototype.hasOwnProperty.call(variables, key)) {

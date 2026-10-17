@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NotificationChannel, ChannelDeliveryResult, RenderedNotificationPayload } from './channel.interface';
+import { DeliveryChannel } from '../interfaces/notification.types';
 import { PreferenceEnforcer } from '../services/preference-enforcer.service';
 
 /**
@@ -20,7 +21,7 @@ import { PreferenceEnforcer } from '../services/preference-enforcer.service';
  */
 @Injectable()
 export class PushChannel implements NotificationChannel {
-  readonly channelType = 'PUSH';
+  readonly channelType: DeliveryChannel = DeliveryChannel.PUSH;
   private readonly logger = new Logger(PushChannel.name);
 
   private readonly fcmServerKey: string;

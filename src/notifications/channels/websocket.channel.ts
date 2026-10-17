@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Server as SocketServer } from 'socket.io';
 import { NotificationChannel, ChannelDeliveryResult, RenderedNotificationPayload } from './channel.interface';
+import { DeliveryChannel } from '../interfaces/notification.types';
 
 /**
  * WebSocketChannel
@@ -19,7 +20,7 @@ import { NotificationChannel, ChannelDeliveryResult, RenderedNotificationPayload
  */
 @Injectable()
 export class WebSocketChannel implements NotificationChannel {
-  readonly channelType = 'WEBSOCKET';
+  readonly channelType: DeliveryChannel = DeliveryChannel.WEBSOCKET;
   private readonly logger = new Logger(WebSocketChannel.name);
 
   private socketServer: SocketServer;

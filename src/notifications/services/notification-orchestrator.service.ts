@@ -1,5 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DeliveryChannel } from '../interfaces/notification.types';
+import {
+  requireDeliveryChannel,
+  parseDeliveryChannel,
+} from '../delivery/delivery-channel';
 import { PreferenceEnforcer } from './preference-enforcer.service';
 import { TemplateRenderer, RenderedNotification } from './template-renderer.service';
 import { DeliveryTracker } from './delivery-tracker.service';
@@ -36,9 +40,10 @@ export class NotificationOrchestrator {
   /**
    * Register a delivery channel implementation
    */
-  registerChannel(channel: DeliveryChannel, implementation: NotificationChannel): void {
-    this.channels.set(channel, implementation);
-    this.logger.log(`Registered delivery channel: ${channel}`);
+  registerChannel(channel: DeliveryChannel | string, implementation: NotificationChannel): void {
+    const canonical = requireDeliveryChannel(channel);
+    this.channels.set(canonical, implementation);
+    this.logger.log(`Registered delivery channel: ${canonical}`);
   }
 
   /**
@@ -168,9 +173,10 @@ export class NotificationOrchestrator {
       );
 
       // Get channel implementation
-      const channelImpl = this.channels.get(channel);
+      const canonical = requireDeliveryChannel(channel);
+      const channelImpl = this.channels.get(canonical);
       if (!channelImpl) {
-        this.logger.warn(`No implementation registered for channel: ${channel}`);
+        this.logger.warn(`No implementation registered for channel: ${canonical}`);
         return;
       }
 
@@ -253,7 +259,8 @@ export class NotificationOrchestrator {
   /**
    * Check if channel is available
    */
-  isChannelAvailable(channel: DeliveryChannel): boolean {
-    return this.channels.has(channel);
+  isChannelAvailable(channel: DeliveryChannel | string): boolean {
+    const canonical = parseDeliveryChannel(channel);
+    return canonical !== null && this.channels.has(canonical);
   }
 }
