@@ -33,9 +33,9 @@ export const CLAIM_READ_MODEL_STATES = Object.values(ClaimState);
 
 /** Terminal lifecycle states — a claim in one of these has no further transition. */
 export const TERMINAL_CLAIM_STATES: readonly string[] = [
-  ClaimState.Settled,
+  ClaimState.Finalized,
   ClaimState.Rejected,
-  ClaimState.Expired,
+  ClaimState.Reorged,
 ];
 
 export type ClaimReadModelPhase = 'provisional' | 'finalized';

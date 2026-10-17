@@ -83,7 +83,7 @@ export class ClaimProjectorService {
     }
 
     const settledAt =
-      targetState === ClaimState.Settled
+      targetState === ClaimState.Finalized
         ? (current?.settledAt ?? event.blockTimestamp)
         : (current?.settledAt ?? null);
 
@@ -175,7 +175,7 @@ export class ClaimProjectorService {
       where: { claimId, chainId },
     });
     const settledAt =
-      state === ClaimState.Settled
+      state === ClaimState.Finalized
         ? (readModel?.settledAt ?? lastEvent?.blockTimestamp ?? new Date())
         : null;
 

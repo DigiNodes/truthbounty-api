@@ -3,6 +3,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, In, Like, ILike } from 'typeorm';
 import { Claim as ClaimRecord } from '../entities/claim.entity';
 import { ClaimState } from '../../domain/claim/claimState';
+import {
+  STATUS_TO_CLAIM_STATES,
+  parseProjectionStatus,
+} from './projection-claim-state-map';
 import { CacheKeyRegistryService } from '../../cache/cache-key-registry.service';
 
 export interface ClaimSearchFilters {
@@ -191,7 +195,7 @@ export class ProjectionClaimSearchService {
     limit = this.DEFAULT_LIMIT,
   ): Promise<ClaimSearchResult> {
     return this.search({
-      states: [ClaimState.SUBMITTED, ClaimState.UNDER_REVIEW],
+      states: [ClaimState.Submitted, ClaimState.Review],
       chainIds,
       cursor,
       limit: Math.min(limit, this.MAX_LIMIT),
@@ -301,17 +305,11 @@ export class ProjectionClaimSearchService {
     }
 
     if (filters.status) {
-      const stateMap: Record<string, ClaimState[]> = {
-        open: [ClaimState.SUBMITTED, ClaimState.UNDER_REVIEW],
-        in_review: [ClaimState.UNDER_REVIEW],
-        verified: [ClaimState.VERIFIED],
-        rejected: [ClaimState.REJECTED],
-        disputed: [ClaimState.DISPUTED],
-      };
-      const states = stateMap[filters.status];
-      if (states) {
-        qb.andWhere('claim.state IN (:...states)', { states });
-      }
+      // Fail closed: unknown status throws instead of silently widening
+      // the search to "all states".
+      const status = parseProjectionStatus(filters.status);
+      const states = STATUS_TO_CLAIM_STATES[status];
+      qb.andWhere('claim.state IN (:...states)', { states: [...states] });
     }
 
     // Chain/contract filters

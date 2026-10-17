@@ -99,7 +99,7 @@ describe('ClaimProjectorService', () => {
         txHash: '0xdef',
       }),
     );
-    expect(state).toBe(ClaimState.UnderVerification);
+    expect(state).toBe(ClaimState.Review);
   });
 
   it('rejects an illegal transition (Submitted -> Disputed)', async () => {
@@ -121,7 +121,7 @@ describe('ClaimProjectorService', () => {
       readModelRepo.create({
         claimId: 'claim-1',
         chainId: '10',
-        state: ClaimState.Settled,
+        state: ClaimState.Finalized,
         blockNumber: '200',
         eventTxHash: '0xnew',
         eventIndex: 5,
@@ -179,7 +179,7 @@ describe('ClaimProjectorService', () => {
     expect(readModelRepo.save).toHaveBeenCalledWith(
       expect.objectContaining({
         settledAt: null,
-        state: 'UNDER_VERIFICATION',
+        state: 'REVIEW',
       }),
     );
   });
@@ -209,6 +209,6 @@ describe('ClaimProjectorService', () => {
       },
     ]);
     const state = await service.reproject('claim-r', '10');
-    expect(state).toBe(ClaimState.Settled);
+    expect(state).toBe(ClaimState.Finalized);
   });
 });
