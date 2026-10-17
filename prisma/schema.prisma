@@ -7,16 +7,13 @@ generator client {
   binaryTargets = ["native", "linux-musl"]
 }
 
-// Actual runtime datasource is SQLite via the libsql driver adapter
-// (see src/prisma/prisma.service.ts, DATABASE_URL=file:./dev.db) this 
-// matches prisma/migrations/migration_lock.toml, which already records
-// "sqlite" as the migration dialect. Declaring "postgresql" here caused
- // PrismaClientInitializationError at runtime ("Driver Adapter
-// @prisma/adapter-libsql, based on sqlite, is not compatible with the
-// provider postgress") once the client was regenerated against the
-// package-lock-pinned prisma@7.4.1, which validates this consistency.
+// Canonical persistence authority: PostgreSQL via Prisma (STAB-BE-006).
+// The libsql/SQLite adapter path has been retired; DATABASE_URL is the
+// single production URL and prisma/migrations is the sole migration
+// authority. Do not reintroduce a second ORM or dialect here.
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 enum UserRole {
@@ -342,7 +339,7 @@ model ChainEvent {
   // JSON-encoded RawChainLog.rawArgs
   rawArgs         String
 
-ingestedAt DateTime @default(now())
+  ingestedAt DateTime @default(now())
 
   @@unique([chainId, blockHash, txHash, logIndex])
   @@index([chainId, txHash, logIndex])

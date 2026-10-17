@@ -3,16 +3,35 @@
 import "dotenv/config";
 import { defineConfig } from "prisma/config";
 
+// STAB-BE-006: Prisma/PostgreSQL is the single persistence authority.
+// The database URL must be provided externally (env var or secret manager).
+// We deliberately do not fall back to a file-backed SQLite/LibSQL database:
+// doing so would re-introduce a second persistence authority and silently
+// diverge from production.
+function resolveDatabaseUrl(): string {
+  const url = process.env["DATABASE_URL"];
+  if (!url) {
+    throw new Error(
+       "DATABASE_URL is required. Prisma/PostgreSQL is the " +
+        "canonical persistence authority; no SQLite/LibSQL fallback is " +
+        "supported. Set DATABASE_URL to a postgresql:// connection string.",
+    );
+  }
+  if (!/^postgresql:\/\//i.test(url)) {
+    throw new Error(
+      "DATABASE_URL must be a postgresql:// connection string. " +
+        "Prisma/PostgreSQL is the canonical persistence authority.",
+    );
+  }
+  return url;
+}
+
 export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
     path: "prisma/migrations",
   },
   datasource: {
-    // Fall back to the file-backed dev database so `prisma migrate`
-    // commands work out of the box (including in CI, which provides no
-    // DATABASE_URL). Mirrors the runtime fallback in
-    // src/prisma/prisma.service.ts.
-    url: process.env["DATABASE_URL"] ?? "file:./dev.db",
+    url: resolveDatabaseUrl(),
   },
 });

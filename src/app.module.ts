@@ -1,6 +1,5 @@
 import { Module, Logger } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { EnvironmentValidationService } from './config/environment-validation.service';
 import { BullModule } from '@nestjs/bullmq';
 import { BullBoardModule } from '@bull-board/nestjs';
 import { ExpressAdapter } from '@bull-board/express';
@@ -14,7 +13,6 @@ import blockchainConfig from './config/blockchain.config';
 import sybilConfig from './config/sybil.config';
 import finalityPolicyConfig from './config/finality-policy.config';
 import { FinalityPolicyModule } from './config/finality-policy.module';
-import { DatabaseModule } from './database/database.module';
 import { BlockchainModule } from './blockchain/blockchain.module';
 import { IdentityModule } from './identity/identity.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -285,14 +283,10 @@ async function createThrottlerStorage(
     // Idempotency Module
     // Provides idempotency key handling for safe commands
     IdempotencyModule,
-    // PostgreSQL Database Infrastructure (Issue #269)
-    // DatabaseModule provides:
-    // - PostgreSQL connectivity with connection pooling
-    // - Transaction management via TransactionRunner
-    // - Health reporting via DatabaseService
-    // - Repository base class for all domain repositories
-    // Falls back to SQLite when DATABASE_URL is not set (development).
-    DatabaseModule,
+    // STAB-BE-006: Prisma/PostgreSQL is the single persistence authority.
+    // The former TypoORM DatabaseModule (SQLite/PostgreSQL dual path) has
+    // been removed; all repositories and transactions flow through Prisma.
+    PrismaModule,
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -330,7 +324,6 @@ async function createThrottlerStorage(
     AuthModule,
     BlockchainModule,
     IdentityModule,
-    PrismaModule,
     RewardsModule,
     SybilResistanceModule,
     AggregationModule,
@@ -362,31 +355,33 @@ async function createThrottlerStorage(
     RealtimeModule,
     StakingModule,
     IndexerModule,
-    // V2-BE-113: TypeORM-side Transactional Outbox
+    // V2-BE-113: Transactional outbox (now Prisma-backed)
     V2OutboxModule,
     CredentialRotationModule,
-    // UX-BE-004 (#595): protected operations, safe-retry and audit interfaces
     OperationsModule,
   ],
   controllers: [AppController],
   providers: [
     AppService,
-    EnvironmentValidationService,
     {
       provide: APP_GUARD,
       useClass: GlobalAuthGuard,
     },
     {
       provide: APP_GUARD,
-      useClass: WalletThrottlerGuard,
+      useClass: IdempotencyGuard,
     },
     {
       provide: APP_GUARD,
-      useClass: IdempotencyGuard,
+      useClass: WalletThrottlerGuard,
     },
     {
       provide: APP_INTERCEPTOR,
       useClass: LoggingInterceptor,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: AuditLoggingInterceptor,
     },
     {
       provide: APP_INTERCEPTOR,
