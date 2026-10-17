@@ -29,6 +29,19 @@ export default registerAs('blockchain', () => {
       finalized: parseInt(process.env.CONFIRMATIONS_FINALIZED || '12', 10),
       full: parseInt(process.env.CONFIRMATIONS_FULL || '64', 10),
     },
+    // Hard failure-closed bounds for reorg depth and ancestor search.
+    // These cap the distance the detector will walk before declaring an
+    // unrecoverable state, so a fat-fingered env value cannot start an
+    // unbounded chain walk or ancestor lookup.
+    finalityMaxReorgDepth: parseInt(
+      process.env.FINALITY_MAX_REORG_DEPTH || '64',
+      10,
+    ),
+    finalityMaxAncestorSearch: parseInt(
+      process.env.FINALITY_MAX_ANCESTOR_SEARCH || '64',
+      10,
+    ),
+
     // Memory limits for in-memory state service
     maxBlocksInMemory: parseInt(
       process.env.BLOCKCHAIN_MAX_BLOCKS || '10000',

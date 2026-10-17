@@ -6,13 +6,24 @@ import { BlockInfo, ReorgEvent, PendingEvent } from './types';
 
 /**
  * Detects and handles chain reorganizations
- */
-@Injectable()
+ */ @Injectable()
 export class ReorgDetectorService {
   private readonly logger = new Logger(ReorgDetectorService.name);
 
   /**
-   * Mutable confirmation depth, seeded from config.
+   * Flat upper bound applied to any chain-derived depth value (confirmations,
+   * reorg depth, and the bounded ancestor search). Exposes a single sane
+   * ceiling so a fat-fingered env value cannot make the detector walk the
+   * entire chain or walk unbounded depth while searching for an ancestor.
+   */
+  private static readonly FINALITY_MAX_SANE_DEPTH = 100_000;
+
+  /** Hardest reorg depth we are willing to handle before declaring unrecoverable. */
+  private readonly maxReorgDepth: number;
+  /** Bounded search budget, in chain hops, for the ancestor hash walk. */
+  private readonly maxAncestorSearch: number;
+
+  /** Mutable confirmation depth, seeded from config.
    * Default: 12 (~3 minutes for Ethereum at ~12 sec blocks).
    */
   private confirmationDepth: number;
@@ -22,12 +33,46 @@ export class ReorgDetectorService {
     private configService: ConfigService,
     private claimsCache: ClaimsCache,
   ) {
-    this.confirmationDepth = this.configService.get<number>(
-      'BLOCKCHAIN_CONFIRMATION_DEPTH',
-      12,
+    const configMaxReorgDepth = this.configService.get<number>(
+      'FINALITY_MAX_REORG_DEPTH',
+      64,
     );
+    if (!Number.isInteger(configMaxReorgDepth) || configMaxReorgDepth < 1) {
+      throw new Error(
+        `FINALITY_MAX_REORG_DEPTH must be a positive integer (got "${configMaxReorgDepth}")`,
+      );
+    }
+    if (configMaxReorgDepth > FINALITY_MAX_SANE_DEPTH) {
+      throw new Error(
+        `FINALITY_MAX_REORG_DEPTH exceeds the sane upper bound of ${FINALITY_MAX_SANE_DEPTH} (got ${configMaxReorgDepth})`,
+      );
+    }
 
-    this.logger.log(`Confirmation depth set to ${this.confirmationDepth}`);
+    const configAncestorSearchBudget = this.configService.get<number>(
+      'FINALITY_MAX_ANCESTOR_SEARCH',
+      64,
+    );
+    if (
+      !Number.isInteger(configAncestorSearchBudget) ||
+      configAncestorSearchBudget < 1
+    ) {
+      throw new Error(
+        `FINALITY_MAX_ANCESTOR_SEARCH must be a positive integer (got "${configAncestorSearchBudget}")`,
+      );
+    }
+    if (configAncestorSearchBudget > FINALITY_MAX_SANE_DEPTH) {
+      throw new Error(
+        `FINALITY_MAX_ANCESTOR_SEARCH exceeds the sane upper bound of ${FINALITY_MAX_SANE_DEPTH} (got ${configAncestorSearchBudget})`,
+      );
+    }
+
+    this.maxReorgDepth = configMaxReorgDepth;
+    this.maxAncestorSearch = configAncestorSearchBudget;
+
+    this.logger.log(`Max reorg depth set to ${this.maxReorgDepth}`);
+    this.logger.log(
+      `Max ancestor search budget set to ${this.maxAncestorSearch}`,
+    );
   }
 
   /**
@@ -95,15 +140,28 @@ export class ReorgDetectorService {
 
   /**
    * Find the exact divergence point in the chain.
+   *
+   * Both the resulting reorg depth and the internal ancestor hash walk are
+   * bounded. A depth that even approaches the hard ceiling is treated as an
+   * unrecoverable state: the detector halts readiness with operator guidance
+   * instead of silently searching unboundedly or exposing a fabricated depth.
    */
   private async findDivergencePoint(currentBlock: BlockInfo): Promise<number> {
     let divergenceDepth = 0;
     let checkBlockNumber = currentBlock.number;
+    // The flat sane depth is the absolute ceiling for chain-derived depth. It
+    // covers confirmations, reorg depth, and the bounded ancestor walk, so a
+    // fat-fingered env value cannot start an unbounded walk.
+    if (checkBlockNumber > ReorgDetectorService.FINALITY_MAX_SANE_DEPTH) {
+      throw new Error(
+        `Current block ${checkBlockNumber} exceeds the bounded search ceiling of ${ReorgDetectorService.FINALITY_MAX_SANE_DEPTH}; refusing to walk the chain. Halt readiness and contact the operator.`,
+      );
+    }
 
     // Walk backwards through the chain to find where it diverges
     // We compare the expected hash in our current chain at each depth
     // with the canonical block at that height
-    while (checkBlockNumber > 0 && divergenceDepth <= 1000) {
+    while (checkBlockNumber > 0 && divergenceDepth <= this.maxReorgDepth) {
       const canonicalBlock =
         await this.stateService.getCanonicalBlock(checkBlockNumber);
 
@@ -120,7 +178,14 @@ export class ReorgDetectorService {
           // At depth 0, we're looking at the current block itself
           expectedHash = currentBlock.hash;
         } else {
-          // For depth > 0, we need to get the ancestor at this depth
+          // For depth > 0, we need to get the ancestor at this depth.
+          // The walk is capped here so a mismatched/rigged chain cannot
+          // generate unbounded ancestor lookups.
+          if (divergenceDepth > this.maxAncestorSearch) {
+            throw new Error(
+              `Reorg ancestor search exceeded the bounded budget of ${this.maxAncestorSearch} hops while searching for divergence at block ${checkBlockNumber}. Halt readiness and contact the operator.`,
+            );
+          }
           expectedHash = await this.getAncestorHashAtDepth(
             currentBlock,
             divergenceDepth,

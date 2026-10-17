@@ -28,6 +28,9 @@ export class EnvironmentValidationService implements OnModuleInit {
     // Blockchain
     blockchain: ['RPC_URL', 'CHAIN_ID'],
 
+    // Reorg/ancestor search depth bounds
+    reorgBounds: ['FINALITY_MAX_REORG_DEPTH', 'FINALITY_MAX_ANCESTOR_SEARCH'],
+
     // Redis
     redis: ['REDIS_HOST', 'REDIS_PORT'],
 
@@ -131,7 +134,11 @@ export class EnvironmentValidationService implements OnModuleInit {
     const comboWarnings = this.validateCombinations();
     warnings.push(...comboWarnings);
 
-    // 5. Validate rate limiting configuration
+    // 5. Validate reorg/ancestor search depth bounds
+    const reorgBoundErrors = this.validateReorgBounds();
+    errors.push(...reorgBoundErrors);
+
+    // 6. Validate rate limiting configuration
     const rateLimitErrors = this.validateRateLimiting();
     errors.push(...rateLimitErrors);
 
@@ -373,6 +380,46 @@ export class EnvironmentValidationService implements OnModuleInit {
           // 24 hours in ms
           this.logger.warn(`[RATE_LIMIT] ${key} TTL is very high (${ttl}ms)`);
         }
+      }
+    }
+
+    return errors;
+  }
+
+  /**
+   * Validate reorg/ancestor search depth bounds are positive integers under the sane ceiling.
+   */
+  private validateReorgBounds(): string[] {
+    const errors: string[] = [];
+    const maxDepth = this.configService.get<number>('FINALITY_MAX_REORG_DEPTH');
+    const maxSearch = this.configService.get<number>(
+      'FINALITY_MAX_ANCESTOR_SEARCH',
+    );
+    // Flat sane ceiling for any chain-derived depth value, consistent with the
+    // ReorgDetectorService.
+    const saneCeiling = 100_000;
+
+    if (maxDepth !== undefined) {
+      if (!Number.isInteger(maxDepth) || maxDepth < 1) {
+        errors.push(
+          `FINALITY_MAX_REORG_DEPTH must be a positive integer (got "${maxDepth}")`,
+        );
+      } else if (maxDepth > saneCeiling) {
+        errors.push(
+          `FINALITY_MAX_REORG_DEPTH exceeds the sane upper bound of ${saneCeiling} (got ${maxDepth})`,
+        );
+      }
+    }
+
+    if (maxSearch !== undefined) {
+      if (!Number.isInteger(maxSearch) || maxSearch < 1) {
+        errors.push(
+          `FINALITY_MAX_ANCESTOR_SEARCH must be a positive integer (got "${maxSearch}")`,
+        );
+      } else if (maxSearch > saneCeiling) {
+        errors.push(
+          `FINALITY_MAX_ANCESTOR_SEARCH exceeds the sane upper bound of ${saneCeiling} (got ${maxSearch})`,
+        );
       }
     }
 
