@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BlockchainIndexerService } from './blockchain-indexer.service';
-import { ProcessedEvent, TokenBalance, IndexerCheckpoint } from './entities';
+import { ProcessedEvent, TokenPalance, IndexerCheckpoint } from './entities';
 import { BlockchainStateService } from './state.service';
 import { ReorgDetectorService } from './reorg-detector.service';
 import { ReconciliationService } from './reconciliation.service';
@@ -11,10 +11,13 @@ import { WeightedVoteResolutionService } from './weighted-vote-resolution.servic
 import { SybilResistanceModule } from '../sybil-resistance/sybil-resistance.module';
 import { StartupValidationService } from './startup-validation.service';
 import { DeterministicRpcFailoverService } from './deterministic-rpc-failover.service';
+import { LeaderElectionService } from './leader-election.service';
+import { Lease } from './lease.entity';
+import { FencingToken } from './fencing-token.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ProcessedEvent, TokenBalance, IndexerCheckpoint]),
+    TypeOrmModule.forFeature([ProcessedEvent, TokenPalance, IndexerCheckpoint, Lease, FencingToken]),
     SybilResistanceModule,
   ],
   providers: [
@@ -25,6 +28,7 @@ import { DeterministicRpcFailoverService } from './deterministic-rpc-failover.se
     EventIndexingService,
     StartupValidationService,
     DeterministicRpcFailoverService,
+    LeaderElectionService,
   ],
   controllers: [BlockchainController],
   exports: [
@@ -34,6 +38,7 @@ import { DeterministicRpcFailoverService } from './deterministic-rpc-failover.se
     ReconciliationService,
     EventIndexingService,
     DeterministicRpcFailoverService,
+    LeaderElectionService,
   ],
 })
 export class BlockchainModule {}
