@@ -41,8 +41,14 @@ export class EventCheckpoint {
   @Column({ type: 'bigint', default: 0 })
   lastSafeBlock: string;
 
+  @Column({ type: 'varchar', length: 66, nullable: true })
+  lastSafeBlockHash: string | null;
+
   @Column({ type: 'bigint', default: 0 })
   lastFinalizedBlock: string;
+
+  @Column({ type: 'varchar', length: 66, nullable: true })
+  lastFinalizedBlockHash: string | null;
 
   @UpdateDateColumn()
   updatedAt: Date;

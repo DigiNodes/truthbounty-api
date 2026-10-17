@@ -9,6 +9,7 @@ import { BlockchainModule } from '../blockchain/blockchain.module';
 import { MetricsModule } from '../metrics/metrics.module';
 import { DatabaseModule } from '../database/database.module';
 import { FinalizedCursorModule } from '../indexer/finalized-cursor/finalized-cursor.module';
+import { V2EventsModule } from '../v2/events/v2-events.module';
 import { PublicStatusController } from './public-status/public-status.controller';
 import { PublicStatusService } from './public-status/public-status.service';
 import { PublicStatusRateLimitGuard } from './public-status/public-status-rate-limit.guard';
@@ -27,6 +28,7 @@ import {
     BlockchainModule,
     MetricsModule,
     FinalizedCursorModule,
+    V2EventsModule,
   ],
   providers: [
     HealthService,

@@ -11,6 +11,8 @@ import { CanonicalEventQueryService } from './canonical-event-query.service';
 import { IndexerConfigService } from '../../config/indexer-config.service';
 
 import { ReorgRollbackService } from './reorg-rollback.service';
+import { ReorgRecoveryService } from './reorg-recovery.service';
+import { ReorgJournalEntry } from './entities/reorg-journal.entity';
 
 @Module({
   imports: [
@@ -19,6 +21,7 @@ import { ReorgRollbackService } from './reorg-rollback.service';
       ContractArtifact,
       EventQuarantine,
       EventCheckpoint,
+      ReorgJournalEntry,
     ]),
   ],
   providers: [
@@ -27,6 +30,7 @@ import { ReorgRollbackService } from './reorg-rollback.service';
     CanonicalEventsService,
     CanonicalEventQueryService,
     ReorgRollbackService,
+    ReorgRecoveryService,
     IndexerConfigService,
   ],
   exports: [
@@ -34,6 +38,7 @@ import { ReorgRollbackService } from './reorg-rollback.service';
     CanonicalEventQueryService,
     ArtifactRegistryService,
     ReorgRollbackService,
+    ReorgRecoveryService,
     TypeOrmModule,
   ],
 })
