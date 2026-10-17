@@ -29,6 +29,7 @@ interface WorldcoinCloudVerifyResponse {
 @Injectable()
 export class WorldcoinService {
   private readonly logger = new Logger(WorldcoinService.name);
+  private readonly httpClient: SafeHttpClientService;
 
   constructor(
     @InjectRepository(WorldIdVerification)
@@ -128,17 +129,19 @@ export class WorldcoinService {
         return false;
       }
 
-      const response = await fetch(`${verifyBaseUrl}/${appId}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      const response = await this.httpClient.post(
+        `${verifyBaseUrl}/${appId}`,
+        JSON.stringify({
           ...proof,
           action,
           ...(signal ? { signal } : {}),
         }),
-      });
+        {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        },
+      );
 
       if (!response.ok) {
         this.logger.warn(
@@ -147,7 +150,7 @@ export class WorldcoinService {
         return false;
       }
 
-      const result = (await response.json()) as WorldcoinCloudVerifyResponse;
+      const result = response.json<WorldcoinCloudVerifyResponse>();
 
       return result.success === true;
     } catch (error) {

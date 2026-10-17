@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/unbound-method */
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { getRepositoryToken } from '@nestjs/typeorm';
@@ -47,6 +48,16 @@ describe('WorldcoinService', () => {
   };
 
   beforeEach(async () => {
+    mockHttpClient = {
+      post: jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () => ({ success: true }),
+      }),
+      get: jest.fn(),
+      request: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         WorldcoinService,
@@ -87,12 +98,6 @@ describe('WorldcoinService', () => {
           'https://developer.worldcoin.org/api/v2/verify',
       };
       return config[key];
-    });
-
-    fetchMock.mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: jest.fn().mockResolvedValue({ success: true }),
     });
   });
 
@@ -142,8 +147,13 @@ describe('WorldcoinService', () => {
       const result = await service.verifyProof(userId, verifyDto);
 
       expect(result).toEqual(mockVerification);
-      expect(fetchMock).toHaveBeenCalledWith(
+      expect(mockHttpClient.post).toHaveBeenCalledWith(
         'https://developer.worldcoin.org/api/v2/verify/test-app-id',
+        JSON.stringify({
+          ...verifyDto.proof,
+          action: verifyDto.action,
+          signal: verifyDto.signal,
+        }),
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -276,10 +286,10 @@ describe('WorldcoinService', () => {
     });
 
     it('should throw BadRequestException for invalid proof', async () => {
-      fetchMock.mockResolvedValue({
+      mockHttpClient.post.mockResolvedValue({
         ok: true,
         status: 200,
-        json: jest.fn().mockResolvedValue({ success: false }),
+        json: () => ({ success: false }),
       });
       repository.findOne.mockResolvedValue(null);
 
@@ -298,7 +308,7 @@ describe('WorldcoinService', () => {
         }),
       ).rejects.toThrow('Invalid Worldcoin proof');
 
-      expect(fetchMock).not.toHaveBeenCalled();
+      expect(mockHttpClient.post).not.toHaveBeenCalled();
     });
   });
 
