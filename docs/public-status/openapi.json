@@ -12,7 +12,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PublicStatusResponseDto"
+                  "$ref": "#components/schemas/PublicStatusResponseDto"
                 }
               }
             }
@@ -26,11 +26,129 @@
           "Public Status"
         ]
       }
+    },
+    "/status/verifier-eligibility": {
+      "get": {
+        "description": "Contract-derived verifier readiness and assignment projection for a release. Readiness, assignment, stake, reputation inputs and effective-weight provenance are derived from canonical contract state and finalized events. Missing, stale, ambiguous or wrong-release data fails closed. No protected vote or rationale is exposed.",
+        "operationId": "PublicVerifierEligibilityController_getPublicVerifierEligibility",
+        "parameters": [
+          {
+            "name": "releaseId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Release identifier the projection must be bound to. Wrong-release data fails closed."
+          },
+          {
+            "name": "verifierAddress",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^0x[a-fA-F0-9]{40}$"
+            },
+            "description": "Optional filter for a single verifier. Omitted responses contain all assigned verifiers."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#components/schemas/PublicVerifierEligibilityResponseDto"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Per-client rate limit exceeded."
+          }
+        },
+        "summary": "Public verifier eligibility and assignment projection",
+        "tags": [
+          "Public Status"
+        ]
+      }
+    },
+    "/status/commit-reveal": {
+      "get": {
+        "description": "Contract-derived commit-reveal phase, deadline, commitment and reveal-requirement projection for a release. Phase and deadline values originate only from canonical state. Protected decisions cannot be inferred before canonical reveal; commitment data is present only as an opaque commitment hash and never as vote or rationale content.",
+        "operationId": "PublicCommitRevealController_getPublicCommitReveal",
+        "parameters": [
+          {
+            "name": "releaseId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Release identifier the projection must be bound to. Wrong-release data fails closed."
+          },
+          {
+            "name": "verifierAddress",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^0x[a-fA-F0-9]{40}$"
+            },
+            "description": "Optional filter for a single verifier. Omitted responses contain all assigned verifiers."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#components/schemas/PublicCommitRevealResponseDto"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Per-client rate limit exceeded."
+          }
+        },
+        "summary": "Public commit-reveal phase and deadline projection",
+        "tags": [
+          "Public Status"
+        ]
+      }
+    },
+    "/status/fixtures": {
+      "get": {
+        "description": "Published frontend fixtures covering approved Batch 4 states for verifier eligibility and commit-reveal projections. Fixtures are deterministic, contain no protected decision data, and are bound to chain ID, release ID, deployment block and artifact checksum.",
+        "operationId": "PublicFixturesController_getPublicFixtures",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#components/schemas/PublicFixturesResponseDto"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Per-client rate limit exceeded."
+          }
+        },
+        "summary": "Public frontend fixtures for Batch 4 states",
+        "tags": [
+          "Public Status"
+        ]
+      }
     }
   },
   "info": {
     "title": "TruthBounty Public Status",
-    "description": "Sanitized public service-status projection (UX-BE-001).",
+    "description": "Sanitized public service-status projection (UX-BE-001) with verifier eligibility and commit-reveal projections (PREWAVE-BE-006).",
     "version": "public-status.v1",
     "contact": {}
   },
@@ -79,7 +197,7 @@
           "freshness"
         ]
       },
-      "PublicComponentStatusDto": {
+      "PublicComponentStatusAto": {
         "type": "object",
         "properties": {
           "id": {
@@ -105,7 +223,7 @@
             ]
           },
           "observation": {
-            "$ref": "#/components/schemas/PublicObservationDto"
+            "$ref": "#components/schemas/PublicObservationDto"
           }
         },
         "required": [
@@ -146,7 +264,7 @@
             ]
           },
           "observation": {
-            "$ref": "#/components/schemas/PublicObservationDto"
+            "$ref": "#components/schemas/PublicObservationDto"
           }
         },
         "required": [
@@ -186,7 +304,7 @@
             ]
           },
           "observation": {
-            "$ref": "#/components/schemas/PublicObservationDto"
+            "$ref": "#components/schemas/PublicObservationDto"
           }
         },
         "required": [
@@ -248,17 +366,17 @@
           "components": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/PublicComponentStatusDto"
+              "$ref": "#components/schemas/PublicComponentStatusAto"
             }
           },
           "release": {
-            "$ref": "#/components/schemas/PublicReleaseManifestDto"
+            "$ref": "#components/schemas/PublicReleaseManifestDto"
           },
           "chain": {
-            "$ref": "#/components/schemas/PublicChainProgressDto"
+            "$ref": "#components/schemas/PublicChainProgressDto"
           },
           "cache": {
-            "$ref": "#/components/schemas/PublicStatusCacheDto"
+            "$ref": "#components/schemas/PublicStatusCacheDto"
           }
         },
         "required": [
@@ -269,6 +387,556 @@
           "release",
           "chain",
           "cache"
+        ]
+      },
+      "PublicChainBindingDto": {
+        "type": "object",
+        "description": "Binds every chain-derived projection to the canonical release and deployment. Mismatched values fail closed.",
+        "properties": {
+          "chainId": {
+            "type": "number",
+            "description": "Chain ID of the canonical deployment."
+          },
+          "releaseId": {
+            "type": "string",
+            "description": "Release identifier the projection is bound to."
+          },
+          "deploymentBlock": {
+            "type": "number",
+            "description": "Block number of the canonical deployment."
+          },
+          "artifactChecksum": {
+            "type": "string",
+            "description": "SHA-256 of the published release artifact."
+          }
+        },
+        "required": [
+          "chainId",
+          "releaseId",
+          "deploymentBlock",
+          "artifactChecksum"
+        ]
+      },
+      "PublicDataStatusDto": {
+        "type": "string",
+        "enum": [
+          "available",
+          "unavailable",
+          "ineligible",
+          "stale",
+          "wrong_release",
+          "ambiguous"
+        ],
+        "description": "Fail-closed discriminator for chain-derived projections."
+      },
+      "PublicEffectiveWeightSourceDto": {
+        "type": "object",
+        "description": "Authoritative source reference contributing to an effective weight component.",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "contract_state",
+              "finalized_event",
+              "release_config"
+            ]
+          },
+          "contractAddress": {
+            "type": "string",
+            "pattern": "^0x[a-fA-F0-9]{40}$"
+          },
+          "blockNumber": {
+            "type": "number",
+            "nullable": true
+          },
+          "transactionHash": {
+            "type": "string",
+            "nullable": true,
+            "pattern": "^0x[a-fA-F0-9]{64}$"
+          },
+          "logIndex": {
+            "type": "number",
+            "nullable": true
+          },
+          "eventSignature": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "kind",
+          "contractAddress",
+          "blockNumber",
+          "transactionHash",
+          "logIndex",
+          "eventSignature"
+        ]
+      },
+      "PublicEffectiveWeightComponentDto": {
+        "type": "object",
+        "properties": {
+          "component": {
+            "type": "string",
+            "enum": [
+              "stake",
+              "reputation",
+              "assignment"
+            ]
+          },
+          "value": {
+            "type": "string",
+            "description": "Decimal-encoded value of the component as derived from canonical state."
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#components/schemas/PublicEffectiveWeightSourceDto"
+            }
+          }
+        },
+        "required": [
+          "component",
+          "value",
+          "sources"
+        ]
+      },
+      "PublicVerifierEligibilityDto": {
+        "type": "object",
+        "properties": {
+          "verifierAddress": {
+            "type": "string",
+            "pattern": "^0x[a-fA-F0-9]{40}$"
+          },
+          "readiness": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "not_ready",
+              "ineligible",
+              "unavailable",
+              "stale",
+              "wrong_release",
+              "ambiguous"
+            ]
+          },
+          "assignment": {
+            "type": "string",
+            "enum": [
+              "assigned",
+              "unassigned",
+              "removed",
+              "unavailable",
+              "stale",
+              "wrong_release",
+              "ambiguous"
+            ]
+          },
+          "stake": {
+            "type": "string",
+            "nullable": true,
+            "description": "Decimal-encoded stake amount derived from canonical contract state."
+          },
+          "reputationInputs": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "score": {
+                "type": "string",
+                "nullable": true
+              },
+              "sampleSize": {
+                "type": "number",
+                "nullable": true
+              },
+              "sources": {
+                "type": "array",
+                "items": {
+                  "$ref": "#components/schemas/PublicEffectiveWeightSourceDto"
+                }
+              }
+            },
+            "required": [
+              "score",
+              "sampleSize",
+              "sources"
+            ]
+          },
+          "effectiveWeight": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "total": {
+                "type": "string",
+                "description": "Decimal-encoded effective weight derived from canonical state."
+              },
+              "components": {
+                "type": "array",
+                "items": {
+                  "$ref": "#components/schemas/PublicEffectiveWeightComponentDto"
+                }
+              }
+            },
+            "required": [
+              "total",
+              "components"
+            ]
+          },
+          "deadline": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "assignment",
+                  "commit",
+                  "reveal",
+                  "settlement"
+                ]
+              },
+              "timestamp": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Deadline timestamp derived from canonical contract state."
+              },
+              "blockNumber": {
+                "type": "number",
+                "nullable": true
+              },
+              "sources": {
+                "type": "array",
+                "items": {
+                  "$ref": "#components/schemas/PublicEffectiveWeightSourceDto"
+                }
+              }
+            },
+            "required": [
+              "kind",
+              "timestamp",
+              "blockNumber",
+              "sources"
+            ]
+          },
+          "dataStatus": {
+            "$ref": "#components/schemas/PublicDataStatusDto"
+          }
+        },
+        "required": [
+          "verifierAddress",
+          "readiness",
+          "assignment",
+          "stake",
+          "reputationInputs",
+          "effectiveWeight",
+          "deadline",
+          "dataStatus"
+        ]
+      },
+      "PublicVerifierEligibilityResponseDto": {
+        "type": "object",
+        "properties": {
+          "schemaVersion": {
+            "type": "string",
+            "enum": [
+              "public-verifier-eligibility.v1"
+            ]
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "binding": {
+            "$ref": "#components/schemas/PublicChainBindingDto"
+          },
+          "dataStatus": {
+            "$ref": "#components/schemas/PublicDataStatusAto"
+          },
+          "verifiers": {
+            "type": "array",
+            "items": {
+              "$ref": "#components/schemas/PublicVerifierEligibilityDto"
+            }
+          },
+          "observation": {
+            "$ref": "#components/schemas/PublicObservationDto"
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "generatedAt",
+          "binding",
+          "dataStatus",
+          "verifiers",
+          "observation"
+        ]
+      },
+      "PublicCommitRevealPhaseDto": {
+        "type": "string",
+        "enum": [
+          "before_commit",
+          "commit",
+          "between_commit_and_reveal",
+          "reveal",
+          "closed",
+          "settled",
+          "unavailable",
+          "stale",
+          "wrong_release",
+          "ambiguous"
+        ],
+        "description": "Phase derived only from canonical contract state."
+      },
+      "PublicCommitmentDto": {
+        "type": "object",
+        "description": "Opaque commitment metadata. Never contains vote or rationale content.",
+        "properties": {
+          "verifierAddress": {
+            "type": "string",
+            "pattern": "^0x[a-fA-F0-9]{40}$"
+          },
+          "commitmentHash": {
+            "type": "string",
+            "pattern": "^0x[a-fA-F0-9]{64}$"
+          },
+          "committedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "committedBlockNumber": {
+            "type": "number",
+            "nullable": true
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#components/schemas/PublicEffectiveWeightSourceDto"
+            }
+          }
+        },
+        "required": [
+          "verifierAddress",
+          "commitmentHash",
+          "committedAt",
+          "committedBlockNumber",
+          "sources"
+        ]
+      },
+      "PublicRevealRequirementDto": {
+        "type": "object",
+        "properties": {
+          "verifierAddress": {
+            "type": "string",
+            "pattern": "^0x[a-fA-F0-9]{40}$"
+          },
+          "required": {
+            "type": "boolean",
+            "description": "Whether the verifier must reveal for this release, derived from canonical state."
+          },
+          "revealed": {
+            "type": "boolean",
+            "description": "Whether a reveal has been recorded canonically. Does not expose the revealed decision."
+          },
+          "missedReveal": {
+            "type": "boolean",
+            "description": "True when the reveal deadline has passed without a canonical reveal."
+          },
+          "slashed": {
+            "type": "boolean",
+            "description": "True when a slashing event has been finalized for this verifier and release."
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#components/schemas/PublicEffectiveWeightSourceDto"
+            }
+          }
+        },
+        "required": [
+          "verifierAddress",
+          "required",
+          "revealed",
+          "missedReveal",
+          "slashed",
+          "sources"
+        ]
+      },
+      "PublicCommitRevealResponseDto": {
+        "type": "object",
+        "properties": {
+          "schemaVersion": {
+            "type": "string",
+            "enum": [
+              "public-commit-reveal.v1"
+            ]
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "binding": {
+            "$ref": "#components/schemas/PublicChainBindingDto"
+          },
+          "dataStatus": {
+            "$ref": "#components/schemas/PublicDataStatusDto"
+          },
+          "phase": {
+            "$ref": "#components/schemas/PublicCommitRevealPhaseDto"
+          },
+          "deadlines": {
+            "type": "array",
+            "items": {
+              "$ref": "#components/schemas/PublicDeadlineDto"
+            }
+          },
+          "commitments": {
+            "type": "array",
+            "items": {
+              "$ref": "#components/schemas/PublicCommitmentDto"
+            }
+          },
+          "revealRequirements": {
+            "type": "array",
+            "items": {
+              "$ref": "#components/schemas/PublicRevealRequirementDto"
+            }
+          },
+          "completion": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "settled": {
+                "type": "boolean",
+                "description": "True when finalized settlement has been observed canonically."
+              },
+              "settledAt": {
+                "type": "string",
+                "format": "date-time",
+                "nullable": true
+              },
+              "settledBlockNumber": {
+                "type": "number",
+                "nullable": true
+              },
+              "sources": {
+                "type": "array",
+                "items": {
+                  "$ref": "#components/schemas/PublicEffectiveWeightSourceDto"
+                }
+              }
+            },
+            "required": [
+              "settled",
+              "settledAt",
+              "settledBlockNumber",
+              "sources"
+            ]
+          },
+          "observation": {
+            "$ref": "#components/schemas/PublicObservationDto"
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "generatedAt",
+          "binding",
+          "dataStatus",
+          "phase",
+          "deadlines",
+          "commitments",
+          "revealRequirements",
+          "completion",
+          "observation"
+        ]
+      },
+      "PublicDeadlineDto": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "commit",
+              "reveal",
+              "settlement"
+            ]
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Deadline timestamp derived from canonical contract state."
+          },
+          "blockNumber": {
+            "type": "number",
+            "nullable": true
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#components/schemas/PublicEffectiveWeightSourceDto"
+            }
+          }
+        },
+        "required": [
+          "kind",
+          "timestamp",
+          "blockNumber",
+          "sources"
+        ]
+      },
+      "PublicFixtureDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Deterministic fixture identifier for an approved Batch 4 state."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "verifier_eligibility",
+              "commit_reveal"
+            ]
+          },
+          "binding": {
+            "$ref": "#components/schemas/PublicChainBindingDto"
+          },
+          "payload": {
+            "type": "object",
+            "description": "Fixture payload matching the corresponding public projection response shape. Contains no protected decision data.",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "binding",
+          "payload"
+        ]
+      },
+      "PublicFixturesResponseDto": {
+        "type": "object",
+        "properties": {
+          "schemaVersion": {
+            "type": "string",
+            "enum": [
+              "public-fixtures.v1"
+            ]
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "fixtures": {
+            "type": "array",
+            "items": {
+              "$ref": "#components/schemas/PublicFixtureDto"
+            }
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "generatedAt",
+          "fixtures"
         ]
       }
     }

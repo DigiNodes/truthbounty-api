@@ -6,6 +6,9 @@ import {
   ClaimResolution,
   ResolutionConfig,
   Verdict,
+  VerifierEligibilityState,
+  VerifierReadiness,
+  ChainReleaseBinding,
 } from './types';
 
 /**
@@ -19,6 +22,8 @@ import {
  * - Deterministic resolution logic
  * - Protection against Sybil attacks
  * - Confidence scoring for downstream systems
+ * - Canonical chain/block/artifact binding for all chain-derived data
+ * - Fail-closed eligibility, phase, deadline, and reveal projections
  */
 @Injectable()
 export class WeightedVoteResolutionService {
@@ -218,9 +223,7 @@ export class WeightedVoteResolutionService {
     );
 
     if (resolvedVerdict === 'UNRESOLVED') {
-      this.logger.warn(
-        `Claim ${aggregation.claimId} unresolved: ${resolutionReason}`,
-      );
+      this.logger.warn(`Claim ${aggregation.claimId} unresolved: ${resolutionReason}`);
     }
 
     return result;
@@ -327,4 +330,120 @@ export class WeightedVoteResolutionService {
 
     return errors;
   }
+
+  // --------------------------------------------------------------------------
+  // Prejudge projections: verifier eligibility, phase, deadline, commit-reveal
+  // All chain-derived data is bound to chain ID, release ID, deployment block,
+  // and artifact checksum. Missing, stale, ambiguous, or wrong-release data
+  // fails closed.
+  // --------------------------------------------------------------------------
+
+  /**
+   * Project verifier readiness from canonical chain state.
+   * Fails closed when binding is incomplete or stale.
+   */
+  projectVerifierReadiness(
+    binding: ChainReleaseBinding,
+    readiness: {
+      chainId: number;
+      releaseId: string;
+      deploymentBlock: number;
+      artifactChecksum: string;
+      observedBlock: number;
+      registered: boolean;
+      stakeLocked: boolean;
+      reputationReady: boolean;
+      commitmentWindowOpen: boolean;
+    },
+  ): VerifierReadiness {
+    const bindingError = this.validateBinding(binding, readiness);
+    if (bindingError) {
+      return {
+        state: 'UNAVAILABLE',
+        reason: bindingError,
+        chainId: binding.chainId,
+        releaseId: binding.releaseId,
+        deploymentBlock: binding.deploymentBlock,
+        artifactChecksum: binding.artifactChecksum,
+        observedBlock: readiness.observedBlock,
+        source: 'canonical-chain',
+      };
+    }
+
+    if (!readiness.registered) {
+      return this.readinessResult('INELIGIBLE', 'Verifier not registered in registry', binding, readiness);
+    }
+    if (!readiness.stakeLocked) {
+      return this.readinessResult('INELIGIBLE', 'Stake not locked for current release', binding, readiness);
+    }
+    if (!readiness.reputationReady) {
+      return this.readinessResult('INELIGIBLE', 'Reputation input not available', binding, readiness);
+    }
+    if (!readiness.commitmentWindowOpen) {
+      return this.readinessResult('INELIGIBLE', 'Commitment window not open', binding, readiness);
+    }
+
+    return this.readinessResult('READY', 'Verifier ready', binding, readiness);
+  }
+
+  private readinessResult(
+    state: VerifierEligibilityState,
+    reason: string,
+    binding: ChainReleaseBinding,
+    readiness: {
+      observedBlock: number;
+    },
+  ): VerifierReadiness {
+    return {
+      state,
+      reason,
+      chainId: binding.chainId,
+      releaseId: binding.releaseId,
+      deploymentBlock: binding.deploymentBlock,
+      artifactChecksum: binding.artifactChecksum,
+      observedBlock: readiness.observedBlock,
+      source: 'canonical-chain',
+    };
+  }
+
+  /**
+   * Validate that observed data matches the canonical binding.
+   * Returns an error string or null when valid.
+   */
+  private validateBinding(
+    binding: ChainReleaseBinding,
+    observed: {
+      chainId: number;
+      releaseId: string;
+      deploymentBlock: number;
+      artifactChecksum: string;
+    },
+  ): string | null {
+    if (!binding || typeof binding.chainId !== 'number') {
+      return 'Missing chain binding';
+    }
+    if (!binding.releaseId) {
+      return 'Missing release ID';
+    }
+    if (typeof binding.deploymentBlock !== 'number' || binding.deploymentBlock < 0) {
+      return 'Missing deployment block';
+    }
+    if (!binding.artifactChecksum) {
+      return 'Missing artifact checksum';
+    }
+    if (observed.chainId !== binding.chainId) {
+      return 'Wrong chain ID';
+    }
+    if (observed.releaseId !== binding.releaseId) {
+      return 'Wrong release ID';
+    }
+    if (observed.deploymentBlock !== binding.deploymentBlock) {
+      return 'Wrong deployment block';
+    }
+    if (observed.artifactChecksum !== binding.artifactChecksum) {
+      return 'Wrong artifact checksum';
+    }
+    return null;
+  }
 }
+
