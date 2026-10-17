@@ -1,14 +1,12 @@
 import {
   Injectable,
-  NotFoundException,
-  BadRequestException,
-  ConflictException,
   Logger,
 } from '@nestjs/common';
 import { Repository, DataSource } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Claim, ClaimState } from './entities/claim.entity';
 import { ClaimsCache } from '../cache/claims.cache';
+import { ClaimError, ClaimErrorCode } from './claim-errors';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -57,6 +55,13 @@ export class ClaimResolutionService {
     private readonly claimsCache: ClaimsCache,
     private readonly dataSource: DataSource,
   ) {}
+
+  /**
+   * Versioned error code namespace for this service's domain results.
+   * Exposed so controllers can map codes to HTTP statuses without leaking
+   * internal details.
+   */
+  static readonly ERROR_CODES = ClaimErrorCode;
 
   // ─── Pure computation ───────────────────────────────────────────────────
 
@@ -117,12 +122,16 @@ export class ClaimResolutionService {
 
     const claim = await this.claimRepo.findOneBy({ id: claimId });
     if (!claim) {
-      throw new NotFoundException(`Claim with ID ${claimId} not found`);
+      throw new ClaimError(
+        ClaimErrorCode.CLAIM_NOT_FOUND,
+        'Claim not found',
+      );
     }
 
     if (claim.finalized) {
-      throw new ConflictException(
-        `Claim ${claimId} is already finalized and cannot be re-resolved`,
+      throw new ClaimError(
+        ClaimErrorCode.CLAIM_ALREADY_FINALIZED,
+        'Claim is already finalized and cannot be re-resolved',
       );
     }
 
@@ -190,20 +199,44 @@ export class ClaimResolutionService {
     return count > 0;
   }
 
+  /**
+   * Guard for state transitions that must be contract-derived. Callers that
+   * attempt a transition from a phase that is not permitted by the canonical
+   * contract receive a typed `INVALID_TRANSITION` error rather than a generic
+   * `BadRequestException`.
+   */
+  assertTransitionAllowed(from: ClaimState, to: ClaimState): void {
+    if (!isTransitionAllowed(from, to)) {
+      throw new ClaimError(
+        ClaimErrorCode.INVALID_TRANSITION,
+        'State transition is not permitted by the claim contract',
+      );
+    }
+  }
+
   // ─── Private ────────────────────────────────────────────────────────────
 
   private validateVotes(votes: VoteWeightSummary): void {
     if (!votes) {
-      throw new BadRequestException('Vote weight summary is required');
+      throw new ClaimError(
+        ClaimErrorCode.INVALID_VOTES,
+        'Vote weight summary is required',
+      );
     }
     if (votes.trueWeight < 0 || votes.falseWeight < 0) {
-      throw new BadRequestException('Vote weights must be non-negative');
+      throw new ClaimError(
+        ClaimErrorCode.INVALID_VOTES,
+        'Vote weights must be non-negative',
+      );
     }
     if (
       !Number.isFinite(votes.trueWeight) ||
       !Number.isFinite(votes.falseWeight)
     ) {
-      throw new BadRequestException('Vote weights must be finite numbers');
+      throw new ClaimError(
+        ClaimErrorCode.INVALID_VOTES,
+        'Vote weights must be finite numbers',
+      );
     }
   }
 }

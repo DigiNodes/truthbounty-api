@@ -18,6 +18,7 @@ import { ClaimReadModel } from './entities/claim-read-model.entity';
 import { ClaimProjectorService } from './claim-projector.service';
 import { ClaimLifecycleController } from './claim-lifecycle.controller';
 import { IpfsModule } from '../ipfs/ipfs.module';
+import { ClaimLifecycleErrorFilter } from './claim-lifecycle.errors';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { IpfsModule } from '../ipfs/ipfs.module';
     EvidenceFlagService,
     ClaimProjectorService,
     ClaimResolutionService,
+    ClaimLifecycleErrorFilter,
   ],
   exports: [
     ClaimResolutionService,

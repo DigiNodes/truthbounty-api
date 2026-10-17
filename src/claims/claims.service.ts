@@ -2,10 +2,9 @@ import {
   Injectable,
   Logger,
   BadRequestException,
-  NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository } from 'typorm';
 import { Claim, ClaimState } from './entities/claim.entity';
 import { CreateClaimDto } from './dto/create-claim.dto';
 import { ClaimsCache } from '../cache/claims.cache';
@@ -19,6 +18,13 @@ import {
 import { AuditLog } from '../audit/decorators/audit-log.decorator';
 import { assertResolvedAtInvariant } from './claim-resolution.invariant';
 import { CacheUnavailableException } from '../cache/exceptions/cache-unavailable.exception';
+import {
+  ClaimBadRequestError,
+  ClaimConflictError,
+  ClaimInvalidTransitionError,
+  ClaimNotFoundError,
+  ClaimUnavailableError,
+} from './errors/claim-lifecycle.errors';
 
 @Injectable()
 export class ClaimsService {
@@ -169,14 +175,18 @@ export class ClaimsService {
   })
   async createClaim(createClaimDto: CreateClaimDto): Promise<Claim> {
     if (createClaimDto.title && createClaimDto.title.length > 200) {
-      throw new BadRequestException(
-        'Claim title exceeds maximum length of 200 characters',
-      );
+      throw new ClaimBadRequestError( {
+        field: 'title',
+        reason: 'max_length_exceeded',
+        maxLength: 200,
+      });
     }
     if (createClaimDto.content && createClaimDto.content.length > 5000) {
-      throw new BadRequestException(
-        'Claim content exceeds maximum length of 5000 characters',
-      );
+      throw new ClaimBadRequestError({
+        field: 'content',
+        reason: 'max_length_exceeded',
+        maxLength: 5000,
+      });
     }
 
     // Check if a claim with the same content already exists
@@ -246,16 +256,26 @@ export class ClaimsService {
     userId?: string,
   ): Promise<Claim> {
     const claim = await this.findOne(claimId);
-    if (!claim) throw new NotFoundException(`Claim ${claimId} not found`);
+    if (!claim) throw new ClaimNotFoundError({ claimId });
 
     const beforeState = { ...claim };
 
     // Use transitionTo helper for validated state transition
     // transitionTo sets resolvedAt on the claim entity when first resolved
-    claim.transitionTo(ClaimState.RESOLVED, {
-      verdict,
-      confidence: confidenceScore,
-    });
+    try {
+      claim.transitionTo(ClaimState.RESOLVED, {
+        verdict,
+        confidence: confidenceScore,
+      });
+    } catch (error) {
+      // Translate the generic state-machine rejection into a typed,
+      // client-safe domain error. We never leak the underlying message.
+      throw new ClaimInvalidTransitionError({
+        claimId,
+        currentState: claim.state,
+        targetState: ClaimState.RESOLVED,
+      });
+    }
 
     // Guard: reject if the object is somehow in an inconsistent state
     // before we write (e.g. caller mutated fields directly).
@@ -296,13 +316,21 @@ export class ClaimsService {
    */
   async finalizeClaim(claimId: string, userId?: string): Promise<Claim> {
     const claim = await this.findOne(claimId);
-    if (!claim) throw new Error(`Claim ${claimId} not found`);
+    if (!claim) throw new ClaimNotFoundError({ claimId });
 
     const beforeState = { ...claim };
 
     // Use transitionTo helper for validated state transition
     // transitionTo preserves resolvedAt if already set (RESOLVED → FINALIZED path)
-    claim.transitionTo(ClaimState.FINALIZED);
+    try {
+      claim.transitionTo(ClaimState.FINALIZED);
+    } catch (error) {
+      throw new ClaimInvalidTransitionError({
+        claimId,
+        currentState: claim.state,
+        targetState: ClaimState.FINALIZED,
+      });
+    }
 
     const updatedClaim = await this.claimRepo.save(claim);
     // Invalidate both the claim-specific cache and the latest claims list cache (non-critical)
