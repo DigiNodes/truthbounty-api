@@ -3,13 +3,17 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Param,
   Query,
+  Req,
   Res,
   Headers,
   UseGuards,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import {
   ApiTags,
   ApiOperation,
@@ -25,6 +29,7 @@ import { ComplianceService } from '../services/compliance.service';
 import { SecurityMonitoringService } from '../services/security-monitoring.service';
 import { AuditMetricsService } from '../services/audit-metrics.service';
 import { AuditQueueService } from '../services/audit-queue.service';
+import { ExportCursorService } from '../services/export-cursor.service';
 import {
   AuditLog,
   AuditActionType,
@@ -36,11 +41,16 @@ import {
   ComplianceReportDto,
 } from '../dto/audit-query.dto';
 import {
+  ExportAuditCursorDto,
+  ExportCursorResponseDto,
+} from '../dto/export-audit-cursor.dto';
+import {
   AuditPaginatedResponse,
   AuditResponse,
 } from '../interfaces/audit-response.interface';
 import { AdminGuard } from '../../admin/guards/admin.guard';
 import { RolesGuard } from '../../admin/guards/roles.guard';
+import { AuditExportCapabilityGuard } from '../guards/audit-export-capability.guard';
 import { Roles } from '../../admin/decorators/roles.decorator';
 import { AdminRole } from '../../admin/entities/admin.entity';
 
@@ -71,6 +81,7 @@ export class AuditController {
     private readonly securityMonitoringService: SecurityMonitoringService,
     private readonly auditMetricsService: AuditMetricsService,
     private readonly auditQueueService: AuditQueueService,
+    private readonly exportCursorService: ExportCursorService,
   ) {}
 
   // ── General audit query ───────────────────────────────────────────────────
@@ -648,5 +659,84 @@ export class AuditController {
       timestamp: new Date().toISOString(),
       requestId,
     };
+  }
+
+  // ── Cursor-based export (PREWAVE-BE-033) ─────────────────────────────────
+
+  /**
+   * GET /audit/export/cursor
+   *
+   * Fetch one page of audit records via a resumable cursor.
+   *
+   * First call: omit `cursorId` — the service creates a new cursor and
+   * returns the first page together with the `meta.cursorId` resume token.
+   *
+   * Subsequent calls: supply `meta.cursorId` from the previous response as
+   * `cursorId`.  The service validates the cursor, enforces ownership,
+   * checks expiry, and continues from the stored position.
+   *
+   * The response includes:
+   *   - `data` — allowlisted row array (JSON) or `null` (CSV).
+   *   - `csv`  — CSV string (CSV) or `null` (JSON).
+   *   - `meta.checkpointHash` — HMAC-SHA256 over the serialised rows;
+   *     callers can independently verify this with the shared
+   *     `AUDIT_HASH_SECRET`.
+   *   - `meta.exhausted` — `true` when no further pages are available.
+   *
+   * Security:
+   *   - `AuditExportCapabilityGuard` runs before the handler and fails closed
+   *     on any missing/expired/unauthorized/ambiguous state.
+   *   - Sensitive fields (`beforeState`, `afterState`, `metadata`,
+   *     `ipAddress`, `userAgent`, `walletAddress`) are excluded by an
+   *     in-process allowlist; the query itself never fetches them.
+   *   - Export is strictly read-only — no mutations are possible.
+   *
+   * Rate limits: callers are responsible for pacing between pages.
+   * Server-side limits: 500 rows/page, 1 000 000 rows/cursor,
+   * 10 000 pages/cursor, 10 s/page wall-clock, 24 h cursor TTL.
+   */
+  @Get('export/cursor')
+  @UseGuards(AuditExportCapabilityGuard)
+  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMINISTRATOR, AdminRole.AUDITOR)
+  @ApiOperation({
+    summary: 'Fetch one page of a resumable cursor-based audit export',
+  })
+  @ApiResponse({ status: 200, description: 'Export page', type: ExportCursorResponseDto })
+  @ApiResponse({ status: 401, description: 'Unauthenticated' })
+  @ApiResponse({ status: 403, description: 'Forbidden / capability check failed' })
+  @ApiResponse({ status: 404, description: 'Cursor not found' })
+  @ApiResponse({ status: 408, description: 'Page query timed out' })
+  @ApiResponse({ status: 410, description: 'Cursor expired or cancelled' })
+  @ApiResponse({ status: 422, description: 'Cursor exhausted or limit reached' })
+  @ApiProduces('application/json')
+  async exportCursorPage(
+    @Query() dto: ExportAuditCursorDto,
+    @Req() req: Request,
+  ): Promise<ExportCursorResponseDto> {
+    const requesterId: string = (req as any).admin.id;
+    return this.exportCursorService.fetchPage(dto, requesterId);
+  }
+
+  /**
+   * DELETE /audit/export/cursor/:cursorId
+   *
+   * Cancel an active export cursor.  Only the owner may cancel their own
+   * cursor.  Idempotent — cancelling an already-exhausted or expired cursor
+   * is a no-op.
+   */
+  @Delete('export/cursor/:cursorId')
+  @UseGuards(AuditExportCapabilityGuard)
+  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMINISTRATOR, AdminRole.AUDITOR)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Cancel a cursor-based export session' })
+  @ApiResponse({ status: 204, description: 'Cursor cancelled (or already terminal)' })
+  @ApiResponse({ status: 401, description: 'Unauthenticated' })
+  @ApiResponse({ status: 403, description: 'Forbidden / cursor not owned by caller' })
+  async cancelExportCursor(
+    @Param('cursorId') cursorId: string,
+    @Req() req: Request,
+  ): Promise<void> {
+    const requesterId: string = (req as any).admin.id;
+    await this.exportCursorService.cancelCursor(cursorId, requesterId);
   }
 }
