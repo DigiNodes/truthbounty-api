@@ -1,4 +1,4 @@
-/**
+/*
  * Core types for blockchain event tracking and reorg handling
  */
 
@@ -189,3 +189,110 @@ export interface ResolutionConfig {
   maxReputationShare: number; // Max % one user can contribute (0.0-1.0)
   tieThreshold: number; // Margin threshold for ties
 }
+
+/**
+ * Realtime configuration and topic authorization types
+ * (PREWAVE-BE-035)
+ */
+
+/**
+ * Public data policy for a stream topic. Protected payloads require a
+ * capability and are never coalesced with public payloads.
+ */
+export type RealtimeTopicVisibility = 'public' | 'protected';
+
+/**
+ * Supported release binding for realtime streams. Streams must be bound to
+ * a chain ID, release ID, deployment block, and artifact checksum.
+ */
+export interface RealtimeReleaseBinding {
+  chainId: string;
+  releaseId: string;
+  deploymentBlock: number;
+  artifactChecksum: string;
+}
+
+/**
+ * A single approved stream topic definition.
+ */
+export interface RealtimeTopicDefinition {
+  /** Canonical topic name. Must match the strict topic pattern. */
+  name: string;
+  /** Public or protected visibility. */
+  visibility: RealtimeTopicVisibility;
+  /** Capabilities required to subscribe (empty for public topics). */
+  requiredCapabilities: string[];
+  /** Maximum permitted payload size in bytes for this topic. */
+  maxPayloadBytes: number;
+  /** Retention window in seconds for backfill/replay. */
+  retentionSeconds: number;
+  /** Heartbeat interval in seconds. */
+  heartbeatSeconds: number;
+}
+
+/**
+ * Stream origin allow-list entry. Origins are matched exactly; wildcards
+ * are not permitted.
+ */
+export interface RealtimeOriginAllowEntry {
+  origin: string;
+  /** Optional capabilities required to connect from this origin. */
+  requiredCapabilities?: string[];
+}
+
+/**
+ * Validated realtime configuration. Invalid config must fail startup/readiness.
+ */
+export interface RealtimeConfig {
+  /** Release binding the config to a chain/release/deployment/artifact. */
+  release: RealtimeReleaseBinding;
+  /** Approved stream topics. */
+  topics: RealtimeTopicDefinition[];
+  /** Allowed stream origins. */
+  origins: RealtimeOriginAllowEntry[];
+  /** Default heartbeat interval in seconds (topic overrides allowed). */
+  defaultHeartbeatSeconds: number;
+  /** Default retention window in seconds (topic overrides allowed). */
+  defaultRetentionSeconds: number;
+  /** Global maximum payload size in bytes. */
+  maxPayloadBytes: number;
+  /** Maximum number of subscriptions per session. */
+  maxSubscriptionsPerSession: number;
+  /** Maximum number of concurrent sessions per principal. */
+  maxSessionsPerPrincipal: number;
+  /** Supported release IDs. Config releaseID must be in this list. */
+  supportedReleaseIds: string[];
+}
+
+/**
+ * Principal subscription context used for topic authorization.
+ */
+export interface RealtimePrincipal {
+  principalId: string;
+  capabilities: string[];
+  /** Session revocation timestamp; revoked sessions must be rejected. */
+  revokedAt?: Date | null;
+}
+
+/**
+ * Result of authorizing a topic subscription request.
+ */
+export type RealtimeTopicAuthorizationResult =
+  | { ok: true; topic: RealtimeTopicDefinition }
+  | { ok: false; reason: RealtimeTopicAuthorizationFailureReason };
+
+export type RealtimeTopicAuthorizationFailureReason =
+  |'unknown_topic'
+  | 'wildcard_not_allowed'
+  | 'invalid_topic_name'
+  | 'missing_capability'
+  | 'revoked_session'
+  | 'origin_not_allowed'
+  | 'stale_release';
+
+/**
+ * Result of validating a payload against the authorized topic and config.
+ */
+export type RealtimePayloadValidationResult =
+  | { ok: true }
+  | { ok: false; reason: 'oversized_payload' | 'visibility_mismatch' };

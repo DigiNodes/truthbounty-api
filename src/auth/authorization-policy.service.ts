@@ -16,6 +16,7 @@ import { RedisService } from '../redis/redis.service';
  * across admin, moderation, configuration, and user-scoped endpoints.
  *
  * Implements V2-BE-066: Enforce Least-Privilege API Authorization Policies
+ * Implements PREWAVE-BE-035: Validate Realtime Configuration and Topic Authorization
  */
 
 export enum ResourceType {
@@ -29,6 +30,8 @@ export enum ResourceType {
   AUDIT_LOG = 'audit_log',
   METRICS = 'metrics',
   SYSTEM = 'system',
+  REALTIME = 'realtime',
+  REALTIME_TOPIC = 'realtime_topic',
 }
 
 export enum ActionType {
@@ -46,6 +49,8 @@ export enum ActionType {
   UNPAUSE = 'unpause',
   REVOKE = 'revoke',
   OVERRIDE = 'override',
+  SUBSCRIBE = 'subscribe',
+  PUBLISH = 'publish',
 }
 
 export enum Role {
@@ -99,6 +104,67 @@ export interface PolicyRule {
 }
 
 /**
+ * Realtime configuration schema for stream origins, topics, retention,
+ * heartbeat, payload limits, and supported release.
+ */
+export interface RealtimeTopicDefinition {
+  /** Canonical topic name. Must match ^[a-z0-9._:-]+$ and no wildcards. */
+  name: string;
+  /** Whether the topic carries public data or protected payloads. */
+  visibility: 'public' | 'protected';
+  /** Roles allowed to subscribe to a protected topic. */
+  allowedRoles?: Role[];
+  /** Capabilities allowed to subscribe to a protected topic. */
+  allowedCapabilities?: string[];
+  /** Optional per-topic payload limit in bytes. */
+  maxPayloadBytes?: number;
+  /** Optional per-topic retention in seconds. */
+  retentionSeconds?: number;
+}
+
+export interface RealtimeConfiguration {
+  /** Allowed stream origins (exact match, no wildcards). */
+  origins: string[];
+  /** Approved topics. */
+  topics: RealtimeTopicDefinition[];
+  /** Default retention in seconds. */
+  retentionSeconds: number;
+  /** Heartbeat interval in seconds. */
+  heartbeatSeconds: number;
+  /** Maximum payload size in bytes. */
+  maxPayloadBytes: number;
+  /** Supported release IDs. */
+  supportedReleases: string[];
+  /** Chain ID the realtime data is bound to. */
+  chainId?: string;
+  /** Deployment block the realtime data is bound to. */
+  deploymentBlock?: number;
+  /** Artifact checksum the realtime data is bound to. */
+  artifactChecksum?: string;
+}
+
+export interface RealtimeSubscriptionRequest {
+  topic: string;
+  origin?: string;
+  releaseId?: string;
+  payloadBytes?: number;
+  sessionId?: string;
+}
+
+export interface RealtimeSubscriptionDecision {
+  allowed: boolean;
+  reason?: string;
+  topic?: RealtimeTopicDefinition;
+}
+
+export class RealtimeConfigurationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'RealtimeConfigurationError';
+  }
+}
+
+/**
  * Authorization Policy Engine
  */
 @Injectable()
@@ -109,6 +175,17 @@ export class AuthorizationPolicyService {
     string,
     (context: AuthorizationContext) => Promise<boolean>
   > = new Map();
+
+  /** Validated realtime configuration (null until validated). */
+  private realtimeConfig: RealtimeConfiguration | null = null;
+  private ready = false;
+
+  /** Topic name pattern. No wildcards, no Redis/WebSocket metacharacters. */
+  private static readonly TOPIC_PATTERN = /^[a-z0-9._:-]{1,128}$/;
+  /** Origin pattern. Exact origin match, no wildcards. */
+  private static readonly ORIGIN_PATTERN = /^https?:\/\/[a-z0-9.-]+(:\d+)?$/i;
+  /** Rejected topic characters (Redis/WebSocket patterns). */
+  private static readonly FORBIDDEN_TOPIC_CHARS = /[*?{[}\]\\\s|^>$<]/;
 
   constructor(
     private readonly configService: ConfigService,
@@ -400,6 +477,28 @@ export class AuthorizationPolicyService {
         enabled: true,
       },
 
+      // REALTIME - Public topic subscription for authenticated principals
+      {
+        id: 'realtime-public-subscribe',
+        name: 'Realtime Public Subscribe',
+        description: 'Authenticated principals can subscribe to public topics',
+        resource: ResourceType.REALTIME_TOPIC,
+        actions: [ActionType.SUBSCRIBE],
+        roles: [
+          Role.SUPER_ADMIN,
+          Role.ADMIN,
+          Role.MODERATOR,
+          Role.ANALYST,
+          Role.SUPPORT,
+          Role.USER,
+          Role.SERVICE,
+        ],
+        conditions: [],
+        effect: 'allow',
+        priority: 50,
+        enabled: true,
+      },
+
       // Deny by default for sensitive operations
       {
         id: 'deny-contract-deploy',
@@ -443,7 +542,13 @@ export class AuthorizationPolicyService {
         description: 'Audit logs are append-only',
         resource: ResourceType.AUDIT_LOG,
         actions: [ActionType.CREATE, ActionType.UPDATE, ActionType.DELETE],
-        roles: Object.values(Role),
+        roles: [
+          Role.ADMIN,
+          Role.MODERATOR,
+          Role.ANALYST,
+          Role.SUPPORT,
+          Role.USER,
+        ],
         conditions: [],
         effect: 'deny',
         priority: 1000,
@@ -454,52 +559,34 @@ export class AuthorizationPolicyService {
     for (const policy of defaultPolicies) {
       this.policies.set(policy.id, policy);
     }
-
-    this.logger.log(
-      `Loaded ${this.policies.size} default authorization policies`,
-    );
   }
 
   /**
-   * Register a custom policy condition evaluator
+   * Register a custom condition evaluator.
    */
   registerCustomEvaluator(
     name: string,
     evaluator: (context: AuthorizationContext) => Promise<boolean>,
   ): void {
     this.customEvaluators.set(name, evaluator);
-    this.logger.log(`Registered custom evaluator: ${name}`);
   }
 
   /**
-   * Add or update a policy rule
+   * Add or replace a policy rule.
    */
-  setPolicy(policy: PolicyRule): void {
+  addPolicy(policy: PolicyRule): void {
     this.policies.set(policy.id, policy);
-    this.logger.log(`Policy updated: ${policy.id} (${policy.effect})`);
   }
 
   /**
-   * Remove a policy rule
+   * Evaluate authorization for a given context. Deny-by-default.
    */
-  removePolicy(policyId: string): boolean {
-    const removed = this.policies.delete(policyId);
-    if (removed) {
-      this.logger.log(`Policy removed: ${policyId}`);
+  async isAuthorized(context: AuthorizationContext): Promise<boolean> {
+    if (!context.resourceType || !context.action) {
+      return false;
     }
-    return removed;
-  }
 
-  /**
-   * Check if an action is authorized
-   */
-  async authorize(context: AuthorizationContext): Promise<{
-    allowed: boolean;
-    matchedPolicy?: PolicyRule;
-    reason: string;
-  }> {
-    // Get applicable policies sorted by priority (highest first)
-    const applicablePolicies = Array.from(this.policies.values())
+    const applicable = Array.from(this.policies.values())
       .filter(
         (p) =>
           p.enabled &&
@@ -508,390 +595,410 @@ export class AuthorizationPolicyService {
       )
       .sort((a, b) => b.priority - a.priority);
 
-    if (applicablePolicies.length === 0) {
-      // Deny by default - no matching policy
-      return {
-        allowed: false,
-        reason: `No policy allows ${context.action} on ${context.resourceType}`,
-      };
-    }
-
-    // Evaluate each policy in priority order
-    for (const policy of applicablePolicies) {
-      // Check role match
-      if (!policy.roles.some((role) => context.roles.includes(role))) {
+    for (const policy of applicable) {
+      const roleMatch = policy.roles.some((r) => context.roles.includes(r));
+      if (!roleMatch) {
         continue;
       }
 
-      // Check conditions
-      const conditionsMet = await this.evaluateConditions(
-        policy.conditions,
-        context,
-      );
-      if (!conditionsMet) {
+      const conditionsMatch = await this.evaluateConditions(policy.conditions, context);
+      if (!conditionsMatch) {
         continue;
       }
 
-      // Policy matches
-      if (policy.effect === 'allow') {
-        return {
-          allowed: true,
-          matchedPolicy: policy,
-          reason: `Allowed by policy: ${policy.name}`,
-        };
-      } else {
-        return {
-          allowed: false,
-          matchedPolicy: policy,
-          reason: `Denied by policy: ${policy.name}`,
-        };
+      if (policy.effect === 'deny') {
+        return false;
       }
+      return true;
     }
 
-    // No policy allowed the action
-    return {
-      allowed: false,
-      reason: `No policy allows ${context.action} on ${context.resourceType} for roles: ${context.roles.join(', ')}`,
-    };
+    return false;
   }
 
   /**
-   * Evaluate policy conditions
+   * Evaluate a list of policy conditions.
    */
   private async evaluateConditions(
     conditions: PolicyCondition[],
     context: AuthorizationContext,
   ): Promise<boolean> {
     for (const condition of conditions) {
-      const met = await this.evaluateCondition(condition, context);
-      if (!met) {
+      const ok = await this.evaluateCondition(condition, context);
+      if (!ok) {
         return false;
       }
     }
     return true;
   }
 
-  /**
-   * Evaluate a single condition
-   */
   private async evaluateCondition(
     condition: PolicyCondition,
     context: AuthorizationContext,
   ): Promise<boolean> {
     switch (condition.type) {
-      case 'ownership':
-        return this.evaluateOwnership(condition, context);
-
+      case 'ownership': {
+        const field = condition.field as keyof AuthorizationContext;
+        const contextValue = context[field];
+        const resourceValue = context.metadata?.[condition.field ?? ''];
+        if (contextValue === undefined || resourceValue === undefined) {
+          return false;
+        }
+        return String(contextValue) === String(resourceValue);
+      }
       case 'role':
-        return this.evaluateRole(condition, context);
-
+        return context.roles.includes(condition.value as Role);
       case 'scope':
-        return this.evaluateScope(condition, context);
-
-      case 'time':
-        return this.evaluateTime(condition, context);
-
+        return (context.metadata?.scopes ?? []).includes(condition.value);
+      case 'time': {
+        const now = Date.now();
+        const target = new Date(condition.value);
+        return condition.operator === 'lt' ? now < target.getTime() : now > target.getTime();
+      }
       case 'ip':
-        return this.evaluateIp(condition, context);
-
-      case 'custom':
-        return this.evaluateCustom(condition, context);
-
+        return condition.value === context.ipAddress;
+      case 'custom': {
+        const evaluator = condition.customEvaluator
+          ? this.customEvaluators.get(condition.customEvaluator)
+          : undefined;
+        if (!evaluator) {
+          return false;
+        }
+        return evaluator(context);
+      }
       default:
-        this.logger.warn(`Unknown condition type: ${condition.type}`);
         return false;
     }
   }
 
-  private evaluateOwnership(
-    condition: PolicyCondition,
-    context: AuthorizationContext,
-  ): boolean {
-    if (!condition.field) return false;
-
-    const resourceValue = context.metadata?.[condition.field];
-    const userValue =
-      condition.field === 'userId' ? context.userId : context.walletAddress;
-
-    if (!resourceValue || !userValue) return false;
-
-    switch (condition.operator) {
-      case 'equals':
-        return resourceValue.toLowerCase() === userValue.toLowerCase();
-      case 'in':
-        return (
-          Array.isArray(resourceValue) &&
-          resourceValue.some(
-            (v: string) => v.toLowerCase() === userValue.toLowerCase(),
-          )
-        );
-      default:
-        return resourceValue.toLowerCase() === userValue.toLowerCase();
-    }
+  /**
+   * Load and validate realtime configuration. Fails closed on invalid config.
+   */
+  loadRealtimeConfiguration(
+    raw?: RealtimeConfiguration,
+  ): RealtimeConfiguration {
+    const config = raw ?? this.readRealtimeConfigFromEnv();
+    this.validateRealtimeConfiguration(config);
+    this.realtimeConfig = config;
+    this.ready = true;
+    return config;
   }
 
-  private evaluateRole(
-    condition: PolicyCondition,
-    context: AuthorizationContext,
-  ): boolean {
-    if (!condition.value) return false;
-    const requiredRoles = Array.isArray(condition.value)
-      ? condition.value
-      : [condition.value];
-    return requiredRoles.some((role: string) =>
-      context.roles.includes(role as Role),
+  /**
+   * Returns true only after a valid realtime configuration has been loaded.
+   */
+  isReady(): boolean {
+    return this.ready && this.realtimeConfig !== null;
+  }
+
+  getRealtimeConfiguration(): RealtimeConfiguration | null {
+    return this.realtimeConfig;
+  }
+
+  private readRealtimeConfigFromEnv(): RealtimeConfiguration {
+    const origins = this.parseList(this.configService.get<string>('REALTIME_ORIGINS'));
+    const topics = this.parseTopics(
+      this.configService.get<string>('REALTIME_TOPICS'),
     );
+    const retentionSeconds = this.parseIntConfig('REALTIME_RETENTION_SECONDS');
+    const heartbeatSeconds = this.parseIntConfig('REALTIME_HEARTBEAT_SECONDS');
+    const maxPayloadBytes = this.parseIntConfig('REALTIME_MAX_PAYLOAD_BYTES');
+    const supportedReleases = this.parseList(
+      this.configService.get<string>('REALTIME_SUPPORTED_RELEASES'),
+    );
+
+    return {
+      origins,
+      topics,
+      retentionSeconds,
+      heartbeatSeconds,
+      maxPayloadBytes,
+      supportedReleases,
+      chainId: this.configService.get<string>('CHAIN_ID'),
+      deploymentBlock: this.parseOptionalInt('DEPLOYMENT_BLOCK'),
+      artifactChecksum: this.configService.get<string>('ARTIFACT_CHECKSUM'),
+    };
   }
 
-  private evaluateScope(
-    condition: PolicyCondition,
-    context: AuthorizationContext,
-  ): boolean {
-    // Scope-based conditions (e.g., organization, team, project)
-    if (!condition.field || !condition.value) return false;
-    const scopeValue = context.metadata?.[condition.field];
-    const requiredScope = condition.value;
-    return scopeValue === requiredScope;
-  }
-
-  private evaluateTime(
-    condition: PolicyCondition,
-    context: AuthorizationContext,
-  ): boolean {
-    // Time-based conditions (e.g., business hours, maintenance windows)
-    const now = new Date();
-    const hour = now.getHours();
-
-    if (condition.field === 'businessHours') {
-      return hour >= 9 && hour < 18; // 9 AM - 6 PM
+  private parseList(value?: string): string[] {
+    if (!value) {
+      return [];
     }
+    return value
+      .split(',')
+      .map((v) => v.trim())
+      .filter((v) => v.length > 0);
+  }
 
-    if (condition.field === 'maintenanceWindow') {
-      // Check if in maintenance window
-      const maintenanceStart = this.configService.get<string>(
-        'MAINTENANCE_WINDOW_START',
-        '02:00',
-      );
-      const maintenanceEnd = this.configService.get<string>(
-        'MAINTENANCE_WINDOW_END',
-        '04:00',
-      );
-      const [startHour, startMin] = maintenanceStart.split(':').map(Number);
-      const [endHour, endMin] = maintenanceEnd.split(':').map(Number);
+  private parseTopics(value?: string): RealtimeTopicDefinition[] {
+    if (!value) {
+      return [];
+    }
+    return this.parseList(value).map((entry) => {
+      // Format: name:visibility[:role1,...]
+      const [name, visibilityRaw, rolesRaw] = entry.split(':');
+      const visibility = visibilityRaw === 'protected' ? 'protected' : 'public';
+      const allowedRoles = rolesRaw
+        ? (rolesRaw.split('|') as Role[])
+        : undefined;
+      return {
+        name,
+        visibility,
+        allowedRoles,
+      };
+    });
+  }
 
-      const currentMinutes = hour * 60 + now.getMinutes();
-      const startMinutes = startHour * 60 + startMin;
-      const endMinutes = endHour * 60 + endMin;
+  private parseIntConfig(key: string): number {
+    const raw = this.configService.get<string>(key);
+    const parsed = raw === undefined ? NaN : Number(raw);
+    return parsed;
+  }
 
-      if (startMinutes < endMinutes) {
-        return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
-      } else {
-        // Overnight window
-        return currentMinutes >= startMinutes || currentMinutes <= endMinutes;
+  private parseOptionalInt(key: string): number | undefined {
+    const raw = this.configService.get<string>(key);
+    if (raw === undefined || raw === '') {
+      return undefined;
+    }
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  /**
+   * Validate realtime configuration. Throws RealtimeConfigurationError on invalid config.
+   */
+  validateRealtimeConfiguration(config: RealtimeConfiguration): void {
+    const errors: string[] = [];
+
+    if (!Array.isArray(config.origins) || config.origins.length === 0) {
+      errors.push('origins must be a non-empty array');
+    } else {
+      for (const origin of config.origins) {
+        if (!AuthorizationPolicyService.ORIGIN_PATTERN.test(origin)) {
+          errors.push(`invalid origin: ${origin}`);
+        }
       }
     }
 
-    return true;
-  }
+    if (!Array.isArray(config.topics) || config.topics.length === 0) {
+      errors.push('topics must be a non-empty array');
+    } else {
+      const seenNames = new Set<string>();
+      for (const topic of config.topics) {
+        if (!this.isValidTopicName(topic.name)) {
+          errors.push(`invalid topic name: ${topic.name}`);
+        }
+        if (seenNames.has(topic.name)) {
+          errors.push(`duplicate topic name: ${topic.name}`);
+        }
+        seenNames.add(topic.name);
+        if (topic.visibility !== 'public' && topic.visibility !== 'protected') {
+          errors.push(`invalid visibility for topic ${topic.name}`);
+        }
+        if (topic.visibility === 'protected') {
+          const hasRoles = Array.isArray(topic.allowedRoles) && topic.allowedRoles.length > 0;
+          const hasCapabilities =
+            Array.isArray(topic.allowedCapabilities) &&
+            topic.allowedCapabilities.length > 0;
+          if (!hasRoles && !hasCapabilities) {
+            errors.push(
+              `protected topic ${topic.name} must declare allowedRoles or allowedCapabilities`,
+            );
+          }
+        }
+        if (
+          topic.maxPayloadBytes !== undefined &&
+          (!Number.isFinite(topic.maxPayloadBytes) || topic.maxPayloadBytes <= 0)
+        ) {
+          errors.push(`invalid maxPayloadBytes for topic ${topic.name}`);
+        }
+        if (
+          topic.retentionSeconds !== undefined &&
+          (!Number.isFinite(topic.retentionSeconds) || topic.retentionSeconds <= 0)
+        ) {
+          errors.push(`invalid retentionSeconds for topic ${topic.name}`);
+        }
+      }
+    }
 
-  private evaluateIp(
-    condition: PolicyCondition,
-    context: AuthorizationContext,
-  ): boolean {
-    if (!context.ipAddress || !condition.value) return false;
+    if (!Number.isFinite(config.retentionSeconds) || config.retentionSeconds <= 0) {
+      errors.push('retentionSeconds must be a positive integer');
+    }
+    if (!Number.isFinite(config.heartbeatSeconds) || config.heartbeatSeconds <= 0) {
+      errors.push('heartbeatSeconds must be a positive integer');
+    }
+    if (!Number.isFinite(config.maxPayloadBytes) || config.maxPayloadBytes <= 0) {
+      errors.push('maxPayloadBytes must be a positive integer');
+    }
+    if (!Array.isArray(config.supportedReleases) || config.supportedReleases.length === 0) {
+      errors.push('supportedReleases must be a non-empty array');
+    }
+    if (config.deploymentBlock !== undefined) {
+      if (!Number.isFinite(config.deploymentBlock) || config.deploymentBlock < 0) {
+        errors.push('deploymentBlock must be a non-negative integer');
+      }
+    }
 
-    const allowedIps = Array.isArray(condition.value)
-      ? condition.value
-      : [condition.value];
-
-    switch (condition.operator) {
-      case 'in':
-        return allowedIps.some((ip: string) =>
-          this.ipMatches(context.ipAddress!, ip),
-        );
-      case 'not_in':
-        return !allowedIps.some((ip: string) =>
-          this.ipMatches(context.ipAddress!, ip),
-        );
-      default:
-        return allowedIps.some((ip: string) =>
-          this.ipMatches(context.ipAddress!, ip),
-        );
+    if (errors.length > 0) {
+      this.ready = false;
+      this.logger.error(`Invalid realtime configuration: ${errors.join('; ')}`);
+      throw new RealtimeConfigurationError(errors.join('; '));
     }
   }
 
-  private ipMatches(ip: string, pattern: string): boolean {
-    if (pattern.includes('/')) {
-      // CIDR notation
-      const [rangeIp, prefix] = pattern.split('/');
-      return this.cidrMatch(ip, rangeIp, parseInt(prefix, 10));
-    }
-    return ip === pattern;
+  /**
+   * Static entry point used by startup validation to fail closed on invalid
+   * realtime configuration without instantiating the service.
+   */
+  static validateRealtimeConfiguration(config: RealtimeConfiguration): void {
+    new AuthorizationPolicyService(
+      { get: () => undefined } as unknown as ConfigService,
+      {} as unknown as RedisService,
+    ).validateRealtimeConfiguration(config);
   }
 
-  private cidrMatch(ip: string, rangeIp: string, prefix: number): boolean {
-    const ipParts = ip.split('.').map(Number);
-    const rangeParts = rangeIp.split('.').map(Number);
-
-    const ipNum =
-      (ipParts[0] << 24) | (ipParts[1] << 16) | (ipParts[2] << 8) | ipParts[3];
-    const rangeNum =
-      (rangeParts[0] << 24) |
-      (rangeParts[1] << 16) |
-      (rangeParts[2] << 8) |
-      rangeParts[3];
-
-    const mask = ~((1 << (32 - prefix)) - 1);
-    return (ipNum & mask) === (rangeNum & mask);
-  }
-
-  private async evaluateCustom(
-    condition: PolicyCondition,
-    context: AuthorizationContext,
-  ): Promise<boolean> {
-    if (!condition.customEvaluator) return false;
-
-    const evaluator = this.customEvaluators.get(condition.customEvaluator);
-    if (!evaluator) {
-      this.logger.warn(
-        `Custom evaluator not found: ${condition.customEvaluator}`,
-      );
+  /**
+   * Topic names must not contain Redis/WebSocket pattern metacharacters.
+   */
+  isValidTopicName(name: string): boolean {
+    if (typeof name !== 'string' || name.length === 0) {
       return false;
     }
+    if (AuthorizationPolicyService.FORBIDDEN_TOPIC_CHARS.test(name)) {
+      return false;
+    }
+    return AuthorizationPolicyService.TOPIC_PATTERN.test(name);
+  }
 
+  /**
+   * Authorize a subscription request against the validated realtime config.
+   * Fails closed on stale, missing, ambiguous, or unauthorized state.
+   */
+  async authorizeSubscription(
+    request: RealtimeSubscriptionRequest,
+    context: AuthorizationContext,
+  ): Promise<RealtimeSubscriptionDecision> {
+    if (!this.isReady() || !this.realtimeConfig) {
+      return { allowed: false, reason: 'realtime configuration not ready' };
+    }
+
+    const config = this.realtimeConfig;
+
+    // Origin check
+    if (request.origin !== undefined) {
+      if (!config.origins.includes(request.origin)) {
+        return { allowed: false, reason: 'origin not allowed' };
+      }
+    }
+
+    // Release check
+    if (request.releaseId !== undefined) {
+      if (!config.supportedReleases.includes(request.releaseId)) {
+        return { allowed: false, reason: 'stale or unsupported release' };
+      }
+    }
+
+    // Session revocation check
+    if (request.sessionId !== undefined) {
+      const revoked = await this.isSessionRevoked(request.sessionId);
+      if (revoked) {
+        return { allowed: false, reason: 'session revoked' };
+      }
+    }
+
+    // Topic validity and approval
+    if (!this.isValidTopicName(request.topic)) {
+      return { allowed: false, reason: 'invalid topic name' };
+    }
+    const topic = config.topics.find((t) => t.name === request.topic);
+    if (!topic) {
+      return { allowed: false, reason: 'unknown topic' };
+    }
+
+    // Payload limit check
+    const effectiveLimit = topic.maxPayloadBytes ?? config.maxPayloadBytes;
+    if (request.payloadBytes !== undefined && request.payloadBytes > effectiveLimit) {
+      return { allowed: false, reason: 'oversized payload' };
+    }
+
+    // Public topics are subscribable by any authenticated principal.
+    if (topic.visibility === 'public') {
+      const allowed = await this.isAuthorized({
+        ...context,
+        resourceType: ResourceType.REALTIME_TOPIC,
+        action: ActionType.SUBSCRIBE,
+        metadata: { ...(context.metadata ?? {}), topic: topic.name },
+      });
+      return allowed
+        ? { allowed: true, topic }
+        : { allowed: false, reason: 'unauthorized', topic };
+    }
+
+    // Protected topics require explicit role or capability match.
+    const roleMatch =
+      Array.isArray(topic.allowedRoles) &&
+      topic.allowedRoles.some((r) => context.roles.includes(r));
+    const capabilities = (context.metadata?.capabilities ?? []) as string[];
+    const capabilityMatch =
+      Array.isArray(topic.allowedCapabilities) &&
+      topic.allowedCapabilities.some((c) => capabilities.includes(c));
+
+    if (!roleMatch && !capabilityMatch) {
+      return { allowed: false, reason: 'unauthorized for protected topic', topic };
+    }
+
+    return { allowed: true, topic };
+  }
+
+  private async isSessionRevoked(sessionId: string): Promise<boolean> {
     try {
-      return await evaluator(context);
+      const client = (this.redisService as unknown as { client?: { get(key: string): Promise<string | null> } }).client;
+      if (!client) {
+        // Fail closed when revocation state is unavailable.
+        return true;
+      }
+      const value = await client.get(`revoked:session:${sessionId}`);
+      return value !== null && value !== undefined;
     } catch (error) {
-      this.logger.error(
-        `Custom evaluator ${condition.customEvaluator} failed: ${error.message}`,
-      );
-      return false;
+      this.logger.warn(`Session revocation check failed; failing closed: ${(error as Error).message}`);
+      return true;
     }
-  }
-
-  /**
-   * Get all policies for a resource
-   */
-  getPoliciesForResource(resource: ResourceType): PolicyRule[] {
-    return Array.from(this.policies.values())
-      .filter((p) => p.resource === resource && p.enabled)
-      .sort((a, b) => b.priority - a.priority);
-  }
-
-  /**
-   * Get all policies
-   */
-  getAllPolicies(): PolicyRule[] {
-    return Array.from(this.policies.values()).sort(
-      (a, b) => b.priority - a.priority,
-    );
-  }
-
-  /**
-   * Export policies for auditing
-   */
-  exportPolicies(): string {
-    return JSON.stringify(this.getAllPolicies(), null, 2);
   }
 }
 
 /**
- * Authorization Guard for NestJS
+ * Guard that enforces role/resource authorization for HTTP routes.
  */
 @Injectable()
 export class AuthorizationGuard implements CanActivate {
-  private readonly logger = new Logger(AuthorizationGuard.name);
-
   constructor(
-    private readonly policyService: AuthorizationPolicyService,
     private readonly reflector: Reflector,
+    private readonly authorizationPolicy: AuthorizationPolicyService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest();
-    const user = request.user;
+    const requiredResource = this.reflector.get<ResourceType>('resource', context.getHandler());
+    const requiredAction = this.reflector.get<ActionType>('action', context.getHandler());
 
-    if (!user) {
-      throw new ForbiddenException('Authentication required');
-    }
-
-    // Get required permission from route metadata
-    const requiredPermission = this.reflector.get<Permission>(
-      'permission',
-      context.getHandler(),
-    );
-
-    if (!requiredPermission) {
-      // No permission required - allow if authenticated
+    if (!requiredResource || !requiredAction) {
       return true;
     }
 
-    // Build authorization context
-    const authContext: AuthorizationContext = {
-      userId: user.sub || user.userId,
-      walletAddress: user.address,
-      roles: user.roles || [Role.USER],
-      permissions: user.permissions || [],
-      resourceId: request.params.id || request.body?.id,
-      resourceType: requiredPermission.resource,
-      action: requiredPermission.action,
-      ipAddress: request.ip,
-      userAgent: request.get('user-agent'),
-      metadata: {
-        ...request.params,
-        ...request.body,
-        ...request.query,
-      },
-    };
-
-    const result = await this.policyService.authorize(authContext);
-
-    if (!result.allowed) {
-      this.logger.warn(`Authorization denied: ${result.reason}`, {
-        userId: authContext.userId,
-        resource: authContext.resourceType,
-        action: authContext.action,
-        roles: authContext.roles,
-      });
-      throw new ForbiddenException(result.reason);
+    const request = context.switchToHttp().getRequest();
+    const principal = request.user as AuthorizationContext | undefined;
+    if (!principal) {
+      throw new ForbiddenException('No authenticated principal');
     }
 
+    const allowed = await this.authorizationPolicy.isAuthorized({
+      ...principal,
+      resourceType: requiredResource,
+      action: requiredAction,
+      resourceId: request.params.id,
+    });
+
+    if (!allowed) {
+      throw new ForbiddenException('Insufficient permissions');
+    }
     return true;
   }
 }
-
-/**
- * Decorator for declaring required permissions
- */
-export const RequirePermission = (permission: Permission) => {
-  return (
-    target: any,
-    propertyKey?: string,
-    descriptor?: PropertyDescriptor,
-  ) => {
-    if (descriptor) {
-      Reflect.defineMetadata('permission', permission, descriptor.value);
-    } else {
-      Reflect.defineMetadata('permission', permission, target);
-    }
-    return descriptor ?? target;
-  };
-};
-
-/**
- * Decorator for declaring required roles
- */
-export const RequireRoles = (...roles: Role[]) => {
-  return (
-    target: any,
-    propertyKey?: string,
-    descriptor?: PropertyDescriptor,
-  ) => {
-    if (descriptor) {
-      Reflect.defineMetadata('roles', roles, descriptor.value);
-    } else {
-      Reflect.defineMetadata('roles', roles, target);
-    }
-    return descriptor ?? target;
-  };
-};
