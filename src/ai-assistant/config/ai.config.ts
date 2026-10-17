@@ -1,3 +1,4 @@
+import { getRuntimeEnvironment } from '../../config/runtime-config';
 import { registerAs } from '@nestjs/config';
 
 export interface AiConfig {
@@ -20,32 +21,32 @@ export interface AiConfig {
 }
 
 export default registerAs('ai', (): AiConfig => ({
-  provider: (process.env.AI_PROVIDER as 'openai' | 'mock') || 'mock',
+  provider: (getRuntimeEnvironment().AI_PROVIDER as 'openai' | 'mock') || 'mock',
   openai: {
-    apiKey: process.env.OPENAI_API_KEY,
-    baseUrl: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
-    model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+    apiKey: getRuntimeEnvironment().OPENAI_API_KEY,
+    baseUrl: getRuntimeEnvironment().OPENAI_BASE_URL || 'https://api.openai.com/v1',
+    model: getRuntimeEnvironment().OPENAI_MODEL || 'gpt-4o-mini',
   },
-  maxPromptLength: parseInt(process.env.AI_MAX_PROMPT_LENGTH || '4000', 10),
+  maxPromptLength: parseInt(getRuntimeEnvironment().AI_MAX_PROMPT_LENGTH || '4000', 10),
   memoryWindowMessages: parseInt(
-    process.env.AI_MEMORY_WINDOW_MESSAGES || '10',
+    getRuntimeEnvironment().AI_MEMORY_WINDOW_MESSAGES || '10',
     10,
   ),
   memoryWindowTokenBudget: parseInt(
-    process.env.AI_MEMORY_WINDOW_TOKEN_BUDGET || '3000',
+    getRuntimeEnvironment().AI_MEMORY_WINDOW_TOKEN_BUDGET || '3000',
     10,
   ),
-  contextTopN: parseInt(process.env.AI_CONTEXT_TOP_N || '5', 10),
-  contextCacheTtl: parseInt(process.env.AI_CONTEXT_CACHE_TTL || '900', 10),
+  contextTopN: parseInt(getRuntimeEnvironment().AI_CONTEXT_TOP_N || '5', 10),
+  contextCacheTtl: parseInt(getRuntimeEnvironment().AI_CONTEXT_CACHE_TTL || '900', 10),
   convoWindowCacheTtl: parseInt(
-    process.env.AI_CONVO_WINDOW_CACHE_TTL || '120',
+    getRuntimeEnvironment().AI_CONVO_WINDOW_CACHE_TTL || '120',
     10,
   ),
   providerAvailabilityCacheTtl: parseInt(
-    process.env.AI_PROVIDER_AVAILABILITY_CACHE_TTL || '30',
+    getRuntimeEnvironment().AI_PROVIDER_AVAILABILITY_CACHE_TTL || '30',
     10,
   ),
-  redactBeforeStore: process.env.AI_REDACT_BEFORE_STORE === 'true',
+  redactBeforeStore: getRuntimeEnvironment().AI_REDACT_BEFORE_STORE === 'true',
   blockedTerms: [
     // Deliberately small, illustrative starter list — extend via config in production.
     'kill yourself',

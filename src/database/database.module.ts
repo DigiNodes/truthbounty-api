@@ -90,7 +90,10 @@ import { MigrationValidatorService } from './migrations/migration-validator.serv
             logging: configService.get<string>('DATABASE_LOGGING') === 'true',
             ssl:
               configService.get<string>('DB_SSL') === 'true'
-                ? { rejectUnauthorized: false }
+                ? {
+                    rejectUnauthorized:
+                      configService.get('DATABASE_SSL_REJECT_UNAUTHORIZED') !== 'false',
+                  }
                 : false,
             extra: {
               max: configService.get<number>('DB_POOL_MAX', 20),
@@ -132,7 +135,12 @@ import { MigrationValidatorService } from './migrations/migration-validator.serv
             configService.get<string>('NODE_ENV') !== 'production' &&
             configService.get<string>('DATABASE_SYNCHRONIZE') === 'true',
           logging: configService.get<string>('DATABASE_LOGGING') === 'true',
-          ssl: ssl ? { rejectUnauthorized: false } : false,
+          ssl: ssl
+            ? {
+                rejectUnauthorized:
+                  configService.get('DATABASE_SSL_REJECT_UNAUTHORIZED') !== 'false',
+              }
+            : false,
           extra: {
             max: configService.get<number>('DB_POOL_MAX', 20),
             idleTimeoutMillis: configService.get<number>(

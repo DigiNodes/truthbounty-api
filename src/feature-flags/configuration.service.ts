@@ -1,3 +1,4 @@
+import { getRuntimeEnvironment } from '../config/runtime-config';
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -197,6 +198,6 @@ export class ConfigurationService {
   }
 
   private getDefaultEnvironment(): string {
-    return process.env.NODE_ENV ?? 'development';
+    return getRuntimeEnvironment().NODE_ENV ?? 'development';
   }
 }

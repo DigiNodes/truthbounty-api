@@ -1,3 +1,4 @@
+import { getRuntimeEnvironment } from '../../config/runtime-config';
 export const PUBLIC_STATUS_OPTIONS = Symbol('PUBLIC_STATUS_OPTIONS');
 
 export interface PublicStatusOptions {
@@ -27,7 +28,7 @@ function positiveInt(
 }
 
 export function loadPublicStatusOptions(
-  env: NodeJS.ProcessEnv = process.env,
+  env: NodeJS.ProcessEnv = getRuntimeEnvironment(),
 ): PublicStatusOptions {
   return {
     cacheTtlSeconds: positiveInt(

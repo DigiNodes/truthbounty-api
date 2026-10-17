@@ -1,3 +1,4 @@
+import { getRuntimeEnvironment } from '../../config/runtime-config';
 import { Module } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import {
@@ -17,7 +18,7 @@ import { TypeOrmFinalizedCursorStore } from './typeorm-finalized-cursor.store';
   providers: [
     {
       provide: FINALIZED_CURSOR_CONFIG,
-      useFactory: () => loadFinalizedCursorConfig(process.env),
+      useFactory: () => loadFinalizedCursorConfig(getRuntimeEnvironment()),
     },
     {
       provide: FINALIZED_CURSOR_STORE,

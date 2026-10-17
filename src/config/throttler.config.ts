@@ -1,3 +1,4 @@
+import { getRuntimeConfig } from './runtime-config';
 import { registerAs } from '@nestjs/config';
 
 export interface RateLimitConfig {
@@ -20,86 +21,28 @@ export interface ThrottlerConfig {
   default: RateLimitConfig;
 }
 
-export default registerAs('throttler', (): ThrottlerConfig => ({
-  redis: {
-    host: process.env.REDIS_HOST || 'localhost',
-    port: parseInt(process.env.REDIS_PORT || '6379', 10),
-  },
-  claims: {
-    ttl: parseInt(process.env.RATE_LIMIT_CLAIMS_TTL || '60', 10) * 1000,
-    limit: parseInt(process.env.RATE_LIMIT_CLAIMS_LIMIT || '5', 10),
-    blockDuration:
-      parseInt(
-        process.env.RATE_LIMIT_CLAIMS_BLOCK_DURATION ||
-          process.env.RATE_LIMIT_CLAIMS_TTL ||
-          '60',
-        10,
-      ) * 1000,
-  },
-  votes: {
-    ttl: parseInt(process.env.RATE_LIMIT_VOTES_TTL || '60', 10) * 1000,
-    limit: parseInt(process.env.RATE_LIMIT_VOTES_LIMIT || '20', 10),
-    blockDuration:
-      parseInt(
-        process.env.RATE_LIMIT_VOTES_BLOCK_DURATION ||
-          process.env.RATE_LIMIT_VOTES_TTL ||
-          '60',
-        10,
-      ) * 1000,
-  },
-  disputes: {
-    ttl: parseInt(process.env.RATE_LIMIT_DISPUTES_TTL || '60', 10) * 1000,
-    limit: parseInt(process.env.RATE_LIMIT_DISPUTES_LIMIT || '3', 10),
-    blockDuration:
-      parseInt(
-        process.env.RATE_LIMIT_DISPUTES_BLOCK_DURATION ||
-          process.env.RATE_LIMIT_DISPUTES_TTL ||
-          '60',
-        10,
-      ) * 1000,
-  },
-  auth: {
-    ttl: parseInt(process.env.RATE_LIMIT_AUTH_TTL || '60', 10) * 1000,
-    limit: parseInt(process.env.RATE_LIMIT_AUTH_LIMIT || '5', 10),
-    blockDuration:
-      parseInt(
-        process.env.RATE_LIMIT_AUTH_BLOCK_DURATION ||
-          process.env.RATE_LIMIT_AUTH_TTL ||
-          '60',
-        10,
-      ) * 1000,
-  },
-  ai: {
-    ttl: parseInt(process.env.RATE_LIMIT_AI_TTL || '60', 10) * 1000,
-    limit: parseInt(process.env.RATE_LIMIT_AI_LIMIT || '10', 10),
-    blockDuration:
-      parseInt(
-        process.env.RATE_LIMIT_AI_BLOCK_DURATION ||
-          process.env.RATE_LIMIT_AI_TTL ||
-          '60',
-        10,
-      ) * 1000,
-  },
-  aiStream: {
-    ttl: parseInt(process.env.RATE_LIMIT_AI_STREAM_TTL || '60', 10) * 1000,
-    limit: parseInt(process.env.RATE_LIMIT_AI_STREAM_LIMIT || '3', 10),
-    blockDuration:
-      parseInt(
-        process.env.RATE_LIMIT_AI_STREAM_BLOCK_DURATION ||
-          process.env.RATE_LIMIT_AI_STREAM_TTL ||
-          '60',
-        10,
-      ) * 1000,
-  },
-  default: {
-    ttl: parseInt(process.env.RATE_LIMIT_DEFAULT_TTL || '60', 10) * 1000, // 60 seconds
-    limit: parseInt(process.env.RATE_LIMIT_DEFAULT_LIMIT || '10', 10),
-    blockDuration:
-      parseInt(
-        process.env.RATE_LIMIT_DEFAULT_BLOCK_DURATION ||
-          process.env.RATE_LIMIT_DEFAULT_TTL ||
-          '60',
-        10,
-      ) * 1000,
-  },
-}));
+export default registerAs('throttler', (): ThrottlerConfig => {
+  const config = getRuntimeConfig();
+  function rate(
+    name:
+      'CLAIMS' | 'VOTES' | 'DISPUTES' | 'AUTH' | 'AI' | 'AI_STREAM' | 'DEFAULT',
+  ): RateLimitConfig {
+    const ttl = config[`RATE_LIMIT_${name}_TTL`]!;
+    return {
+      ttl: ttl * 1000,
+      limit: config[`RATE_LIMIT_${name}_LIMIT`]!,
+      blockDuration:
+        (config[`RATE_LIMIT_${name}_BLOCK_DURATION`] ?? ttl) * 1000,
+    };
+  }
+  return {
+    redis: { host: config.REDIS_HOST!, port: config.REDIS_PORT! },
+    claims: rate('CLAIMS'),
+    votes: rate('VOTES'),
+    disputes: rate('DISPUTES'),
+    auth: rate('AUTH'),
+    ai: rate('AI'),
+    aiStream: rate('AI_STREAM'),
+    default: rate('DEFAULT'),
+  };
+});

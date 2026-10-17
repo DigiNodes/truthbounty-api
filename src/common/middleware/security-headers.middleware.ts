@@ -1,3 +1,4 @@
+import { getRuntimeEnvironment } from '../../config/runtime-config';
 import { Injectable, NestMiddleware, Logger } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 
@@ -25,7 +26,7 @@ export class SecurityHeadersMiddleware implements NestMiddleware {
 
     // Strict Transport Security (HSTS)
     // Max age of 1 year, include subdomains, allow preload
-    const hstsMaxAge = process.env.HSTS_MAX_AGE || '31536000';
+    const hstsMaxAge = getRuntimeEnvironment().HSTS_MAX_AGE || '31536000';
     res.setHeader(
       'Strict-Transport-Security',
       `max-age=${hstsMaxAge}; includeSubDomains; preload`,

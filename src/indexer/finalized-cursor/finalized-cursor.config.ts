@@ -1,3 +1,4 @@
+import { getRuntimeEnvironment } from '../../config/runtime-config';
 import { FreshnessPolicy, ReleaseBinding } from './finalized-cursor.types';
 
 export const FINALIZED_CURSOR_CONFIG = Symbol('FINALIZED_CURSOR_CONFIG');
@@ -57,7 +58,7 @@ function parseNonNegativeInt(
  * (plus BLOCKCHAIN_CHAIN_ID) must be valid, otherwise startup fails closed.
  */
 export function loadFinalizedCursorConfig(
-  env: NodeJS.ProcessEnv = process.env,
+  env: NodeJS.ProcessEnv = getRuntimeEnvironment(),
 ): FinalizedCursorConfig {
   const policy: FreshnessPolicy = {
     maxIndexLagBlocks: parseNonNegativeInt(

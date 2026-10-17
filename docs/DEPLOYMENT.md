@@ -190,3 +190,26 @@ If a deployment fails or introduces regressions:
 2. **Revert Migrations:** If the database schema was modified, restore from the pre-deployment snapshot (see `DISASTER_RECOVERY_md`).
 3. **Restart Indexer:** Ensure the indexer is running and in sync with the chain.
 4. **Verify Release Id:** Confirm the API and frontend report the same release ID and checksums via `/health`.
+# Shared runtime configuration
+
+The complete generated schema, defaults and migration aliases are in
+[RUNTIME_CONFIGURATION.md](RUNTIME_CONFIGURATION.md). Run `npm run config:check`
+to detect drift; edit `src/config/runtime-schema.ts` and run
+`npm run config:generate` to update the reference and `.env.example` together.
+
+Configuration is validated and frozen before Nest opens connections. Use only
+one name from each alias group, omit optional values instead of setting them
+empty, and restart after changing configuration. `.env.local` overrides `.env`;
+process environment overrides both. Multiple assignments within a file fail.
+The release metadata is pinned with `CONTRACT_RELEASE_SHA256`; the canonical
+release validator remains responsible for ABI, event, freshness and RPC checks.
+
+Staging and production reject insecure database TLS, disabled Redis/TLS,
+disabled startup checks, local IPFS storage and mock AI configuration. Configure
+the required integrations before deployment; this schema does not implement
+missing providers or bypass their startup validation.
+When using `DATABASE_URL`, omit individual `DB_HOST`, `DB_PORT`, `DB_USERNAME`,
+`DB_PASSWORD`, and `DB_DATABASE` assignments (including aliases). These components
+are derived from the URL so legacy indexer consumers cannot point at a different
+database. The generated example includes component defaults for development;
+remove those assignments when switching it to URL-based deployment.

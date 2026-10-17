@@ -1,3 +1,4 @@
+import { getRuntimeEnvironment } from '../../config/runtime-config';
 import {
   Injectable,
   Logger,
@@ -132,7 +133,7 @@ export class ProtocolAdminService {
         EmergencyAction.ENABLE_API_THROTTLING,
       ),
       uptime: this.getUptime(),
-      environment: process.env.NODE_ENV ?? 'development',
+      environment: getRuntimeEnvironment().NODE_ENV ?? 'development',
     };
   }
 
@@ -166,7 +167,7 @@ export class ProtocolAdminService {
         totalCompleted,
       },
       systemUptime: this.getUptime(),
-      environment: process.env.NODE_ENV ?? 'development',
+      environment: getRuntimeEnvironment().NODE_ENV ?? 'development',
       timestamp: new Date().toISOString(),
     };
   }

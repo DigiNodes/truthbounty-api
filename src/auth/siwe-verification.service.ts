@@ -1,3 +1,4 @@
+import { getRuntimeEnvironment } from '../config/runtime-config';
 // src/auth/siwe-verification.service.ts
 import { Injectable, UnauthorizedException, BadRequestException, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
@@ -16,9 +17,9 @@ import { SiweVerifyResult } from './types/siwe.types';
 @Injectable()
 export class SiweVerificationService {
     private readonly logger = new Logger(SiweVerificationService.name);
-    private readonly expectedChainId = 10; // Optimism Mainnet
-    private readonly expectedDomain = process.env.SIWE_DOMAIN || 'truthbounty.app';
-    private readonly allowedOrigins = (process.env.SIWE_ALLOWED_ORIGINS || '')
+    private readonly expectedChainId = Number(getRuntimeEnvironment().CHAIN_ID);
+    private readonly expectedDomain = getRuntimeEnvironment().SIWE_DOMAIN || 'truthbounty.app';
+    private readonly allowedOrigins = (getRuntimeEnvironment().SIWE_ALLOWED_ORIGINS || '')
         .split(',')
         .map((s) => s.trim())
         .filter(Boolean);

@@ -1,3 +1,4 @@
+import { getRuntimeEnvironment } from '../config/runtime-config';
 // src/auth/siwe-nonce.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
@@ -13,9 +14,9 @@ import { randomBytes } from 'crypto';
  */
 @Injectable()
 export class SiweNonceService {
-    private readonly logger = new Logger(SiweNonceService.name);
-    private readonly domain = process.env.SIWE_DOMAIN || 'truthbounty.app';
-    private readonly nonceExpiryMinutes = 5;
+  private readonly logger = new Logger(SiweNonceService.name);
+  private readonly domain = getRuntimeEnvironment().SIWE_DOMAIN || 'truthbounty.app';
+  private readonly nonceExpiryMinutes = 5;
 
     constructor(private readonly dataSource: DataSource) {}
 

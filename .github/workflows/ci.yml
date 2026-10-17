@@ -41,7 +41,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: '20'
+          node-version: '22.22.3'
           cache: 'npm'
 
       - name: Install dependencies
@@ -52,6 +52,12 @@ jobs:
 
       - name: Verify toolchain and compiler parity
         run: npm run parity:check
+
+      - name: Runtime configuration documentation drift
+        run: npm run config:check
+
+      - name: Runtime configuration regression tests
+        run: npm test -- --runInBand src/config/runtime-config.spec.ts src/config/runtime-drift.spec.ts src/config/runtime-nest.spec.ts
 
       - name: Type check
         run: npm run type-check
@@ -96,7 +102,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: '20'
+          node-version: '22.22.3'
           cache: 'npm'
 
       # Installed from the lockfile so the audit is evaluated against the exact

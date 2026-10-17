@@ -1,3 +1,4 @@
+import { getRuntimeEnvironment } from '../../config/runtime-config';
 import { Injectable, NestMiddleware, Logger } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 
@@ -16,7 +17,7 @@ export class CorsMiddleware implements NestMiddleware {
   private config: CorsConfig;
 
   constructor() {
-    const allowedOriginsEnv = process.env.ALLOWED_ORIGINS || '';
+    const allowedOriginsEnv = getRuntimeEnvironment().ALLOWED_ORIGINS || '';
     const allowedOrigins = allowedOriginsEnv
       ? allowedOriginsEnv
           .split(',')

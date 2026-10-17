@@ -1,3 +1,4 @@
+import { getRuntimeEnvironment } from '../config/runtime-config';
 import { Injectable } from '@nestjs/common';
 import { OperationalAuditRecord } from './operations.types';
 
@@ -24,7 +25,7 @@ export interface OperationsAuditStore {
  */
 @Injectable()
 export class InMemoryOperationsAuditStore implements OperationsAuditStore {
-  private readonly max = Number(process.env.OPERATIONS_AUDIT_MAX ?? 10_000);
+  private readonly max = Number(getRuntimeEnvironment().OPERATIONS_AUDIT_MAX ?? 10_000);
   private readonly records = new Map<string, OperationalAuditRecord>();
 
   save(record: OperationalAuditRecord): Promise<void> {

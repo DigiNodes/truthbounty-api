@@ -1,3 +1,4 @@
+import { getNestRuntimeConfig } from './config/runtime-config';
 import { Module, Logger } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { EnvironmentValidationService } from './config/environment-validation.service';
@@ -246,6 +247,9 @@ async function createThrottlerStorage(
       const redis = new Redis({
         host: redisHost,
         port: redisPort,
+        password: configService.get<string>('REDIS_PASSWORD'),
+        db: Number(configService.get('REDIS_DB', 0)),
+        tls: configService.get('REDIS_TLS') === 'true' ? {} : undefined,
         maxRetriesPerRequest: 3,
         lazyConnect: true,
         retryStrategy: (times) => {
@@ -260,6 +264,13 @@ async function createThrottlerStorage(
       await redis.ping();
       return new ThrottlerRedisStorage(redis);
     } catch (error) {
+      if (
+        ['production', 'staging'].includes(
+          configService.get('NODE_ENV', 'development'),
+        )
+      ) {
+        throw new Error('Redis rate-limit storage unavailable');
+      }
       const logger = new Logger('ThrottlerModule');
       logger.warn(
         `Redis connection failed, falling back to memory storage: ${error}`,
@@ -281,7 +292,9 @@ async function createThrottlerStorage(
         sybilConfig,
         finalityPolicyConfig,
       ],
-      envFilePath: ['.env.local', '.env'],
+      ignoreEnvFile: true,
+      skipProcessEnv: true,
+      validate: () => getNestRuntimeConfig(),
     }),
     FinalityPolicyModule,
     ScheduleModule.forRoot(),
@@ -317,10 +330,11 @@ async function createThrottlerStorage(
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
         connection: {
-          host: configService.get('REDIS_HOST', 'localhost'),
-          port: configService.get('REDIS_PORT', 6379),
-          password: configService.get('REDIS_PASSWORD'),
-          db: configService.get('REDIS_DB', 0),
+          host: configService.get<string>('REDIS_HOST', 'localhost'),
+          port: configService.get<number>('REDIS_PORT', 6379),
+          password: configService.get<string>('REDIS_PASSWORD'),
+          tls: configService.get('REDIS_TLS') === 'true' ? {} : undefined,
+          db: configService.get<number>('REDIS_DB', 0),
         },
       }),
     }),

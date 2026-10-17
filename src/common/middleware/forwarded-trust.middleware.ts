@@ -1,3 +1,4 @@
+import { getRuntimeEnvironment } from '../../config/runtime-config';
 import { Injectable, NestMiddleware, Logger } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 
@@ -5,12 +6,10 @@ const logger = new Logger('ForwardedTrustMiddleware');
 
 // Trusted proxy IPs (e.g., load balancers, reverse proxies)
 // In production, this should be configured via environment variables
-const TRUSTED_PROXIES = process.env.TRUSTED_PROXIES
-  ? process.env.TRUSTED_PROXIES.split(',').map((ip) => ip.trim())
-  : [];
+const TRUSTED_PROXIES = getRuntimeEnvironment().TRUSTED_PROXIES?.split(',').map((ip) => ip.trim()) ?? [];
 
 // Maximum number of hops allowed
-const MAX_HOPS = parseInt(process.env.MAX_PROXY_HOPS || '1', 10);
+const MAX_HOPS = parseInt(getRuntimeEnvironment().MAX_PROXY_HOPS || '1', 10);
 
 export class ForwardedTrustMiddleware implements NestMiddleware {
   use(req: Request, res: Response, next: NextFunction): void {

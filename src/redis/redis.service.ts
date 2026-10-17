@@ -74,6 +74,14 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       await this.client.ping();
       this.logger.log(`Redis connected to ${host}:${port}`);
     } catch (error) {
+      if (
+        ['production', 'staging'].includes(
+          this.configService.get('NODE_ENV', 'development'),
+        )
+      ) {
+        this.client?.disconnect();
+        throw new Error('Redis unavailable during startup');
+      }
       this.logger.error(`Failed to initialize Redis: ${error.message}`);
       this.logger.warn('Application will continue without Redis caching');
       this.client = null;

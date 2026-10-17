@@ -1,3 +1,4 @@
+import { getRuntimeEnvironment } from '../../config/runtime-config';
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -336,7 +337,7 @@ export class DashboardService {
         status: systemStatus,
         uptimeSeconds: Math.round(process.uptime()),
         timestamp: new Date().toISOString(),
-        version: process.env.npm_package_version || 'dev',
+        version: getRuntimeEnvironment().npm_package_version || 'dev',
       },
       admin: {
         totalAdmins: overview.totalAdmins,

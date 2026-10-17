@@ -1,3 +1,4 @@
+import { getRuntimeEnvironment } from '../config/runtime-config';
 import {
   Injectable,
   Logger,
@@ -15,7 +16,7 @@ const execAsync = promisify(exec);
 export class BackupRecoveryDrillService {
   private readonly logger = new Logger(BackupRecoveryDrillService.name);
   private readonly backupDir =
-    process.env.BACKUP_STORAGE_DIR || '/var/backups/truthbounty-v2';
+    getRuntimeEnvironment().BACKUP_STORAGE_DIR || '/var/backups/truthbounty-v2';
 
   constructor() {}
 

@@ -1,3 +1,4 @@
+import { getRuntimeEnvironment } from '../../config/runtime-config';
 import {
   Injectable,
   CanActivate,
@@ -36,7 +37,7 @@ export class AdminGuard implements CanActivate {
   private readonly adminAddresses: Set<string>;
 
   constructor(private readonly reflector: Reflector) {
-    const raw = process.env.ADMIN_WALLETS || '';
+    const raw = getRuntimeEnvironment().ADMIN_WALLETS || '';
     this.adminAddresses = new Set(
       raw
         .split(',')

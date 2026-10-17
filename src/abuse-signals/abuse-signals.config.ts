@@ -1,3 +1,4 @@
+import { getRuntimeEnvironment } from '../config/runtime-config';
 import { assertValidBinding, loadFinalizedCursorConfig } from '../indexer/finalized-cursor/finalized-cursor.config';
 import { AbuseReleaseBinding } from './abuse-signals.types';
 
@@ -184,7 +185,7 @@ function readSalt(env: NodeJS.ProcessEnv): string | null {
  * release binding (reused verbatim from the finalized-cursor loader).
  */
 export function loadAbusePolicyConfig(
-  env: NodeJS.ProcessEnv = process.env,
+  env: NodeJS.ProcessEnv = getRuntimeEnvironment(),
 ): AbusePolicyConfig {
   const thresholds: AbuseThresholds = {
     scraping: {
@@ -329,7 +330,7 @@ export function loadAbusePolicyConfig(
  * as fail-closed (indeterminate), never as "unbound is fine".
  */
 export function loadAbuseReleaseBinding(
-  env: NodeJS.ProcessEnv = process.env,
+  env: NodeJS.ProcessEnv = getRuntimeEnvironment(),
 ): AbuseReleaseBinding | null {
   const { binding } = loadFinalizedCursorConfig(env);
   if (!binding) return null;

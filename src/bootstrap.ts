@@ -1,3 +1,4 @@
+import { getRuntimeEnvironment } from './config/runtime-config';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { json, urlencoded } from 'express';
@@ -20,7 +21,7 @@ export function configureApp(app: INestApplication) {
   const httpAdapter = app.getHttpAdapter().getInstance();
 
   const trustedProxies =
-    process.env.TRUSTED_PROXIES?.split(',')?.map((ip) => ip.trim()) || [];
+    getRuntimeEnvironment().TRUSTED_PROXIES?.split(',')?.map((ip) => ip.trim()) || [];
   if (trustedProxies.length > 0) {
     httpAdapter.set('trust proxy', trustedProxies);
   } else {

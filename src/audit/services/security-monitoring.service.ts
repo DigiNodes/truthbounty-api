@@ -1,3 +1,4 @@
+import { getRuntimeEnvironment } from '../../config/runtime-config';
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeiorm';
 import { Repository, MoreThan, In } from 'typeorm';
@@ -271,22 +272,22 @@ export class SecurityMonitoringService {
   private loadThresholds(): SecurityThresholds {
     return {
       maxFailedLogins: parseInt(
-        process.env.AUDIT_MAX_FAILED_LOGINS ??
+        getRuntimeEnvironment().AUDIT_MAX_FAILED_LOGINS ??
           String(DEFAULT_THRESHOLDS.maxFailedLogins),
         10,
       ),
       maxPermissionChanges: parseInt(
-        process.env.AUDIT_MAX_PERMISSION_CHANGES ??
+        getRuntimeEnvironment().AUDIT_MAX_PERMISSION_CHANGES ??
           String(DEFAULT_THRESHOLDS.maxPermissionChanges),
         10,
       ),
       maxApiCallsPerMinute: parseInt(
-        process.env.AUDIT_MAX_API_CALLS ??
+        getRuntimeEnvironment().AUDIT_MAX_API_CALLS ??
           String(DEFAULT_THRESHOLDS.maxApiCallsPerMinute),
         10,
       ),
       suspiciousTimeWindowMinutes: parseInt(
-        process.env.AUDIT_SUSPICIOUS_WINDOW_MINUTES ??
+        getRuntimeEnvironment().AUDIT_SUSPICIOUS_WINDOW_MINUTES ??
           String(DEFAULT_THRESHOLDS.suspiciousTimeWindowMinutes),
         10,
       ),

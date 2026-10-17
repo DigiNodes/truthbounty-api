@@ -1,3 +1,4 @@
+import { getRuntimeEnvironment } from '../../config/runtime-config';
 import {
   Inject,
   Injectable,
@@ -381,7 +382,7 @@ export class ProjectionRebuildService {
       );
       return;
     }
-    const schema = process.env.REBUILD_SCHEMA?.trim();
+    const schema = getRuntimeEnvironment().REBUILD_SCHEMA?.trim();
     if (!schema) {
       throw new BadRequestException(
         'Refusing to rebuild without a shadow target. Set REBUILD_SCHEMA to the ' +
@@ -394,7 +395,7 @@ export class ProjectionRebuildService {
   }
 
   private describeTargetSchema(): string | null {
-    const schema = process.env.REBUILD_SCHEMA?.trim();
+    const schema = getRuntimeEnvironment().REBUILD_SCHEMA?.trim();
     return schema && schema.length > 0 ? schema : null;
   }
 

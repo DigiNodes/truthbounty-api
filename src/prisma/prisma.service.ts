@@ -1,9 +1,8 @@
+import { getRuntimeEnvironment } from '../config/runtime-config';
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { PrismaClient } from '../generated/client/client';
 import { PrismaLibSql } from '@prisma/adapter-libsql';
-import * as dotenv from 'dotenv';
 
-dotenv.config();
 
 @Injectable()
 export class PrismaService
@@ -11,7 +10,7 @@ export class PrismaService
   implements OnModuleInit, OnModuleDestroy
 {
   constructor() {
-    const connectionString = process.env.DATABASE_URL || 'file:./dev.db';
+    const connectionString = getRuntimeEnvironment().DATABASE_URL || 'file:./dev.db';
     const adapter = new PrismaLibSql({ url: connectionString });
 
     super({ adapter });

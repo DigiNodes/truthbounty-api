@@ -1,16 +1,15 @@
+import { getRuntimeEnvironment } from './runtime-config';
 import {
   DataSource,
   DataSourceOptions,
   NamingStrategyInterface,
 } from 'typeorm';
-import { config } from 'dotenv';
 import { DefaultNamingStrategy } from 'typeorm/naming-strategy/DefaultNamingStrategy';
 
 class SnakeNamingStrategy
   extends DefaultNamingStrategy
   implements NamingStrategyInterface {}
 
-config();
 
 /**
  * TypeORM DataSource configuration for TruthBounty V2.
@@ -38,7 +37,8 @@ config();
  * ```
  */
 function buildOptions(): DataSourceOptions {
-  const databaseUrl = process.env.DATABASE_URL;
+  const env = getRuntimeEnvironment();
+  const databaseUrl = env.DATABASE_URL;
 
   if (databaseUrl) {
     // PostgreSQL via DATABASE_URL
@@ -50,31 +50,29 @@ function buildOptions(): DataSourceOptions {
       subscribers: ['src/**/*.subscriber.ts'],
       namingStrategy: new SnakeNamingStrategy(),
       synchronize: false, // NEVER synchronize via CLI — use migrations
-      logging: process.env.DATABASE_LOGGING === 'true',
+      logging: env.DATABASE_LOGGING === 'true',
       // SSL support for production
       ssl:
-        process.env.DB_SSL === 'true' || process.env.DATABASE_SSL === 'true'
+        env.DB_SSL === 'true' || env.DATABASE_SSL === 'true'
           ? {
               rejectUnauthorized:
-                process.env.DB_SSL === 'true'
-                  ? false
-                  : process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== 'false',
+                env.DATABASE_SSL_REJECT_UNAUTHORIZED !== 'false',
             }
           : false,
       // Connection pooling configuration
       extra: {
-        max: parseInt(process.env.DB_POOL_MAX ?? '20', 10),
+        max: parseInt(env.DB_POOL_MAX ?? '20', 10),
         idleTimeoutMillis: parseInt(
-          process.env.DB_POOL_IDLE_TIMEOUT ?? '30000',
+          env.DB_POOL_IDLE_TIMEOUT ?? '30000',
           10,
         ),
         connectionTimeoutMillis: parseInt(
-          process.env.DB_POOL_ACQUIRE_TIMEOUT ?? '60000',
+          env.DB_POOL_ACQUIRE_TIMEOUT ?? '60000',
           10,
         ),
         // Retry strategy
-        maxRetries: parseInt(process.env.DB_POOL_RETRIES ?? '3', 10),
-        retryDelay: parseInt(process.env.DB_POOL_RETRY_DELAY ?? '1000', 10),
+        maxRetries: parseInt(env.DB_POOL_RETRIES ?? '3', 10),
+        retryDelay: parseInt(env.DB_POOL_RETRY_DELAY ?? '1000', 10),
       },
     };
   }
@@ -82,11 +80,11 @@ function buildOptions(): DataSourceOptions {
   // Fallback to SQLite (development)
   return {
     type: 'better-sqlite3',
-    database: process.env.SQLITE_PATH ?? 'database.sqlite',
+    database: env.SQLITE_PATH ?? 'database.sqlite',
     entities: ['src/**/*.entity.ts'],
     migrations: ['src/database/migrations/*.ts'],
-    synchronize: process.env.NODE_ENV !== 'production',
-    logging: process.env.DATABASE_LOGGING === 'true',
+    synchronize: env.NODE_ENV !== 'production',
+    logging: env.DATABASE_LOGGING === 'true',
   };
 }
 

@@ -1,3 +1,4 @@
+import { getRuntimeEnvironment } from '../config/runtime-config';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -36,7 +37,7 @@ export class OutboxOperationsQueueSource implements OperationsQueueSource {
   ) {}
 
   private get releaseId(): string {
-    return process.env.RELEASE_ID ?? 'unreleased';
+    return getRuntimeEnvironment().RELEASE_ID ?? 'unreleased';
   }
 
   async list(): Promise<OperationalQueueItem[]> {
