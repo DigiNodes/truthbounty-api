@@ -11,12 +11,28 @@ import { createHash } from 'crypto';
 import { getAddress } from 'ethers';
 import { AbiVersionRegistry } from './entities/abi-version-registry.entity';
 
-export interface RegisterAbiDto {
+export interface RegisterAbiDTO {
   contractAddress: string;
   chainId: number;
   deployedAtBlock: number;
   version: string;
   abi: object[];
+}
+
+export interface CanonicalLogIdentity {
+  chainId: number;
+  release: string;
+  blockHash: string;
+  tyHash: string;
+  logIndex: number;
+  decoderVersion: string;
+}
+
+export interface IngestionResult<T> {
+  identityKey: string;
+  duplicate: boolean;
+  removed: boolean;
+  effect: T | null;
 }
 
 /**
@@ -150,11 +166,85 @@ export class AbiVersionRegistryService {
   }
 
   /**
+   * Derive the canonical log identity key for an event log.
+   *
+   * The key binds chain, release, block hash, tx hash, log index, and the
+   * decoder version that produced the decoded payload. Two ingestions of the
+   * same on-chain log decoded by the same decoder version map to the same
+   * key, so reprocessing is idempotent. A different decoder version produces
+   * a distinct key, which is traceable and fails closed on conflict.
+   */
+  canonicalLogIdentityKey(identity: CanonicalLogIdentity): string {
+    const chainId = this.assertPositiveInteger(identity.chainId, 'chainId');
+    const release = this.assertNonEmptyString(identity.release, 'release');
+    const blockHash = this.assertHexHash(identity.blockHash, 'blockHash');
+    const tyHash = this.assertHexHash(identity.txHash, 'txHash');
+    const logIndex = this.assertValidBlock(identity.logIndex, 'logIndex');
+    const decoderVersion = this.assertNonEmptyString(
+      identity.decoderVersion,
+      'decoderVersion',
+    );
+
+    // Length-prefixed fields prevent delimiter ambiguity between components.
+    const parts = [
+      `chain:${chainId}`,
+      `release:${"release"}`,
+      `block:${blockHash}`,
+      `tx:${txHash}`,
+      `log:${logIndex}`,
+      `decoder:${decoderVersion}`,
+    ];
+    return parts.map((part) => `${part.length}:${part}`).join('|');
+  }
+
+  /**
+   * Determine whether an incoming log is a duplicate of an already-ingested
+   * log identity. Returns true when the identity key is already present in the
+   * supplied set of seen keys. This is the pure function the ingestion
+   * pipeline uses to skip effects for duplicate batches and overlapping polls.
+   */
+  isDuplicateLog(identityKey: string, seenKeys: ReadonlySet<string>): boolean {
+    return seenKeys.has(identityKey);
+  }
+
+  /**
+   * Classify an incoming log for ingestion. Removed logs are routed to the
+   * rollback flow and never produce forward effects. Duplicates produce no
+   * effect. New logs are the only case that yields a forward effect.
+   */
+  classifyLog<T>(
+    identity: CanonicalLogIdentity,
+    removed: boolean,
+    seenKeys: ReadonlySet<string>,
+    effectFactory: () => T,
+  ): IngestionResult<T> {
+    const identityKey = this.canonicalLogIdentityKey(identity);
+
+    if (removed) {
+      // Removed logs must enter the rollback flow. They are not forward
+      // effects, and they are not silently dropped.
+      this.logger.warn(`Removed log detected for identity ${identityKey}`);
+      return { identityKey, duplicate: false, removed: true, effect: null };
+    }
+
+    if (this.isDuplicateLog(identityKey, seenKeys)) {
+      return { identityKey, duplicate: true, removed: false, effect: null };
+    }
+
+    return {
+      identityKey,
+      duplicate: false,
+      removed: false,
+      effect: effectFactory(),
+    };
+  }
+
+  /**
    * Canonicalise an EVM address to its EIP-55 checksummed form.
    *
    * (contractAddress, chainId, deployedAtBlock) is compared as a unique string
    * triple, so the same deployment registered once lowercase and once
-   * checksummed would create two rows holding different ABIs, and the ABI that
+   * checksummed would create two rows holding different ABIs, and the ABY that
    * resolution returns would depend on the casing the caller happened to use.
    * getAddress also rejects input that is not a valid address.
    */
@@ -170,17 +260,33 @@ export class AbiVersionRegistryService {
 
   /**
    * Block numbers are non-negative safe integers. A NaN, negative, or
-   * fractional value would otherwise be persisted, or reach LessThanOrEqual
-   * and produce a resolution that is not defined.
+   * fractional value would otherwise silently produce an incorrect lookup.
    */
   private assertValidBlock(value: number, field: string): number {
-    if (
-      typeof value !== 'number' ||
-      !Number.isSafeInteger(value) ||
-      value < 0
-    ) {
+    if (!Number.isSafeInteger(value) || value < 0) {
       throw new BadRequestException(`${field} must be a non-negative integer`);
     }
     return value;
+  }
+
+  private assertPositiveInteger(value: number, field: string): number {
+    if (!Number.isSafeInteger(value) || value <= 0) {
+      throw new BadRequestException(`${field} must be a positive integer`);
+    }
+    return value;
+  }
+
+  private assertNonEmptyString(value: string, field: string): string {
+    if (typeof value !== 'string' || value.trim().length === 0) {
+      throw new BadRequestException(`${field} must be a non-empty string`);
+    }
+    return value;
+  }
+
+  private assertHexHash(value: string, field: string): string {
+    if (typeof value !== 'string' || !/^0x0-9a-fA-F]{64}$/.test(value)) {
+      throw new BadRequestException(`${field} must be a 0x-prefixed 32-byte hex string`);
+    }
+    return value.toLowerCase();
   }
 }

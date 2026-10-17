@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { BlockchainStateService } from './state.service';
 import { ClaimsCache } from '../cache/claims.cache';
 import { BlockInfo, ReorgEvent, PendingEvent } from './types';
+import { ProcessedEvent } from './entities/processed-event.entity';
+
 
 /**
  * Detects and handles chain reorganizations
@@ -83,6 +85,9 @@ export class ReorgDetectorService {
         `Orphaned events: ${orphanedEventIds.length}`,
     );
 
+    // Roll back orphaned events explicitly so reprocessing cannot duplicate effects.
+    await this.stateService.rollbackEvents(orphanedEventIds);
+
     // Invalidate all cached claims since blockchain state has changed
     // This maintains the invariant that smart contracts are always the source of truth
     await this.claimsCache.invalidateBlockRange(
@@ -91,6 +96,41 @@ export class ReorgDetectorService {
     );
 
     return reorg;
+  }
+
+  /**
+   * Handle a log that the node reports as removed (canonical reorg).
+   * Removed logs must enter the rollback flow keyed by canonical identity
+   * (chain/release/blockHash/txHash/logIndex/decoderVersion) so that
+   * reprocessing cannot duplicate effects.
+   */
+  async handleRemovedLog(
+    removed: Pick<
+      ProcessedEvent,
+      | 'chainId'
+      | 'releaseId'
+      | 'blockHash'
+      | 'txHash'
+      | 'logIndex'
+      | 'decoderVersion'
+    >,
+  ): Promise<void> {
+    const identity = {
+      chainId: removed.chainId,
+      releaseId: removed.releaseId,
+      blockHash: removed.blockHash,
+      txHash: removed.txHash,
+      logIndex: removed.logIndex,
+      decoderVersion: removed.decoderVersion,
+    };
+
+    this.logger.warn(
+      `Removed log detected for canonical identity ` +
+        `${identity.chainId}/${identity.releaseId}/${identity.blockHash}/` +
+        `${identity.txHash}/${identity.logIndex}/v${identity.decoderVersion}`,
+    );
+
+    await this.stateService.rollbackEventsByCanonicalIdentity(identity);
   }
 
   /**

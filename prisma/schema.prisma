@@ -181,7 +181,7 @@ model AnalyticsEvent {
   userId    String?
   data        Json?
   occurredAt  DateTime @default(now())
-  createdAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
 
   @@index([eventType, occurredAt])
   @@index([entityType, entityId])
@@ -262,8 +262,8 @@ model OutboxEvent {
   lastError      String?
   scheduledAt    DateTime @default(now())
   processedAt    DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   @@index([status, scheduledAt])
   @@index([aggregateId])
@@ -288,8 +288,8 @@ model BlockCursor {
   processedHash   String @default("")
   safeHeight      BigInt @default(0)
   safeHash        String @default("")
-  finalizedHeight BigInt @default(0)
-  finalizedHash   String @default("")
+  finalizedHeight  BigInt @default(0)
+  finalizedHash    String @default("")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -342,9 +342,23 @@ model ChainEvent {
   // JSON-encoded RawChainLog.rawArgs
   rawArgs         String
 
-ingestedAt DateTime @default(now())
+  // Decoder version that produced this row — traceable provenance for
+  // canonical identity and replay/rollback decisions.
+  decoderVersion  String   @default("v1")
+  // Release/artifact provenance binding (fail closed on mismatch).
+  releaseId       String?
+  // Canonical identity key: chain/release/blockHash/tyHash/logIndex/decoderVersion.
+  // Enforced unique so reprocessing cannot duplicate effects.
+  canonicalKey    String   @unique
+  // Removed-log handling: when a reorg orphans this log, mark removed and
+  // route through rollback flow instead of deleting.
+  removed         Boolean  @default(false)
+  removedAt       DateTime?
 
   @@unique([chainId, blockHash, txHash, logIndex])
   @@index([chainId, txHash, logIndex])
   @@index([eventName, blockNumber])
+  @@index([chainId, removed])
+  @@index([canonicalKey])
+  @@index([decoderVersion])
 }
