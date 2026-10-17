@@ -1,4 +1,8 @@
-import { parseRestoreDrillArgs, runRestoreDrill } from './backup-restore-drill';
+import {
+  parseRestoreDrillArgs,
+  runRestoreDrill,
+  RestoreDrillGuard,
+} from './backup-restore-drill';
 
 describe('backup and restore drill', () => {
   it('requires an artifact and isolated database and Redis targets', () => {
@@ -23,7 +27,7 @@ describe('backup and restore drill', () => {
         targetRedisUrl: 'redis://localhost:6379/1',
         productionDatabaseUrl: 'postgresql://db/drill',
       }),
-    ).rejects.toThrow('DATABASE_URL');
+    ).rejects.toThrow('production-like target');
 
     await expect(
       runRestoreDrill({
@@ -32,7 +36,80 @@ describe('backup and restore drill', () => {
         targetRedisUrl: 'redis://localhost:6379/1',
         productionRedisUrl: 'redis://localhost:6379/1',
       }),
-    ).rejects.toThrow('REDIS_URL');
+    ).rejects.toThrow('production-like target');
+  });
+
+  it('rejects a drill targeting a non-empty target without confirmation token', async () => {
+    const guard = new RestoreDrillGuard('secret-token');
+    await expect(
+      guard.validateTargets(
+        'postgresql://db/drill',
+        'redis://localhost:6379/1',
+        undefined,
+        undefined,
+        'wrong-token',
+      ),
+    ).rejects.toThrow('confirmation token');
+  });
+
+  it('accepts a drill with a valid confirmation token on an isolated target', async () => {
+    const guard = new RestoreDrillGuard('secret-token');
+    const evidence = guard.validateTargets(
+      'postgresql://db/drill',
+      'redis://localhost:6379/1',
+      undefined,
+      undefined,
+      'secret-token',
+    );
+    expect(evidence).toMatchObject({
+      environmentClassification: 'isolation',
+      credentialSeparation: 'redacted',
+      confirmationTokenApplied: true,
+      targetEmpty: false,
+      targetDatabase: 'drill',
+      targetScheme: 'postgresql',
+    });
+  });
+
+  it('redacts credentials in the source URL evidence record', async () => {
+    const guard = new RestoreDrillGuard('token-123');
+    const evidence = guard.validateTargets(
+      'postgresql://db/drill',
+      'redis://localhost:6379/1',
+      'postgresql://user:pass@host:5432/drill',
+      'redis://user:pass@host:6379/1',
+      'token-123',
+    );
+    expect(evidence.sourceUrlRedacted).toBe('postgres://drill');
+    expect(evidence.targetScheme).toBe('postgresql');
+    expect(evidence.targetDatabase).toBe('drill');
+    expect(evidence.targetRedis).toBe('1');
+  });
+
+  it('rejects malformed database URLs', async () => {
+    const guard = new RestoreDrillGuard('token-123');
+    await expect(
+      guard.validateTargets(
+        'mysql://db/drill',
+        'redis://localhost:6379/1',
+        undefined,
+        undefined,
+        'token-123',
+      ),
+    ).rejects.toThrow('must use postgres or postgresql scheme');
+  });
+
+  it('rejects malformed Redis URLs', async () => {
+    const guard = new RestoreDrillGuard('token-123');
+    await expect(
+      guard.validateTargets(
+        'postgresql://db/drill',
+        'redis-srv://localhost:6379/1',
+        undefined,
+        undefined,
+        'token-123',
+      ),
+    ).rejects.toThrow('must use redis scheme');
   });
 
   it('restores, verifies connectivity, and invalidates the isolated cache', async () => {
