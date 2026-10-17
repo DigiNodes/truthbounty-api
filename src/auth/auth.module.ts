@@ -6,6 +6,8 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { SiweService } from './services/siwe.service';
+import { SiweNonceService } from './siwe-nonce.service';
+import { SiweVerificationService } from './siwe-verification.service';
 import { TokenService } from './services/token.service';
 import { WalletRateLimiterService } from './wallet-rate-limiter.service';
 import { AuthorizationPolicyService } from './authorization-policy.service';
@@ -38,6 +40,8 @@ import { ServiceAuthGuard } from './guards/service-auth.guard';
   providers: [
     AuthService,
     SiweService,
+    SiweNonceService,
+    SiweVerificationService,
     TokenService,
     WalletRateLimiterService,
     AuthorizationPolicyService,
@@ -51,6 +55,8 @@ import { ServiceAuthGuard } from './guards/service-auth.guard';
   exports: [
     AuthService,
     SiweService,
+    SiweNonceService,
+    SiweVerificationService,
     TokenService,
     WalletRateLimiterService,
     AuthorizationPolicyService,

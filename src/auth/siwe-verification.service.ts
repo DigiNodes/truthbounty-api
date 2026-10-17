@@ -2,6 +2,7 @@
 import { Injectable, UnauthorizedException, BadRequestException, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { SiweService } from './services/siwe.service';
+import { SiweNonceService } from './siwe-nonce.service';
 import { SiweVerifyResult } from './types/siwe.types';
 
 /**
@@ -26,6 +27,7 @@ export class SiweVerificationService {
     constructor(
         private readonly dataSource: DataSource,
         private readonly siweService: SiweService,
+        private readonly siweNonceService?: SiweNonceService,
     ) {}
 
     async verifySiweMessage(messageStr: string, signature: string, clientNonce: string): Promise<string> {
@@ -59,21 +61,18 @@ export class SiweVerificationService {
             throw new UnauthorizedException('Nonce mismatch between payload and request context.');
         }
 
-        // 3. Verify nonce against v2_auth_nonces table (single-use replay prevention).
-        const nonceRecord: unknown[] = await this.dataSource.query(
-            `SELECT * FROM "v2_auth_nonces" WHERE "wallet_address" = $1 AND "nonce" = $2 AND "used" = FALSE AND "expires_at" > NOW()`,
-            [parsed.address.toLowerCase(), clientNonce]
-        );
-
-        if (!nonceRecord || nonceRecord.length === 0) {
-            throw new UnauthorizedException('Nonce is invalid, expired, or has already been used (replay attack prevented).');
+        // 3. Atomically consume nonce to enforce single-use and prevent replay (race-safe).
+        if (this.siweNonceService) {
+            await this.siweNonceService.consumeNonce(parsed.address, clientNonce);
+        } else {
+            const updateResult = await this.dataSource.query(
+                `UPDATE "v2_auth_nonces" SET "used" = TRUE WHERE "wallet_address" = $1 AND "nonce" = $2 AND "used" = FALSE AND "expires_at" > NOW() RETURNING "id"`,
+                [parsed.address.toLowerCase(), clientNonce]
+            );
+            if (!updateResult || (Array.isArray(updateResult) && updateResult.length === 0)) {
+                throw new UnauthorizedException('Nonce is invalid, expired, or has already been used (replay attack prevented).');
+            }
         }
-
-        // 4. Atomically mark the nonce as used to prevent replay.
-        await this.dataSource.query(
-            `UPDATE "v2_auth_nonces" SET "used" = TRUE WHERE "wallet_address" = $1 AND "nonce" = $2`,
-            [parsed.address.toLowerCase(), clientNonce]
-        );
 
         this.logger.log(`SIWE verification successful for address: ${parsed.address}`);
         return parsed.address.toLowerCase();

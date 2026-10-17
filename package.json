@@ -82,6 +82,7 @@
     "prom-client": "^15.1.3",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
+    "siwe": "^2.3.2",
     "socket.io": "4.8.4",
     "sqlite3": "^6.0.1",
     "swagger-ui-express": "^5.0.1",
