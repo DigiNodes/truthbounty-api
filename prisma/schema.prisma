@@ -342,9 +342,137 @@ model ChainEvent {
   // JSON-encoded RawChainLog.rawArgs
   rawArgs         String
 
-ingestedAt DateTime @default(now())
+  ingestedAt DateTime @default(now())
 
   @@unique([chainId, blockHash, txHash, logIndex])
   @@index([chainId, txHash, logIndex])
   @@index([eventName, blockNumber])
+}
+
+// ---------------------------------------------------------------------------
+// Feature flags & configuration rollback (PREWAVE-BE-034)
+// ---------------------------------------------------------------------------
+// Feature flags are versioned, compare-and-swap guarded records. Every write
+// must supply the expected version; a mismatch fails closed. Rollback targets
+// are validated against release/schema boundaries before being applied, and
+// every state transition is recorded as an immutable audit event.
+//
+// Security: flags are advisory only. They MUST NOT grant protocol authority
+// (e.g. bypassing canonical contract/finalized event checks). Chain-derived
+// data is bound to chainId + releaseId + deploymentBlock + artifactChecksum.
+// ---------------------------------------------------------------------------
+
+model FeatureFlag {
+  id        String   @id @default(uuid())
+  // Stable, unique flag key (e.g. "v2.indexer.enabled")
+  key       String   @unique
+  description String?
+
+  // Current value as canonical JSON string (never a JS object literal)
+  value     String   @default("false")
+  // Monotonic version used for optimistic concurrency (compare-and-swap)
+  version   Int      @default(1)
+
+  // Release/schema boundary this flag is valid within
+  releaseId        String?
+  schemaVersion    String?
+  chainId          Int?
+  deploymentBlock  BigInt?
+  artifactChecksum String?
+
+  // Lifecycle: active | rolled_back | disabled
+  status    String   @default("active")
+
+  // Actor who last mutated the flag (wallet address or service identity)
+  updatedBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  rollbackTargets FeatureFlagRollbackTarget[]
+  auditEvents     FeatureFlagAuditEvent[]
+
+  @@index([status])
+  @@index([releaseId])
+  @@index([chainId])
+  @@index([releaseId, schemaVersion])
+  @@index([key, version])
+}
+
+// A validated, immutable snapshot a flag may be rolled back to. Targets are
+// only created after passing release/schema compatibility checks, so a
+// rollback can never cross an incompatible boundary.
+model FeatureFlagRollbackTarget {
+  id        String   @id @default(uuid())
+
+  flagId String
+  flag   FeatureFlag @relation(fields: [flagId], references: [id], onDelete: Cascade)
+
+  // Snapshot of the flag state at the target version
+  targetVersion Int
+  targetValue   String
+
+  // Boundary binding — must match the flag's release/schema at apply time
+  releaseId        String?
+  schemaVersion    String?
+  chainId          Int?
+  deploymentBlock  BigInt?
+  artifactChecksum String?
+
+  // Validation outcome: valid | invalid | revoked
+  validationStatus String @default("valid")
+  validatedAt      DateTime?
+  validatedBy      String?
+  validationReason String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([flagId, targetVersion])
+  @@index([flagId, validationStatus])
+  @@index([releaseId])
+  @@index([flagId, releaseId, schemaVersion])
+}
+
+// Append-only audit trail for every flag mutation and rollback attempt.
+// Records both successful and rejected transitions so stale/unauthorized
+// attempts remain auditable.
+model FeatureFlagAuditEvent {
+  id        String   @id @default(uuid())
+
+  flagId String
+  flag   FeatureFlag @relation(fields: [flagId], references: [id], onDelete: Cascade)
+
+  // e.g. "update", "rollback", "rollback_rejected", "target_validated"
+  action String
+
+  // Version before/after the transition (null when not applicable)
+  fromVersion Int?
+  toVersion   Int?
+
+  // Actor identity (wallet address or service identity); null if anonymous
+  actorId String?
+  // Whether the actor was authorized for this action
+  actorAuthorized Boolean @default(false)
+
+  // Outcome: applied | rejected | noop
+  outcome String
+  // Machine-readable reason for rejection (e.g. "stale_version")
+  reason  String?
+
+  // Boundary context captured at event time
+  releaseId        String?
+  schemaVersion    String?
+  chainId          Int?
+  deploymentBlock  BigInt?
+  artifactChecksum String?
+
+  // Non-sensitive metadata only (no PII / private payloads)
+  metadata String?
+
+  createdAt DateTime @default(now())
+
+  @@index([flagId, createdAt])
+  @@index([action, outcome])
+  @@index([actorId])
+  @@index([flagId, fromVersion, toVersion])
 }
