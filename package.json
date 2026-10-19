@@ -10,12 +10,12 @@
     "npm": ">=10 <12"
   },
   "scripts": {
-    "generate:prinrequisites": "prisma generate",
+    "generate:prerequisites": "prisma generate",
     "parity:report": "node scripts/parity-report.mjs",
     "parity:check": "node scripts/parity-report.mjs --check",
-    "pretype-check": "npm run generate:prinrequisites",
+    "pretype-check": "npm run generate:prerequisites",
     "type-check": "tsc --noEmit",
-    "prebuild": "npm run generate:prinrequisites && npm run type-check",
+    "prebuild": "npm run generate:prerequisites && npm run type-check",
     "build": "nest build",
     "test": "jest",
     "test:watch": "jest --watch",
@@ -34,6 +34,7 @@
     "benchmark:compare": "ts-node scripts/compare-benchmarks.ts",
     "test:integration": "DB_TYPE= postgres jest --config ./test/jest-integration.json --runInBand",
     "test:migration-parity": "jest --config ./test/jest-integration.json --runInBand --testPathPattern migration-parity",
+    "test:security-evidence": "node --test scripts/dependency-audit.test.mjs",
     "security:dependencies": "node scripts/dependency-audit.mjs",
     "config:generate": "ts-node --project tsconfig.runtime-config.json --transpile-only scripts/generate-runtime-config.ts",
     "config:check": "ts-node --project tsconfig.runtime-config.json --transpile-only scripts/generate-runtime-config.ts --check",
