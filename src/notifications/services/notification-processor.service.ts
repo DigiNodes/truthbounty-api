@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, LessThan } from 'typeorm';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue, Job } from 'bullmq';
 import { OutboxEvent } from '../../outbox/entities/outbox-event.entity';
@@ -288,7 +288,7 @@ export class NotificationProcessor {
 
     const result = await this.outboxRepository.delete({
       status: 'DISPATCHED',
-      processedAt: () => `processed_at < '${cutoffDate.toISOString()}'`,
+      processedAt: LessThan(cutoffDate),
     });
 
     const deleted = result.affected || 0;

@@ -165,8 +165,8 @@ export class NotificationEventPublisher {
       id: event.id,
       status: event.status,
       retryCount: event.retryCount,
-      processedAt: event.processedAt,
-      lastError: event.lastError,
+      processedAt: event.processedAt ?? undefined,
+      lastError: event.lastError ?? undefined,
     };
   }
 
