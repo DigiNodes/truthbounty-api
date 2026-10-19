@@ -6,6 +6,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { OutboxEvent } from '../../outbox/entities/outbox-event.entity';
 import { NotificationProcessorJob } from './notification-processor.service';
+import { EventType } from '../enums/event-type.enum';
 
 /**
  * OutboxScheduler
@@ -100,7 +101,7 @@ export class OutboxScheduler {
       );
     }
 
-    const eventType = eventTypeMatch[1];
+    const eventType = eventTypeMatch[1] as EventType;
     const payload = outboxEvent.payload as any;
 
     // Create job
@@ -134,7 +135,7 @@ export class OutboxScheduler {
       },
     );
 
-    return added.id;
+    return String(added.id ?? '');
   }
 
   /**
