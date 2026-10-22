@@ -1026,6 +1026,7 @@ export type MonitoringMetricCreateManyArgs<ExtArgs extends runtime.Types.Extensi
    * The data used to create many MonitoringMetrics.
    */
   data: Prisma.MonitoringMetricCreateManyInput | Prisma.MonitoringMetricCreateManyInput[]
+  skipDuplicates?: boolean
 }
 
 /**
@@ -1044,6 +1045,7 @@ export type MonitoringMetricCreateManyAndReturnArgs<ExtArgs extends runtime.Type
    * The data used to create many MonitoringMetrics.
    */
   data: Prisma.MonitoringMetricCreateManyInput | Prisma.MonitoringMetricCreateManyInput[]
+  skipDuplicates?: boolean
 }
 
 /**

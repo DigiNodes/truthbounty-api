@@ -706,6 +706,7 @@ export type FeatureFlagAuditEventCreateOrConnectWithoutFlagInput = {
 
 export type FeatureFlagAuditEventCreateManyFlagInputEnvelope = {
   data: Prisma.FeatureFlagAuditEventCreateManyFlagInput | Prisma.FeatureFlagAuditEventCreateManyFlagInput[]
+  skipDuplicates?: boolean
 }
 
 export type FeatureFlagAuditEventUpsertWithWhereUniqueWithoutFlagInput = {
@@ -1606,6 +1607,7 @@ export type FeatureFlagAuditEventCreateManyArgs<ExtArgs extends runtime.Types.Ex
    * The data used to create many FeatureFlagAuditEvents.
    */
   data: Prisma.FeatureFlagAuditEventCreateManyInput | Prisma.FeatureFlagAuditEventCreateManyInput[]
+  skipDuplicates?: boolean
 }
 
 /**
@@ -1624,6 +1626,7 @@ export type FeatureFlagAuditEventCreateManyAndReturnArgs<ExtArgs extends runtime
    * The data used to create many FeatureFlagAuditEvents.
    */
   data: Prisma.FeatureFlagAuditEventCreateManyInput | Prisma.FeatureFlagAuditEventCreateManyInput[]
+  skipDuplicates?: boolean
   /**
    * Choose, which related nodes to fetch as well
    */

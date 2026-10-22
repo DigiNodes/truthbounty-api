@@ -1066,6 +1066,7 @@ export type AnalyticsEventCreateManyArgs<ExtArgs extends runtime.Types.Extension
    * The data used to create many AnalyticsEvents.
    */
   data: Prisma.AnalyticsEventCreateManyInput | Prisma.AnalyticsEventCreateManyInput[]
+  skipDuplicates?: boolean
 }
 
 /**
@@ -1084,6 +1085,7 @@ export type AnalyticsEventCreateManyAndReturnArgs<ExtArgs extends runtime.Types.
    * The data used to create many AnalyticsEvents.
    */
   data: Prisma.AnalyticsEventCreateManyInput | Prisma.AnalyticsEventCreateManyInput[]
+  skipDuplicates?: boolean
 }
 
 /**

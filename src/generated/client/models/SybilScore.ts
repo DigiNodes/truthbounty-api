@@ -610,6 +610,7 @@ export type SybilScoreCreateOrConnectWithoutUserInput = {
 
 export type SybilScoreCreateManyUserInputEnvelope = {
   data: Prisma.SybilScoreCreateManyUserInput | Prisma.SybilScoreCreateManyUserInput[]
+  skipDuplicates?: boolean
 }
 
 export type SybilScoreUpsertWithWhereUniqueWithoutUserInput = {
@@ -1518,6 +1519,7 @@ export type SybilScoreCreateManyArgs<ExtArgs extends runtime.Types.Extensions.In
    * The data used to create many SybilScores.
    */
   data: Prisma.SybilScoreCreateManyInput | Prisma.SybilScoreCreateManyInput[]
+  skipDuplicates?: boolean
 }
 
 /**
@@ -1536,6 +1538,7 @@ export type SybilScoreCreateManyAndReturnArgs<ExtArgs extends runtime.Types.Exte
    * The data used to create many SybilScores.
    */
   data: Prisma.SybilScoreCreateManyInput | Prisma.SybilScoreCreateManyInput[]
+  skipDuplicates?: boolean
   /**
    * Choose, which related nodes to fetch as well
    */

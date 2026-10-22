@@ -1206,6 +1206,7 @@ export type WebhookDeliveryCreateManyArgs<ExtArgs extends runtime.Types.Extensio
    * The data used to create many WebhookDeliveries.
    */
   data: Prisma.WebhookDeliveryCreateManyInput | Prisma.WebhookDeliveryCreateManyInput[]
+  skipDuplicates?: boolean
 }
 
 /**
@@ -1224,6 +1225,7 @@ export type WebhookDeliveryCreateManyAndReturnArgs<ExtArgs extends runtime.Types
    * The data used to create many WebhookDeliveries.
    */
   data: Prisma.WebhookDeliveryCreateManyInput | Prisma.WebhookDeliveryCreateManyInput[]
+  skipDuplicates?: boolean
 }
 
 /**
