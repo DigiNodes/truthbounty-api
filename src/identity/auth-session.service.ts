@@ -8,6 +8,7 @@ import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository, IsNull, LessThan } from 'typeorm';
 import { createHash, randomBytes } from 'crypto';
 import { AuthSession } from './entities/auth-session.entity';
+import { constantTimeAddressEqual } from '../common/utils/timing-safe.util';
 
 /** Default session lifetime: 24 hours. */
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
@@ -91,8 +92,44 @@ export class AuthSessionService {
   }
 
   /**
+   * Validate a session token *for a specific principal* (wallet + chain).
+   *
+   * PREWAVE-BE-060: a session is bound to the wallet address and chain it was
+   * issued for and can never act on behalf of a different principal. A token
+   * that is valid in isolation but was issued for another wallet or another
+   * chain fails closed here — a caller can therefore not smuggle a stolen or
+   * cross-account session into a principal-scoped operation.
+   */
+  async validateForPrincipal(
+    sessionToken: string,
+    walletAddress: string,
+    chainId: number,
+  ): Promise<AuthSession> {
+    const session = await this.validate(sessionToken);
+
+    // Timing-safe comparison: no short-circuit oracle on the address.
+    const addressMatches = constantTimeAddressEqual(
+      session.walletAddress,
+      walletAddress.toLowerCase(),
+    );
+
+    if (!addressMatches || session.chainId !== chainId) {
+      this.logger.warn(
+        `Session ${session.id} presented for a different principal — rejected`,
+      );
+      throw new UnauthorizedException('Session principal mismatch');
+    }
+
+    return session;
+  }
+
+  /**
    * Rotate a session: revoke the existing token and issue a fresh one.
    * The new session references the old one via rotatedFromSessionId.
+   *
+   * PREWAVE-BE-060: the successor session inherits walletAddress and chainId
+   * from the revoked row. Rotation carries no principal parameters, so one
+   * session can never be rotated into a different wallet or chain identity.
    */
   async rotate(sessionToken: string): Promise<IssuedSession> {
     const old = await this.validate(sessionToken);

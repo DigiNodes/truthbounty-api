@@ -9,6 +9,12 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { WalletIdentity } from './entities/wallet-identity.entity';
+import { AuthSessionService } from './auth-session.service';
+import { AuditTrailService } from '../audit/services/audit-trail.service';
+import {
+  AuditActionType,
+  AuditEntityType,
+} from '../audit/entities/audit-log.entity';
 
 /**
  * V2-BE-103: Enforce Wallet-to-User Identity Integrity
@@ -21,10 +27,19 @@ import { WalletIdentity } from './entities/wallet-identity.entity';
  * - resolveUser: the only sanctioned way to go from wallet to user identity.
  * - assertOwnership: fail-closed check for callers that act on behalf of a
  *   wallet — an unbound wallet is a 404, someone else's wallet is a 403.
- * - unbind: only the owning user may release a wallet.
+ * - unbind: only the owning user may release a wallet, and releasing it
+ *   revokes every live session for that wallet so a stolen token cannot
+ *   survive an unlink (fail closed).
+ * - relink: re-establishing a binding requires a live session bound to the
+ *   exact wallet+chain being relinked, and every attempt (allowed or denied)
+ *   is written to the tamper-evident audit trail.
  *
  * Nothing here can reassign an existing binding. Moving a wallet between users
  * would be an explicit, auditable operation, and there isn't one.
+ *
+ * PREWAVE-BE-060 (#653): identity keys carry chain context; one session can
+ * never change principal silently; relink is authenticated and audited;
+ * cross-user access fails closed.
  */
 
 /** Largest value a 32-bit `integer` column can store. */
@@ -43,6 +58,8 @@ export class WalletIdentityService {
   constructor(
     @InjectRepository(WalletIdentity)
     private readonly repo: Repository<WalletIdentity>,
+    private readonly authSessions: AuthSessionService,
+    private readonly auditTrail: AuditTrailService,
   ) {}
 
   /**
@@ -66,6 +83,12 @@ export class WalletIdentityService {
     if (existing) {
       if (existing.userId !== userId) {
         // Fail closed — never silently move a wallet to a second identity.
+        await this.auditRejectedBind(
+          userId,
+          normalized,
+          chainId,
+          'already_bound',
+        );
         throw new ConflictException(
           `Wallet ${normalized} on chain ${chainId} is already bound to another user`,
         );
@@ -80,6 +103,15 @@ export class WalletIdentityService {
       const saved = await this.repo.save(
         this.repo.create({ userId, walletAddress: normalized, chainId }),
       );
+      await this.auditTrail.log({
+        actionType: AuditActionType.WALLET_LINKED,
+        entityType: AuditEntityType.WALLET,
+        entityId: saved.id,
+        userId,
+        walletAddress: normalized,
+        description: 'Wallet identity bound',
+        metadata: { chainId, relink: false },
+      });
       this.logger.log(
         `Wallet ${normalized} (chainId=${chainId}) bound to user ${userId}`,
       );
@@ -101,6 +133,7 @@ export class WalletIdentityService {
         if (winner.userId === userId) {
           return { identity: winner, alreadyBound: true };
         }
+        await this.auditRejectedBind(userId, normalized, chainId, 'lost_race');
         throw new ConflictException(
           `Wallet ${normalized} on chain ${chainId} is already bound to another user`,
         );
@@ -111,6 +144,85 @@ export class WalletIdentityService {
       throw new ConflictException(
         `Wallet ${normalized} on chain ${chainId} was bound concurrently`,
       );
+    }
+  }
+
+  /**
+   * Re-establish a binding for a wallet the caller controls.
+   *
+   * PREWAVE-BE-060: relink is an authenticated, audited operation — it is not
+   * a back door around the conflict checks in {@link bind}:
+   *
+   * 1. The caller must present a live session bound to the exact wallet and
+   *    chain being relinked. A session for another wallet, another chain, or a
+   *    revoked/stolen token fails closed before any state changes.
+   * 2. Because {@link unbind} revokes every session for an unlinked wallet,
+   *    relinking after an unlink always requires fresh authentication.
+   * 3. Every attempt — allowed or denied — lands in the audit trail.
+   */
+  async relink(
+    sessionToken: string,
+    userId: string,
+    walletAddress: string,
+    chainId: number,
+  ): Promise<BindResult> {
+    this.assertValidUserId(userId);
+    this.assertValidAddress(walletAddress);
+    this.assertValidChainId(chainId);
+
+    const normalized = walletAddress.toLowerCase();
+
+    // Fails closed on unknown/expired/revoked tokens and on any principal
+    // mismatch (wallet or chain) before a single row is read or written.
+    const session = await this.authSessions.validateForPrincipal(
+      sessionToken,
+      normalized,
+      chainId,
+    );
+
+    try {
+      const result = await this.bind(userId, normalized, chainId);
+      await this.auditTrail.log({
+        actionType: AuditActionType.WALLET_LINKED,
+        entityType: AuditEntityType.WALLET,
+        entityId: result.identity.id,
+        userId,
+        walletAddress: normalized,
+        description: 'Wallet identity relinked (session-authenticated)',
+        metadata: {
+          chainId,
+          relink: true,
+          sessionId: session.id,
+          alreadyBound: result.alreadyBound,
+        },
+      });
+      this.logger.log(
+        `Wallet ${normalized} (chainId=${chainId}) relinked to user ${userId}`,
+      );
+      return result;
+    } catch (error) {
+      // Denied relinks (conflicts against another owner) stay auditable, but
+      // an audit-backend failure must never replace the security outcome.
+      try {
+        await this.auditTrail.log({
+          actionType: AuditActionType.WALLET_LINKED,
+          entityType: AuditEntityType.WALLET,
+          entityId: normalized,
+          userId,
+          walletAddress: normalized,
+          description: 'Wallet relink denied',
+          metadata: {
+            chainId,
+            relink: true,
+            sessionId: session.id,
+            outcome: 'denied',
+            reason: error instanceof Error ? error.name : 'unknown',
+          },
+        });
+      } catch (auditError) {
+        this.logger.error('Failed to audit denied wallet relink', auditError);
+      }
+      throw error;
     }
   }
 
@@ -158,7 +270,14 @@ export class WalletIdentityService {
     return this.repo.find({ where: { userId }, order: { createdAt: 'asc' } });
   }
 
-  /** Release a wallet. Only the owning user may do this. */
+  /**
+   * Release a wallet. Only the owning user may do this.
+   *
+   * PREWAVE-BE-060: unlink revokes every live session for the wallet *before*
+   * dropping the binding, so a stolen bearer token cannot outlive the unlink.
+   * If revocation fails the binding stays in place (fail closed — an unlink
+   * that might leave live sessions behind is refused rather than half-done).
+   */
   async unbind(
     userId: string,
     walletAddress: string,
@@ -174,12 +293,47 @@ export class WalletIdentityService {
       );
     }
 
+    // Kill live sessions first: revocation before removal is the safe order.
+    await this.authSessions.revokeAll(identity.walletAddress);
+
     await this.repo.remove(identity);
+    await this.auditTrail.log({
+      actionType: AuditActionType.WALLET_UNLINKED,
+      entityType: AuditEntityType.WALLET,
+      entityId: identity.id,
+      userId,
+      walletAddress: identity.walletAddress,
+      description: 'Wallet identity unbound; live sessions revoked',
+      metadata: { chainId },
+    });
     this.logger.log(
       `Wallet ${identity.walletAddress} (chainId=${chainId}) unbound from user ${userId}`,
     );
 
     return identity;
+  }
+
+  /** Denied binds stay visible in the audit trail, not just in the logs. */
+  private async auditRejectedBind(
+    userId: string,
+    walletAddress: string,
+    chainId: number,
+    reason: 'already_bound' | 'lost_race',
+  ): Promise<void> {
+    try {
+      await this.auditTrail.log({
+        actionType: AuditActionType.WALLET_LINKED,
+        entityType: AuditEntityType.WALLET,
+        entityId: walletAddress,
+        userId,
+        walletAddress,
+        description: 'Wallet bind denied — already owned by another user',
+        metadata: { chainId, outcome: 'denied', reason },
+      });
+    } catch (auditError) {
+      // The conflict still stands even if the trail write failed.
+      this.logger.error('Failed to audit denied wallet bind', auditError);
+    }
   }
 
   private async findOneOrThrow(
