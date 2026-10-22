@@ -12,6 +12,10 @@ import { createHash } from 'crypto';
 import { WorldIdVerification } from './entities/world-id-verification.entity';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SybilResistanceService } from '../../sybil-resistance/sybil-resistance.service';
+import {
+  SafeHttpClientService,
+  SafeHttpResponse,
+} from '../../common/security/ssrf';
 
 // ---------------------------------------------------------------------------
 // Public input shape
@@ -65,7 +69,6 @@ const DEFAULT_MAX_ROOT_AGE_MS = 24 * 60 * 60 * 1000;
 @Injectable()
 export class WorldcoinService {
   private readonly logger = new Logger(WorldcoinService.name);
-  private readonly httpClient: SafeHttpClientService;
 
   constructor(
     @InjectRepository(WorldIdVerification)
@@ -73,6 +76,9 @@ export class WorldcoinService {
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
     private readonly sybilResistanceService: SybilResistanceService,
+    // PREWAVE / #640: every outbound request goes through the SSRF-safe
+    // client (scheme/DNS/redirect/size/timeout guardrails) — never raw fetch.
+    private readonly httpClient: SafeHttpClientService,
   ) {}
 
   // -------------------------------------------------------------------------
@@ -156,7 +162,9 @@ export class WorldcoinService {
     const expectedAction = this.configService.get<string>('WORLDCOIN_ACTION');
     if (!expectedAction) {
       this.logger.error('WORLDCOIN_ACTION not configured');
-      throw new ServiceUnavailableException('Identity verification unavailable');
+      throw new ServiceUnavailableException(
+        'Identity verification unavailable',
+      );
     }
 
     // Action must exactly match the configured value — no wildcards, no
@@ -264,15 +272,16 @@ export class WorldcoinService {
 
     if (!appId) {
       this.logger.error('WORLDCOIN_APP_ID not configured');
-      throw new ServiceUnavailableException('Identity verification unavailable');
+      throw new ServiceUnavailableException(
+        'Identity verification unavailable',
+      );
     }
 
-    let response: Response;
+    let response: SafeHttpResponse;
     try {
-      response = await fetch(`${verifyBaseUrl}/${appId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      response = await this.httpClient.post(
+        `${verifyBaseUrl}/${appId}`,
+        JSON.stringify({
           merkle_root: proof.merkle_root,
           nullifier_hash: proof.nullifier_hash,
           proof: proof.proof,
@@ -280,7 +289,8 @@ export class WorldcoinService {
           action,
           ...(signal !== undefined ? { signal } : {}),
         }),
-      });
+        { headers: { 'Content-Type': 'application/json' } },
+      );
     } catch (networkError) {
       // Network errors, DNS failures, timeouts — treat as provider outage.
       // Fail with 503 so callers can retry; NEVER treat as valid proof.
@@ -303,7 +313,9 @@ export class WorldcoinService {
 
     let result: WorldcoinCloudVerifyResponse;
     try {
-      result = (await response.json()) as WorldcoinCloudVerifyResponse;
+      // json() is synchronous (JSON.parse over the bounded body buffer) — a
+      // malformed payload throws and is routed to the outage branch below.
+      result = response.json<WorldcoinCloudVerifyResponse>();
     } catch {
       // Malformed JSON from provider — treat as provider outage, not success.
       this.logger.error('worldcoin.provider_malformed_response');

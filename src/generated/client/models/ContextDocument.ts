@@ -1128,6 +1128,7 @@ export type ContextDocumentCreateManyArgs<ExtArgs extends runtime.Types.Extensio
    * The data used to create many ContextDocuments.
    */
   data: Prisma.ContextDocumentCreateManyInput | Prisma.ContextDocumentCreateManyInput[]
+  skipDuplicates?: boolean
 }
 
 /**
@@ -1146,6 +1147,7 @@ export type ContextDocumentCreateManyAndReturnArgs<ExtArgs extends runtime.Types
    * The data used to create many ContextDocuments.
    */
   data: Prisma.ContextDocumentCreateManyInput | Prisma.ContextDocumentCreateManyInput[]
+  skipDuplicates?: boolean
 }
 
 /**

@@ -68,12 +68,15 @@ export const ModelName = {
   BlockCursor: 'BlockCursor',
   BlockCursorAncestor: 'BlockCursorAncestor',
   ChainEvent: 'ChainEvent',
+  StreamSession: 'StreamSession',
+  StreamEvent: 'StreamEvent',
+  StreamBackfillRequest: 'StreamBackfillRequest',
   FeatureFlag: 'FeatureFlag',
   FeatureFlagRollbackTarget: 'FeatureFlagRollbackTarget',
   FeatureFlagAuditEvent: 'FeatureFlagAuditEvent',
   SupportSubmission: 'SupportSubmission',
-  SupportAttachment: 'SupportAttachment',
-  QuarantineAuditLog: 'QuarantineAuditLog',
+  DeadLetterReplay: 'DeadLetterReplay',
+  DeadLetterReplayAudit: 'DeadLetterReplayAudit',
   WebhookProviderConfig: 'WebhookProviderConfig',
   WebhookDelivery: 'WebhookDelivery'
 } as const
@@ -85,6 +88,9 @@ export type ModelName = (typeof ModelName)[keyof typeof ModelName]
  */
 
 export const TransactionIsolationLevel = runtime.makeStrictEnum({
+  ReadUncommitted: 'ReadUncommitted',
+  ReadCommitted: 'ReadCommitted',
+  RepeatableRead: 'RepeatableRead',
   Serializable: 'Serializable'
 } as const)
 
@@ -298,6 +304,11 @@ export const BlockCursorScalarFieldEnum = {
   safeHash: 'safeHash',
   finalizedHeight: 'finalizedHeight',
   finalizedHash: 'finalizedHash',
+  releaseId: 'releaseId',
+  projection: 'projection',
+  deploymentBlock: 'deploymentBlock',
+  artifactChecksum: 'artifactChecksum',
+  checkpointSource: 'checkpointSource',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 } as const
@@ -313,6 +324,8 @@ export const BlockCursorAncestorScalarFieldEnum = {
   parentHash: 'parentHash',
   confirmation: 'confirmation',
   isCanonical: 'isCanonical',
+  releaseId: 'releaseId',
+  artifactChecksum: 'artifactChecksum',
   createdAt: 'createdAt'
 } as const
 
@@ -331,10 +344,70 @@ export const ChainEventScalarFieldEnum = {
   blockTimestamp: 'blockTimestamp',
   payload: 'payload',
   rawArgs: 'rawArgs',
+  decoderVersion: 'decoderVersion',
+  releaseId: 'releaseId',
+  canonicalKey: 'canonicalKey',
+  removed: 'removed',
+  removedAt: 'removedAt',
   ingestedAt: 'ingestedAt'
 } as const
 
 export type ChainEventScalarFieldEnum = (typeof ChainEventScalarFieldEnum)[keyof typeof ChainEventScalarFieldEnum]
+
+
+export const StreamSessionScalarFieldEnum = {
+  id: 'id',
+  chainId: 'chainId',
+  releaseId: 'releaseId',
+  deploymentBlock: 'deploymentBlock',
+  artifactChecksum: 'artifactChecksum',
+  projection: 'projection',
+  projectionVersion: 'projectionVersion',
+  resumeTokenHash: 'resumeTokenHash',
+  resumeTokenExpiresAt: 'resumeTokenExpiresAt',
+  lastAckedEventId: 'lastAckedEventId',
+  lastAckedCursor: 'lastAckedCursor',
+  status: 'status',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type StreamSessionScalarFieldEnum = (typeof StreamSessionScalarFieldEnum)[keyof typeof StreamSessionScalarFieldEnum]
+
+
+export const StreamEventScalarFieldEnum = {
+  id: 'id',
+  sessionId: 'sessionId',
+  cursor: 'cursor',
+  envelopeVersion: 'envelopeVersion',
+  eventId: 'eventId',
+  chainId: 'chainId',
+  releaseId: 'releaseId',
+  blockNumber: 'blockNumber',
+  blockHash: 'blockHash',
+  freshness: 'freshness',
+  projectionVersion: 'projectionVersion',
+  projectionRef: 'projectionRef',
+  metadata: 'metadata',
+  deliveredAt: 'deliveredAt',
+  createdAt: 'createdAt'
+} as const
+
+export type StreamEventScalarFieldEnum = (typeof StreamEventScalarFieldEnum)[keyof typeof StreamEventScalarFieldEnum]
+
+
+export const StreamBackfillRequestScalarFieldEnum = {
+  id: 'id',
+  sessionId: 'sessionId',
+  fromCursor: 'fromCursor',
+  toCursor: 'toCursor',
+  status: 'status',
+  reason: 'reason',
+  requestedAt: 'requestedAt',
+  servedAt: 'servedAt'
+} as const
+
+export type StreamBackfillRequestScalarFieldEnum = (typeof StreamBackfillRequestScalarFieldEnum)[keyof typeof StreamBackfillRequestScalarFieldEnum]
 
 
 export const FeatureFlagScalarFieldEnum = {
@@ -404,47 +477,48 @@ export const SupportSubmissionScalarFieldEnum = {
   createdAt: 'createdAt',
   updatedAt: 'updatedAt',
   userId: 'userId',
-  sanitizedText: 'sanitizedText',
-  status: 'status',
-  detectionCount: 'detectionCount',
-  detectionTypes: 'detectionTypes',
-  quarantineRef: 'quarantineRef',
-  remediationGuidance: 'remediationGuidance',
-  quarantinedAt: 'quarantinedAt',
-  reviewedBy: 'reviewedBy',
-  reviewedAt: 'reviewedAt'
+  sanitizedText: 'sanitizedText'
 } as const
 
 export type SupportSubmissionScalarFieldEnum = (typeof SupportSubmissionScalarFieldEnum)[keyof typeof SupportSubmissionScalarFieldEnum]
 
 
-export const SupportAttachmentScalarFieldEnum = {
+export const DeadLetterReplayScalarFieldEnum = {
   id: 'id',
   createdAt: 'createdAt',
-  submissionId: 'submissionId',
-  filename: 'filename',
-  contentType: 'contentType',
-  size: 'size',
-  contentHash: 'contentHash',
-  quarantineKey: 'quarantineKey',
+  updatedAt: 'updatedAt',
+  originalDeadLetterId: 'originalDeadLetterId',
+  originalPayloadHash: 'originalPayloadHash',
+  chainId: 'chainId',
+  releaseId: 'releaseId',
+  deploymentBlock: 'deploymentBlock',
+  artifactChecksum: 'artifactChecksum',
+  capability: 'capability',
+  reason: 'reason',
+  requestedBy: 'requestedBy',
+  dryRun: 'dryRun',
+  batchId: 'batchId',
+  batchSize: 'batchSize',
+  batchOffset: 'batchOffset',
   status: 'status',
-  detectionTypes: 'detectionTypes'
+  idempotencyKey: 'idempotencyKey',
+  effectAppliedAt: 'effectAppliedAt',
+  lastError: 'lastError'
 } as const
 
-export type SupportAttachmentScalarFieldEnum = (typeof SupportAttachmentScalarFieldEnum)[keyof typeof SupportAttachmentScalarFieldEnum]
+export type DeadLetterReplayScalarFieldEnum = (typeof DeadLetterReplayScalarFieldEnum)[keyof typeof DeadLetterReplayScalarFieldEnum]
 
 
-export const QuarantineAuditLogScalarFieldEnum = {
+export const DeadLetterReplayAuditScalarFieldEnum = {
   id: 'id',
   createdAt: 'createdAt',
-  actorId: 'actorId',
+  replayId: 'replayId',
+  actor: 'actor',
   action: 'action',
-  targetType: 'targetType',
-  targetId: 'targetId',
-  context: 'context'
+  detail: 'detail'
 } as const
 
-export type QuarantineAuditLogScalarFieldEnum = (typeof QuarantineAuditLogScalarFieldEnum)[keyof typeof QuarantineAuditLogScalarFieldEnum]
+export type DeadLetterReplayAuditScalarFieldEnum = (typeof DeadLetterReplayAuditScalarFieldEnum)[keyof typeof DeadLetterReplayAuditScalarFieldEnum]
 
 
 export const WebhookProviderConfigScalarFieldEnum = {
@@ -495,6 +569,14 @@ export const NullableJsonNullValueInput = {
 export type NullableJsonNullValueInput = (typeof NullableJsonNullValueInput)[keyof typeof NullableJsonNullValueInput]
 
 
+export const QueryMode = {
+  default: 'default',
+  insensitive: 'insensitive'
+} as const
+
+export type QueryMode = (typeof QueryMode)[keyof typeof QueryMode]
+
+
 export const NullsOrder = {
   first: 'first',
   last: 'last'
@@ -510,12 +592,4 @@ export const JsonNullValueFilter = {
 } as const
 
 export type JsonNullValueFilter = (typeof JsonNullValueFilter)[keyof typeof JsonNullValueFilter]
-
-
-export const QueryMode = {
-  default: 'default',
-  insensitive: 'insensitive'
-} as const
-
-export type QueryMode = (typeof QueryMode)[keyof typeof QueryMode]
 

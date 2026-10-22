@@ -1096,6 +1096,7 @@ export type MetricAggregateCreateManyArgs<ExtArgs extends runtime.Types.Extensio
    * The data used to create many MetricAggregates.
    */
   data: Prisma.MetricAggregateCreateManyInput | Prisma.MetricAggregateCreateManyInput[]
+  skipDuplicates?: boolean
 }
 
 /**
@@ -1114,6 +1115,7 @@ export type MetricAggregateCreateManyAndReturnArgs<ExtArgs extends runtime.Types
    * The data used to create many MetricAggregates.
    */
   data: Prisma.MetricAggregateCreateManyInput | Prisma.MetricAggregateCreateManyInput[]
+  skipDuplicates?: boolean
 }
 
 /**

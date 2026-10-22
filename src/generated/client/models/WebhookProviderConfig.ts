@@ -1150,6 +1150,7 @@ export type WebhookProviderConfigCreateManyArgs<ExtArgs extends runtime.Types.Ex
    * The data used to create many WebhookProviderConfigs.
    */
   data: Prisma.WebhookProviderConfigCreateManyInput | Prisma.WebhookProviderConfigCreateManyInput[]
+  skipDuplicates?: boolean
 }
 
 /**
@@ -1168,6 +1169,7 @@ export type WebhookProviderConfigCreateManyAndReturnArgs<ExtArgs extends runtime
    * The data used to create many WebhookProviderConfigs.
    */
   data: Prisma.WebhookProviderConfigCreateManyInput | Prisma.WebhookProviderConfigCreateManyInput[]
+  skipDuplicates?: boolean
 }
 
 /**

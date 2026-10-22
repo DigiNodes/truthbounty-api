@@ -31,6 +31,7 @@ export type BlockCursorAvgAggregateOutputType = {
   processedHeight: number | null
   safeHeight: number | null
   finalizedHeight: number | null
+  deploymentBlock: number | null
 }
 
 export type BlockCursorSumAggregateOutputType = {
@@ -38,6 +39,7 @@ export type BlockCursorSumAggregateOutputType = {
   processedHeight: bigint | null
   safeHeight: bigint | null
   finalizedHeight: bigint | null
+  deploymentBlock: bigint | null
 }
 
 export type BlockCursorMinAggregateOutputType = {
@@ -50,6 +52,11 @@ export type BlockCursorMinAggregateOutputType = {
   safeHash: string | null
   finalizedHeight: bigint | null
   finalizedHash: string | null
+  releaseId: string | null
+  projection: string | null
+  deploymentBlock: bigint | null
+  artifactChecksum: string | null
+  checkpointSource: string | null
   createdAt: Date | null
   updatedAt: Date | null
 }
@@ -64,6 +71,11 @@ export type BlockCursorMaxAggregateOutputType = {
   safeHash: string | null
   finalizedHeight: bigint | null
   finalizedHash: string | null
+  releaseId: string | null
+  projection: string | null
+  deploymentBlock: bigint | null
+  artifactChecksum: string | null
+  checkpointSource: string | null
   createdAt: Date | null
   updatedAt: Date | null
 }
@@ -78,6 +90,11 @@ export type BlockCursorCountAggregateOutputType = {
   safeHash: number
   finalizedHeight: number
   finalizedHash: number
+  releaseId: number
+  projection: number
+  deploymentBlock: number
+  artifactChecksum: number
+  checkpointSource: number
   createdAt: number
   updatedAt: number
   _all: number
@@ -89,6 +106,7 @@ export type BlockCursorAvgAggregateInputType = {
   processedHeight?: true
   safeHeight?: true
   finalizedHeight?: true
+  deploymentBlock?: true
 }
 
 export type BlockCursorSumAggregateInputType = {
@@ -96,6 +114,7 @@ export type BlockCursorSumAggregateInputType = {
   processedHeight?: true
   safeHeight?: true
   finalizedHeight?: true
+  deploymentBlock?: true
 }
 
 export type BlockCursorMinAggregateInputType = {
@@ -108,6 +127,11 @@ export type BlockCursorMinAggregateInputType = {
   safeHash?: true
   finalizedHeight?: true
   finalizedHash?: true
+  releaseId?: true
+  projection?: true
+  deploymentBlock?: true
+  artifactChecksum?: true
+  checkpointSource?: true
   createdAt?: true
   updatedAt?: true
 }
@@ -122,6 +146,11 @@ export type BlockCursorMaxAggregateInputType = {
   safeHash?: true
   finalizedHeight?: true
   finalizedHash?: true
+  releaseId?: true
+  projection?: true
+  deploymentBlock?: true
+  artifactChecksum?: true
+  checkpointSource?: true
   createdAt?: true
   updatedAt?: true
 }
@@ -136,6 +165,11 @@ export type BlockCursorCountAggregateInputType = {
   safeHash?: true
   finalizedHeight?: true
   finalizedHash?: true
+  releaseId?: true
+  projection?: true
+  deploymentBlock?: true
+  artifactChecksum?: true
+  checkpointSource?: true
   createdAt?: true
   updatedAt?: true
   _all?: true
@@ -237,6 +271,11 @@ export type BlockCursorGroupByOutputType = {
   safeHash: string
   finalizedHeight: bigint
   finalizedHash: string
+  releaseId: string
+  projection: string
+  deploymentBlock: bigint
+  artifactChecksum: string
+  checkpointSource: string
   createdAt: Date
   updatedAt: Date
   _count: BlockCursorCountAggregateOutputType | null
@@ -274,6 +313,11 @@ export type BlockCursorWhereInput = {
   safeHash?: Prisma.StringFilter<"BlockCursor"> | string
   finalizedHeight?: Prisma.BigIntFilter<"BlockCursor"> | bigint | number
   finalizedHash?: Prisma.StringFilter<"BlockCursor"> | string
+  releaseId?: Prisma.StringFilter<"BlockCursor"> | string
+  projection?: Prisma.StringFilter<"BlockCursor"> | string
+  deploymentBlock?: Prisma.BigIntFilter<"BlockCursor"> | bigint | number
+  artifactChecksum?: Prisma.StringFilter<"BlockCursor"> | string
+  checkpointSource?: Prisma.StringFilter<"BlockCursor"> | string
   createdAt?: Prisma.DateTimeFilter<"BlockCursor"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"BlockCursor"> | Date | string
   ancestors?: Prisma.BlockCursorAncestorListRelationFilter
@@ -289,6 +333,11 @@ export type BlockCursorOrderByWithRelationInput = {
   safeHash?: Prisma.SortOrder
   finalizedHeight?: Prisma.SortOrder
   finalizedHash?: Prisma.SortOrder
+  releaseId?: Prisma.SortOrder
+  projection?: Prisma.SortOrder
+  deploymentBlock?: Prisma.SortOrder
+  artifactChecksum?: Prisma.SortOrder
+  checkpointSource?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   ancestors?: Prisma.BlockCursorAncestorOrderByRelationAggregateInput
@@ -296,7 +345,7 @@ export type BlockCursorOrderByWithRelationInput = {
 
 export type BlockCursorWhereUniqueInput = Prisma.AtLeast<{
   id?: string
-  chainId_source?: Prisma.BlockCursorChainIdSourceCompoundUniqueInput
+  chainId_source_releaseId_projection?: Prisma.BlockCursorChainIdSourceReleaseIdProjectionCompoundUniqueInput
   AND?: Prisma.BlockCursorWhereInput | Prisma.BlockCursorWhereInput[]
   OR?: Prisma.BlockCursorWhereInput[]
   NOT?: Prisma.BlockCursorWhereInput | Prisma.BlockCursorWhereInput[]
@@ -308,10 +357,15 @@ export type BlockCursorWhereUniqueInput = Prisma.AtLeast<{
   safeHash?: Prisma.StringFilter<"BlockCursor"> | string
   finalizedHeight?: Prisma.BigIntFilter<"BlockCursor"> | bigint | number
   finalizedHash?: Prisma.StringFilter<"BlockCursor"> | string
+  releaseId?: Prisma.StringFilter<"BlockCursor"> | string
+  projection?: Prisma.StringFilter<"BlockCursor"> | string
+  deploymentBlock?: Prisma.BigIntFilter<"BlockCursor"> | bigint | number
+  artifactChecksum?: Prisma.StringFilter<"BlockCursor"> | string
+  checkpointSource?: Prisma.StringFilter<"BlockCursor"> | string
   createdAt?: Prisma.DateTimeFilter<"BlockCursor"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"BlockCursor"> | Date | string
   ancestors?: Prisma.BlockCursorAncestorListRelationFilter
-}, "id" | "chainId_source">
+}, "id" | "chainId_source_releaseId_projection">
 
 export type BlockCursorOrderByWithAggregationInput = {
   id?: Prisma.SortOrder
@@ -323,6 +377,11 @@ export type BlockCursorOrderByWithAggregationInput = {
   safeHash?: Prisma.SortOrder
   finalizedHeight?: Prisma.SortOrder
   finalizedHash?: Prisma.SortOrder
+  releaseId?: Prisma.SortOrder
+  projection?: Prisma.SortOrder
+  deploymentBlock?: Prisma.SortOrder
+  artifactChecksum?: Prisma.SortOrder
+  checkpointSource?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   _count?: Prisma.BlockCursorCountOrderByAggregateInput
@@ -345,6 +404,11 @@ export type BlockCursorScalarWhereWithAggregatesInput = {
   safeHash?: Prisma.StringWithAggregatesFilter<"BlockCursor"> | string
   finalizedHeight?: Prisma.BigIntWithAggregatesFilter<"BlockCursor"> | bigint | number
   finalizedHash?: Prisma.StringWithAggregatesFilter<"BlockCursor"> | string
+  releaseId?: Prisma.StringWithAggregatesFilter<"BlockCursor"> | string
+  projection?: Prisma.StringWithAggregatesFilter<"BlockCursor"> | string
+  deploymentBlock?: Prisma.BigIntWithAggregatesFilter<"BlockCursor"> | bigint | number
+  artifactChecksum?: Prisma.StringWithAggregatesFilter<"BlockCursor"> | string
+  checkpointSource?: Prisma.StringWithAggregatesFilter<"BlockCursor"> | string
   createdAt?: Prisma.DateTimeWithAggregatesFilter<"BlockCursor"> | Date | string
   updatedAt?: Prisma.DateTimeWithAggregatesFilter<"BlockCursor"> | Date | string
 }
@@ -359,6 +423,11 @@ export type BlockCursorCreateInput = {
   safeHash?: string
   finalizedHeight?: bigint | number
   finalizedHash?: string
+  releaseId?: string
+  projection?: string
+  deploymentBlock?: bigint | number
+  artifactChecksum?: string
+  checkpointSource?: string
   createdAt?: Date | string
   updatedAt?: Date | string
   ancestors?: Prisma.BlockCursorAncestorCreateNestedManyWithoutCursorInput
@@ -374,6 +443,11 @@ export type BlockCursorUncheckedCreateInput = {
   safeHash?: string
   finalizedHeight?: bigint | number
   finalizedHash?: string
+  releaseId?: string
+  projection?: string
+  deploymentBlock?: bigint | number
+  artifactChecksum?: string
+  checkpointSource?: string
   createdAt?: Date | string
   updatedAt?: Date | string
   ancestors?: Prisma.BlockCursorAncestorUncheckedCreateNestedManyWithoutCursorInput
@@ -389,6 +463,11 @@ export type BlockCursorUpdateInput = {
   safeHash?: Prisma.StringFieldUpdateOperationsInput | string
   finalizedHeight?: Prisma.BigIntFieldUpdateOperationsInput | bigint | number
   finalizedHash?: Prisma.StringFieldUpdateOperationsInput | string
+  releaseId?: Prisma.StringFieldUpdateOperationsInput | string
+  projection?: Prisma.StringFieldUpdateOperationsInput | string
+  deploymentBlock?: Prisma.BigIntFieldUpdateOperationsInput | bigint | number
+  artifactChecksum?: Prisma.StringFieldUpdateOperationsInput | string
+  checkpointSource?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   ancestors?: Prisma.BlockCursorAncestorUpdateManyWithoutCursorNestedInput
@@ -404,6 +483,11 @@ export type BlockCursorUncheckedUpdateInput = {
   safeHash?: Prisma.StringFieldUpdateOperationsInput | string
   finalizedHeight?: Prisma.BigIntFieldUpdateOperationsInput | bigint | number
   finalizedHash?: Prisma.StringFieldUpdateOperationsInput | string
+  releaseId?: Prisma.StringFieldUpdateOperationsInput | string
+  projection?: Prisma.StringFieldUpdateOperationsInput | string
+  deploymentBlock?: Prisma.BigIntFieldUpdateOperationsInput | bigint | number
+  artifactChecksum?: Prisma.StringFieldUpdateOperationsInput | string
+  checkpointSource?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   ancestors?: Prisma.BlockCursorAncestorUncheckedUpdateManyWithoutCursorNestedInput
@@ -419,6 +503,11 @@ export type BlockCursorCreateManyInput = {
   safeHash?: string
   finalizedHeight?: bigint | number
   finalizedHash?: string
+  releaseId?: string
+  projection?: string
+  deploymentBlock?: bigint | number
+  artifactChecksum?: string
+  checkpointSource?: string
   createdAt?: Date | string
   updatedAt?: Date | string
 }
@@ -433,6 +522,11 @@ export type BlockCursorUpdateManyMutationInput = {
   safeHash?: Prisma.StringFieldUpdateOperationsInput | string
   finalizedHeight?: Prisma.BigIntFieldUpdateOperationsInput | bigint | number
   finalizedHash?: Prisma.StringFieldUpdateOperationsInput | string
+  releaseId?: Prisma.StringFieldUpdateOperationsInput | string
+  projection?: Prisma.StringFieldUpdateOperationsInput | string
+  deploymentBlock?: Prisma.BigIntFieldUpdateOperationsInput | bigint | number
+  artifactChecksum?: Prisma.StringFieldUpdateOperationsInput | string
+  checkpointSource?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -447,13 +541,20 @@ export type BlockCursorUncheckedUpdateManyInput = {
   safeHash?: Prisma.StringFieldUpdateOperationsInput | string
   finalizedHeight?: Prisma.BigIntFieldUpdateOperationsInput | bigint | number
   finalizedHash?: Prisma.StringFieldUpdateOperationsInput | string
+  releaseId?: Prisma.StringFieldUpdateOperationsInput | string
+  projection?: Prisma.StringFieldUpdateOperationsInput | string
+  deploymentBlock?: Prisma.BigIntFieldUpdateOperationsInput | bigint | number
+  artifactChecksum?: Prisma.StringFieldUpdateOperationsInput | string
+  checkpointSource?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
-export type BlockCursorChainIdSourceCompoundUniqueInput = {
+export type BlockCursorChainIdSourceReleaseIdProjectionCompoundUniqueInput = {
   chainId: number
   source: string
+  releaseId: string
+  projection: string
 }
 
 export type BlockCursorCountOrderByAggregateInput = {
@@ -466,6 +567,11 @@ export type BlockCursorCountOrderByAggregateInput = {
   safeHash?: Prisma.SortOrder
   finalizedHeight?: Prisma.SortOrder
   finalizedHash?: Prisma.SortOrder
+  releaseId?: Prisma.SortOrder
+  projection?: Prisma.SortOrder
+  deploymentBlock?: Prisma.SortOrder
+  artifactChecksum?: Prisma.SortOrder
+  checkpointSource?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
 }
@@ -475,6 +581,7 @@ export type BlockCursorAvgOrderByAggregateInput = {
   processedHeight?: Prisma.SortOrder
   safeHeight?: Prisma.SortOrder
   finalizedHeight?: Prisma.SortOrder
+  deploymentBlock?: Prisma.SortOrder
 }
 
 export type BlockCursorMaxOrderByAggregateInput = {
@@ -487,6 +594,11 @@ export type BlockCursorMaxOrderByAggregateInput = {
   safeHash?: Prisma.SortOrder
   finalizedHeight?: Prisma.SortOrder
   finalizedHash?: Prisma.SortOrder
+  releaseId?: Prisma.SortOrder
+  projection?: Prisma.SortOrder
+  deploymentBlock?: Prisma.SortOrder
+  artifactChecksum?: Prisma.SortOrder
+  checkpointSource?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
 }
@@ -501,6 +613,11 @@ export type BlockCursorMinOrderByAggregateInput = {
   safeHash?: Prisma.SortOrder
   finalizedHeight?: Prisma.SortOrder
   finalizedHash?: Prisma.SortOrder
+  releaseId?: Prisma.SortOrder
+  projection?: Prisma.SortOrder
+  deploymentBlock?: Prisma.SortOrder
+  artifactChecksum?: Prisma.SortOrder
+  checkpointSource?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
 }
@@ -510,6 +627,7 @@ export type BlockCursorSumOrderByAggregateInput = {
   processedHeight?: Prisma.SortOrder
   safeHeight?: Prisma.SortOrder
   finalizedHeight?: Prisma.SortOrder
+  deploymentBlock?: Prisma.SortOrder
 }
 
 export type BlockCursorScalarRelationFilter = {
@@ -549,6 +667,11 @@ export type BlockCursorCreateWithoutAncestorsInput = {
   safeHash?: string
   finalizedHeight?: bigint | number
   finalizedHash?: string
+  releaseId?: string
+  projection?: string
+  deploymentBlock?: bigint | number
+  artifactChecksum?: string
+  checkpointSource?: string
   createdAt?: Date | string
   updatedAt?: Date | string
 }
@@ -563,6 +686,11 @@ export type BlockCursorUncheckedCreateWithoutAncestorsInput = {
   safeHash?: string
   finalizedHeight?: bigint | number
   finalizedHash?: string
+  releaseId?: string
+  projection?: string
+  deploymentBlock?: bigint | number
+  artifactChecksum?: string
+  checkpointSource?: string
   createdAt?: Date | string
   updatedAt?: Date | string
 }
@@ -593,6 +721,11 @@ export type BlockCursorUpdateWithoutAncestorsInput = {
   safeHash?: Prisma.StringFieldUpdateOperationsInput | string
   finalizedHeight?: Prisma.BigIntFieldUpdateOperationsInput | bigint | number
   finalizedHash?: Prisma.StringFieldUpdateOperationsInput | string
+  releaseId?: Prisma.StringFieldUpdateOperationsInput | string
+  projection?: Prisma.StringFieldUpdateOperationsInput | string
+  deploymentBlock?: Prisma.BigIntFieldUpdateOperationsInput | bigint | number
+  artifactChecksum?: Prisma.StringFieldUpdateOperationsInput | string
+  checkpointSource?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -607,6 +740,11 @@ export type BlockCursorUncheckedUpdateWithoutAncestorsInput = {
   safeHash?: Prisma.StringFieldUpdateOperationsInput | string
   finalizedHeight?: Prisma.BigIntFieldUpdateOperationsInput | bigint | number
   finalizedHash?: Prisma.StringFieldUpdateOperationsInput | string
+  releaseId?: Prisma.StringFieldUpdateOperationsInput | string
+  projection?: Prisma.StringFieldUpdateOperationsInput | string
+  deploymentBlock?: Prisma.BigIntFieldUpdateOperationsInput | bigint | number
+  artifactChecksum?: Prisma.StringFieldUpdateOperationsInput | string
+  checkpointSource?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -652,6 +790,11 @@ export type BlockCursorSelect<ExtArgs extends runtime.Types.Extensions.InternalA
   safeHash?: boolean
   finalizedHeight?: boolean
   finalizedHash?: boolean
+  releaseId?: boolean
+  projection?: boolean
+  deploymentBlock?: boolean
+  artifactChecksum?: boolean
+  checkpointSource?: boolean
   createdAt?: boolean
   updatedAt?: boolean
   ancestors?: boolean | Prisma.BlockCursor$ancestorsArgs<ExtArgs>
@@ -668,6 +811,11 @@ export type BlockCursorSelectCreateManyAndReturn<ExtArgs extends runtime.Types.E
   safeHash?: boolean
   finalizedHeight?: boolean
   finalizedHash?: boolean
+  releaseId?: boolean
+  projection?: boolean
+  deploymentBlock?: boolean
+  artifactChecksum?: boolean
+  checkpointSource?: boolean
   createdAt?: boolean
   updatedAt?: boolean
 }, ExtArgs["result"]["blockCursor"]>
@@ -682,6 +830,11 @@ export type BlockCursorSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.E
   safeHash?: boolean
   finalizedHeight?: boolean
   finalizedHash?: boolean
+  releaseId?: boolean
+  projection?: boolean
+  deploymentBlock?: boolean
+  artifactChecksum?: boolean
+  checkpointSource?: boolean
   createdAt?: boolean
   updatedAt?: boolean
 }, ExtArgs["result"]["blockCursor"]>
@@ -696,11 +849,16 @@ export type BlockCursorSelectScalar = {
   safeHash?: boolean
   finalizedHeight?: boolean
   finalizedHash?: boolean
+  releaseId?: boolean
+  projection?: boolean
+  deploymentBlock?: boolean
+  artifactChecksum?: boolean
+  checkpointSource?: boolean
   createdAt?: boolean
   updatedAt?: boolean
 }
 
-export type BlockCursorOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "chainId" | "source" | "processedHeight" | "processedHash" | "safeHeight" | "safeHash" | "finalizedHeight" | "finalizedHash" | "createdAt" | "updatedAt", ExtArgs["result"]["blockCursor"]>
+export type BlockCursorOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "chainId" | "source" | "processedHeight" | "processedHash" | "safeHeight" | "safeHash" | "finalizedHeight" | "finalizedHash" | "releaseId" | "projection" | "deploymentBlock" | "artifactChecksum" | "checkpointSource" | "createdAt" | "updatedAt", ExtArgs["result"]["blockCursor"]>
 export type BlockCursorInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   ancestors?: boolean | Prisma.BlockCursor$ancestorsArgs<ExtArgs>
   _count?: boolean | Prisma.BlockCursorCountOutputTypeDefaultArgs<ExtArgs>
@@ -723,6 +881,11 @@ export type $BlockCursorPayload<ExtArgs extends runtime.Types.Extensions.Interna
     safeHash: string
     finalizedHeight: bigint
     finalizedHash: string
+    releaseId: string
+    projection: string
+    deploymentBlock: bigint
+    artifactChecksum: string
+    checkpointSource: string
     createdAt: Date
     updatedAt: Date
   }, ExtArgs["result"]["blockCursor"]>
@@ -1158,6 +1321,11 @@ export interface BlockCursorFieldRefs {
   readonly safeHash: Prisma.FieldRef<"BlockCursor", 'String'>
   readonly finalizedHeight: Prisma.FieldRef<"BlockCursor", 'BigInt'>
   readonly finalizedHash: Prisma.FieldRef<"BlockCursor", 'String'>
+  readonly releaseId: Prisma.FieldRef<"BlockCursor", 'String'>
+  readonly projection: Prisma.FieldRef<"BlockCursor", 'String'>
+  readonly deploymentBlock: Prisma.FieldRef<"BlockCursor", 'BigInt'>
+  readonly artifactChecksum: Prisma.FieldRef<"BlockCursor", 'String'>
+  readonly checkpointSource: Prisma.FieldRef<"BlockCursor", 'String'>
   readonly createdAt: Prisma.FieldRef<"BlockCursor", 'DateTime'>
   readonly updatedAt: Prisma.FieldRef<"BlockCursor", 'DateTime'>
 }
@@ -1394,6 +1562,7 @@ export type BlockCursorCreateManyArgs<ExtArgs extends runtime.Types.Extensions.I
    * The data used to create many BlockCursors.
    */
   data: Prisma.BlockCursorCreateManyInput | Prisma.BlockCursorCreateManyInput[]
+  skipDuplicates?: boolean
 }
 
 /**
@@ -1412,6 +1581,7 @@ export type BlockCursorCreateManyAndReturnArgs<ExtArgs extends runtime.Types.Ext
    * The data used to create many BlockCursors.
    */
   data: Prisma.BlockCursorCreateManyInput | Prisma.BlockCursorCreateManyInput[]
+  skipDuplicates?: boolean
 }
 
 /**

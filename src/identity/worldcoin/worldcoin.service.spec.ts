@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/unbound-method */
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   BadRequestException,
@@ -7,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { SafeHttpClientService } from '../../common/security/ssrf';
 import { WorldcoinService } from './worldcoin.service';
 import { WorldIdVerification } from './entities/world-id-verification.entity';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -39,12 +39,12 @@ const VALID_DTO = {
   signal: 'test-signal',
 };
 
-/** Returns a Response-like mock that the fetch global can use. */
+/** Returns an HTTP-response-like mock for the SSRF-safe client. */
 function makeOkResponse(body: object = { success: true }): Response {
   return {
     ok: true,
     status: 200,
-    json: jest.fn().mockResolvedValue(body),
+    json: jest.fn().mockReturnValue(body),
   } as unknown as Response;
 }
 
@@ -52,7 +52,7 @@ function makeErrorResponse(status = 400): Response {
   return {
     ok: false,
     status,
-    json: jest.fn().mockResolvedValue({ detail: 'verification_error' }),
+    json: jest.fn().mockReturnValue({ detail: 'verification_error' }),
   } as unknown as Response;
 }
 
@@ -62,7 +62,7 @@ function makeErrorResponse(status = 400): Response {
 
 describe('WorldcoinService', () => {
   let service: WorldcoinService;
-  let fetchMock: jest.Mock;
+  let httpPostMock: jest.Mock;
   let repository: {
     findOne: jest.Mock;
     create: jest.Mock;
@@ -94,16 +94,18 @@ describe('WorldcoinService', () => {
     sybilResistanceService = { recordSybilScore: jest.fn() };
 
     // Default transaction: check passes (no existing), create + user update succeed.
-    prisma.$transaction.mockImplementation(async (fn: (tx: typeof prisma) => Promise<unknown>) => {
-      const txPrisma = {
-        worldIdVerification: {
-          findUnique: jest.fn().mockResolvedValue(null),
-          create: jest.fn().mockResolvedValue({}),
-        },
-        user: { update: jest.fn().mockResolvedValue({}) },
-      };
-      return fn(txPrisma as unknown as typeof prisma);
-    });
+    prisma.$transaction.mockImplementation(
+      async (fn: (tx: typeof prisma) => Promise<unknown>) => {
+        const txPrisma = {
+          worldIdVerification: {
+            findUnique: jest.fn().mockResolvedValue(null),
+            create: jest.fn().mockResolvedValue({}),
+          },
+          user: { update: jest.fn().mockResolvedValue({}) },
+        };
+        return fn(txPrisma as unknown as typeof prisma);
+      },
+    );
 
     const mockVerification: Partial<WorldIdVerification> = {
       id: 'ver-1',
@@ -121,8 +123,7 @@ describe('WorldcoinService', () => {
       compositeScore: 0.5,
     });
 
-    fetchMock = jest.fn().mockResolvedValue(makeOkResponse());
-    global.fetch = fetchMock as typeof fetch;
+    httpPostMock = jest.fn().mockResolvedValue(makeOkResponse());
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -137,6 +138,7 @@ describe('WorldcoinService', () => {
         },
         { provide: PrismaService, useValue: prisma },
         { provide: SybilResistanceService, useValue: sybilResistanceService },
+        { provide: SafeHttpClientService, useValue: { post: httpPostMock } },
       ],
     }).compile();
 
@@ -155,15 +157,15 @@ describe('WorldcoinService', () => {
 
       expect(result.userId).toBe('user-1');
       expect(result.nullifierHash).toBe(VALID_PROOF.nullifier_hash);
-      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(httpPostMock).toHaveBeenCalledTimes(1);
     });
 
     it('passes the correct fields to the provider, including signal', async () => {
       await service.verifyProof('user-1', VALID_DTO);
 
-      const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
+      const [url, rawBody] = httpPostMock.mock.calls[0] as [string, string];
       expect(url).toBe(`${VALID_BASE_URL}/${VALID_APP_ID}`);
-      const body = JSON.parse(options.body as string);
+      const body = JSON.parse(rawBody);
       expect(body.action).toBe(VALID_ACTION);
       expect(body.signal).toBe('test-signal');
       expect(body.merkle_root).toBe(VALID_PROOF.merkle_root);
@@ -173,15 +175,16 @@ describe('WorldcoinService', () => {
       const dto = { ...VALID_DTO, signal: undefined };
       await service.verifyProof('user-1', dto);
 
-      const [, options] = fetchMock.mock.calls[0] as [string, RequestInit];
-      const body = JSON.parse(options.body as string);
+      const [, rawBody] = httpPostMock.mock.calls[0] as [string, string];
+      const body = JSON.parse(rawBody);
       expect(Object.prototype.hasOwnProperty.call(body, 'signal')).toBe(false);
     });
 
     it('does NOT store raw proof bytes in the TypeORM entity', async () => {
       await service.verifyProof('user-1', VALID_DTO);
 
-      const createArg = repository.create.mock.calls[0][0] as Partial<WorldIdVerification>;
+      const createArg = repository.create.mock
+        .calls[0][0] as Partial<WorldIdVerification>;
       expect(createArg).not.toHaveProperty('proof');
     });
 
@@ -206,13 +209,16 @@ describe('WorldcoinService', () => {
       await service.verifyProof('user-1', VALID_DTO);
 
       expect(txCreateArg).toBeDefined();
-      const data = (txCreateArg as { data?: Record<string, unknown> }).data ?? {};
+      const data =
+        (txCreateArg as { data?: Record<string, unknown> }).data ?? {};
       expect(data).not.toHaveProperty('proof');
     });
 
     it('calls recordSybilScore after successful verification', async () => {
       await service.verifyProof('user-1', VALID_DTO);
-      expect(sybilResistanceService.recordSybilScore).toHaveBeenCalledWith('user-1');
+      expect(sybilResistanceService.recordSybilScore).toHaveBeenCalledWith(
+        'user-1',
+      );
     });
 
     it('marks user worldcoinVerified=true inside the transaction', async () => {
@@ -260,7 +266,7 @@ describe('WorldcoinService', () => {
         service.verifyProof('user-1', { ...VALID_DTO, action: 'evil-action' }),
       ).rejects.toThrow(BadRequestException);
 
-      expect(fetchMock).not.toHaveBeenCalled();
+      expect(httpPostMock).not.toHaveBeenCalled();
     });
 
     it('throws BadRequestException when action is an empty string', async () => {
@@ -271,9 +277,9 @@ describe('WorldcoinService', () => {
 
     it('throws ServiceUnavailableException when WORLDCOIN_ACTION is not configured', async () => {
       configMap['WORLDCOIN_ACTION'] = undefined;
-      await expect(
-        service.verifyProof('user-1', VALID_DTO),
-      ).rejects.toThrow(ServiceUnavailableException);
+      await expect(service.verifyProof('user-1', VALID_DTO)).rejects.toThrow(
+        ServiceUnavailableException,
+      );
     });
   });
 
@@ -296,7 +302,10 @@ describe('WorldcoinService', () => {
 
     it('throws BadRequestException when signal exceeds 512 characters', async () => {
       await expect(
-        service.verifyProof('user-1', { ...VALID_DTO, signal: 'x'.repeat(513) }),
+        service.verifyProof('user-1', {
+          ...VALID_DTO,
+          signal: 'x'.repeat(513),
+        }),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -304,7 +313,7 @@ describe('WorldcoinService', () => {
       await expect(
         service.verifyProof('user-1', { ...VALID_DTO, signal: '' }),
       ).rejects.toThrow(BadRequestException);
-      expect(fetchMock).not.toHaveBeenCalled();
+      expect(httpPostMock).not.toHaveBeenCalled();
     });
 
     it('accepts undefined signal (signal is optional)', async () => {
@@ -315,7 +324,10 @@ describe('WorldcoinService', () => {
 
     it('accepts a valid 512-character signal', async () => {
       await expect(
-        service.verifyProof('user-1', { ...VALID_DTO, signal: 'a'.repeat(512) }),
+        service.verifyProof('user-1', {
+          ...VALID_DTO,
+          signal: 'a'.repeat(512),
+        }),
       ).resolves.toBeDefined();
     });
   });
@@ -343,9 +355,9 @@ describe('WorldcoinService', () => {
         },
       );
 
-      await expect(
-        service.verifyProof('user-1', VALID_DTO),
-      ).rejects.toThrow(ConflictException);
+      await expect(service.verifyProof('user-1', VALID_DTO)).rejects.toThrow(
+        ConflictException,
+      );
     });
 
     it('does NOT write a new Prisma record when nullifier is already used', async () => {
@@ -409,7 +421,7 @@ describe('WorldcoinService', () => {
           proof: { ...VALID_PROOF, merkle_root: 'not-hex' },
         }),
       ).rejects.toThrow(BadRequestException);
-      expect(fetchMock).not.toHaveBeenCalled();
+      expect(httpPostMock).not.toHaveBeenCalled();
     });
 
     it('throws BadRequestException for an empty merkle_root', async () => {
@@ -457,11 +469,11 @@ describe('WorldcoinService', () => {
       ];
 
       for (const badProof of badProofs) {
-        fetchMock.mockClear();
+        httpPostMock.mockClear();
         await expect(
           service.verifyProof('user-1', { ...VALID_DTO, proof: badProof }),
         ).rejects.toThrow(BadRequestException);
-        expect(fetchMock).not.toHaveBeenCalled();
+        expect(httpPostMock).not.toHaveBeenCalled();
       }
     });
   });
@@ -472,15 +484,17 @@ describe('WorldcoinService', () => {
 
   describe('provider outage', () => {
     it('throws ServiceUnavailableException on network error (not BadRequestException)', async () => {
-      fetchMock.mockRejectedValue(new TypeError('fetch failed'));
+      httpPostMock.mockRejectedValue(new TypeError('fetch failed'));
 
-      await expect(
-        service.verifyProof('user-1', VALID_DTO),
-      ).rejects.toThrow(ServiceUnavailableException);
+      await expect(service.verifyProof('user-1', VALID_DTO)).rejects.toThrow(
+        ServiceUnavailableException,
+      );
     });
 
     it('throws ServiceUnavailableException on DNS failure', async () => {
-      fetchMock.mockRejectedValue(new Error('ENOTFOUND developer.worldcoin.org'));
+      httpPostMock.mockRejectedValue(
+        new Error('ENOTFOUND developer.worldcoin.org'),
+      );
 
       await expect(service.verifyProof('user-1', VALID_DTO)).rejects.toThrow(
         ServiceUnavailableException,
@@ -488,7 +502,7 @@ describe('WorldcoinService', () => {
     });
 
     it('does NOT persist a verification record when provider is unreachable', async () => {
-      fetchMock.mockRejectedValue(new Error('timeout'));
+      httpPostMock.mockRejectedValue(new Error('timeout'));
 
       await expect(service.verifyProof('user-1', VALID_DTO)).rejects.toThrow(
         ServiceUnavailableException,
@@ -499,10 +513,12 @@ describe('WorldcoinService', () => {
     });
 
     it('throws ServiceUnavailableException when provider returns malformed JSON', async () => {
-      fetchMock.mockResolvedValue({
+      httpPostMock.mockResolvedValue({
         ok: true,
         status: 200,
-        json: jest.fn().mockRejectedValue(new SyntaxError('Unexpected token')),
+        json: jest.fn().mockImplementation(() => {
+          throw new SyntaxError('Unexpected token');
+        }),
       } as unknown as Response);
 
       await expect(service.verifyProof('user-1', VALID_DTO)).rejects.toThrow(
@@ -511,7 +527,7 @@ describe('WorldcoinService', () => {
     });
 
     it('throws BadRequestException (not ServiceUnavailable) when provider rejects proof (4xx)', async () => {
-      fetchMock.mockResolvedValue(makeErrorResponse(400));
+      httpPostMock.mockResolvedValue(makeErrorResponse(400));
 
       await expect(service.verifyProof('user-1', VALID_DTO)).rejects.toThrow(
         BadRequestException,
@@ -519,7 +535,7 @@ describe('WorldcoinService', () => {
     });
 
     it('throws BadRequestException when provider returns success: false', async () => {
-      fetchMock.mockResolvedValue(makeOkResponse({ success: false }));
+      httpPostMock.mockResolvedValue(makeOkResponse({ success: false }));
 
       await expect(service.verifyProof('user-1', VALID_DTO)).rejects.toThrow(
         BadRequestException,
@@ -543,11 +559,17 @@ describe('WorldcoinService', () => {
     it('does not include raw proof in any log output (logger.log / logger.warn / logger.error)', async () => {
       // Spy on the internal logger to verify no raw proof bytes are emitted.
       // We access the logger through the service instance.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       const svc = service as any;
-      const logSpy = jest.spyOn(svc.logger, 'log').mockImplementation(() => undefined);
-      const warnSpy = jest.spyOn(svc.logger, 'warn').mockImplementation(() => undefined);
-      const errorSpy = jest.spyOn(svc.logger, 'error').mockImplementation(() => undefined);
+      const logSpy = jest
+        .spyOn(svc.logger, 'log')
+        .mockImplementation(() => undefined);
+      const warnSpy = jest
+        .spyOn(svc.logger, 'warn')
+        .mockImplementation(() => undefined);
+      const errorSpy = jest
+        .spyOn(svc.logger, 'error')
+        .mockImplementation(() => undefined);
 
       await service.verifyProof('user-1', VALID_DTO);
 
@@ -568,9 +590,10 @@ describe('WorldcoinService', () => {
     });
 
     it('logs [redacted] placeholder (not raw hash) on nullifier replay attempt', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const svc = service as any;
-      const warnSpy = jest.spyOn(svc.logger, 'warn').mockImplementation(() => undefined);
+      const warnSpy = jest
+        .spyOn(svc.logger, 'warn')
+        .mockImplementation(() => undefined);
 
       prisma.$transaction.mockImplementation(
         async (fn: (tx: typeof prisma) => Promise<unknown>) => {
@@ -617,12 +640,14 @@ describe('WorldcoinService', () => {
           const txPrisma = {
             worldIdVerification: {
               findUnique: jest.fn().mockResolvedValue(null),
-              create: jest.fn().mockImplementation(
-                (arg: { data: Record<string, unknown> }) => {
-                  createData = arg.data;
-                  return Promise.resolve({});
-                },
-              ),
+              create: jest
+                .fn()
+                .mockImplementation(
+                  (arg: { data: Record<string, unknown> }) => {
+                    createData = arg.data;
+                    return Promise.resolve({});
+                  },
+                ),
             },
             user: { update: jest.fn().mockResolvedValue({}) },
           };
@@ -653,7 +678,9 @@ describe('WorldcoinService', () => {
 
       expect(result).toBeDefined();
       // The result must not carry raw proof bytes.
-      expect((result as Record<string, unknown>)['proof']).toBeUndefined();
+      expect(
+        (result as unknown as Record<string, unknown>)['proof'],
+      ).toBeUndefined();
     });
   });
 

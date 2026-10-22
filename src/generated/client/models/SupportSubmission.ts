@@ -20,18 +20,8 @@ export type SupportSubmissionModel = runtime.Types.Result.DefaultSelection<Prism
 
 export type AggregateSupportSubmission = {
   _count: SupportSubmissionCountAggregateOutputType | null
-  _avg: SupportSubmissionAvgAggregateOutputType | null
-  _sum: SupportSubmissionSumAggregateOutputType | null
   _min: SupportSubmissionMinAggregateOutputType | null
   _max: SupportSubmissionMaxAggregateOutputType | null
-}
-
-export type SupportSubmissionAvgAggregateOutputType = {
-  detectionCount: number | null
-}
-
-export type SupportSubmissionSumAggregateOutputType = {
-  detectionCount: number | null
 }
 
 export type SupportSubmissionMinAggregateOutputType = {
@@ -40,14 +30,6 @@ export type SupportSubmissionMinAggregateOutputType = {
   updatedAt: Date | null
   userId: string | null
   sanitizedText: string | null
-  status: string | null
-  detectionCount: number | null
-  detectionTypes: string | null
-  quarantineRef: string | null
-  remediationGuidance: string | null
-  quarantinedAt: Date | null
-  reviewedBy: string | null
-  reviewedAt: Date | null
 }
 
 export type SupportSubmissionMaxAggregateOutputType = {
@@ -56,14 +38,6 @@ export type SupportSubmissionMaxAggregateOutputType = {
   updatedAt: Date | null
   userId: string | null
   sanitizedText: string | null
-  status: string | null
-  detectionCount: number | null
-  detectionTypes: string | null
-  quarantineRef: string | null
-  remediationGuidance: string | null
-  quarantinedAt: Date | null
-  reviewedBy: string | null
-  reviewedAt: Date | null
 }
 
 export type SupportSubmissionCountAggregateOutputType = {
@@ -72,25 +46,9 @@ export type SupportSubmissionCountAggregateOutputType = {
   updatedAt: number
   userId: number
   sanitizedText: number
-  status: number
-  detectionCount: number
-  detectionTypes: number
-  quarantineRef: number
-  remediationGuidance: number
-  quarantinedAt: number
-  reviewedBy: number
-  reviewedAt: number
   _all: number
 }
 
-
-export type SupportSubmissionAvgAggregateInputType = {
-  detectionCount?: true
-}
-
-export type SupportSubmissionSumAggregateInputType = {
-  detectionCount?: true
-}
 
 export type SupportSubmissionMinAggregateInputType = {
   id?: true
@@ -98,14 +56,6 @@ export type SupportSubmissionMinAggregateInputType = {
   updatedAt?: true
   userId?: true
   sanitizedText?: true
-  status?: true
-  detectionCount?: true
-  detectionTypes?: true
-  quarantineRef?: true
-  remediationGuidance?: true
-  quarantinedAt?: true
-  reviewedBy?: true
-  reviewedAt?: true
 }
 
 export type SupportSubmissionMaxAggregateInputType = {
@@ -114,14 +64,6 @@ export type SupportSubmissionMaxAggregateInputType = {
   updatedAt?: true
   userId?: true
   sanitizedText?: true
-  status?: true
-  detectionCount?: true
-  detectionTypes?: true
-  quarantineRef?: true
-  remediationGuidance?: true
-  quarantinedAt?: true
-  reviewedBy?: true
-  reviewedAt?: true
 }
 
 export type SupportSubmissionCountAggregateInputType = {
@@ -130,14 +72,6 @@ export type SupportSubmissionCountAggregateInputType = {
   updatedAt?: true
   userId?: true
   sanitizedText?: true
-  status?: true
-  detectionCount?: true
-  detectionTypes?: true
-  quarantineRef?: true
-  remediationGuidance?: true
-  quarantinedAt?: true
-  reviewedBy?: true
-  reviewedAt?: true
   _all?: true
 }
 
@@ -179,18 +113,6 @@ export type SupportSubmissionAggregateArgs<ExtArgs extends runtime.Types.Extensi
   /**
    * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
    * 
-   * Select which fields to average
-  **/
-  _avg?: SupportSubmissionAvgAggregateInputType
-  /**
-   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
-   * 
-   * Select which fields to sum
-  **/
-  _sum?: SupportSubmissionSumAggregateInputType
-  /**
-   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
-   * 
    * Select which fields to find the minimum value
   **/
   _min?: SupportSubmissionMinAggregateInputType
@@ -221,8 +143,6 @@ export type SupportSubmissionGroupByArgs<ExtArgs extends runtime.Types.Extension
   take?: number
   skip?: number
   _count?: SupportSubmissionCountAggregateInputType | true
-  _avg?: SupportSubmissionAvgAggregateInputType
-  _sum?: SupportSubmissionSumAggregateInputType
   _min?: SupportSubmissionMinAggregateInputType
   _max?: SupportSubmissionMaxAggregateInputType
 }
@@ -233,17 +153,7 @@ export type SupportSubmissionGroupByOutputType = {
   updatedAt: Date
   userId: string | null
   sanitizedText: string
-  status: string
-  detectionCount: number
-  detectionTypes: string
-  quarantineRef: string | null
-  remediationGuidance: string | null
-  quarantinedAt: Date | null
-  reviewedBy: string | null
-  reviewedAt: Date | null
   _count: SupportSubmissionCountAggregateOutputType | null
-  _avg: SupportSubmissionAvgAggregateOutputType | null
-  _sum: SupportSubmissionSumAggregateOutputType | null
   _min: SupportSubmissionMinAggregateOutputType | null
   _max: SupportSubmissionMaxAggregateOutputType | null
 }
@@ -272,15 +182,6 @@ export type SupportSubmissionWhereInput = {
   updatedAt?: Prisma.DateTimeFilter<"SupportSubmission"> | Date | string
   userId?: Prisma.StringNullableFilter<"SupportSubmission"> | string | null
   sanitizedText?: Prisma.StringFilter<"SupportSubmission"> | string
-  status?: Prisma.StringFilter<"SupportSubmission"> | string
-  detectionCount?: Prisma.IntFilter<"SupportSubmission"> | number
-  detectionTypes?: Prisma.StringFilter<"SupportSubmission"> | string
-  quarantineRef?: Prisma.StringNullableFilter<"SupportSubmission"> | string | null
-  remediationGuidance?: Prisma.StringNullableFilter<"SupportSubmission"> | string | null
-  quarantinedAt?: Prisma.DateTimeNullableFilter<"SupportSubmission"> | Date | string | null
-  reviewedBy?: Prisma.StringNullableFilter<"SupportSubmission"> | string | null
-  reviewedAt?: Prisma.DateTimeNullableFilter<"SupportSubmission"> | Date | string | null
-  attachments?: Prisma.SupportAttachmentListRelationFilter
 }
 
 export type SupportSubmissionOrderByWithRelationInput = {
@@ -289,15 +190,6 @@ export type SupportSubmissionOrderByWithRelationInput = {
   updatedAt?: Prisma.SortOrder
   userId?: Prisma.SortOrderInput | Prisma.SortOrder
   sanitizedText?: Prisma.SortOrder
-  status?: Prisma.SortOrder
-  detectionCount?: Prisma.SortOrder
-  detectionTypes?: Prisma.SortOrder
-  quarantineRef?: Prisma.SortOrderInput | Prisma.SortOrder
-  remediationGuidance?: Prisma.SortOrderInput | Prisma.SortOrder
-  quarantinedAt?: Prisma.SortOrderInput | Prisma.SortOrder
-  reviewedBy?: Prisma.SortOrderInput | Prisma.SortOrder
-  reviewedAt?: Prisma.SortOrderInput | Prisma.SortOrder
-  attachments?: Prisma.SupportAttachmentOrderByRelationAggregateInput
 }
 
 export type SupportSubmissionWhereUniqueInput = Prisma.AtLeast<{
@@ -309,15 +201,6 @@ export type SupportSubmissionWhereUniqueInput = Prisma.AtLeast<{
   updatedAt?: Prisma.DateTimeFilter<"SupportSubmission"> | Date | string
   userId?: Prisma.StringNullableFilter<"SupportSubmission"> | string | null
   sanitizedText?: Prisma.StringFilter<"SupportSubmission"> | string
-  status?: Prisma.StringFilter<"SupportSubmission"> | string
-  detectionCount?: Prisma.IntFilter<"SupportSubmission"> | number
-  detectionTypes?: Prisma.StringFilter<"SupportSubmission"> | string
-  quarantineRef?: Prisma.StringNullableFilter<"SupportSubmission"> | string | null
-  remediationGuidance?: Prisma.StringNullableFilter<"SupportSubmission"> | string | null
-  quarantinedAt?: Prisma.DateTimeNullableFilter<"SupportSubmission"> | Date | string | null
-  reviewedBy?: Prisma.StringNullableFilter<"SupportSubmission"> | string | null
-  reviewedAt?: Prisma.DateTimeNullableFilter<"SupportSubmission"> | Date | string | null
-  attachments?: Prisma.SupportAttachmentListRelationFilter
 }, "id">
 
 export type SupportSubmissionOrderByWithAggregationInput = {
@@ -326,19 +209,9 @@ export type SupportSubmissionOrderByWithAggregationInput = {
   updatedAt?: Prisma.SortOrder
   userId?: Prisma.SortOrderInput | Prisma.SortOrder
   sanitizedText?: Prisma.SortOrder
-  status?: Prisma.SortOrder
-  detectionCount?: Prisma.SortOrder
-  detectionTypes?: Prisma.SortOrder
-  quarantineRef?: Prisma.SortOrderInput | Prisma.SortOrder
-  remediationGuidance?: Prisma.SortOrderInput | Prisma.SortOrder
-  quarantinedAt?: Prisma.SortOrderInput | Prisma.SortOrder
-  reviewedBy?: Prisma.SortOrderInput | Prisma.SortOrder
-  reviewedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   _count?: Prisma.SupportSubmissionCountOrderByAggregateInput
-  _avg?: Prisma.SupportSubmissionAvgOrderByAggregateInput
   _max?: Prisma.SupportSubmissionMaxOrderByAggregateInput
   _min?: Prisma.SupportSubmissionMinOrderByAggregateInput
-  _sum?: Prisma.SupportSubmissionSumOrderByAggregateInput
 }
 
 export type SupportSubmissionScalarWhereWithAggregatesInput = {
@@ -350,14 +223,6 @@ export type SupportSubmissionScalarWhereWithAggregatesInput = {
   updatedAt?: Prisma.DateTimeWithAggregatesFilter<"SupportSubmission"> | Date | string
   userId?: Prisma.StringNullableWithAggregatesFilter<"SupportSubmission"> | string | null
   sanitizedText?: Prisma.StringWithAggregatesFilter<"SupportSubmission"> | string
-  status?: Prisma.StringWithAggregatesFilter<"SupportSubmission"> | string
-  detectionCount?: Prisma.IntWithAggregatesFilter<"SupportSubmission"> | number
-  detectionTypes?: Prisma.StringWithAggregatesFilter<"SupportSubmission"> | string
-  quarantineRef?: Prisma.StringNullableWithAggregatesFilter<"SupportSubmission"> | string | null
-  remediationGuidance?: Prisma.StringNullableWithAggregatesFilter<"SupportSubmission"> | string | null
-  quarantinedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"SupportSubmission"> | Date | string | null
-  reviewedBy?: Prisma.StringNullableWithAggregatesFilter<"SupportSubmission"> | string | null
-  reviewedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"SupportSubmission"> | Date | string | null
 }
 
 export type SupportSubmissionCreateInput = {
@@ -366,15 +231,6 @@ export type SupportSubmissionCreateInput = {
   updatedAt?: Date | string
   userId?: string | null
   sanitizedText?: string
-  status?: string
-  detectionCount?: number
-  detectionTypes?: string
-  quarantineRef?: string | null
-  remediationGuidance?: string | null
-  quarantinedAt?: Date | string | null
-  reviewedBy?: string | null
-  reviewedAt?: Date | string | null
-  attachments?: Prisma.SupportAttachmentCreateNestedManyWithoutSubmissionInput
 }
 
 export type SupportSubmissionUncheckedCreateInput = {
@@ -383,15 +239,6 @@ export type SupportSubmissionUncheckedCreateInput = {
   updatedAt?: Date | string
   userId?: string | null
   sanitizedText?: string
-  status?: string
-  detectionCount?: number
-  detectionTypes?: string
-  quarantineRef?: string | null
-  remediationGuidance?: string | null
-  quarantinedAt?: Date | string | null
-  reviewedBy?: string | null
-  reviewedAt?: Date | string | null
-  attachments?: Prisma.SupportAttachmentUncheckedCreateNestedManyWithoutSubmissionInput
 }
 
 export type SupportSubmissionUpdateInput = {
@@ -400,15 +247,6 @@ export type SupportSubmissionUpdateInput = {
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   userId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sanitizedText?: Prisma.StringFieldUpdateOperationsInput | string
-  status?: Prisma.StringFieldUpdateOperationsInput | string
-  detectionCount?: Prisma.IntFieldUpdateOperationsInput | number
-  detectionTypes?: Prisma.StringFieldUpdateOperationsInput | string
-  quarantineRef?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  remediationGuidance?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  quarantinedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  reviewedBy?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  reviewedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  attachments?: Prisma.SupportAttachmentUpdateManyWithoutSubmissionNestedInput
 }
 
 export type SupportSubmissionUncheckedUpdateInput = {
@@ -417,15 +255,6 @@ export type SupportSubmissionUncheckedUpdateInput = {
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   userId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sanitizedText?: Prisma.StringFieldUpdateOperationsInput | string
-  status?: Prisma.StringFieldUpdateOperationsInput | string
-  detectionCount?: Prisma.IntFieldUpdateOperationsInput | number
-  detectionTypes?: Prisma.StringFieldUpdateOperationsInput | string
-  quarantineRef?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  remediationGuidance?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  quarantinedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  reviewedBy?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  reviewedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  attachments?: Prisma.SupportAttachmentUncheckedUpdateManyWithoutSubmissionNestedInput
 }
 
 export type SupportSubmissionCreateManyInput = {
@@ -434,14 +263,6 @@ export type SupportSubmissionCreateManyInput = {
   updatedAt?: Date | string
   userId?: string | null
   sanitizedText?: string
-  status?: string
-  detectionCount?: number
-  detectionTypes?: string
-  quarantineRef?: string | null
-  remediationGuidance?: string | null
-  quarantinedAt?: Date | string | null
-  reviewedBy?: string | null
-  reviewedAt?: Date | string | null
 }
 
 export type SupportSubmissionUpdateManyMutationInput = {
@@ -450,14 +271,6 @@ export type SupportSubmissionUpdateManyMutationInput = {
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   userId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sanitizedText?: Prisma.StringFieldUpdateOperationsInput | string
-  status?: Prisma.StringFieldUpdateOperationsInput | string
-  detectionCount?: Prisma.IntFieldUpdateOperationsInput | number
-  detectionTypes?: Prisma.StringFieldUpdateOperationsInput | string
-  quarantineRef?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  remediationGuidance?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  quarantinedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  reviewedBy?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  reviewedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
 }
 
 export type SupportSubmissionUncheckedUpdateManyInput = {
@@ -466,14 +279,6 @@ export type SupportSubmissionUncheckedUpdateManyInput = {
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   userId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sanitizedText?: Prisma.StringFieldUpdateOperationsInput | string
-  status?: Prisma.StringFieldUpdateOperationsInput | string
-  detectionCount?: Prisma.IntFieldUpdateOperationsInput | number
-  detectionTypes?: Prisma.StringFieldUpdateOperationsInput | string
-  quarantineRef?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  remediationGuidance?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  quarantinedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  reviewedBy?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  reviewedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
 }
 
 export type SupportSubmissionCountOrderByAggregateInput = {
@@ -482,18 +287,6 @@ export type SupportSubmissionCountOrderByAggregateInput = {
   updatedAt?: Prisma.SortOrder
   userId?: Prisma.SortOrder
   sanitizedText?: Prisma.SortOrder
-  status?: Prisma.SortOrder
-  detectionCount?: Prisma.SortOrder
-  detectionTypes?: Prisma.SortOrder
-  quarantineRef?: Prisma.SortOrder
-  remediationGuidance?: Prisma.SortOrder
-  quarantinedAt?: Prisma.SortOrder
-  reviewedBy?: Prisma.SortOrder
-  reviewedAt?: Prisma.SortOrder
-}
-
-export type SupportSubmissionAvgOrderByAggregateInput = {
-  detectionCount?: Prisma.SortOrder
 }
 
 export type SupportSubmissionMaxOrderByAggregateInput = {
@@ -502,14 +295,6 @@ export type SupportSubmissionMaxOrderByAggregateInput = {
   updatedAt?: Prisma.SortOrder
   userId?: Prisma.SortOrder
   sanitizedText?: Prisma.SortOrder
-  status?: Prisma.SortOrder
-  detectionCount?: Prisma.SortOrder
-  detectionTypes?: Prisma.SortOrder
-  quarantineRef?: Prisma.SortOrder
-  remediationGuidance?: Prisma.SortOrder
-  quarantinedAt?: Prisma.SortOrder
-  reviewedBy?: Prisma.SortOrder
-  reviewedAt?: Prisma.SortOrder
 }
 
 export type SupportSubmissionMinOrderByAggregateInput = {
@@ -518,148 +303,8 @@ export type SupportSubmissionMinOrderByAggregateInput = {
   updatedAt?: Prisma.SortOrder
   userId?: Prisma.SortOrder
   sanitizedText?: Prisma.SortOrder
-  status?: Prisma.SortOrder
-  detectionCount?: Prisma.SortOrder
-  detectionTypes?: Prisma.SortOrder
-  quarantineRef?: Prisma.SortOrder
-  remediationGuidance?: Prisma.SortOrder
-  quarantinedAt?: Prisma.SortOrder
-  reviewedBy?: Prisma.SortOrder
-  reviewedAt?: Prisma.SortOrder
 }
 
-export type SupportSubmissionSumOrderByAggregateInput = {
-  detectionCount?: Prisma.SortOrder
-}
-
-export type SupportSubmissionScalarRelationFilter = {
-  is?: Prisma.SupportSubmissionWhereInput
-  isNot?: Prisma.SupportSubmissionWhereInput
-}
-
-export type SupportSubmissionCreateNestedOneWithoutAttachmentsInput = {
-  create?: Prisma.XOR<Prisma.SupportSubmissionCreateWithoutAttachmentsInput, Prisma.SupportSubmissionUncheckedCreateWithoutAttachmentsInput>
-  connectOrCreate?: Prisma.SupportSubmissionCreateOrConnectWithoutAttachmentsInput
-  connect?: Prisma.SupportSubmissionWhereUniqueInput
-}
-
-export type SupportSubmissionUpdateOneRequiredWithoutAttachmentsNestedInput = {
-  create?: Prisma.XOR<Prisma.SupportSubmissionCreateWithoutAttachmentsInput, Prisma.SupportSubmissionUncheckedCreateWithoutAttachmentsInput>
-  connectOrCreate?: Prisma.SupportSubmissionCreateOrConnectWithoutAttachmentsInput
-  upsert?: Prisma.SupportSubmissionUpsertWithoutAttachmentsInput
-  connect?: Prisma.SupportSubmissionWhereUniqueInput
-  update?: Prisma.XOR<Prisma.XOR<Prisma.SupportSubmissionUpdateToOneWithWhereWithoutAttachmentsInput, Prisma.SupportSubmissionUpdateWithoutAttachmentsInput>, Prisma.SupportSubmissionUncheckedUpdateWithoutAttachmentsInput>
-}
-
-export type SupportSubmissionCreateWithoutAttachmentsInput = {
-  id?: string
-  createdAt?: Date | string
-  updatedAt?: Date | string
-  userId?: string | null
-  sanitizedText?: string
-  status?: string
-  detectionCount?: number
-  detectionTypes?: string
-  quarantineRef?: string | null
-  remediationGuidance?: string | null
-  quarantinedAt?: Date | string | null
-  reviewedBy?: string | null
-  reviewedAt?: Date | string | null
-}
-
-export type SupportSubmissionUncheckedCreateWithoutAttachmentsInput = {
-  id?: string
-  createdAt?: Date | string
-  updatedAt?: Date | string
-  userId?: string | null
-  sanitizedText?: string
-  status?: string
-  detectionCount?: number
-  detectionTypes?: string
-  quarantineRef?: string | null
-  remediationGuidance?: string | null
-  quarantinedAt?: Date | string | null
-  reviewedBy?: string | null
-  reviewedAt?: Date | string | null
-}
-
-export type SupportSubmissionCreateOrConnectWithoutAttachmentsInput = {
-  where: Prisma.SupportSubmissionWhereUniqueInput
-  create: Prisma.XOR<Prisma.SupportSubmissionCreateWithoutAttachmentsInput, Prisma.SupportSubmissionUncheckedCreateWithoutAttachmentsInput>
-}
-
-export type SupportSubmissionUpsertWithoutAttachmentsInput = {
-  update: Prisma.XOR<Prisma.SupportSubmissionUpdateWithoutAttachmentsInput, Prisma.SupportSubmissionUncheckedUpdateWithoutAttachmentsInput>
-  create: Prisma.XOR<Prisma.SupportSubmissionCreateWithoutAttachmentsInput, Prisma.SupportSubmissionUncheckedCreateWithoutAttachmentsInput>
-  where?: Prisma.SupportSubmissionWhereInput
-}
-
-export type SupportSubmissionUpdateToOneWithWhereWithoutAttachmentsInput = {
-  where?: Prisma.SupportSubmissionWhereInput
-  data: Prisma.XOR<Prisma.SupportSubmissionUpdateWithoutAttachmentsInput, Prisma.SupportSubmissionUncheckedUpdateWithoutAttachmentsInput>
-}
-
-export type SupportSubmissionUpdateWithoutAttachmentsInput = {
-  id?: Prisma.StringFieldUpdateOperationsInput | string
-  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  userId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  sanitizedText?: Prisma.StringFieldUpdateOperationsInput | string
-  status?: Prisma.StringFieldUpdateOperationsInput | string
-  detectionCount?: Prisma.IntFieldUpdateOperationsInput | number
-  detectionTypes?: Prisma.StringFieldUpdateOperationsInput | string
-  quarantineRef?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  remediationGuidance?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  quarantinedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  reviewedBy?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  reviewedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-}
-
-export type SupportSubmissionUncheckedUpdateWithoutAttachmentsInput = {
-  id?: Prisma.StringFieldUpdateOperationsInput | string
-  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  userId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  sanitizedText?: Prisma.StringFieldUpdateOperationsInput | string
-  status?: Prisma.StringFieldUpdateOperationsInput | string
-  detectionCount?: Prisma.IntFieldUpdateOperationsInput | number
-  detectionTypes?: Prisma.StringFieldUpdateOperationsInput | string
-  quarantineRef?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  remediationGuidance?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  quarantinedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  reviewedBy?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  reviewedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-}
-
-
-/**
- * Count Type SupportSubmissionCountOutputType
- */
-
-export type SupportSubmissionCountOutputType = {
-  attachments: number
-}
-
-export type SupportSubmissionCountOutputTypeSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-  attachments?: boolean | SupportSubmissionCountOutputTypeCountAttachmentsArgs
-}
-
-/**
- * SupportSubmissionCountOutputType without action
- */
-export type SupportSubmissionCountOutputTypeDefaultArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-  /**
-   * Select specific fields to fetch from the SupportSubmissionCountOutputType
-   */
-  select?: Prisma.SupportSubmissionCountOutputTypeSelect<ExtArgs> | null
-}
-
-/**
- * SupportSubmissionCountOutputType without action
- */
-export type SupportSubmissionCountOutputTypeCountAttachmentsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-  where?: Prisma.SupportAttachmentWhereInput
-}
 
 
 export type SupportSubmissionSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -668,16 +313,6 @@ export type SupportSubmissionSelect<ExtArgs extends runtime.Types.Extensions.Int
   updatedAt?: boolean
   userId?: boolean
   sanitizedText?: boolean
-  status?: boolean
-  detectionCount?: boolean
-  detectionTypes?: boolean
-  quarantineRef?: boolean
-  remediationGuidance?: boolean
-  quarantinedAt?: boolean
-  reviewedBy?: boolean
-  reviewedAt?: boolean
-  attachments?: boolean | Prisma.SupportSubmission$attachmentsArgs<ExtArgs>
-  _count?: boolean | Prisma.SupportSubmissionCountOutputTypeDefaultArgs<ExtArgs>
 }, ExtArgs["result"]["supportSubmission"]>
 
 export type SupportSubmissionSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -686,14 +321,6 @@ export type SupportSubmissionSelectCreateManyAndReturn<ExtArgs extends runtime.T
   updatedAt?: boolean
   userId?: boolean
   sanitizedText?: boolean
-  status?: boolean
-  detectionCount?: boolean
-  detectionTypes?: boolean
-  quarantineRef?: boolean
-  remediationGuidance?: boolean
-  quarantinedAt?: boolean
-  reviewedBy?: boolean
-  reviewedAt?: boolean
 }, ExtArgs["result"]["supportSubmission"]>
 
 export type SupportSubmissionSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -702,14 +329,6 @@ export type SupportSubmissionSelectUpdateManyAndReturn<ExtArgs extends runtime.T
   updatedAt?: boolean
   userId?: boolean
   sanitizedText?: boolean
-  status?: boolean
-  detectionCount?: boolean
-  detectionTypes?: boolean
-  quarantineRef?: boolean
-  remediationGuidance?: boolean
-  quarantinedAt?: boolean
-  reviewedBy?: boolean
-  reviewedAt?: boolean
 }, ExtArgs["result"]["supportSubmission"]>
 
 export type SupportSubmissionSelectScalar = {
@@ -718,43 +337,19 @@ export type SupportSubmissionSelectScalar = {
   updatedAt?: boolean
   userId?: boolean
   sanitizedText?: boolean
-  status?: boolean
-  detectionCount?: boolean
-  detectionTypes?: boolean
-  quarantineRef?: boolean
-  remediationGuidance?: boolean
-  quarantinedAt?: boolean
-  reviewedBy?: boolean
-  reviewedAt?: boolean
 }
 
-export type SupportSubmissionOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "userId" | "sanitizedText" | "status" | "detectionCount" | "detectionTypes" | "quarantineRef" | "remediationGuidance" | "quarantinedAt" | "reviewedBy" | "reviewedAt", ExtArgs["result"]["supportSubmission"]>
-export type SupportSubmissionInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-  attachments?: boolean | Prisma.SupportSubmission$attachmentsArgs<ExtArgs>
-  _count?: boolean | Prisma.SupportSubmissionCountOutputTypeDefaultArgs<ExtArgs>
-}
-export type SupportSubmissionIncludeCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {}
-export type SupportSubmissionIncludeUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {}
+export type SupportSubmissionOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "userId" | "sanitizedText", ExtArgs["result"]["supportSubmission"]>
 
 export type $SupportSubmissionPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "SupportSubmission"
-  objects: {
-    attachments: Prisma.$SupportAttachmentPayload<ExtArgs>[]
-  }
+  objects: {}
   scalars: runtime.Types.Extensions.GetPayloadResult<{
     id: string
     createdAt: Date
     updatedAt: Date
     userId: string | null
     sanitizedText: string
-    status: string
-    detectionCount: number
-    detectionTypes: string
-    quarantineRef: string | null
-    remediationGuidance: string | null
-    quarantinedAt: Date | null
-    reviewedBy: string | null
-    reviewedAt: Date | null
   }, ExtArgs["result"]["supportSubmission"]>
   composites: {}
 }
@@ -1149,7 +744,6 @@ readonly fields: SupportSubmissionFieldRefs;
  */
 export interface Prisma__SupportSubmissionClient<T, Null = never, ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs, GlobalOmitOptions = {}> extends Prisma.PrismaPromise<T> {
   readonly [Symbol.toStringTag]: "PrismaPromise"
-  attachments<T extends Prisma.SupportSubmission$attachmentsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.SupportSubmission$attachmentsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$SupportAttachmentPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   /**
    * Attaches callbacks for the resolution and/or rejection of the Promise.
    * @param onfulfilled The callback to execute when the Promise is resolved.
@@ -1184,14 +778,6 @@ export interface SupportSubmissionFieldRefs {
   readonly updatedAt: Prisma.FieldRef<"SupportSubmission", 'DateTime'>
   readonly userId: Prisma.FieldRef<"SupportSubmission", 'String'>
   readonly sanitizedText: Prisma.FieldRef<"SupportSubmission", 'String'>
-  readonly status: Prisma.FieldRef<"SupportSubmission", 'String'>
-  readonly detectionCount: Prisma.FieldRef<"SupportSubmission", 'Int'>
-  readonly detectionTypes: Prisma.FieldRef<"SupportSubmission", 'String'>
-  readonly quarantineRef: Prisma.FieldRef<"SupportSubmission", 'String'>
-  readonly remediationGuidance: Prisma.FieldRef<"SupportSubmission", 'String'>
-  readonly quarantinedAt: Prisma.FieldRef<"SupportSubmission", 'DateTime'>
-  readonly reviewedBy: Prisma.FieldRef<"SupportSubmission", 'String'>
-  readonly reviewedAt: Prisma.FieldRef<"SupportSubmission", 'DateTime'>
 }
     
 
@@ -1208,10 +794,6 @@ export type SupportSubmissionFindUniqueArgs<ExtArgs extends runtime.Types.Extens
    * Omit specific fields from the SupportSubmission
    */
   omit?: Prisma.SupportSubmissionOmit<ExtArgs> | null
-  /**
-   * Choose, which related nodes to fetch as well
-   */
-  include?: Prisma.SupportSubmissionInclude<ExtArgs> | null
   /**
    * Filter, which SupportSubmission to fetch.
    */
@@ -1231,10 +813,6 @@ export type SupportSubmissionFindUniqueOrThrowArgs<ExtArgs extends runtime.Types
    */
   omit?: Prisma.SupportSubmissionOmit<ExtArgs> | null
   /**
-   * Choose, which related nodes to fetch as well
-   */
-  include?: Prisma.SupportSubmissionInclude<ExtArgs> | null
-  /**
    * Filter, which SupportSubmission to fetch.
    */
   where: Prisma.SupportSubmissionWhereUniqueInput
@@ -1252,10 +830,6 @@ export type SupportSubmissionFindFirstArgs<ExtArgs extends runtime.Types.Extensi
    * Omit specific fields from the SupportSubmission
    */
   omit?: Prisma.SupportSubmissionOmit<ExtArgs> | null
-  /**
-   * Choose, which related nodes to fetch as well
-   */
-  include?: Prisma.SupportSubmissionInclude<ExtArgs> | null
   /**
    * Filter, which SupportSubmission to fetch.
    */
@@ -1305,10 +879,6 @@ export type SupportSubmissionFindFirstOrThrowArgs<ExtArgs extends runtime.Types.
    */
   omit?: Prisma.SupportSubmissionOmit<ExtArgs> | null
   /**
-   * Choose, which related nodes to fetch as well
-   */
-  include?: Prisma.SupportSubmissionInclude<ExtArgs> | null
-  /**
    * Filter, which SupportSubmission to fetch.
    */
   where?: Prisma.SupportSubmissionWhereInput
@@ -1356,10 +926,6 @@ export type SupportSubmissionFindManyArgs<ExtArgs extends runtime.Types.Extensio
    * Omit specific fields from the SupportSubmission
    */
   omit?: Prisma.SupportSubmissionOmit<ExtArgs> | null
-  /**
-   * Choose, which related nodes to fetch as well
-   */
-  include?: Prisma.SupportSubmissionInclude<ExtArgs> | null
   /**
    * Filter, which SupportSubmissions to fetch.
    */
@@ -1409,10 +975,6 @@ export type SupportSubmissionCreateArgs<ExtArgs extends runtime.Types.Extensions
    */
   omit?: Prisma.SupportSubmissionOmit<ExtArgs> | null
   /**
-   * Choose, which related nodes to fetch as well
-   */
-  include?: Prisma.SupportSubmissionInclude<ExtArgs> | null
-  /**
    * The data needed to create a SupportSubmission.
    */
   data: Prisma.XOR<Prisma.SupportSubmissionCreateInput, Prisma.SupportSubmissionUncheckedCreateInput>
@@ -1426,6 +988,7 @@ export type SupportSubmissionCreateManyArgs<ExtArgs extends runtime.Types.Extens
    * The data used to create many SupportSubmissions.
    */
   data: Prisma.SupportSubmissionCreateManyInput | Prisma.SupportSubmissionCreateManyInput[]
+  skipDuplicates?: boolean
 }
 
 /**
@@ -1444,6 +1007,7 @@ export type SupportSubmissionCreateManyAndReturnArgs<ExtArgs extends runtime.Typ
    * The data used to create many SupportSubmissions.
    */
   data: Prisma.SupportSubmissionCreateManyInput | Prisma.SupportSubmissionCreateManyInput[]
+  skipDuplicates?: boolean
 }
 
 /**
@@ -1458,10 +1022,6 @@ export type SupportSubmissionUpdateArgs<ExtArgs extends runtime.Types.Extensions
    * Omit specific fields from the SupportSubmission
    */
   omit?: Prisma.SupportSubmissionOmit<ExtArgs> | null
-  /**
-   * Choose, which related nodes to fetch as well
-   */
-  include?: Prisma.SupportSubmissionInclude<ExtArgs> | null
   /**
    * The data needed to update a SupportSubmission.
    */
@@ -1529,10 +1089,6 @@ export type SupportSubmissionUpsertArgs<ExtArgs extends runtime.Types.Extensions
    */
   omit?: Prisma.SupportSubmissionOmit<ExtArgs> | null
   /**
-   * Choose, which related nodes to fetch as well
-   */
-  include?: Prisma.SupportSubmissionInclude<ExtArgs> | null
-  /**
    * The filter to search for the SupportSubmission to update in case it exists.
    */
   where: Prisma.SupportSubmissionWhereUniqueInput
@@ -1559,10 +1115,6 @@ export type SupportSubmissionDeleteArgs<ExtArgs extends runtime.Types.Extensions
    */
   omit?: Prisma.SupportSubmissionOmit<ExtArgs> | null
   /**
-   * Choose, which related nodes to fetch as well
-   */
-  include?: Prisma.SupportSubmissionInclude<ExtArgs> | null
-  /**
    * Filter which SupportSubmission to delete.
    */
   where: Prisma.SupportSubmissionWhereUniqueInput
@@ -1583,30 +1135,6 @@ export type SupportSubmissionDeleteManyArgs<ExtArgs extends runtime.Types.Extens
 }
 
 /**
- * SupportSubmission.attachments
- */
-export type SupportSubmission$attachmentsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-  /**
-   * Select specific fields to fetch from the SupportAttachment
-   */
-  select?: Prisma.SupportAttachmentSelect<ExtArgs> | null
-  /**
-   * Omit specific fields from the SupportAttachment
-   */
-  omit?: Prisma.SupportAttachmentOmit<ExtArgs> | null
-  /**
-   * Choose, which related nodes to fetch as well
-   */
-  include?: Prisma.SupportAttachmentInclude<ExtArgs> | null
-  where?: Prisma.SupportAttachmentWhereInput
-  orderBy?: Prisma.SupportAttachmentOrderByWithRelationInput | Prisma.SupportAttachmentOrderByWithRelationInput[]
-  cursor?: Prisma.SupportAttachmentWhereUniqueInput
-  take?: number
-  skip?: number
-  distinct?: Prisma.SupportAttachmentScalarFieldEnum | Prisma.SupportAttachmentScalarFieldEnum[]
-}
-
-/**
  * SupportSubmission without action
  */
 export type SupportSubmissionDefaultArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
@@ -1618,8 +1146,4 @@ export type SupportSubmissionDefaultArgs<ExtArgs extends runtime.Types.Extension
    * Omit specific fields from the SupportSubmission
    */
   omit?: Prisma.SupportSubmissionOmit<ExtArgs> | null
-  /**
-   * Choose, which related nodes to fetch as well
-   */
-  include?: Prisma.SupportSubmissionInclude<ExtArgs> | null
 }

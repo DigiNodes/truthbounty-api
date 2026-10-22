@@ -414,12 +414,15 @@ export const ModelName = {
   BlockCursor: 'BlockCursor',
   BlockCursorAncestor: 'BlockCursorAncestor',
   ChainEvent: 'ChainEvent',
+  StreamSession: 'StreamSession',
+  StreamEvent: 'StreamEvent',
+  StreamBackfillRequest: 'StreamBackfillRequest',
   FeatureFlag: 'FeatureFlag',
   FeatureFlagRollbackTarget: 'FeatureFlagRollbackTarget',
   FeatureFlagAuditEvent: 'FeatureFlagAuditEvent',
   SupportSubmission: 'SupportSubmission',
-  SupportAttachment: 'SupportAttachment',
-  QuarantineAuditLog: 'QuarantineAuditLog',
+  DeadLetterReplay: 'DeadLetterReplay',
+  DeadLetterReplayAudit: 'DeadLetterReplayAudit',
   WebhookProviderConfig: 'WebhookProviderConfig',
   WebhookDelivery: 'WebhookDelivery'
 } as const
@@ -437,7 +440,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "user" | "wallet" | "sybilScore" | "sybilExplanation" | "worldIdVerification" | "conversation" | "message" | "contextDocument" | "aiUsageMetric" | "analyticsEvent" | "metricAggregate" | "reportJob" | "monitoringMetric" | "outboxEvent" | "blockCursor" | "blockCursorAncestor" | "chainEvent" | "featureFlag" | "featureFlagRollbackTarget" | "featureFlagAuditEvent" | "supportSubmission" | "supportAttachment" | "quarantineAuditLog" | "webhookProviderConfig" | "webhookDelivery"
+    modelProps: "user" | "wallet" | "sybilScore" | "sybilExplanation" | "worldIdVerification" | "conversation" | "message" | "contextDocument" | "aiUsageMetric" | "analyticsEvent" | "metricAggregate" | "reportJob" | "monitoringMetric" | "outboxEvent" | "blockCursor" | "blockCursorAncestor" | "chainEvent" | "streamSession" | "streamEvent" | "streamBackfillRequest" | "featureFlag" | "featureFlagRollbackTarget" | "featureFlagAuditEvent" | "supportSubmission" | "deadLetterReplay" | "deadLetterReplayAudit" | "webhookProviderConfig" | "webhookDelivery"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -1699,6 +1702,228 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
+    StreamSession: {
+      payload: Prisma.$StreamSessionPayload<ExtArgs>
+      fields: Prisma.StreamSessionFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.StreamSessionFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StreamSessionPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.StreamSessionFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StreamSessionPayload>
+        }
+        findFirst: {
+          args: Prisma.StreamSessionFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StreamSessionPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.StreamSessionFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StreamSessionPayload>
+        }
+        findMany: {
+          args: Prisma.StreamSessionFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StreamSessionPayload>[]
+        }
+        create: {
+          args: Prisma.StreamSessionCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StreamSessionPayload>
+        }
+        createMany: {
+          args: Prisma.StreamSessionCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.StreamSessionCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StreamSessionPayload>[]
+        }
+        delete: {
+          args: Prisma.StreamSessionDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StreamSessionPayload>
+        }
+        update: {
+          args: Prisma.StreamSessionUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StreamSessionPayload>
+        }
+        deleteMany: {
+          args: Prisma.StreamSessionDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.StreamSessionUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.StreamSessionUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StreamSessionPayload>[]
+        }
+        upsert: {
+          args: Prisma.StreamSessionUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StreamSessionPayload>
+        }
+        aggregate: {
+          args: Prisma.StreamSessionAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateStreamSession>
+        }
+        groupBy: {
+          args: Prisma.StreamSessionGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.StreamSessionGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.StreamSessionCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.StreamSessionCountAggregateOutputType> | number
+        }
+      }
+    }
+    StreamEvent: {
+      payload: Prisma.$StreamEventPayload<ExtArgs>
+      fields: Prisma.StreamEventFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.StreamEventFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StreamEventPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.StreamEventFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StreamEventPayload>
+        }
+        findFirst: {
+          args: Prisma.StreamEventFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StreamEventPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.StreamEventFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StreamEventPayload>
+        }
+        findMany: {
+          args: Prisma.StreamEventFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StreamEventPayload>[]
+        }
+        create: {
+          args: Prisma.StreamEventCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StreamEventPayload>
+        }
+        createMany: {
+          args: Prisma.StreamEventCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.StreamEventCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StreamEventPayload>[]
+        }
+        delete: {
+          args: Prisma.StreamEventDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StreamEventPayload>
+        }
+        update: {
+          args: Prisma.StreamEventUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StreamEventPayload>
+        }
+        deleteMany: {
+          args: Prisma.StreamEventDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.StreamEventUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.StreamEventUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StreamEventPayload>[]
+        }
+        upsert: {
+          args: Prisma.StreamEventUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StreamEventPayload>
+        }
+        aggregate: {
+          args: Prisma.StreamEventAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateStreamEvent>
+        }
+        groupBy: {
+          args: Prisma.StreamEventGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.StreamEventGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.StreamEventCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.StreamEventCountAggregateOutputType> | number
+        }
+      }
+    }
+    StreamBackfillRequest: {
+      payload: Prisma.$StreamBackfillRequestPayload<ExtArgs>
+      fields: Prisma.StreamBackfillRequestFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.StreamBackfillRequestFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StreamBackfillRequestPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.StreamBackfillRequestFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StreamBackfillRequestPayload>
+        }
+        findFirst: {
+          args: Prisma.StreamBackfillRequestFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StreamBackfillRequestPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.StreamBackfillRequestFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StreamBackfillRequestPayload>
+        }
+        findMany: {
+          args: Prisma.StreamBackfillRequestFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StreamBackfillRequestPayload>[]
+        }
+        create: {
+          args: Prisma.StreamBackfillRequestCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StreamBackfillRequestPayload>
+        }
+        createMany: {
+          args: Prisma.StreamBackfillRequestCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.StreamBackfillRequestCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StreamBackfillRequestPayload>[]
+        }
+        delete: {
+          args: Prisma.StreamBackfillRequestDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StreamBackfillRequestPayload>
+        }
+        update: {
+          args: Prisma.StreamBackfillRequestUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StreamBackfillRequestPayload>
+        }
+        deleteMany: {
+          args: Prisma.StreamBackfillRequestDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.StreamBackfillRequestUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.StreamBackfillRequestUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StreamBackfillRequestPayload>[]
+        }
+        upsert: {
+          args: Prisma.StreamBackfillRequestUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StreamBackfillRequestPayload>
+        }
+        aggregate: {
+          args: Prisma.StreamBackfillRequestAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateStreamBackfillRequest>
+        }
+        groupBy: {
+          args: Prisma.StreamBackfillRequestGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.StreamBackfillRequestGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.StreamBackfillRequestCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.StreamBackfillRequestCountAggregateOutputType> | number
+        }
+      }
+    }
     FeatureFlag: {
       payload: Prisma.$FeatureFlagPayload<ExtArgs>
       fields: Prisma.FeatureFlagFieldRefs
@@ -1995,151 +2220,151 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
-    SupportAttachment: {
-      payload: Prisma.$SupportAttachmentPayload<ExtArgs>
-      fields: Prisma.SupportAttachmentFieldRefs
+    DeadLetterReplay: {
+      payload: Prisma.$DeadLetterReplayPayload<ExtArgs>
+      fields: Prisma.DeadLetterReplayFieldRefs
       operations: {
         findUnique: {
-          args: Prisma.SupportAttachmentFindUniqueArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$SupportAttachmentPayload> | null
+          args: Prisma.DeadLetterReplayFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeadLetterReplayPayload> | null
         }
         findUniqueOrThrow: {
-          args: Prisma.SupportAttachmentFindUniqueOrThrowArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$SupportAttachmentPayload>
+          args: Prisma.DeadLetterReplayFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeadLetterReplayPayload>
         }
         findFirst: {
-          args: Prisma.SupportAttachmentFindFirstArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$SupportAttachmentPayload> | null
+          args: Prisma.DeadLetterReplayFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeadLetterReplayPayload> | null
         }
         findFirstOrThrow: {
-          args: Prisma.SupportAttachmentFindFirstOrThrowArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$SupportAttachmentPayload>
+          args: Prisma.DeadLetterReplayFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeadLetterReplayPayload>
         }
         findMany: {
-          args: Prisma.SupportAttachmentFindManyArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$SupportAttachmentPayload>[]
+          args: Prisma.DeadLetterReplayFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeadLetterReplayPayload>[]
         }
         create: {
-          args: Prisma.SupportAttachmentCreateArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$SupportAttachmentPayload>
+          args: Prisma.DeadLetterReplayCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeadLetterReplayPayload>
         }
         createMany: {
-          args: Prisma.SupportAttachmentCreateManyArgs<ExtArgs>
+          args: Prisma.DeadLetterReplayCreateManyArgs<ExtArgs>
           result: BatchPayload
         }
         createManyAndReturn: {
-          args: Prisma.SupportAttachmentCreateManyAndReturnArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$SupportAttachmentPayload>[]
+          args: Prisma.DeadLetterReplayCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeadLetterReplayPayload>[]
         }
         delete: {
-          args: Prisma.SupportAttachmentDeleteArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$SupportAttachmentPayload>
+          args: Prisma.DeadLetterReplayDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeadLetterReplayPayload>
         }
         update: {
-          args: Prisma.SupportAttachmentUpdateArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$SupportAttachmentPayload>
+          args: Prisma.DeadLetterReplayUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeadLetterReplayPayload>
         }
         deleteMany: {
-          args: Prisma.SupportAttachmentDeleteManyArgs<ExtArgs>
+          args: Prisma.DeadLetterReplayDeleteManyArgs<ExtArgs>
           result: BatchPayload
         }
         updateMany: {
-          args: Prisma.SupportAttachmentUpdateManyArgs<ExtArgs>
+          args: Prisma.DeadLetterReplayUpdateManyArgs<ExtArgs>
           result: BatchPayload
         }
         updateManyAndReturn: {
-          args: Prisma.SupportAttachmentUpdateManyAndReturnArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$SupportAttachmentPayload>[]
+          args: Prisma.DeadLetterReplayUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeadLetterReplayPayload>[]
         }
         upsert: {
-          args: Prisma.SupportAttachmentUpsertArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$SupportAttachmentPayload>
+          args: Prisma.DeadLetterReplayUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeadLetterReplayPayload>
         }
         aggregate: {
-          args: Prisma.SupportAttachmentAggregateArgs<ExtArgs>
-          result: runtime.Types.Utils.Optional<Prisma.AggregateSupportAttachment>
+          args: Prisma.DeadLetterReplayAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateDeadLetterReplay>
         }
         groupBy: {
-          args: Prisma.SupportAttachmentGroupByArgs<ExtArgs>
-          result: runtime.Types.Utils.Optional<Prisma.SupportAttachmentGroupByOutputType>[]
+          args: Prisma.DeadLetterReplayGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.DeadLetterReplayGroupByOutputType>[]
         }
         count: {
-          args: Prisma.SupportAttachmentCountArgs<ExtArgs>
-          result: runtime.Types.Utils.Optional<Prisma.SupportAttachmentCountAggregateOutputType> | number
+          args: Prisma.DeadLetterReplayCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.DeadLetterReplayCountAggregateOutputType> | number
         }
       }
     }
-    QuarantineAuditLog: {
-      payload: Prisma.$QuarantineAuditLogPayload<ExtArgs>
-      fields: Prisma.QuarantineAuditLogFieldRefs
+    DeadLetterReplayAudit: {
+      payload: Prisma.$DeadLetterReplayAuditPayload<ExtArgs>
+      fields: Prisma.DeadLetterReplayAuditFieldRefs
       operations: {
         findUnique: {
-          args: Prisma.QuarantineAuditLogFindUniqueArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$QuarantineAuditLogPayload> | null
+          args: Prisma.DeadLetterReplayAuditFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeadLetterReplayAuditPayload> | null
         }
         findUniqueOrThrow: {
-          args: Prisma.QuarantineAuditLogFindUniqueOrThrowArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$QuarantineAuditLogPayload>
+          args: Prisma.DeadLetterReplayAuditFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeadLetterReplayAuditPayload>
         }
         findFirst: {
-          args: Prisma.QuarantineAuditLogFindFirstArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$QuarantineAuditLogPayload> | null
+          args: Prisma.DeadLetterReplayAuditFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeadLetterReplayAuditPayload> | null
         }
         findFirstOrThrow: {
-          args: Prisma.QuarantineAuditLogFindFirstOrThrowArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$QuarantineAuditLogPayload>
+          args: Prisma.DeadLetterReplayAuditFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeadLetterReplayAuditPayload>
         }
         findMany: {
-          args: Prisma.QuarantineAuditLogFindManyArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$QuarantineAuditLogPayload>[]
+          args: Prisma.DeadLetterReplayAuditFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeadLetterReplayAuditPayload>[]
         }
         create: {
-          args: Prisma.QuarantineAuditLogCreateArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$QuarantineAuditLogPayload>
+          args: Prisma.DeadLetterReplayAuditCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeadLetterReplayAuditPayload>
         }
         createMany: {
-          args: Prisma.QuarantineAuditLogCreateManyArgs<ExtArgs>
+          args: Prisma.DeadLetterReplayAuditCreateManyArgs<ExtArgs>
           result: BatchPayload
         }
         createManyAndReturn: {
-          args: Prisma.QuarantineAuditLogCreateManyAndReturnArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$QuarantineAuditLogPayload>[]
+          args: Prisma.DeadLetterReplayAuditCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeadLetterReplayAuditPayload>[]
         }
         delete: {
-          args: Prisma.QuarantineAuditLogDeleteArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$QuarantineAuditLogPayload>
+          args: Prisma.DeadLetterReplayAuditDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeadLetterReplayAuditPayload>
         }
         update: {
-          args: Prisma.QuarantineAuditLogUpdateArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$QuarantineAuditLogPayload>
+          args: Prisma.DeadLetterReplayAuditUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeadLetterReplayAuditPayload>
         }
         deleteMany: {
-          args: Prisma.QuarantineAuditLogDeleteManyArgs<ExtArgs>
+          args: Prisma.DeadLetterReplayAuditDeleteManyArgs<ExtArgs>
           result: BatchPayload
         }
         updateMany: {
-          args: Prisma.QuarantineAuditLogUpdateManyArgs<ExtArgs>
+          args: Prisma.DeadLetterReplayAuditUpdateManyArgs<ExtArgs>
           result: BatchPayload
         }
         updateManyAndReturn: {
-          args: Prisma.QuarantineAuditLogUpdateManyAndReturnArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$QuarantineAuditLogPayload>[]
+          args: Prisma.DeadLetterReplayAuditUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeadLetterReplayAuditPayload>[]
         }
         upsert: {
-          args: Prisma.QuarantineAuditLogUpsertArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$QuarantineAuditLogPayload>
+          args: Prisma.DeadLetterReplayAuditUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$DeadLetterReplayAuditPayload>
         }
         aggregate: {
-          args: Prisma.QuarantineAuditLogAggregateArgs<ExtArgs>
-          result: runtime.Types.Utils.Optional<Prisma.AggregateQuarantineAuditLog>
+          args: Prisma.DeadLetterReplayAuditAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateDeadLetterReplayAudit>
         }
         groupBy: {
-          args: Prisma.QuarantineAuditLogGroupByArgs<ExtArgs>
-          result: runtime.Types.Utils.Optional<Prisma.QuarantineAuditLogGroupByOutputType>[]
+          args: Prisma.DeadLetterReplayAuditGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.DeadLetterReplayAuditGroupByOutputType>[]
         }
         count: {
-          args: Prisma.QuarantineAuditLogCountArgs<ExtArgs>
-          result: runtime.Types.Utils.Optional<Prisma.QuarantineAuditLogCountAggregateOutputType> | number
+          args: Prisma.DeadLetterReplayAuditCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.DeadLetterReplayAuditCountAggregateOutputType> | number
         }
       }
     }
@@ -2321,6 +2546,9 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
  */
 
 export const TransactionIsolationLevel = runtime.makeStrictEnum({
+  ReadUncommitted: 'ReadUncommitted',
+  ReadCommitted: 'ReadCommitted',
+  RepeatableRead: 'RepeatableRead',
   Serializable: 'Serializable'
 } as const)
 
@@ -2534,6 +2762,11 @@ export const BlockCursorScalarFieldEnum = {
   safeHash: 'safeHash',
   finalizedHeight: 'finalizedHeight',
   finalizedHash: 'finalizedHash',
+  releaseId: 'releaseId',
+  projection: 'projection',
+  deploymentBlock: 'deploymentBlock',
+  artifactChecksum: 'artifactChecksum',
+  checkpointSource: 'checkpointSource',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 } as const
@@ -2549,6 +2782,8 @@ export const BlockCursorAncestorScalarFieldEnum = {
   parentHash: 'parentHash',
   confirmation: 'confirmation',
   isCanonical: 'isCanonical',
+  releaseId: 'releaseId',
+  artifactChecksum: 'artifactChecksum',
   createdAt: 'createdAt'
 } as const
 
@@ -2567,10 +2802,70 @@ export const ChainEventScalarFieldEnum = {
   blockTimestamp: 'blockTimestamp',
   payload: 'payload',
   rawArgs: 'rawArgs',
+  decoderVersion: 'decoderVersion',
+  releaseId: 'releaseId',
+  canonicalKey: 'canonicalKey',
+  removed: 'removed',
+  removedAt: 'removedAt',
   ingestedAt: 'ingestedAt'
 } as const
 
 export type ChainEventScalarFieldEnum = (typeof ChainEventScalarFieldEnum)[keyof typeof ChainEventScalarFieldEnum]
+
+
+export const StreamSessionScalarFieldEnum = {
+  id: 'id',
+  chainId: 'chainId',
+  releaseId: 'releaseId',
+  deploymentBlock: 'deploymentBlock',
+  artifactChecksum: 'artifactChecksum',
+  projection: 'projection',
+  projectionVersion: 'projectionVersion',
+  resumeTokenHash: 'resumeTokenHash',
+  resumeTokenExpiresAt: 'resumeTokenExpiresAt',
+  lastAckedEventId: 'lastAckedEventId',
+  lastAckedCursor: 'lastAckedCursor',
+  status: 'status',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type StreamSessionScalarFieldEnum = (typeof StreamSessionScalarFieldEnum)[keyof typeof StreamSessionScalarFieldEnum]
+
+
+export const StreamEventScalarFieldEnum = {
+  id: 'id',
+  sessionId: 'sessionId',
+  cursor: 'cursor',
+  envelopeVersion: 'envelopeVersion',
+  eventId: 'eventId',
+  chainId: 'chainId',
+  releaseId: 'releaseId',
+  blockNumber: 'blockNumber',
+  blockHash: 'blockHash',
+  freshness: 'freshness',
+  projectionVersion: 'projectionVersion',
+  projectionRef: 'projectionRef',
+  metadata: 'metadata',
+  deliveredAt: 'deliveredAt',
+  createdAt: 'createdAt'
+} as const
+
+export type StreamEventScalarFieldEnum = (typeof StreamEventScalarFieldEnum)[keyof typeof StreamEventScalarFieldEnum]
+
+
+export const StreamBackfillRequestScalarFieldEnum = {
+  id: 'id',
+  sessionId: 'sessionId',
+  fromCursor: 'fromCursor',
+  toCursor: 'toCursor',
+  status: 'status',
+  reason: 'reason',
+  requestedAt: 'requestedAt',
+  servedAt: 'servedAt'
+} as const
+
+export type StreamBackfillRequestScalarFieldEnum = (typeof StreamBackfillRequestScalarFieldEnum)[keyof typeof StreamBackfillRequestScalarFieldEnum]
 
 
 export const FeatureFlagScalarFieldEnum = {
@@ -2640,47 +2935,48 @@ export const SupportSubmissionScalarFieldEnum = {
   createdAt: 'createdAt',
   updatedAt: 'updatedAt',
   userId: 'userId',
-  sanitizedText: 'sanitizedText',
-  status: 'status',
-  detectionCount: 'detectionCount',
-  detectionTypes: 'detectionTypes',
-  quarantineRef: 'quarantineRef',
-  remediationGuidance: 'remediationGuidance',
-  quarantinedAt: 'quarantinedAt',
-  reviewedBy: 'reviewedBy',
-  reviewedAt: 'reviewedAt'
+  sanitizedText: 'sanitizedText'
 } as const
 
 export type SupportSubmissionScalarFieldEnum = (typeof SupportSubmissionScalarFieldEnum)[keyof typeof SupportSubmissionScalarFieldEnum]
 
 
-export const SupportAttachmentScalarFieldEnum = {
+export const DeadLetterReplayScalarFieldEnum = {
   id: 'id',
   createdAt: 'createdAt',
-  submissionId: 'submissionId',
-  filename: 'filename',
-  contentType: 'contentType',
-  size: 'size',
-  contentHash: 'contentHash',
-  quarantineKey: 'quarantineKey',
+  updatedAt: 'updatedAt',
+  originalDeadLetterId: 'originalDeadLetterId',
+  originalPayloadHash: 'originalPayloadHash',
+  chainId: 'chainId',
+  releaseId: 'releaseId',
+  deploymentBlock: 'deploymentBlock',
+  artifactChecksum: 'artifactChecksum',
+  capability: 'capability',
+  reason: 'reason',
+  requestedBy: 'requestedBy',
+  dryRun: 'dryRun',
+  batchId: 'batchId',
+  batchSize: 'batchSize',
+  batchOffset: 'batchOffset',
   status: 'status',
-  detectionTypes: 'detectionTypes'
+  idempotencyKey: 'idempotencyKey',
+  effectAppliedAt: 'effectAppliedAt',
+  lastError: 'lastError'
 } as const
 
-export type SupportAttachmentScalarFieldEnum = (typeof SupportAttachmentScalarFieldEnum)[keyof typeof SupportAttachmentScalarFieldEnum]
+export type DeadLetterReplayScalarFieldEnum = (typeof DeadLetterReplayScalarFieldEnum)[keyof typeof DeadLetterReplayScalarFieldEnum]
 
 
-export const QuarantineAuditLogScalarFieldEnum = {
+export const DeadLetterReplayAuditScalarFieldEnum = {
   id: 'id',
   createdAt: 'createdAt',
-  actorId: 'actorId',
+  replayId: 'replayId',
+  actor: 'actor',
   action: 'action',
-  targetType: 'targetType',
-  targetId: 'targetId',
-  context: 'context'
+  detail: 'detail'
 } as const
 
-export type QuarantineAuditLogScalarFieldEnum = (typeof QuarantineAuditLogScalarFieldEnum)[keyof typeof QuarantineAuditLogScalarFieldEnum]
+export type DeadLetterReplayAuditScalarFieldEnum = (typeof DeadLetterReplayAuditScalarFieldEnum)[keyof typeof DeadLetterReplayAuditScalarFieldEnum]
 
 
 export const WebhookProviderConfigScalarFieldEnum = {
@@ -2731,6 +3027,14 @@ export const NullableJsonNullValueInput = {
 export type NullableJsonNullValueInput = (typeof NullableJsonNullValueInput)[keyof typeof NullableJsonNullValueInput]
 
 
+export const QueryMode = {
+  default: 'default',
+  insensitive: 'insensitive'
+} as const
+
+export type QueryMode = (typeof QueryMode)[keyof typeof QueryMode]
+
+
 export const NullsOrder = {
   first: 'first',
   last: 'last'
@@ -2748,14 +3052,6 @@ export const JsonNullValueFilter = {
 export type JsonNullValueFilter = (typeof JsonNullValueFilter)[keyof typeof JsonNullValueFilter]
 
 
-export const QueryMode = {
-  default: 'default',
-  insensitive: 'insensitive'
-} as const
-
-export type QueryMode = (typeof QueryMode)[keyof typeof QueryMode]
-
-
 
 /**
  * Field references
@@ -2770,9 +3066,23 @@ export type StringFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 
 
 
 /**
+ * Reference to a field of type 'String[]'
+ */
+export type ListStringFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'String[]'>
+    
+
+
+/**
  * Reference to a field of type 'DateTime'
  */
 export type DateTimeFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'DateTime'>
+    
+
+
+/**
+ * Reference to a field of type 'DateTime[]'
+ */
+export type ListDateTimeFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'DateTime[]'>
     
 
 
@@ -2784,9 +3094,23 @@ export type IntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'In
 
 
 /**
+ * Reference to a field of type 'Int[]'
+ */
+export type ListIntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Int[]'>
+    
+
+
+/**
  * Reference to a field of type 'UserRole'
  */
 export type EnumUserRoleFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'UserRole'>
+    
+
+
+/**
+ * Reference to a field of type 'UserRole[]'
+ */
+export type ListEnumUserRoleFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'UserRole[]'>
     
 
 
@@ -2801,6 +3125,13 @@ export type BooleanFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel,
  * Reference to a field of type 'Float'
  */
 export type FloatFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Float'>
+    
+
+
+/**
+ * Reference to a field of type 'Float[]'
+ */
+export type ListFloatFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Float[]'>
     
 
 
@@ -2822,6 +3153,13 @@ export type EnumQueryModeFieldRefInput<$PrismaModel> = FieldRefInputType<$Prisma
  * Reference to a field of type 'BigInt'
  */
 export type BigIntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'BigInt'>
+    
+
+
+/**
+ * Reference to a field of type 'BigInt[]'
+ */
+export type ListBigIntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'BigInt[]'>
     
 
 /**
@@ -2992,12 +3330,15 @@ export type GlobalOmitConfig = {
   blockCursor?: Prisma.BlockCursorOmit
   blockCursorAncestor?: Prisma.BlockCursorAncestorOmit
   chainEvent?: Prisma.ChainEventOmit
+  streamSession?: Prisma.StreamSessionOmit
+  streamEvent?: Prisma.StreamEventOmit
+  streamBackfillRequest?: Prisma.StreamBackfillRequestOmit
   featureFlag?: Prisma.FeatureFlagOmit
   featureFlagRollbackTarget?: Prisma.FeatureFlagRollbackTargetOmit
   featureFlagAuditEvent?: Prisma.FeatureFlagAuditEventOmit
   supportSubmission?: Prisma.SupportSubmissionOmit
-  supportAttachment?: Prisma.SupportAttachmentOmit
-  quarantineAuditLog?: Prisma.QuarantineAuditLogOmit
+  deadLetterReplay?: Prisma.DeadLetterReplayOmit
+  deadLetterReplayAudit?: Prisma.DeadLetterReplayAuditOmit
   webhookProviderConfig?: Prisma.WebhookProviderConfigOmit
   webhookDelivery?: Prisma.WebhookDeliveryOmit
 }

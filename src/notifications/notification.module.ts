@@ -1,4 +1,4 @@
-import { Module } from '@instanct/nestjs/common';
+import { Module } from '@nestjs/common';
 import { NotificationService } from './notification.service';
 import { NotificationController } from './notification.controller';
 import { NotificationTemplateRegistry } from './notification-templates';

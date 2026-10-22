@@ -658,6 +658,7 @@ export type FeatureFlagRollbackTargetCreateOrConnectWithoutFlagInput = {
 
 export type FeatureFlagRollbackTargetCreateManyFlagInputEnvelope = {
   data: Prisma.FeatureFlagRollbackTargetCreateManyFlagInput | Prisma.FeatureFlagRollbackTargetCreateManyFlagInput[]
+  skipDuplicates?: boolean
 }
 
 export type FeatureFlagRollbackTargetUpsertWithWhereUniqueWithoutFlagInput = {
@@ -1536,6 +1537,7 @@ export type FeatureFlagRollbackTargetCreateManyArgs<ExtArgs extends runtime.Type
    * The data used to create many FeatureFlagRollbackTargets.
    */
   data: Prisma.FeatureFlagRollbackTargetCreateManyInput | Prisma.FeatureFlagRollbackTargetCreateManyInput[]
+  skipDuplicates?: boolean
 }
 
 /**
@@ -1554,6 +1556,7 @@ export type FeatureFlagRollbackTargetCreateManyAndReturnArgs<ExtArgs extends run
    * The data used to create many FeatureFlagRollbackTargets.
    */
   data: Prisma.FeatureFlagRollbackTargetCreateManyInput | Prisma.FeatureFlagRollbackTargetCreateManyInput[]
+  skipDuplicates?: boolean
   /**
    * Choose, which related nodes to fetch as well
    */

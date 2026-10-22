@@ -42,6 +42,8 @@ export type BlockCursorAncestorMinAggregateOutputType = {
   parentHash: string | null
   confirmation: string | null
   isCanonical: boolean | null
+  releaseId: string | null
+  artifactChecksum: string | null
   createdAt: Date | null
 }
 
@@ -53,6 +55,8 @@ export type BlockCursorAncestorMaxAggregateOutputType = {
   parentHash: string | null
   confirmation: string | null
   isCanonical: boolean | null
+  releaseId: string | null
+  artifactChecksum: string | null
   createdAt: Date | null
 }
 
@@ -64,6 +68,8 @@ export type BlockCursorAncestorCountAggregateOutputType = {
   parentHash: number
   confirmation: number
   isCanonical: number
+  releaseId: number
+  artifactChecksum: number
   createdAt: number
   _all: number
 }
@@ -85,6 +91,8 @@ export type BlockCursorAncestorMinAggregateInputType = {
   parentHash?: true
   confirmation?: true
   isCanonical?: true
+  releaseId?: true
+  artifactChecksum?: true
   createdAt?: true
 }
 
@@ -96,6 +104,8 @@ export type BlockCursorAncestorMaxAggregateInputType = {
   parentHash?: true
   confirmation?: true
   isCanonical?: true
+  releaseId?: true
+  artifactChecksum?: true
   createdAt?: true
 }
 
@@ -107,6 +117,8 @@ export type BlockCursorAncestorCountAggregateInputType = {
   parentHash?: true
   confirmation?: true
   isCanonical?: true
+  releaseId?: true
+  artifactChecksum?: true
   createdAt?: true
   _all?: true
 }
@@ -205,6 +217,8 @@ export type BlockCursorAncestorGroupByOutputType = {
   parentHash: string
   confirmation: string
   isCanonical: boolean
+  releaseId: string
+  artifactChecksum: string
   createdAt: Date
   _count: BlockCursorAncestorCountAggregateOutputType | null
   _avg: BlockCursorAncestorAvgAggregateOutputType | null
@@ -239,6 +253,8 @@ export type BlockCursorAncestorWhereInput = {
   parentHash?: Prisma.StringFilter<"BlockCursorAncestor"> | string
   confirmation?: Prisma.StringFilter<"BlockCursorAncestor"> | string
   isCanonical?: Prisma.BoolFilter<"BlockCursorAncestor"> | boolean
+  releaseId?: Prisma.StringFilter<"BlockCursorAncestor"> | string
+  artifactChecksum?: Prisma.StringFilter<"BlockCursorAncestor"> | string
   createdAt?: Prisma.DateTimeFilter<"BlockCursorAncestor"> | Date | string
   cursor?: Prisma.XOR<Prisma.BlockCursorScalarRelationFilter, Prisma.BlockCursorWhereInput>
 }
@@ -251,6 +267,8 @@ export type BlockCursorAncestorOrderByWithRelationInput = {
   parentHash?: Prisma.SortOrder
   confirmation?: Prisma.SortOrder
   isCanonical?: Prisma.SortOrder
+  releaseId?: Prisma.SortOrder
+  artifactChecksum?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   cursor?: Prisma.BlockCursorOrderByWithRelationInput
 }
@@ -267,6 +285,8 @@ export type BlockCursorAncestorWhereUniqueInput = Prisma.AtLeast<{
   parentHash?: Prisma.StringFilter<"BlockCursorAncestor"> | string
   confirmation?: Prisma.StringFilter<"BlockCursorAncestor"> | string
   isCanonical?: Prisma.BoolFilter<"BlockCursorAncestor"> | boolean
+  releaseId?: Prisma.StringFilter<"BlockCursorAncestor"> | string
+  artifactChecksum?: Prisma.StringFilter<"BlockCursorAncestor"> | string
   createdAt?: Prisma.DateTimeFilter<"BlockCursorAncestor"> | Date | string
   cursor?: Prisma.XOR<Prisma.BlockCursorScalarRelationFilter, Prisma.BlockCursorWhereInput>
 }, "id" | "cursorId_height_hash">
@@ -279,6 +299,8 @@ export type BlockCursorAncestorOrderByWithAggregationInput = {
   parentHash?: Prisma.SortOrder
   confirmation?: Prisma.SortOrder
   isCanonical?: Prisma.SortOrder
+  releaseId?: Prisma.SortOrder
+  artifactChecksum?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   _count?: Prisma.BlockCursorAncestorCountOrderByAggregateInput
   _avg?: Prisma.BlockCursorAncestorAvgOrderByAggregateInput
@@ -298,6 +320,8 @@ export type BlockCursorAncestorScalarWhereWithAggregatesInput = {
   parentHash?: Prisma.StringWithAggregatesFilter<"BlockCursorAncestor"> | string
   confirmation?: Prisma.StringWithAggregatesFilter<"BlockCursorAncestor"> | string
   isCanonical?: Prisma.BoolWithAggregatesFilter<"BlockCursorAncestor"> | boolean
+  releaseId?: Prisma.StringWithAggregatesFilter<"BlockCursorAncestor"> | string
+  artifactChecksum?: Prisma.StringWithAggregatesFilter<"BlockCursorAncestor"> | string
   createdAt?: Prisma.DateTimeWithAggregatesFilter<"BlockCursorAncestor"> | Date | string
 }
 
@@ -308,6 +332,8 @@ export type BlockCursorAncestorCreateInput = {
   parentHash: string
   confirmation?: string
   isCanonical?: boolean
+  releaseId?: string
+  artifactChecksum?: string
   createdAt?: Date | string
   cursor: Prisma.BlockCursorCreateNestedOneWithoutAncestorsInput
 }
@@ -320,6 +346,8 @@ export type BlockCursorAncestorUncheckedCreateInput = {
   parentHash: string
   confirmation?: string
   isCanonical?: boolean
+  releaseId?: string
+  artifactChecksum?: string
   createdAt?: Date | string
 }
 
@@ -330,6 +358,8 @@ export type BlockCursorAncestorUpdateInput = {
   parentHash?: Prisma.StringFieldUpdateOperationsInput | string
   confirmation?: Prisma.StringFieldUpdateOperationsInput | string
   isCanonical?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  releaseId?: Prisma.StringFieldUpdateOperationsInput | string
+  artifactChecksum?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   cursor?: Prisma.BlockCursorUpdateOneRequiredWithoutAncestorsNestedInput
 }
@@ -342,6 +372,8 @@ export type BlockCursorAncestorUncheckedUpdateInput = {
   parentHash?: Prisma.StringFieldUpdateOperationsInput | string
   confirmation?: Prisma.StringFieldUpdateOperationsInput | string
   isCanonical?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  releaseId?: Prisma.StringFieldUpdateOperationsInput | string
+  artifactChecksum?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
@@ -353,6 +385,8 @@ export type BlockCursorAncestorCreateManyInput = {
   parentHash: string
   confirmation?: string
   isCanonical?: boolean
+  releaseId?: string
+  artifactChecksum?: string
   createdAt?: Date | string
 }
 
@@ -363,6 +397,8 @@ export type BlockCursorAncestorUpdateManyMutationInput = {
   parentHash?: Prisma.StringFieldUpdateOperationsInput | string
   confirmation?: Prisma.StringFieldUpdateOperationsInput | string
   isCanonical?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  releaseId?: Prisma.StringFieldUpdateOperationsInput | string
+  artifactChecksum?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
@@ -374,6 +410,8 @@ export type BlockCursorAncestorUncheckedUpdateManyInput = {
   parentHash?: Prisma.StringFieldUpdateOperationsInput | string
   confirmation?: Prisma.StringFieldUpdateOperationsInput | string
   isCanonical?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  releaseId?: Prisma.StringFieldUpdateOperationsInput | string
+  artifactChecksum?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
@@ -401,6 +439,8 @@ export type BlockCursorAncestorCountOrderByAggregateInput = {
   parentHash?: Prisma.SortOrder
   confirmation?: Prisma.SortOrder
   isCanonical?: Prisma.SortOrder
+  releaseId?: Prisma.SortOrder
+  artifactChecksum?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
 }
 
@@ -416,6 +456,8 @@ export type BlockCursorAncestorMaxOrderByAggregateInput = {
   parentHash?: Prisma.SortOrder
   confirmation?: Prisma.SortOrder
   isCanonical?: Prisma.SortOrder
+  releaseId?: Prisma.SortOrder
+  artifactChecksum?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
 }
 
@@ -427,6 +469,8 @@ export type BlockCursorAncestorMinOrderByAggregateInput = {
   parentHash?: Prisma.SortOrder
   confirmation?: Prisma.SortOrder
   isCanonical?: Prisma.SortOrder
+  releaseId?: Prisma.SortOrder
+  artifactChecksum?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
 }
 
@@ -483,6 +527,8 @@ export type BlockCursorAncestorCreateWithoutCursorInput = {
   parentHash: string
   confirmation?: string
   isCanonical?: boolean
+  releaseId?: string
+  artifactChecksum?: string
   createdAt?: Date | string
 }
 
@@ -493,6 +539,8 @@ export type BlockCursorAncestorUncheckedCreateWithoutCursorInput = {
   parentHash: string
   confirmation?: string
   isCanonical?: boolean
+  releaseId?: string
+  artifactChecksum?: string
   createdAt?: Date | string
 }
 
@@ -503,6 +551,7 @@ export type BlockCursorAncestorCreateOrConnectWithoutCursorInput = {
 
 export type BlockCursorAncestorCreateManyCursorInputEnvelope = {
   data: Prisma.BlockCursorAncestorCreateManyCursorInput | Prisma.BlockCursorAncestorCreateManyCursorInput[]
+  skipDuplicates?: boolean
 }
 
 export type BlockCursorAncestorUpsertWithWhereUniqueWithoutCursorInput = {
@@ -532,6 +581,8 @@ export type BlockCursorAncestorScalarWhereInput = {
   parentHash?: Prisma.StringFilter<"BlockCursorAncestor"> | string
   confirmation?: Prisma.StringFilter<"BlockCursorAncestor"> | string
   isCanonical?: Prisma.BoolFilter<"BlockCursorAncestor"> | boolean
+  releaseId?: Prisma.StringFilter<"BlockCursorAncestor"> | string
+  artifactChecksum?: Prisma.StringFilter<"BlockCursorAncestor"> | string
   createdAt?: Prisma.DateTimeFilter<"BlockCursorAncestor"> | Date | string
 }
 
@@ -542,6 +593,8 @@ export type BlockCursorAncestorCreateManyCursorInput = {
   parentHash: string
   confirmation?: string
   isCanonical?: boolean
+  releaseId?: string
+  artifactChecksum?: string
   createdAt?: Date | string
 }
 
@@ -552,6 +605,8 @@ export type BlockCursorAncestorUpdateWithoutCursorInput = {
   parentHash?: Prisma.StringFieldUpdateOperationsInput | string
   confirmation?: Prisma.StringFieldUpdateOperationsInput | string
   isCanonical?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  releaseId?: Prisma.StringFieldUpdateOperationsInput | string
+  artifactChecksum?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
@@ -562,6 +617,8 @@ export type BlockCursorAncestorUncheckedUpdateWithoutCursorInput = {
   parentHash?: Prisma.StringFieldUpdateOperationsInput | string
   confirmation?: Prisma.StringFieldUpdateOperationsInput | string
   isCanonical?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  releaseId?: Prisma.StringFieldUpdateOperationsInput | string
+  artifactChecksum?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
@@ -572,6 +629,8 @@ export type BlockCursorAncestorUncheckedUpdateManyWithoutCursorInput = {
   parentHash?: Prisma.StringFieldUpdateOperationsInput | string
   confirmation?: Prisma.StringFieldUpdateOperationsInput | string
   isCanonical?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  releaseId?: Prisma.StringFieldUpdateOperationsInput | string
+  artifactChecksum?: Prisma.StringFieldUpdateOperationsInput | string
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
@@ -585,6 +644,8 @@ export type BlockCursorAncestorSelect<ExtArgs extends runtime.Types.Extensions.I
   parentHash?: boolean
   confirmation?: boolean
   isCanonical?: boolean
+  releaseId?: boolean
+  artifactChecksum?: boolean
   createdAt?: boolean
   cursor?: boolean | Prisma.BlockCursorDefaultArgs<ExtArgs>
 }, ExtArgs["result"]["blockCursorAncestor"]>
@@ -597,6 +658,8 @@ export type BlockCursorAncestorSelectCreateManyAndReturn<ExtArgs extends runtime
   parentHash?: boolean
   confirmation?: boolean
   isCanonical?: boolean
+  releaseId?: boolean
+  artifactChecksum?: boolean
   createdAt?: boolean
   cursor?: boolean | Prisma.BlockCursorDefaultArgs<ExtArgs>
 }, ExtArgs["result"]["blockCursorAncestor"]>
@@ -609,6 +672,8 @@ export type BlockCursorAncestorSelectUpdateManyAndReturn<ExtArgs extends runtime
   parentHash?: boolean
   confirmation?: boolean
   isCanonical?: boolean
+  releaseId?: boolean
+  artifactChecksum?: boolean
   createdAt?: boolean
   cursor?: boolean | Prisma.BlockCursorDefaultArgs<ExtArgs>
 }, ExtArgs["result"]["blockCursorAncestor"]>
@@ -621,10 +686,12 @@ export type BlockCursorAncestorSelectScalar = {
   parentHash?: boolean
   confirmation?: boolean
   isCanonical?: boolean
+  releaseId?: boolean
+  artifactChecksum?: boolean
   createdAt?: boolean
 }
 
-export type BlockCursorAncestorOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "cursorId" | "height" | "hash" | "parentHash" | "confirmation" | "isCanonical" | "createdAt", ExtArgs["result"]["blockCursorAncestor"]>
+export type BlockCursorAncestorOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "cursorId" | "height" | "hash" | "parentHash" | "confirmation" | "isCanonical" | "releaseId" | "artifactChecksum" | "createdAt", ExtArgs["result"]["blockCursorAncestor"]>
 export type BlockCursorAncestorInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   cursor?: boolean | Prisma.BlockCursorDefaultArgs<ExtArgs>
 }
@@ -648,6 +715,8 @@ export type $BlockCursorAncestorPayload<ExtArgs extends runtime.Types.Extensions
     parentHash: string
     confirmation: string
     isCanonical: boolean
+    releaseId: string
+    artifactChecksum: string
     createdAt: Date
   }, ExtArgs["result"]["blockCursorAncestor"]>
   composites: {}
@@ -1080,6 +1149,8 @@ export interface BlockCursorAncestorFieldRefs {
   readonly parentHash: Prisma.FieldRef<"BlockCursorAncestor", 'String'>
   readonly confirmation: Prisma.FieldRef<"BlockCursorAncestor", 'String'>
   readonly isCanonical: Prisma.FieldRef<"BlockCursorAncestor", 'Boolean'>
+  readonly releaseId: Prisma.FieldRef<"BlockCursorAncestor", 'String'>
+  readonly artifactChecksum: Prisma.FieldRef<"BlockCursorAncestor", 'String'>
   readonly createdAt: Prisma.FieldRef<"BlockCursorAncestor", 'DateTime'>
 }
     
@@ -1315,6 +1386,7 @@ export type BlockCursorAncestorCreateManyArgs<ExtArgs extends runtime.Types.Exte
    * The data used to create many BlockCursorAncestors.
    */
   data: Prisma.BlockCursorAncestorCreateManyInput | Prisma.BlockCursorAncestorCreateManyInput[]
+  skipDuplicates?: boolean
 }
 
 /**
@@ -1333,6 +1405,7 @@ export type BlockCursorAncestorCreateManyAndReturnArgs<ExtArgs extends runtime.T
    * The data used to create many BlockCursorAncestors.
    */
   data: Prisma.BlockCursorAncestorCreateManyInput | Prisma.BlockCursorAncestorCreateManyInput[]
+  skipDuplicates?: boolean
   /**
    * Choose, which related nodes to fetch as well
    */

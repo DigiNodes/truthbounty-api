@@ -171,6 +171,47 @@ describe('AuthSessionService', () => {
     });
   });
 
+  describe('validateForPrincipal (PREWAVE-BE-060)', () => {
+    it('accepts a session presented for its own wallet and chain', async () => {
+      repo.findOne.mockResolvedValue(makeSession());
+      const session = await service.validateForPrincipal(
+        'validtoken',
+        ADDR,
+        CHAIN,
+      );
+      expect(session.id).toBe('session-uuid-1');
+    });
+
+    it('accepts a mixed-case address for the bound lowercase principal', async () => {
+      repo.findOne.mockResolvedValue(makeSession());
+      await expect(
+        service.validateForPrincipal('validtoken', ADDR.toUpperCase(), CHAIN),
+      ).resolves.toBeDefined();
+    });
+
+    it('fails closed when the session was issued for a different wallet', async () => {
+      repo.findOne.mockResolvedValue(makeSession());
+      const otherWallet = '0x0000000000000000000000000000000000000001';
+      await expect(
+        service.validateForPrincipal('validtoken', otherWallet, CHAIN),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('fails closed when the session was issued for a different chain', async () => {
+      repo.findOne.mockResolvedValue(makeSession());
+      await expect(
+        service.validateForPrincipal('validtoken', ADDR, 1),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('propagates revocation and expiry failures from validate', async () => {
+      repo.findOne.mockResolvedValue(makeSession({ revokedAt: new Date() }));
+      await expect(
+        service.validateForPrincipal('validtoken', ADDR, CHAIN),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
   describe('rotate', () => {
     it('revokes the old session and returns a new one', async () => {
       const old = makeSession({ id: 'old-id', tokenHash: 'old-hash' });
@@ -199,6 +240,21 @@ describe('AuthSessionService', () => {
 
       expect(repo.create).toHaveBeenCalledWith(
         expect.objectContaining({ tokenHash: digest }),
+      );
+    });
+
+    it('cannot change principal: the successor inherits wallet and chain', async () => {
+      repo.findOne.mockResolvedValue(makeSession({ id: 'old-id' }));
+
+      await service.rotate('old-token');
+
+      // Rotation carries no principal parameters; the new row must copy the
+      // wallet+chain of the revoked one (PREWAVE-BE-060).
+      expect(repo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          walletAddress: ADDR.toLowerCase(),
+          chainId: CHAIN,
+        }),
       );
     });
 
@@ -283,6 +339,55 @@ describe('AuthSessionService', () => {
     it('returns affected count', async () => {
       const count = await service.pruneExpired();
       expect(count).toBe(5);
+    });
+  });
+
+  // ── PREWAVE-BE-060 (#653): session theft containment ─────────────────────
+
+  describe('session theft fixture', () => {
+    it("lets the owner revoke every session, killing the thief's token", async () => {
+      // Owner authenticates and issues two sessions; the attacker steals one.
+      const { sessionToken: stolen } = await service.issue(ADDR, CHAIN);
+      await service.issue(ADDR, CHAIN);
+
+      // While active, the stolen token validates — theft is possible; what
+      // matters is containment after the owner reacts.
+      repo.findOne.mockResolvedValue(makeSession());
+      await expect(service.validate(stolen)).resolves.toBeDefined();
+
+      // Owner forces a global logout for the wallet.
+      repo.find.mockResolvedValue([makeSession({ id: 's1' })]);
+      await service.revokeAll(ADDR);
+      expect(repo.save).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({ revokedAt: anyDate() }),
+        ]),
+      );
+
+      // The thief's token now fails closed.
+      repo.findOne.mockResolvedValue(makeSession({ revokedAt: new Date() }));
+      await expect(service.validate(stolen)).rejects.toThrow(
+        UnauthorizedException,
+      );
+      // …and cannot be rotated either.
+      await expect(service.rotate(stolen)).rejects.toThrow(
+        UnauthorizedException,
+      );
+    });
+
+    it('a rotated-away token is dead even if the thief still holds it', async () => {
+      repo.findOne.mockResolvedValue(makeSession({ id: 'old-id' }));
+      await service.rotate('old-token');
+
+      // The thief replays the old token: its row is revoked, so validation
+      // and rotation both fail closed.
+      repo.findOne.mockResolvedValue(makeSession({ revokedAt: new Date() }));
+      await expect(service.validate('old-token')).rejects.toThrow(
+        UnauthorizedException,
+      );
+      await expect(service.rotate('old-token')).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
   });
 });

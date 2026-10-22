@@ -13,7 +13,8 @@ generator client {
 // authority. Do not reintroduce a second ORM or dialect here.
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  // Prisma 7: connection URLs live in prisma.config.ts (datasource.url),
+  // not in the schema. Keeping `url` here fails schema validation.
 }
 
 enum UserRole {
@@ -295,7 +296,6 @@ model BlockCursor {
   releaseId       String @default("")
   projection      String @default("")
   deploymentBlock BigInt @default(0)
-  artifactChecksum String @default("")
   artifactChecksum String @default("")
   checkpointSource String @default("")
 

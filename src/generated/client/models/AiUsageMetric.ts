@@ -1162,6 +1162,7 @@ export type AiUsageMetricCreateManyArgs<ExtArgs extends runtime.Types.Extensions
    * The data used to create many AiUsageMetrics.
    */
   data: Prisma.AiUsageMetricCreateManyInput | Prisma.AiUsageMetricCreateManyInput[]
+  skipDuplicates?: boolean
 }
 
 /**
@@ -1180,6 +1181,7 @@ export type AiUsageMetricCreateManyAndReturnArgs<ExtArgs extends runtime.Types.E
    * The data used to create many AiUsageMetrics.
    */
   data: Prisma.AiUsageMetricCreateManyInput | Prisma.AiUsageMetricCreateManyInput[]
+  skipDuplicates?: boolean
 }
 
 /**
