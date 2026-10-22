@@ -7,7 +7,12 @@ import { WorldIdVerification } from './entities/world-id-verification.entity';
 import { SsrfModule } from '../../common/security/ssrf';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([WorldIdVerification]), ConfigModule],
+  imports: [
+    TypeOrmModule.forFeature([WorldIdVerification]),
+    ConfigModule,
+    // Provides SafeHttpClientService for SSRF-safe provider calls (#640).
+    SsrfModule,
+  ],
   controllers: [WorldcoinController],
   providers: [WorldcoinService],
   exports: [WorldcoinService],

@@ -56,7 +56,7 @@ export class IdentityController {
   @ApiOperation({ summary: "Get user's current Sybil resistance score" })
   @ApiParam({ name: 'id', description: 'User ID' })
   @ApiResponse({ status: 200, description: 'Sybil score details' })
-  async getSybilScore(@Param('id') userId: string) {
+  async getSybilScore(@Param('id') userId: string): Promise<unknown> {
     return this.sybilService.getLatestSybilScore(userId);
   }
 
@@ -111,7 +111,7 @@ export class IdentityController {
   @ApiParam({ name: 'id', description: 'User ID' })
   @ApiResponse({ status: 201, description: 'Verification recorded' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async verifyWorldcoin(@Param('id') userId: string) {
+  async verifyWorldcoin(@Param('id') userId: string): Promise<unknown> {
     return this.sybilService.setWorldcoinVerified(userId, true);
   }
 }

@@ -9,10 +9,7 @@ import { WorldcoinVerificationGuard } from './worldcoin-verification.guard';
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeContext(
-  user: unknown,
-  bodyUserId?: string,
-): ExecutionContext {
+function makeContext(user: unknown, bodyUserId?: string): ExecutionContext {
   const request: Record<string, unknown> = {
     user,
     body: bodyUserId !== undefined ? { userId: bodyUserId } : {},

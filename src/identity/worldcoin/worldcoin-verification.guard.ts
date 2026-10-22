@@ -63,9 +63,7 @@ export class WorldcoinVerificationGuard implements CanActivate {
 
     if (bodyUserId !== principalId) {
       // Never log the actual user IDs (enumeration risk).
-      this.logger.warn(
-        'worldcoin.guard.user_id_mismatch [principal vs body]',
-      );
+      this.logger.warn('worldcoin.guard.user_id_mismatch [principal vs body]');
       throw new ForbiddenException(
         'You may only submit a Worldcoin proof for your own account',
       );
