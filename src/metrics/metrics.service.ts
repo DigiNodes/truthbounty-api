@@ -1,5 +1,6 @@
 import { Counter, Histogram, Gauge, register } from 'prom-client';
 import { Injectable } from '@nestjs/common';
+import { boundLabelValue, sanitizeMetricLabels } from './metrics-label-policy';
 
 @Injectable()
 export class MetricsService {
@@ -153,18 +154,21 @@ export class MetricsService {
       return;
     }
 
-    // If second arg is an object, it's labels (labeled version)
+    // If second arg is an object, it's labels (labeled version). Labels are
+    // filtered through the cardinality policy so an unbounded identifier can
+    // never become a metric label.
     if (typeof labelsOrValue === 'object') {
+      const labels = sanitizeMetricLabels(name, labelsOrValue);
       let counter = this.labeledCounters.get(name);
       if (!counter) {
         counter = new Counter({
           name,
           help: name,
-          labelNames: Object.keys(labelsOrValue),
+          labelNames: Object.keys(labels),
         });
         this.labeledCounters.set(name, counter);
       }
-      counter.inc(labelsOrValue, value);
+      counter.inc(labels, value);
       return;
     }
 
@@ -180,29 +184,38 @@ export class MetricsService {
   /**
    * Set a labeled gauge (created lazily on first use).
    * Used for metrics with labels such as cache health status, failure rates, etc.
+   * Labels go through the same cardinality policy as counters.
    */
   setGauge(
     name: string,
     value: number,
     labels?: Record<string, string | number>,
   ): void {
+    const safeLabels = labels ? sanitizeMetricLabels(name, labels) : undefined;
     let gauge = this.labeledGauges.get(name);
     if (!gauge) {
-      const labelNames = labels ? Object.keys(labels) : [];
-      gauge = new Gauge({ name, help: name, labelNames });
+      gauge = new Gauge({
+        name,
+        help: name,
+        labelNames: safeLabels ? Object.keys(safeLabels) : [],
+      });
       this.labeledGauges.set(name, gauge);
     }
-    if (labels) {
-      gauge.set(labels, value);
+    if (safeLabels) {
+      gauge.set(safeLabels, value);
     } else {
       gauge.set(value);
     }
   }
 
   incrementRequest(method: string, route: string, status: string) {
-    this.requestCounter.inc({ method, route, status });
+    const boundedRoute = boundLabelValue(route);
+    this.requestCounter.inc({ method, route: boundedRoute, status });
     this.totalRequests += 1;
-    this.requestsByRoute.set(route, (this.requestsByRoute.get(route) || 0) + 1);
+    this.requestsByRoute.set(
+      boundedRoute,
+      (this.requestsByRoute.get(boundedRoute) || 0) + 1,
+    );
     this.statusCodes.set(status, (this.statusCodes.get(status) || 0) + 1);
     if (Number(status) >= 500) {
       this.errorCount += 1;
@@ -215,7 +228,10 @@ export class MetricsService {
     status: string,
     duration: number,
   ) {
-    this.latencyHistogram.observe({ method, route, status }, duration);
+    this.latencyHistogram.observe(
+      { method, route: boundLabelValue(route), status },
+      duration,
+    );
     this.totalLatencyMs += duration * 1000;
     this.latencySamples += 1;
   }
