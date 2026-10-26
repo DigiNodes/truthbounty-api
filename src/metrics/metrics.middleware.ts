@@ -13,14 +13,18 @@ export function metricsMiddleware(
   res.on('finish', () => {
     const diff = process.hrtime(start);
     const duration = diff[0] + diff[1] / 1e9;
+    // Only the matched route pattern (`/claims/:id`) is bounded; the raw
+    // `req.path` of an unmatched request is attacker-controlled and would let
+    // arbitrary URLs/identifiers become label values.
+    const route = req.route?.path || 'unmatched';
     metricsService.incrementRequest(
       req.method,
-      req.route?.path || req.path,
+      route,
       res.statusCode.toString(),
     );
     metricsService.observeLatency(
       req.method,
-      req.route?.path || req.path,
+      route,
       res.statusCode.toString(),
       duration,
     );
