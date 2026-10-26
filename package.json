@@ -12,10 +12,10 @@
   "scripts": {
     "generate:prisma": "prisma generate",
     "generate:prisma:migrate": "prisma migrate deploy",
-    "generate:prerequisites": "npm run generate:prisma",
+    "generate:prerequisites": "prisma generate",
     "parity:report": "node scripts/parity-report.mjs",
     "parity:check": "node scripts/parity-report.mjs --check",
-    "pretype-check": "npm run generate:prisma",
+    "pretype-check": "npm run generate:prerequisites",
     "type-check": "tsc --noEmit",
     "prebuild": "npm run generate:prerequisites && npm run type-check",
     "build": "nest build",
@@ -38,6 +38,7 @@
     "benchmark:compare": "ts-node scripts/compare-benchmarks.ts",
     "test:integration": "DB_TYPE= postgres jest --config ./test/jest-integration.json --runInBand",
     "test:migration-parity": "jest --config ./test/jest-integration.json --runInBand --testPathPattern migration-parity",
+    "test:security-evidence": "node --test scripts/dependency-audit.test.mjs",
     "security:dependencies": "node scripts/dependency-audit.mjs",
     "config:generate": "ts-node --project tsconfig.runtime-config.json --transpile-only scripts/generate-runtime-config.ts",
     "config:check": "ts-node --project tsconfig.runtime-config.json --transpile-only scripts/generate-runtime-config.ts --check",
@@ -49,7 +50,7 @@
     "projection:compare": "ts-node src/scripts/projection-compare.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk: "^0.128.0",
+    "@anthropic-ai/sdk": "^0.128.0",
     "@bull-board/api": "^9.10.1",
     "@bull-board/express": "^9.10.1",
     "@bull-board/nestjs": "^9.10.1",
