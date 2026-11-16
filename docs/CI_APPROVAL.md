@@ -63,17 +63,26 @@ Sensitive means any change under `src/auth/`, `src/indexer/`, `src/database/`,
 
 ## Local Reproducibility
 
-Each gate is reproducible on a Linux container with Node 20:
+The required CI toolchain uses **Node.js 22.22.3** and the canonical
+**PostgreSQL** datasource. Prisma 7 reads the datasource URL from
+`prisma.config.ts`; the schema does not provide a second URL or a local
+SQLite/LibSQL fallback.
+
+For a disposable local PostgreSQL database, export a valid connection string
+before running Prisma commands:
 
 ```sh
+export DATABASE_URL='postgresql://postgres:postgres@localhost:5432/truthbounty?schema=public'
 npm ci
+npm run generate:prerequisites
 npx tsc --noEmit --project tsconfig.build.json
 npm run build
 npx eslint "{src,apps,libs,test}/**/*.ts"
 npm run test:cov
-npx prisma migrate reset --force && npx prisma migrate deploy
+npx prisma migrate reset --force
+npx prisma migrate deploy
 docker build -t truthbounty-api:test .
 ```
 
-The DB-backed checks run against the local SQLite/LibSQL dev database as
-configured by `prisma.config.ts` and `.env`.
+The migration reset command is destructive. Run it only against a disposable
+development/test database, never a shared staging or production database.
