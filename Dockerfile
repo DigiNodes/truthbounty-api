@@ -1,6 +1,11 @@
 # Use Node LTS
 FROM node:22.22-bookworm-slim AS builder
 
+# Prisma's native engine requires OpenSSL on Debian slim images.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends openssl ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
 # Set working directory
 WORKDIR /app
 
@@ -31,6 +36,9 @@ RUN npm run build
 RUN npm prune --production
 
 FROM node:22.22-bookworm-slim AS runner
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends openssl ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 ENV NODE_ENV=production
 
