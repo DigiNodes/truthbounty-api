@@ -1,8 +1,13 @@
 # Use Node LTS
-FROM node:22.22-alpine AS builder
+FROM node:22.22-bookworm-slim AS builder
 
 # Set working directory
 WORKDIR /app
+
+# Prisma config validates DATABASE_URL while generating the client, but
+# generation itself does not connect to the database. This build-only URL is
+# never copied into the runtime stage; deployments must inject their own URL.
+ENV DATABASE_URL=postgresql://prisma-generate:prisma-generate@127.0.0.1:5432/prisma_generate?schema=public
 
 # Install dependencies from the committed lockfile.
 # `npm ci` makes package-lock.json authoritative: it installs exactly the
@@ -25,7 +30,7 @@ RUN npm run build
 # Keep only production dependencies
 RUN npm prune --production
 
-FROM node:22.22-alpine AS runner
+FROM node:22.22-bookworm-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
@@ -40,8 +45,8 @@ ENV NODE_ENV=production
 # nologin shell, and an ownership bit that survives `docker exec` debugging.
 # UID/GID 1001 is chosen because it is in the unprivileged range and does not
 # collide with the `node` account baked into the base image.
-RUN addgroup -S -g 1001 truthbounty \
- && adduser -S -u 1001 -G truthbounty -h /app -s /sbin/nologin truthbounty
+RUN groupadd --system --gid 1001 truthbounty \
+ && useradd --system --uid 1001 --gid truthbounty --home-dir /app --shell /usr/sbin/nologin truthbounty
 
 # Only runtime artifacts cross the stage boundary: production dependencies,
 # the compiled bundle, and the generated Prisma client. No source, no config,
