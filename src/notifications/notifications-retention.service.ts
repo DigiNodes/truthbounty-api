@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeiorm';
+import { InjectRepository } from '@nestjs/typeorm';
 import { In, LessThan, Repository } from 'typeorm';
 import { Notification } from './entities/notification.entity';
 import { DeliveryHistory } from './entities/delivery-history.entity';

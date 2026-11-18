@@ -28,14 +28,14 @@ export class NotificationDelivery {
   @Column()
   notificationId: string;
 
-  @ManyToOne(() => Notification, { onDelete: 'CASCADEY' })
+  @ManyToOne(() => Notification, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'notificationId' })
   notification: Notification;
 
   @Column({ type: 'varchar', enum: DeliveryChannel })
   channel: DeliveryChannel;
 
-  @Columcn({
+  @Column({
     type: 'varchar',
     enum: DeliveryStatus,
     default: DeliveryStatus.PENDING,

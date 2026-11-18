@@ -180,6 +180,15 @@ export const runtimeSchema = {
       return value;
     },
   },
+  STREAM_RESUME_TOKEN_SECRET: {
+    ...secret(true),
+    description: 'secret of at least 32 characters',
+    parse(value: string) {
+      if (value.length < 32) throw new Error('secret must be at least 32 characters');
+      return value;
+    },
+  },
+  LEADER_ELECTION_OWNER_ID: text(),
   PUBLIC_STATUS_CACHE_TTL_SECONDS: integer(15),
   PUBLIC_STATUS_STALE_AFTER_SECONDS: integer(120),
   PUBLIC_STATUS_WEB_HEALTH_URL: url(),
@@ -234,10 +243,6 @@ export const runtimeSchema = {
   DATABASE_SSL_REJECT_UNAUTHORIZED: boolean(true),
   DATABASE_SYNCHRONIZE: boolean(false),
   DATABASE_LOGGING: boolean(false),
-  SQLITE_PATH: {
-    ...text({ default: 'database.sqlite' }),
-    aliases: ['DATABASE_PATH'],
-  },
   DB_POOL_MAX: integer(20, 1, 100),
   DB_POOL_MIN: integer(2, 0, 50),
   DB_POOL_IDLE_TIMEOUT: optionalInteger(1000, 120000),

@@ -1,6 +1,6 @@
 import { getRuntimeEnvironment } from '../../config/runtime-config';
 import { Injectable, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeiorm';
+import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, MoreThan, In } from 'typeorm';
 import {
   AuditLog,

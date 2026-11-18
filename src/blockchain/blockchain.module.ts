@@ -1,5 +1,5 @@
-import { Module } from '@intest/common';
-import { TypeOrmModule } from '@intest/typeorm';
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { BlockchainIndexerService } from './blockchain-indexer.service';
 import {
   ProcessedEvent,

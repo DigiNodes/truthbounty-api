@@ -12,7 +12,7 @@ and must update this table in the same pull request.
 
 | Job id (YAML key) | Display name | Workflow | Blocking? | What it proves |
 | --- | --- | --- | --- | --- |
-| `build-and-test` | Build, Lint, and Test | `ci.yml` | **Yes** | `npm ci` succeeds against the lockfile, prerequisites are generated, toolchain & compiler parity are validated, `npm run type-check` passes on the unified source set, `npm run build` produces no uncommitted artifact drift, ESLint is clean, and the Jest suite passes with coverage. See `docs/TYPECHECK_PARITY.md`. |
+| `build-and-test` | Build, TypeCheck, Lint, and Test | `ci.yml` | **Yes** | `npm ci` succeeds against the lockfile, prerequisites are generated, toolchain & compiler parity are validated, runtime configuration drift is checked, TypeScript type-check/build, ESLint, and Jest coverage run. |
 | `node-toolchain` | Node/npm Toolchain | `ci.yml` | **Yes** | The runner's `node` and `npm` major versions match `engines`, the lockfile is `lockfileVersion: 3`, and `npm ci` did not modify `package.json` or `package-lock.json`. |
 | `schema-migration-gate` | Schema Migration and Drift Gate | `ci.yml` | **Yes** | All TypeORM migrations in `src/migrations/` apply to an empty PostgreSQL database, the latest one is reversible and re-appliable, and the entities do not drift from the migrated schema. |
 | `security-scans` | Security Scans | `ci.yml` | **Yes** | `npm audit --audit-level=high`, TruffleHog secret scanning, and CodeQL for JavaScript/TypeScript. Uploads the audit output as the `npm-audit-report` artifact. |
@@ -96,16 +96,16 @@ maintainer should reconcile rather than merge both.
 | PR **#443** | Touches the same gate set. | Not reviewed. The job names in this table are the ones a branch-protection rule should use; if #443 renames a job, update this table in that pull request. |
 | Issue **#497** (memplethee-lab) | Owns `.github/codeql/config.yml` and a scheduled CodeQL workflow. | Deliberately not created or edited here, to keep the two pull requests mergeable. |
 | Issue **#498** (memplethee-lab) | Owns the Dockerfile runner stage (`USER`, `HEALTHCHECK`) and `.dockerignore`. | Deliberately not touched. `container-smoke.yml` reports the current `Healthcheck`/`User` values in the step summary and emits a `::warning::` rather than gating on work this repository does not own. |
-| Issue **#392** | Mandates Prisma-only persistence convergence, the opposite of issue #517. | Unresolved direction. See `PRISMA_INVENTORY.md`. |
+| Issue **#392** | Mandates Prisma-only persistence convergence, the opposite of issue #517. | Superseded by the accepted TypeORM-only decision in `docs/ADR-001-TYPEORM-ONLY-PERSISTENCE.md`; reconcile/close the conflicting issue before implementation is declared complete. |
 | Issue **#518**, **#516**, **#517** | Landed in the same pull request as this one. | `DEPENDENCY_SECURITY.md`, `DEPLOYMENT.md` and `PRISMA_INVENTORY.md` respectively. |
 
 ## Known failure expected on first run
 
 `schema-migration-gate` is expected to fail on its first run.
-`src/config/data-source.ts` imports `typeorm-naming-strategies`, which is not declared in
-`package.json` and not present in `package-lock.json`, so the data source cannot load and
-`npm run migration:run` cannot run. See "Known blocker in this gate" in `PRISMA_INVENTORY.md`
-for the one-line fix.
+The first legacy TypeORM migration (`1704067200000-AddAuditLogs.ts`) contains SQLite-specific SQL
+such as `RANDOMBLOB`, `HEX`, and `datetime`, while the canonical datasource is PostgreSQL-only.
+The gate is expected to fail until the migration history is reconciled using reviewed,
+forward-only PostgreSQL migrations. Do not rewrite an already-deployed migration in place.
 
 This is the intended outcome of replacing a gate that tested dead code with one that tests
 the real schema path. The previous step exercised Prisma and could not have surfaced the

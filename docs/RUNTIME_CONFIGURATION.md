@@ -25,6 +25,8 @@ Legacy `RELEASE_MANIFEST_MAX_AGE_MS` must migrate to `CONTRACT_RELEASE_MAX_AGE_D
 | INDEXER_RELEASE_ID | non-empty string | (unset) | no | - |
 | INDEXER_DEPLOYMENT_BLOCK | non-negative safe integer | (unset) | no | - |
 | INDEXER_ARTIFACT_CHECKSUM | 64-character lowercase SHA-256 | (unset) | no | ARTIFACT_CHECKSUM |
+| STREAM_RESUME_TOKEN_SECRET | secret of at least 32 characters | (unset) | yes | - |
+| LEADER_ELECTION_OWNER_ID | non-empty string | (unset) | no | - |
 | PUBLIC_STATUS_CACHE_TTL_SECONDS | integer 1..9007199254740991 | 15 | no | - |
 | PUBLIC_STATUS_STALE_AFTER_SECONDS | integer 1..9007199254740991 | 120 | no | - |
 | PUBLIC_STATUS_WEB_HEALTH_URL | URL (https:, http:) | (unset) | no | - |
@@ -69,7 +71,6 @@ Legacy `RELEASE_MANIFEST_MAX_AGE_MS` must migrate to `CONTRACT_RELEASE_MAX_AGE_D
 | DATABASE_SSL_REJECT_UNAUTHORIZED | true or false | true | no | - |
 | DATABASE_SYNCHRONIZE | true or false | false | no | - |
 | DATABASE_LOGGING | true or false | false | no | - |
-| SQLITE_PATH | non-empty string | database.sqlite | no | DATABASE_PATH |
 | DB_POOL_MAX | integer 1..100 | 20 | no | - |
 | DB_POOL_MIN | integer 0..50 | 2 | no | - |
 | DB_POOL_IDLE_TIMEOUT | integer 1000..120000 | (unset) | no | - |

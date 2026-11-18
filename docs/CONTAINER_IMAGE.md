@@ -109,7 +109,7 @@ the image, and never printed here.** The table lists names and purpose only.
 | -------- | ------- | ----- |
 | `NODE_ENV` | Runtime mode. Set to `production` in the image. | Already baked in; do not override to `development`. |
 | `PORT` | HTTP listen port. Image exposes `3000`. | Healthcheck follows this value. |
-| `DATABASE_URL` | PostgreSQL connection string. **Required** in production. | Without it the datasource falls back to a local SQLite file, which a non-root user cannot create. Fail fast is the intended outcome. |
+| `DATABASE_URL` | PostgreSQL connection string for the selected TypeORM target. **Required** in production. | Blocking mismatch: `AppModule` still registers `PrismaService`, which constructs `PrismaLibSql` and passes this PostgreSQL URL to a LibSQL adapter (or defaults to `file:./dev.db` locally). Do not deploy until the Prisma-backed runtime has been migrated and PostgreSQL bootstrap is verified. |
 | `DATABASE_SYNCHRONIZE` | Schema auto-sync. | Leave `false`; migrations are the supported path. |
 | `DATABASE_LOGGING` | SQL logging toggle. | `false` in production. |
 | `DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_NAME` | Individual PG settings, as an alternative to `DATABASE_URL`. | Prefer `DATABASE_URL`. |

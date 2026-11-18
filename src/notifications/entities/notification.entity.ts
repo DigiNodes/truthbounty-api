@@ -23,8 +23,8 @@ export enum NotificationType {
   SECURITY_ALERT = 'security_alert',
 }
 
-import { DeliveryChannel } from '../interfaces/notification.types';
-export { DeliveryChannel as NotificationChannel };
+import { DeliveryChannel as NotificationChannel } from '../interfaces/notification.types';
+export { NotificationChannel };
 
 export enum DeliveryStatus {
   PENDING = 'pending',

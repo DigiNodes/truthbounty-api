@@ -6,6 +6,7 @@ import { BlockInfo, PendingEvent } from './types';
 import { serializeBigInts } from '../common/utils/bigint-serialization.util';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { randomUUID } from 'crypto';
+import { getRuntimeEnvironment } from '../config/runtime-config';
 
 /**
  * Versioned stream envelope for resumable WebSocket delivery.
@@ -100,7 +101,7 @@ export class EventIndexingService {
     private reorgDetector: ReorgDetectorService,
     private reconciliation: ReconciliationService,
   ) {
-    const secret = process.env.STREAM_RESUME_TOKEN_SECRET;
+    const secret = getRuntimeEnvironment().STREAM_RESUME_TOKEN_SECRET;
     if (!secret || secret.length < 32) {
       throw new Error(
         'STREAM_RESUME_TOKEN_SECRET must be set to a 32+ character value',
@@ -540,10 +541,11 @@ export class EventIndexingService {
     artifactChecksum: string;
     projectionVersion: string;
   }> {
-    const chainId = Number(process.env.BLOCKCHAIN_CHAIN_ID || 0);
-    const releaseId = process.env.INDEXER_RELEASE_ID || '';
-    const deploymentBlock = Number(process.env.INDEXER_DEPLOYMENT_BLOCK || 0);
-    const artifactChecksum = process.env.INDEXER_ARTIFACT_CHECKSUM || '';
+    const env = getRuntimeEnvironment();
+    const chainId = env.CHAIN_ID || 0;
+    const releaseId = env.INDEXER_RELEASE_ID || '';
+    const deploymentBlock = env.INDEXER_DEPLOYMENT_BLOCK || 0;
+    const artifactChecksum = env.INDEXER_ARTIFACT_CHECKSUM || '';
     if (!chainId || !releaseId || !artifactChecksum) {
       throw new StreamResyncRequiredError(
         'wrong_release',

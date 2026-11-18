@@ -1,4 +1,5 @@
 import { getNestRuntimeConfig } from './config/runtime-config';
+import { EnvironmentValidationService } from './config/environment-validation.service';
 import { Module, Logger } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
@@ -17,6 +18,7 @@ import { FinalityPolicyModule } from './config/finality-policy.module';
 import { BlockchainModule } from './blockchain/blockchain.module';
 import { IdentityModule } from './identity/identity.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { DatabaseModule } from './database/database.module';
 import { RedisModule } from './redis/redis.module';
 import throttlerConfig from './config/throttler.config';
 import { WalletThrottlerGuard } from './common/guards/wallet-throttler.guard';
@@ -64,10 +66,8 @@ import { IndexerModule } from './indexer/indexer.module';
 import { V2OutboxModule } from './v2/outbox/v2-outbox.module';
 import { CredentialRotationModule } from './security/credential-rotation.module';
 import { OperationsModule } from './operations/operations.module';
-import { WebhooksModule } from './webhooks/webhooks.module';
 import { GracefulShutdownModule } from './common/lifecycle/graceful-shutdown.module';
 import { GracefulShutdownService } from './common/lifecycle/graceful-shutdown.service';
-import { NotificationsModule as OutboundWebhooksNotificationsModule } from './notifications/notifications.module';
 import { AbuseSignalsModule } from './abuse-signals/abuse-signals.module';
 import { AbuseSignalInterceptor } from './abuse-signals/abuse-signal.interceptor';
 import { WebhooksModule } from './webhooks/webhooks.module';
@@ -313,9 +313,12 @@ async function createThrottlerStorage(
     // Idempotency Module
     // Provides idempotency key handling for safe commands
     IdempotencyModule,
-    // STAB-BE-006: Prisma/PostgreSQL is the single persistence authority.
-    // The former TypoORM DatabaseModule (SQLite/PostgreSQL dual path) has
-    // been removed; all repositories and transactions flow through Prisma.
+    // Explicitly bootstrap the selected TypeORM/PostgreSQL persistence layer
+    // at the application root; do not rely on HealthModule importing it.
+    DatabaseModule,
+    // Transitional only: Prisma remains wired because feature services
+    // still inject PrismaService. Remove it only after all consumers have
+    // migrated and the data-parity and PostgreSQL integration gates pass.
     PrismaModule,
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],
@@ -426,19 +429,11 @@ async function createThrottlerStorage(
     },
     {
       provide: APP_GUARD,
-      useClass: IdempotencyGuard,
-    },
-    {
-      provide: APP_GUARD,
       useClass: WalletThrottlerGuard,
     },
     {
       provide: APP_INTERCEPTOR,
       useClass: LoggingInterceptor,
-    },
-    {
-      provide: APP_INTERCEPTOR,
-      useClass: AuditLoggingInterceptor,
     },
     {
       provide: APP_INTERCEPTOR,

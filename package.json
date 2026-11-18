@@ -12,10 +12,10 @@
   "scripts": {
     "generate:prisma": "prisma generate",
     "generate:prisma:migrate": "prisma migrate deploy",
-    "generate:prerequisites": "npm run generate:prisma",
+    "generate:prerequisites": "prisma generate",
     "parity:report": "node scripts/parity-report.mjs",
     "parity:check": "node scripts/parity-report.mjs --check",
-    "pretype-check": "npm run generate:prisma",
+    "pretype-check": "npm run generate:prerequisites",
     "type-check": "tsc --noEmit",
     "prebuild": "npm run generate:prerequisites && npm run type-check",
     "build": "nest build",
@@ -38,6 +38,7 @@
     "benchmark:compare": "ts-node scripts/compare-benchmarks.ts",
     "test:integration": "DB_TYPE= postgres jest --config ./test/jest-integration.json --runInBand",
     "test:migration-parity": "jest --config ./test/jest-integration.json --runInBand --testPathPattern migration-parity",
+    "test:security-evidence": "node --test scripts/dependency-audit.test.mjs",
     "security:dependencies": "node scripts/dependency-audit.mjs",
     "config:generate": "ts-node --project tsconfig.runtime-config.json --transpile-only scripts/generate-runtime-config.ts",
     "config:check": "ts-node --project tsconfig.runtime-config.json --transpile-only scripts/generate-runtime-config.ts --check",
@@ -46,10 +47,15 @@
     "audit:export": "ts-node src/scripts/audit-chain.ts export",
     "audit:corruption-report": "ts-node src/scripts/audit-chain.ts corruption-report",
     "projection:rebuild": "ts-node src/scripts/projection-rebuild.ts",
-    "projection:compare": "ts-node src/scripts/projection-compare.ts"
+    "projection:compare": "ts-node src/scripts/projection-compare.ts",
+    "typeorm:migration:generate": "typeorm-ts-node-commonjs migration:generate -d src/config/data-source.ts",
+    "typeorm:migration:create": "typeorm-ts-node-commonjs migration:create",
+    "typeorm:migration:run": "typeorm-ts-node-commonjs migration:run -d src/config/data-source.ts",
+    "typeorm:migration:revert": "typeorm-ts-node-commonjs migration:revert -d src/config/data-source.ts",
+    "typeorm:migration:show": "typeorm-ts-node-commonjs migration:show -d src/config/data-source.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk: "^0.128.0",
+    "@anthropic-ai/sdk": "^0.128.0",
     "@bull-board/api": "^9.10.1",
     "@bull-board/express": "^9.10.1",
     "@bull-board/nestjs": "^9.10.1",
@@ -93,7 +99,11 @@
     "siwe": "^2.3.2",
     "socket.io": "4.8.4",
     "swagger-ui-express": "^5.0.1",
-    "web3": "^4.16.0"
+    "web3": "^4.16.0",
+    "@libsql/client": "^0.18.0",
+    "@nestjs/typeorm": "^12.0.2",
+    "@prisma/adapter-libsql": "^7.10.0",
+    "typeorm": "^1.1.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.7",
