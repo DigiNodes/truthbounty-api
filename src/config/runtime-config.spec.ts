@@ -32,6 +32,7 @@ const production = {
   REDIS_TLS: 'true',
   RPC_URL: 'https://rpc.internal/private-key',
   JWT_SECRET: 'a-distinct-long-secret-for-this-unit-test',
+  STREAM_RESUME_TOKEN_SECRET: 'a-long-stream-resume-token-secret-for-this-test',
   CAPABILITY_TOKEN_SIGNING_KEY: 'a-distinct-capability-key-for-this-unit-test',
   SIWE_DOMAIN: 'truthbounty.internal',
   ALLOWED_ORIGINS: 'https://app.internal',
