@@ -10,32 +10,40 @@ This project is a backend API built with:
 
 - **NestJS (TypeScript)**
 - **TypeORM** (the persistence layer for the application schema)
-- **PostgreSQL** (production) with a **SQLite** fallback for local development
+- **PostgreSQL** as the selected persistence target; Prisma/LibSQL remains transitional
 - **Jest for testing**
 
 ### Persistence and migrations
 
-TypeORM is the persistence layer for the application schema. Entities live alongside their
-feature modules, and migrations live in `src/migrations/`. The data source is
-`src/config/data-source.ts`, which selects PostgreSQL when `DATABASE_URL` is set and falls
-back to SQLite otherwise.
+**Selected target:** TypeORM + PostgreSQL. Entities live alongside feature modules,
+and the TypeORM migration history lives in `src/migrations/`. The TypeORM CLI
+datasource (`src/config/data-source.ts`) is PostgreSQL-only and has
+`synchronize: false`.
+
+**Important current-state warning:** the application is not yet TypeORM-only.
+`AppModule` still registers `PrismaModule`, and `PrismaService` still uses the
+LibSQL adapter. The runtime schema defines `DATABASE_URL` as PostgreSQL, so the
+current Prisma adapter/configuration contract is inconsistent. Do not treat a
+successful TypeScript build as proof of database runtime readiness.
+
+Use the explicitly named TypeORM CLI commands only against a disposable PostgreSQL
+database while the two migration histories are being reconciled:
 
 ```bash
-npm run migration:run       # Apply pending migrations
-npm run migration:revert    # Roll back the most recent migration
-npm run migration:generate  # Generate a migration after changing an entity
+npm run typeorm:migration:show
+npm run typeorm:migration:run
+npm run typeorm:migration:revert
+npm run typeorm:migration:generate -- src/migrations/DescribeChange
 ```
 
-Two things to know before you touch the schema:
+The legacy `migration:*` scripts still invoke Prisma. They are retained for
+compatibility while Prisma-backed services remain active; they are not TypeORM
+commands. Do not run either migration path against a shared or production database
+until its schema history and data-parity plan have been independently reviewed.
 
-1. **CI enforces the migrations.** The `Schema Migration and Drift Gate` job in `ci.yml`
-   applies every migration to an empty PostgreSQL database, then reverts and re-applies the
-   latest one, then fails if the entities do not exactly match the migrated schema. Generate
-   a migration whenever you change an entity; an unmigrated entity change fails the gate.
-2. **A legacy Prisma layer still exists** and is *not* the application schema. It is retained
-   for a set of identity, analytics, outbox and AI-assistant features. Do not run `prisma
-   migrate` against it, and do not assume its tables describe the protocol schema. Read
-   `docs/PRISMA_INVENTORY.md` before adding anything that touches it.
+CI currently runs Prisma migration commands and does **not** yet prove that the
+TypeORM migration history can initialize PostgreSQL. See
+`docs/PERSISTENCE_CONVERGENCE.md` for the phased migration and release gates.
 
 ---
 
