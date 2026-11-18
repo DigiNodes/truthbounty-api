@@ -313,9 +313,10 @@ async function createThrottlerStorage(
     // Idempotency Module
     // Provides idempotency key handling for safe commands
     IdempotencyModule,
-    // STAB-BE-006: Prisma/PostgreSQL is the single persistence authority.
-    // The former TypoORM DatabaseModule (SQLite/PostgreSQL dual path) has
-    // been removed; all repositories and transactions flow through Prisma.
+    // Transitional only: Prisma remains wired because feature services
+    // still inject PrismaService. TypeORM/PostgreSQL is the selected target
+    // architecture, but convergence is incomplete. Do not remove this module
+    // until every Prisma call site has been ported and data parity is proven.
     PrismaModule,
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],
