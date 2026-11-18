@@ -18,14 +18,15 @@ PostgreSQL schema before they are retired.
 
 The current source tree has two incompatible persistence paths:
 
-- `src/app.module.ts` registers the global `PrismaModule`.
+- `src/app.module.ts` explicitly registers both the global TypeORM `DatabaseModule` and the transitional `PrismaModule`.
 - `src/prisma/prisma.service.ts` constructs `PrismaClient` with
   `PrismaLibSql`, while passing it `DATABASE_URL`. The runtime schema restricts
   `DATABASE_URL` to PostgreSQL schemes. This adapter/configuration pairing is not a
   valid PostgreSQL runtime contract.
-- `src/database/database.module.ts` contains a TypeORM/PostgreSQL connection,
-  repository infrastructure, pool configuration, and migration services, but it is not
-  currently registered by `AppModule`.
+- `src/database/database.module.ts` contains the TypeORM/PostgreSQL connection,
+  repository infrastructure, pool configuration, and migration services. It is now
+  explicitly registered by `AppModule`; runtime startup and repository wiring still need
+  successful PostgreSQL validation.
 - `src/config/data-source.ts` is the standalone TypeORM CLI datasource. It previously
   had a SQLite fallback and pointed at a stale migration directory. This branch changes
   it to PostgreSQL-only, disables schema synchronization, and points it at the actual
@@ -55,11 +56,13 @@ The current source tree has two incompatible persistence paths:
       authoritative PostgreSQL implementation.
 - [x] Make the TypeORM CLI datasource PostgreSQL-only and point it to `src/migrations/`.
 - [x] Add focused tests for the TypeORM datasource contract.
-- [ ] Run the focused tests and full CI on the resulting branch.
+- [x] Add a required `schema-migration-gate` job that runs TypeORM migrations, entity/schema drift detection, and rollback/reapply against disposable PostgreSQL.
+- [ ] Obtain a CI run on the exact current head and repair the migration failures it exposes.
 
 ### Phase 1 — make TypeORM the actual application runtime
 
-- Register and validate the TypeORM `DatabaseModule` in the application bootstrap.
+- [x] Register the TypeORM `DatabaseModule` explicitly in the application bootstrap.
+- [ ] Validate TypeORM application startup and repository wiring against disposable PostgreSQL.
 - Resolve configuration ownership so the app and CLI use the same PostgreSQL connection
   contract and pool limits.
 - Do not run both ORMs as competing owners of the same records.
