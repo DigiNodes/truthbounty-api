@@ -80,16 +80,6 @@ jobs:
           base64 -w0 docs/RUNTIME_CONFIGURATION.md
           echo
 
-      - name: TEMP export generated runtime configuration
-        run: |
-          npm run config:generate
-          echo ENV_EXAMPLE_BASE64_BEGIN
-          base64 -w0 .env.example
-          echo
-          echo RUNTIME_DOC_BASE64_BEGIN
-          base64 -w0 docs/RUNTIME_CONFIGURATION.md
-          echo
-
       - name: Runtime configuration documentation drift
         run: npm run config:check
 
