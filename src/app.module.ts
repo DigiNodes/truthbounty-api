@@ -65,10 +65,8 @@ import { IndexerModule } from './indexer/indexer.module';
 import { V2OutboxModule } from './v2/outbox/v2-outbox.module';
 import { CredentialRotationModule } from './security/credential-rotation.module';
 import { OperationsModule } from './operations/operations.module';
-import { WebhooksModule } from './webhooks/webhooks.module';
 import { GracefulShutdownModule } from './common/lifecycle/graceful-shutdown.module';
 import { GracefulShutdownService } from './common/lifecycle/graceful-shutdown.service';
-import { NotificationsModule as OutboundWebhooksNotificationsModule } from './notifications/notifications.module';
 import { AbuseSignalsModule } from './abuse-signals/abuse-signals.module';
 import { AbuseSignalInterceptor } from './abuse-signals/abuse-signal.interceptor';
 import { WebhooksModule } from './webhooks/webhooks.module';
@@ -430,19 +428,11 @@ async function createThrottlerStorage(
     },
     {
       provide: APP_GUARD,
-      useClass: IdempotencyGuard,
-    },
-    {
-      provide: APP_GUARD,
       useClass: WalletThrottlerGuard,
     },
     {
       provide: APP_INTERCEPTOR,
       useClass: LoggingInterceptor,
-    },
-    {
-      provide: APP_INTERCEPTOR,
-      useClass: AuditLoggingInterceptor,
     },
     {
       provide: APP_INTERCEPTOR,
