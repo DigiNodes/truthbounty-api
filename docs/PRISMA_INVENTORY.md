@@ -27,7 +27,7 @@ completion gates.
 
 ### Application bootstrap and database configuration
 
-- `src/app.module.ts` currently registers the global `PrismaModule`.
+- `src/app.module.ts` now explicitly registers both `DatabaseModule` (TypeORM/PostgreSQL) and the transitional global `PrismaModule`. This makes TypeORM bootstrap explicit while Prisma consumers are migrated.
 - `src/prisma/prisma.service.ts` extends the generated Prisma client and constructs it
   with `PrismaLibSql` from `@prisma/adapter-libsql`.
 - That service passes `getRuntimeEnvironment().DATABASE_URL` to the LibSQL adapter.
@@ -36,7 +36,7 @@ completion gates.
   as a LibSQL connection by Prisma.
 - `src/database/database.module.ts` contains TypeORM/PostgreSQL infrastructure, including
   connection pooling, repository injection, transaction helpers, readiness, and migration
-  services. It is not currently registered by `AppModule`.
+  services. It is now explicitly registered by `AppModule`.
 - `src/config/data-source.ts` is the standalone TypeORM CLI datasource. In this
   convergence branch it is PostgreSQL-only, disables schema synchronization, and targets
   the actual `src/migrations/*.ts` directory.
@@ -44,9 +44,11 @@ completion gates.
   `migration:status` package scripts still invoke Prisma. This branch adds explicit
   `typeorm:migration:*` scripts rather than silently changing the meaning of existing
   deployment commands before the migration histories are reconciled.
-- `.github/workflows/ci.yml` currently runs `prisma migrate reset` and
-  `prisma migrate deploy`. It does not yet prove that the TypeORM migration history can
-  initialize an empty PostgreSQL database.
+- `.github/workflows/ci.yml` now has a separate required `schema-migration-gate` that invokes
+  the TypeORM CLI against a disposable PostgreSQL service: apply migrations, check entity/schema
+  drift, revert the latest migration, and reapply it. This gate has been authored but has not
+  yet produced a CI result on the current head; it is not evidence that the migration history
+  currently passes.
 
 ### Active Prisma runtime call sites
 
@@ -88,24 +90,27 @@ reconciled with the canonical PostgreSQL schema.
    prohibits removing it before its active call sites are migrated.
 5. `docs/PERSISTENCE_CONVERGENCE.md` records the architecture decision, sequence, and
    completion gates.
+6. `.github/workflows/ci.yml` no longer runs the Prisma migration reset/deploy as its schema
+   proof. A separate required TypeORM/PostgreSQL migration and drift gate now owns that check.
+7. `src/app.module.ts` imports `DatabaseModule` explicitly so TypeORM is not bootstrapped only
+   as a transitive side effect of `HealthModule`.
 
 These are Phase 0 changes. They do not register TypeORM as the application runtime, migrate
 Prisma-backed domains, reconcile migration histories, or prove PostgreSQL startup.
 
 ## Required follow-up
 
-1. Run the focused datasource tests, typecheck, and CI on the convergence branch.
-2. Make the TypeORM/PostgreSQL configuration the actual application runtime. Do not leave
-   both ORMs competing to own the same records.
+1. Obtain a CI run on the current head and repair the first TypeORM/PostgreSQL migration failures.
+2. Reconcile the historical TypeORM migration set before declaring it PostgreSQL-compatible. The
+   earliest migration contains SQLite-only SQL (`RANDOMBLOB`, `HEX`, `datetime`), and the tree
+   contains duplicate migration timestamps. Do not edit deployed historical migrations in place;
+   establish the deployed-history baseline and use reviewed forward migrations.
 3. Migrate each Prisma-backed domain with entity mapping, transaction/constraint parity,
    PostgreSQL integration tests, and a documented data-backfill plan.
 4. Replace Prisma-specific e2e database helpers with disposable PostgreSQL fixtures.
-5. Validate TypeORM migrations from an empty PostgreSQL database and compare the resulting
-   schema with TypeORM entities. Audit timestamp collisions and migration ordering before
-   treating the migration history as safe.
-6. Remove Prisma runtime imports, generated output, CLI tooling, and packages only after
-   the repository-wide search and dependency graph prove they are no longer required.
-7. Preserve historical migration files unless a separate, explicit data-retention decision
+5. Remove Prisma runtime imports, generated output, CLI tooling, and packages only after the
+   repository-wide search and dependency graph prove they are no longer required.
+6. Preserve historical migration files unless a separate, explicit data-retention decision
    authorizes archival or removal.
 
 ## Release gate
