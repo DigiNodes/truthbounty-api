@@ -17,10 +17,10 @@ No new Prisma models, Prisma migrations, Prisma service dependencies, or Prisma-
 
 At the current recovery branch head:
 
-- `src/app.module.ts` imports `PrismaModule` globally and explicitly says the former TypeORM `DatabaseModule` was removed.
-- `src/prisma/prisma.service.ts` constructs `PrismaLibSql` with `DATABASE_URL` (or a local SQLite file).
+- `src/app.module.ts` now imports both `DatabaseModule` and `PrismaModule` explicitly. TypeORM was previously bootstrapped indirectly through `HealthModule`; the explicit root import removes that hidden dependency. Prisma remains temporarily wired because feature services still depend on it.
+- `src/prisma/prisma.service.ts` still constructs `PrismaLibSql` with `DATABASE_URL` (or a local SQLite file), so it remains incompatible with the PostgreSQL URL supplied by CI.
 - `prisma/schema.prisma` declares `provider = "postgresql"`. The Prisma schema and the LibSQL adapter therefore describe incompatible database paths.
-- `src/database/database.module.ts` and `src/config/data-source.ts` provide TypeORM PostgreSQL infrastructure, but the application module does not currently import `DatabaseModule`.
+- `src/database/database.module.ts` and `src/config/data-source.ts` provide the TypeORM PostgreSQL runtime and CLI infrastructure. The CLI datasource now targets the actual `src/migrations/*.ts` directory and PostgreSQL only.
 - Multiple feature services still inject `PrismaService`; this is active application behavior, not dead code. Examples include identity, authentication, outbox, notifications, Sybil resistance, AI assistant/RAG, and V2 block cursor/chain-event deduplication.
 - TypeORM entities and repositories are already used throughout the application. A partial ORM switch would leave two live persistence systems and is not an acceptable end state.
 
@@ -43,6 +43,8 @@ These facts mean that simply deleting Prisma or swapping the global module would
 
 - Keep the existing PostgreSQL TypeORM data source and `DatabaseModule` as the target.
 - Make the CLI data source, runtime module, migration globs, naming strategy, pool settings, and entity globs agree.
+- CI now invokes the TypeORM migration CLI against its disposable PostgreSQL service (apply, show, revert, and reapply) instead of resetting and deploying the Prisma migration history.
+- The first legacy TypeORM migration currently contains SQLite-specific SQL (`RANDOMBLOB`, `HEX`, and `datetime`); the PostgreSQL gate is expected to expose this incompatibility. Do not rewrite historical migrations without a reviewed forward-only compatibility strategy.
 - Resolve missing or mismatched TypeORM dependencies and prove a clean PostgreSQL database can apply all committed TypeORM migrations.
 - Verify migration generation reports no schema drift against entity metadata.
 - Remove Prisma migration commands from the required CI path; do not weaken or skip the TypeORM migration gate.
