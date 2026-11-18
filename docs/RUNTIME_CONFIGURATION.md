@@ -69,7 +69,6 @@ Legacy `RELEASE_MANIFEST_MAX_AGE_MS` must migrate to `CONTRACT_RELEASE_MAX_AGE_D
 | DATABASE_SSL_REJECT_UNAUTHORIZED | true or false | true | no | - |
 | DATABASE_SYNCHRONIZE | true or false | false | no | - |
 | DATABASE_LOGGING | true or false | false | no | - |
-| SQLITE_PATH | non-empty string | database.sqlite | no | DATABASE_PATH |
 | DB_POOL_MAX | integer 1..100 | 20 | no | - |
 | DB_POOL_MIN | integer 0..50 | 2 | no | - |
 | DB_POOL_IDLE_TIMEOUT | integer 1000..120000 | (unset) | no | - |
