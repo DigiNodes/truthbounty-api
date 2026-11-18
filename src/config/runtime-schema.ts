@@ -234,10 +234,6 @@ export const runtimeSchema = {
   DATABASE_SSL_REJECT_UNAUTHORIZED: boolean(true),
   DATABASE_SYNCHRONIZE: boolean(false),
   DATABASE_LOGGING: boolean(false),
-  SQLITE_PATH: {
-    ...text({ default: 'database.sqlite' }),
-    aliases: ['DATABASE_PATH'],
-  },
   DB_POOL_MAX: integer(20, 1, 100),
   DB_POOL_MIN: integer(2, 0, 50),
   DB_POOL_IDLE_TIMEOUT: optionalInteger(1000, 120000),
