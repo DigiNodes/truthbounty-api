@@ -47,7 +47,12 @@
     "audit:export": "ts-node src/scripts/audit-chain.ts export",
     "audit:corruption-report": "ts-node src/scripts/audit-chain.ts corruption-report",
     "projection:rebuild": "ts-node src/scripts/projection-rebuild.ts",
-    "projection:compare": "ts-node src/scripts/projection-compare.ts"
+    "projection:compare": "ts-node src/scripts/projection-compare.ts",
+    "typeorm:migration:generate": "typeorm-ts-node-commonjs migration:generate -d src/config/data-source.ts",
+    "typeorm:migration:create": "typeorm-ts-node-commonjs migration:create",
+    "typeorm:migration:run": "typeorm-ts-node-commonjs migration:run -d src/config/data-source.ts",
+    "typeorm:migration:revert": "typeorm-ts-node-commonjs migration:revert -d src/config/data-source.ts",
+    "typeorm:migration:show": "typeorm-ts-node-commonjs migration:show -d src/config/data-source.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",
