@@ -70,25 +70,7 @@ jobs:
       - name: Verify toolchain and compiler parity
         run: npm run parity:check
 
-      - name: TEMP export generated runtime configuration
-        run: |
-          npm run config:generate
-          echo ENV_EXAMPLE_BASE64_BEGIN
-          base64 -w0 .env.example
-          echo
-          echo RUNTIME_DOC_BASE64_BEGIN
-          base64 -w0 docs/RUNTIME_CONFIGURATION.md
-          echo
 
-      - name: TEMP export generated runtime configuration
-        run: |
-          npm run config:generate
-          echo ENV_EXAMPLE_BASE64_BEGIN
-          base64 -w0 .env.example
-          echo
-          echo RUNTIME_DOC_BASE64_BEGIN
-          base64 -w0 docs/RUNTIME_CONFIGURATION.md
-          echo
 
       - name: Runtime configuration documentation drift
         run: npm run config:check
@@ -115,14 +97,15 @@ jobs:
         continue-on-error: false
         run: npm run test:cov
 
-      - name: Run migration validation
+      - name: Run TypeORM PostgreSQL migration validation
         continue-on-error: false
         run: |
-          # Simulates a fresh db migration and rollback from the committed
-          # migrations alone; any drift between schema and migrations fails the
-          # gate instead of deploying.
-          npx prisma migrate reset --force
-          npx prisma migrate deploy
+          # Use the canonical TypeORM datasource and migration history against
+          # this disposable PostgreSQL service. Never reset a production DB.
+          npm run typeorm:migration:run
+          npm run typeorm:migration:show
+          npm run typeorm:migration:revert
+          npm run typeorm:migration:run
 
   security-scans:
     name: Security Scans
