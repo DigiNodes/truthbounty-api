@@ -25,6 +25,8 @@ Legacy `RELEASE_MANIFEST_MAX_AGE_MS` must migrate to `CONTRACT_RELEASE_MAX_AGE_D
 | INDEXER_RELEASE_ID | non-empty string | (unset) | no | - |
 | INDEXER_DEPLOYMENT_BLOCK | non-negative safe integer | (unset) | no | - |
 | INDEXER_ARTIFACT_CHECKSUM | 64-character lowercase SHA-256 | (unset) | no | ARTIFACT_CHECKSUM |
+| STREAM_RESUME_TOKEN_SECRET | secret of at least 32 characters | (unset) | yes | - |
+| LEADER_ELECTION_OWNER_ID | non-empty string | (unset) | no | - |
 | PUBLIC_STATUS_CACHE_TTL_SECONDS | integer 1..9007199254740991 | 15 | no | - |
 | PUBLIC_STATUS_STALE_AFTER_SECONDS | integer 1..9007199254740991 | 120 | no | - |
 | PUBLIC_STATUS_WEB_HEALTH_URL | URL (https:, http:) | (unset) | no | - |
