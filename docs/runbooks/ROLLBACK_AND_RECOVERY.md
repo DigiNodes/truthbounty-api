@@ -7,6 +7,16 @@
 > would require discarding the chain's record, that is the wrong tool — see
 > [§4 When rollback is NOT safe](#4-when-rollback-is-not-safe-roll-forward-is-required).
 
+## Persistence migration status (2026-11-18)
+
+TypeORM/PostgreSQL is the selected target, but the application is not yet TypeORM-only.
+The commands in this runbook use the explicit `typeorm:migration:*` script names;
+the legacy `migration:*` scripts still invoke Prisma. CI currently validates Prisma
+migration commands, not TypeORM migrations. Until the TypeORM application bootstrap,
+schema parity, and migration history have been independently validated, use TypeORM
+migration commands only against disposable PostgreSQL databases. Do not use them to
+change a shared or production database.
+
 ## How this relates to the existing documents
 
 This is the canonical *decision and procedure* reference. It deliberately does
@@ -36,7 +46,7 @@ docker compose images
 docker compose logs --tail=200 api
 
 # 2. What does the database think is applied? (Reports applied vs pending; applies nothing on a clean tree.)
-npm run migration:run
+npm run typeorm:migration:show
 
 # 3. What does the service think of itself?
 curl -sS http://<api-host>:3000/health
@@ -66,7 +76,7 @@ Ask these in order. Stop at the first **yes**.
    previous code can run against the current schema. Check by reading the
    previous version's entity/migration expectations. If it cannot, go to §4.1.
 2. **Is the previous version's schema reachable?** i.e. can
-   `npm run migration:revert` produce a schema the previous code runs against,
+   `npm run typeorm:migration:revert` produce a schema the previous code runs against,
    without dropping data that has since been written? → If **no**, go to §4.2.
 3. **Is the defect in this release, and is the previous version known-good on
    this exact configuration?** → **Roll back.** Go to §3.
@@ -161,9 +171,10 @@ The IC owns the decision; the operator executes it.
 ### 3.2 Database migration rollback
 
 Migrations are TypeORM, in `src/migrations/`, applied by
-`src/config/data-source.ts` (PostgreSQL when `DATABASE_URL` is set, SQLite
-fallback otherwise; `synchronize: false` for PostgreSQL, so migrations are the
-only schema path in production).
+`src/config/data-source.ts` (PostgreSQL-only TypeORM CLI datasource;
+`synchronize: false`). The application is still transitional: `AppModule` registers
+Prisma/LibSQL for active services, so this runbook must not be used to authorize a
+production migration until the TypeORM runtime and both migration histories are reconciled.
 
 ```bash
 # See the state first
@@ -177,9 +188,9 @@ npm run migration:revert
 migrations means running it N times, in reverse order, checking state between
 each. Do not batch it.
 
-Other scripts in the same family, for completeness: `npm run migration:generate`
+Other scripts in the same family, for completeness: `npm run typeorm:migration:generate`
 (diff the entities against the schema and emit a migration),
-`npm run migration:create` (empty migration skeleton).
+`npm run typeorm:migration:create` (empty migration skeleton).
 
 **CI note.** `.github/workflows/ci.yml` "Run migration tests" runs
 `npx prisma migrate reset --force` followed by `npx prisma migrate deploy`. That
