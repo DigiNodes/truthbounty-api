@@ -42,7 +42,7 @@ export function buildDataSourceOptions(
     type: 'postgres',
     ...connection,
     entities: ['src/**/*.entity.ts'],
-    migrations: ['src/migrations/*.ts'],
+    migrations: ['src/migrations/!(*.spec).ts'],
     subscribers: ['src/**/*.subscriber.ts'],
     namingStrategy: new SnakeNamingStrategy(),
     synchronize: false,
