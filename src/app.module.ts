@@ -17,6 +17,7 @@ import { FinalityPolicyModule } from './config/finality-policy.module';
 import { BlockchainModule } from './blockchain/blockchain.module';
 import { IdentityModule } from './identity/identity.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { DatabaseModule } from './database/database.module';
 import { RedisModule } from './redis/redis.module';
 import throttlerConfig from './config/throttler.config';
 import { WalletThrottlerGuard } from './common/guards/wallet-throttler.guard';
@@ -313,10 +314,12 @@ async function createThrottlerStorage(
     // Idempotency Module
     // Provides idempotency key handling for safe commands
     IdempotencyModule,
+    // Explicitly bootstrap the selected TypeORM/PostgreSQL persistence layer
+    // at the application root; do not rely on HealthModule importing it.
+    DatabaseModule,
     // Transitional only: Prisma remains wired because feature services
-    // still inject PrismaService. TypeORM/PostgreSQL is the selected target
-    // architecture, but convergence is incomplete. Do not remove this module
-    // until every Prisma call site has been ported and data parity is proven.
+    // still inject PrismaService. Remove it only after all consumers have
+    // migrated and the data-parity and PostgreSQL integration gates pass.
     PrismaModule,
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],
