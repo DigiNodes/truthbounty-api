@@ -70,11 +70,6 @@ jobs:
       - name: Verify toolchain and compiler parity
         run: npm run parity:check
 
-      - name: TEMP diagnose generated runtime configuration artifacts
-        run: |
-          npm run config:generate
-          git diff -- .env.example docs/RUNTIME_CONFIGURATION.md
-
       - name: Runtime configuration documentation drift
         run: npm run config:check
 
