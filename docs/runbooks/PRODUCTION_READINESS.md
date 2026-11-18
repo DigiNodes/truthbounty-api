@@ -101,11 +101,13 @@ in the [§5](#5-no-go-record) no-go record.
 
 ## 3. How to run the gate
 
-1. **Environment.** A production-shaped environment: real PostgreSQL (not the
-   SQLite fallback that `src/config/data-source.ts` selects when `DATABASE_URL`
-   is unset), real Redis, a real Optimism RPC endpoint, real SMTP, the same
-   image, and the same environment variables as production. Record what it is
-   and how it differs.
+1. **Environment.** A production-shaped environment: real PostgreSQL, real Redis,
+   a real Optimism RPC endpoint, real SMTP, the same image, and the same
+   environment variables as production. The TypeORM CLI datasource is
+   PostgreSQL-only, but `AppModule` still registers `PrismaService`, which uses
+   the LibSQL adapter and defaults to a local SQLite file when `DATABASE_URL`
+   is absent. This unresolved runtime mismatch is a blocking NO-GO condition,
+   not a supported production configuration. Record the environment and how it differs.
 2. **Independence.** The signer in [§6](#6-sign-off) did not author the change
    being certified. If you did, the certification is void — say so and find
    another signer.
