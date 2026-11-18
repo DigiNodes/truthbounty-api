@@ -21,11 +21,10 @@ import {
  * are still stored — but with `selectorUnknown = true` and no parsed args.
  */
 @Entity('v2_governance_actions')
-@Unique('uq_v2_gov_action_prop_log', [
+@Unique('uq_v2_gov_action_proposal_action', [
   'chainId',
   'proposalId',
   'actionIndex',
-  'logIndex',
 ])
 @Index(['chainId', 'proposalId', 'actionIndex'])
 @Index(['chainId', 'selector'])
