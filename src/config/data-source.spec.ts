@@ -15,7 +15,7 @@ describe('TypeORM CLI datasource', () => {
       username: 'postgres',
       database: 'truthbounty',
       synchronize: false,
-      migrations: ['src/migrations/*.ts'],
+      migrations: ['src/migrations/!(*.spec).ts'],
     });
     expect(options).not.toHaveProperty('database', 'database.sqlite');
   });
