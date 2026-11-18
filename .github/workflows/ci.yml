@@ -151,7 +151,7 @@ jobs:
           output="$(npx typeorm-ts-node-commonjs migration:generate /tmp/TruthBountySchemaDrift -d src/config/data-source.ts 2>&1)"
           status=$?
           set -e
-          printf '%s\\n' "$output"
+          printf '%s\n' "$output"
           if [[ "$status" -eq 0 ]]; then
             echo "::error::TypeORM generated a migration: entity metadata and committed migrations have schema drift."
             exit 1
