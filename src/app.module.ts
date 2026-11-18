@@ -1,4 +1,5 @@
 import { getNestRuntimeConfig } from './config/runtime-config';
+import { EnvironmentValidationService } from './config/environment-validation.service';
 import { Module, Logger } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
