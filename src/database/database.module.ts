@@ -103,7 +103,7 @@ import { MetricsService } from '../metrics/metrics.service';
             type: 'postgres',
             url: databaseUrl,
             entities: [__dirname + '/../**/*.entity{.ts,.js}'],
-            migrations: [__dirname + '/../migrations/*{.ts,.js}'],
+            migrations: [__dirname + '/../migrations/!(*.spec).{ts,js}'],
             // NEVER synchronize in production — data loss risk
             synchronize:
               configService.get<string>('NODE_ENV') !== 'production' &&
@@ -142,7 +142,7 @@ import { MetricsService } from '../metrics/metrics.service';
           password,
           database,
           entities: [__dirname + '/../**/*.entity{.ts,.js}'],
-          migrations: [__dirname + '/../migrations/*{.ts,.js}'],
+          migrations: [__dirname + '/../migrations/!(*.spec).{ts,js}'],
           synchronize:
             configService.get<string>('NODE_ENV') !== 'production' &&
             configService.get<string>('DATABASE_SYNCHRONIZE') === 'true',
