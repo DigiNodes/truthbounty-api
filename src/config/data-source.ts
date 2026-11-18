@@ -59,4 +59,3 @@ export function buildDataSourceOptions(
 
 export const dataSource = new DataSource(buildDataSourceOptions());
 
-export default dataSource;
