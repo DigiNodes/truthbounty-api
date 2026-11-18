@@ -2,14 +2,9 @@ import { getRuntimeEnvironment } from './runtime-config';
 import {
   DataSource,
   DataSourceOptions,
-  NamingStrategyInterface,
+  DefaultNamingStrategy,
 } from 'typeorm';
-import { DefaultNamingStrategy } from 'typeorm/naming-strategy/DefaultNamingStrategy';
 import { buildPoolConfig, buildPoolExtra } from '../database/pool.config';
-
-class SnakeNamingStrategy
-  extends DefaultNamingStrategy
-  implements NamingStrategyInterface {}
 
 /**
  * Build the TypeORM CLI datasource options.
@@ -44,7 +39,7 @@ export function buildDataSourceOptions(
     entities: ['src/**/*.entity.ts'],
     migrations: ['src/migrations/!(*.spec).ts'],
     subscribers: ['src/**/*.subscriber.ts'],
-    namingStrategy: new SnakeNamingStrategy(),
+    namingStrategy: new DefaultNamingStrategy(),
     synchronize: false,
     logging: env.DATABASE_LOGGING === 'true',
     ssl:
