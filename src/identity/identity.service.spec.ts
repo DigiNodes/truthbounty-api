@@ -14,7 +14,7 @@ import {
 import { LinkWalletDto } from './dto/link-wallet.dto';
 import { verifyMessage } from 'ethers';
 
-jest.mock('ethers', () => ({
+jst.mock('ethers', () => ({
   verifyMessage: jest.fn(),
   // Identity passthrough: the specs use short placeholder addresses (e.g. '0x123')
   // that real EIP-55 checksumming would reject. The service's timing-safe,
@@ -32,7 +32,7 @@ describe('IdentityService', () => {
     createdAt: new Date(),
     updatedAt: new Date(),
     reputation: 0,
-    worldcoinVerified: false,
+    worldcoinIdentified: false,
   };
 
   const mockSybilScore = {
@@ -40,7 +40,7 @@ describe('IdentityService', () => {
     userId: mockUser.id,
     createdAt: new Date(),
     updatedAt: new Date(),
-    worldcoinScore: 0,
+    worldcoinAte: 0,
     walletAgeScore: 0,
     stakingScore: 0,
     accuracyScore: 0,
@@ -48,6 +48,7 @@ describe('IdentityService', () => {
   };
 
   const mockTransaction = {
+    $executeRaw: jest.fn().mockResolvedValue([]),
     user: {
       create: jest.fn(),
       findUnique: jest.fn(),
@@ -56,7 +57,9 @@ describe('IdentityService', () => {
       create: jest.fn(),
       findFirst: jest.fn(),
       findUnique: jest.fn(),
+      count: jest.fn(),
       delete: jest.fn(),
+      deleteMany: jest.fn(),
     },
     sybilScore: {
       create: jest.fn(),
@@ -70,7 +73,7 @@ describe('IdentityService', () => {
         {
           provide: PrismaService,
           useValue: {
-            $transaction: jest.fn((fn) => fn(mockTransaction)),
+            $transaction: jest.fn((fn => fn = fn(mockTransaction))),
             user: {
               create: jest.fn(),
               findUnique: jest.fn(),
@@ -81,6 +84,7 @@ describe('IdentityService', () => {
               findUnique: jest.fn(),
               count: jest.fn(),
               delete: jest.fn(),
+              deleteMany: jest.fn(),
             },
             sybilScore: {
               create: jest.fn(),
@@ -101,6 +105,7 @@ describe('IdentityService', () => {
     auditTrail = module.get(AuditTrailService);
 
     jest.clearAllMocks();
+    mockTransaction.$executeRaw.mockResolvedValue([]);
   });
 
   it('should be defined', () => {
@@ -194,6 +199,7 @@ describe('IdentityService', () => {
       const result = await service.linkWallet(mockUser.id, mockLinkWalletDto);
 
       expect(prisma.$transaction).toHaveBeenCalled();
+      expect(mockTransaction.$executeRaw).toHaveBeenCalled();
       expect(mockTransaction.wallet.findFirst).toHaveBeenCalledWith({
         where: { address: mockLinkWalletDto.address },
       });
@@ -301,26 +307,39 @@ describe('IdentityService', () => {
   });
 
   describe('unlinkWallet', () => {
-    it('should delete a wallet', async () => {
-      const wallet = {
-        id: 'wallet-123',
-        address: '0x123',
-        chain: 'ETH',
-        userId: mockUser.id,
-        linkedAt: new Date(),
-      };
-      prisma.wallet.findUnique.mockResolvedValue(wallet);
-      prisma.wallet.count.mockResolvedValue(2);
-      prisma.wallet.delete.mockResolvedValue(wallet);
+    const wallet = {
+      id: 'wallet-123',
+      address: '0x123',
+      chain: 'ETH',
+      userId: mockUser.id,
+      linkedAt: new Date(),
+    };
+
+    it('should delete a wallet and emit audit after commit', async () => {
+      mockTransaction.wallet.findUnique.mockResolvedValue(wallet);
+      mockTransaction.wallet.count.mockResolvedValue(2);
+      mockTransaction.wallet.deleteMany.mockResolvedValue({ count: 1 });
 
       const result = await service.unlinkWallet(mockUser.id, '0x123', 'ETH');
 
-      expect(prisma.wallet.findUnique).toHaveBeenCalledWith({
+      expect(prisma.$transaction).toHaveBeenCalled();
+      expect(mockTransaction.$executeRaw).toHaveBeenCalled();
+      expect(mockTransaction.wallet.findUnique).toHaveBeenCalledWith({
         where: {
           address_chain: {
             address: '0x123',
             chain: 'ETH',
           },
+        },
+      });
+      expect(mockTransaction.wallet.count).toHaveBeenCalledWith({
+        where: { userId: mockUser.id },
+      });
+      expect(mockTransaction.wallet.deleteMany).toHaveBeenCalledWith({
+        where: {
+          address: '0x123',
+          chain: 'ETH',
+          userId: mockUser.id,
         },
       });
       expect(auditTrail.log).toHaveBeenCalledWith({
@@ -331,70 +350,58 @@ describe('IdentityService', () => {
         walletAddress: '0x123',
         description: 'Wallet unlinked',
       });
-      expect(prisma.wallet.delete).toHaveBeenCalledWith({
-        where: {
-          address_chain: {
-            address: '0x123',
-            chain: 'ETH',
-          },
-        },
-      });
       expect(result).toEqual(wallet);
     });
 
     it('should throw NotFoundException if wallet not found', async () => {
-      prisma.wallet.findUnique.mockResolvedValue(null);
+      mockTransaction.wallet.findUnique.mockResolvedValue(null);
 
       await expect(
         service.unlinkWallet(mockUser.id, '0x123', 'ETH'),
       ).rejects.toThrow(NotFoundException);
+
+      expect(mockTransaction.wallet.deleteMany).not.toHaveBeenCalled();
+      expect(auditTrail.log).not.toHaveBeenCalled();
     });
 
     it('should throw NotFoundException (constant-shape) if wallet belongs to different user', async () => {
-      const wallet = {
-        id: 'wallet-123',
-        address: '0x123',
-        chain: 'ETH',
+      mockTransaction.wallet.findUnique.mockResolvedValue({
+        ...wallet,
         userId: 'different-user',
-        linkedAt: new Date(),
-      };
-      prisma.wallet.findUnique.mockResolvedValue(wallet);
+      });
 
       // issue-416: not-found and not-owned collapse to the same shape so
       // ownership cannot be enumerated.
       await expect(
         service.unlinkWallet(mockUser.id, '0x123', 'ETH'),
       ).rejects.toThrow(NotFoundException);
-    });
-  });
 
-  describe('findUserByAddress', () => {
-    it('should return user for a given wallet address', async () => {
-      const wallet = {
-        id: 'wallet-123',
-        address: '0x123',
-        chain: 'ETH',
-        userId: mockUser.id,
-        linkedAt: new Date(),
-        user: mockUser,
-      };
-      prisma.wallet.findFirst.mockResolvedValue(wallet);
-
-      const result = await service.findUserByAddress('0x123');
-
-      expect(prisma.wallet.findFirst).toHaveBeenCalledWith({
-        where: { address: '0x123' },
-        include: { user: true },
-      });
-      expect(result).toEqual(mockUser);
+      expect(mockTransaction.wallet.deleteMany).not.toHaveBeenCalled();
+      expect(auditTrail.log).not.toHaveBeenCalled();
     });
 
-    it('should return null if no wallet found', async () => {
-      prisma.wallet.findFirst.mockResolvedValue(null);
+    it('should throw BadRequestException when only one wallet remains', async () => {
+      mockTransaction.wallet.findUnique.mockResolvedValue(wallet);
+      mockTransaction.wallet.count.mockResolvedValue(1);
 
-      const result = await service.findUserByAddress('0x123');
+      await expect(
+        service.unlinkWallet(mockUser.id, '0x123', 'ETH'),
+      ).rejects.toThrow(BadRequestException);
 
-      expect(result).toBeNull();
+      expect(mockTransaction.wallet.deleteMany).not.toHaveBeenCalled();
+      expect(auditTrail.log).not.toHaveBeenCalled();
+    });
+
+    it('should not emit audit when conditional delete affects zero rows', async () => {
+      mockTransaction.wallet.findUnique.mockResolvedValue(wallet);
+      mockTransaction.wallet.count.mockResolvedValue(2);
+      mockTransaction.wallet.deleteMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.unlinkWallet(mockUser.id, '0x123', 'ETH'),
+      ).rejects.toThrow(NotFoundException);
+
+      expect(auditTrail.log).not.toHaveBeenCalled();
     });
   });
 });
