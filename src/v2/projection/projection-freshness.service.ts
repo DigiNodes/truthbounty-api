@@ -14,6 +14,7 @@ import {
   KNOWN_PROJECTORS,
   ProjectionFreshness,
   ProjectionFreshnessList,
+  ProjectionReadinessGate,
   ProjectionStatus,
 } from './projection-freshness.types';
 
@@ -51,6 +52,31 @@ export class ProjectionFreshnessService {
       items.push(await this.buildFreshness(name));
     }
     return { timestamp: new Date().toISOString(), items };
+  }
+
+  /**
+   * Fail-closed Projection Readiness Gate (#453).
+   *
+   * Ready only when at least one projector is tracked and every tracked
+   * projector is `healthy`. Anything else is a blocker, so a caller can never
+   * treat a degraded, stale or unknown read model as ready.
+   */
+  async getReadinessGate(): Promise<ProjectionReadinessGate> {
+    const { timestamp, items } = await this.listFreshness();
+    const blockers = items
+      .filter((item) => item.status !== 'healthy')
+      .map((item) => ({
+        projectorName: item.projectorName,
+        status: item.status,
+        dataState: item.dataState,
+        reason: item.degradedReason,
+      }));
+
+    return {
+      ready: items.length > 0 && blockers.length === 0,
+      timestamp,
+      blockers,
+    };
   }
 
   async getFreshness(projectorName: string): Promise<ProjectionFreshness> {
