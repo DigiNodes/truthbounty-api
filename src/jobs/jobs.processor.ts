@@ -21,6 +21,10 @@ export class JobsProcessor extends WorkerHost {
         const deletedCount = await this.jobsService.cleanupSybilHistory();
         return { deletedCount };
       }
+      case JobName.CLEANUP_EXPIRED_NOTIFICATIONS: {
+        const result = await this.jobsService.cleanupExpiredNotifications();
+        return result;
+      }
       // V2 Architecture: COMPUTE_SCORES and COMPUTE_REPUTATION jobs removed
       // These jobs previously contained backend-authoritative logic that
       // automatically finalized claims based on backend calculations.

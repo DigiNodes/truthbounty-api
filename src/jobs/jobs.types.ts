@@ -7,6 +7,7 @@ export enum QueueName {
 
 export enum JobName {
   CLEANUP_SYBIL_HISTORY = 'cleanup-sybil-history',
+  CLEANUP_EXPIRED_NOTIFICATIONS = 'cleanup-expired-notifications',
   // V2 Architecture: COMPUTE_SCORES and COMPUTE_REPUTATION jobs removed
   // These jobs previously contained backend-authoritative logic that
   // automatically finalized claims based on backend calculations.
