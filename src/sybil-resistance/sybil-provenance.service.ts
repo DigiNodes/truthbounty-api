@@ -331,75 +331,39 @@ export class SybilProvenanceService {
    * Convert computation result into a privacy-safe public view.
    * GUARANTEE: Sensitive features (nullifierHash, proofs, linked wallet addresses)
    * are never exposed in public responses.
+   *
+   * Freshness precedence (aggregate `status`):
+   *   1. STALE   - any required feature is stale
+   *   2. UNKNOWN - any required feature is missing or has no reliable timestamp
+   *   3. FRESH   - all required features are present and within freshness bounds
+   *
+   * Required features are those listed in the active model's `requiredFeatures`
+   * (taken from `result.details.requiredFeatures`). When that list is absent,
+   * every feature in the provenance map is treated as required (fail-safe).
+   * Optional features that are not required by the active model never force
+   * UNKNOWN or STALE.
    */
   public toPublicScoreView(
     result: SybilScoreComputationResult,
     userId: string,
     signals?: SybilSignals,
   ): PublicSybilScoreView {
-    // Determine overall freshness status
-    const hasStale = result.staleFeatures.length > 0;
-    const status: FeatureFreshnessStatus = hasStale ? 'STALE' : 'FRESH';
+    const provenance = result.details.featureProvenance || {};
+    const requiredFeatures: string[] =
+      result.details.requiredFeatures ?? Object.keys(provenance);
+    const requiredSet = new Set(requiredFeatures);
 
-    // Calculate tenure in whole days
-    const tenureMs = signals?.oldestWalletAgeMs || 0;
-    const tenureDays = Math.floor(tenureMs / (24 * 60 * 60 * 1000));
-
-    // Find oldest feature age
-    let oldestFeatureAgeMs = 0;
-    for (const prov of Object.values(result.details.featureProvenance || {})) {
-      if (
-        Number.isFinite(prov.freshnessMs) &&
-        prov.freshnessMs > oldestFeatureAgeMs
-      ) {
-        oldestFeatureAgeMs = prov.freshnessMs;
-      }
-    }
-
-    // Build sanitized explanation (no private hashes or addresses)
-    const sanitizedExplanation =
-      `Sybil resistance score: ${result.score.toFixed(4)} | Risk score: ${result.riskScore.toFixed(4)} (${result.riskLevel} risk) ` +
-      `[Model v${result.version}]. Features: Worldcoin=${result.details.componentScores.worldcoin.toFixed(2)}, ` +
-      `Tenure=${result.details.componentScores.walletAge.toFixed(2)}, Staking=${result.details.componentScores.staking.toFixed(2)}, ` +
-      `Accuracy=${result.details.componentScores.accuracy.toFixed(2)}.`;
-
-    return {
-      userId,
-      score: result.score,
-      riskScore: result.riskScore,
-      riskLevel: result.riskLevel,
-      version: result.version,
-      provenanceDigest: result.provenanceDigest,
-      calculatedAt: result.details.timestamp,
-      freshness: {
-        status,
-        oldestFeatureAgeMs,
-      },
-      missingFeatures: result.missingFeatures,
-      signalsSummary: {
-        worldcoinVerified:
-          signals?.worldcoinVerified ??
-          result.details.componentScores.worldcoin > 0,
-        walletCount:
-          signals?.walletCount ?? (signals?.walletAddresses?.length || 0),
-        tenureDays,
-        isStaker:
-          (signals?.totalStakedAmount ?? 0n) > 0n ||
-          result.details.componentScores.staking > 0,
-        claimsEvaluated: signals?.claimsVotedOn ?? 0,
-      },
-      explanation: sanitizedExplanation,
-    };
-  }
-
-  /**
-   * Invariant: Score computation is strictly an off-chain advisory read model.
-   * It cannot directly execute smart contract mutations or overwrite authoritative consensus.
-   */
-  public assertNoContractMutation(): void {
-    // Scoring engine must never send transactions to blockchain
-    this.logger.debug(
-      'Contract outcome immutability validated: Score is read-only projection',
-    );
+    const hasStale = result.staleFeatures.some((name) => requiredSet.has(name));
+    const hasUnknownRequired = requiredFeatures.some((name) => {
+      const prov = provenance[name];
+      if (!prov) return true;
+      if (prov.isMissing) return true;
+      return !Number.isFinite(prov.freshnessMs) || prov.freshnessMs < 0;
+    });
+    const status: FeatureFreshnessStatus = hasStale
+      ? 'STALE'
+      : hasUnknownRequired
+        ? 'UNKNOWN'
+        : 'FRESH';
   }
 }
