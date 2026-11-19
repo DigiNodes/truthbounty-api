@@ -1,11 +1,623 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { Logger } from '@nestjs/common';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, SelectQueryBuilder } from 'typeorm';
 import { PreferenceEnforcer } from './preference-enforcer.service';
 import { NotificationPreference } from '../entities/notification-preference.entity';
+import { DeliveryHistory } from '../entities/delivery-history.entity';
+import { Notification } from '../entities/notification.entity';
 import { DeliveryChannel } from '../interfaces/notification.types';
 import { EventType } from '../enums/event-type.enum';
+import { RedisService } from '../../redis/redis.service';
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+function makePrefs(
+  overrides: Partial<NotificationPreference> = {},
+): NotificationPreference {
+  return {
+    id: 'pref-1',
+    userId: 'user-1',
+    channels: {
+      [DeliveryChannel.IN_APP]: true,
+      [DeliveryChannel.EMAIL]: true,
+      [DeliveryChannel.PUSH]: false,
+      [DeliveryChannel.WEBHOOK]: false,
+      [DeliveryChannel.WEBSOCKET]: true,
+      [DeliveryChannel.SMS]: false,
+    },
+    categorySubscriptions: {},
+    language: 'en',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    normalizeLoadedChannels: jest.fn(),
+    persistNormalizedChannels: jest.fn(),
+    ...overrides,
+  } as unknown as NotificationPreference;
+}
+
+/** Builds a minimal mock query-builder that returns `count` from getCount(). */
+function makeQb(count: number) {
+  const qb = {
+    innerJoin: jest.fn().mockReturnThis(),
+    where: jest.fn().mockReturnThis(),
+    andWhere: jest.fn().mockReturnThis(),
+    getCount: jest.fn().mockResolvedValue(count),
+  } as unknown as SelectQueryBuilder<DeliveryHistory>;
+  return qb;
+}
+
+// ── test suite ────────────────────────────────────────────────────────────────
+
+describe('PreferenceEnforcer', () => {
+  let service: PreferenceEnforcer;
+  let mockPrefRepo: jest.Mocked<Repository<NotificationPreference>>;
+  let mockHistoryRepo: jest.Mocked<Repository<DeliveryHistory>>;
+  let mockNotificationRepo: jest.Mocked<Repository<Notification>>;
+  let mockRedis: jest.Mocked<RedisService>;
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        PreferenceEnforcer,
+        {
+          provide: getRepositoryToken(NotificationPreference),
+          useValue: {
+            findOne: jest.fn(),
+            save: jest.fn(),
+            create: jest.fn(),
+          },
+        },
+        {
+          provide: getRepositoryToken(DeliveryHistory),
+          useValue: {
+            createQueryBuilder: jest.fn(),
+          },
+        },
+        {
+          provide: getRepositoryToken(Notification),
+          useValue: {},
+        },
+        {
+          provide: RedisService,
+          useValue: {
+            eval: jest.fn(),
+          },
+        },
+      ],
+    }).compile();
+
+    service = module.get<PreferenceEnforcer>(PreferenceEnforcer);
+    mockPrefRepo = module.get(getRepositoryToken(NotificationPreference));
+    mockHistoryRepo = module.get(getRepositoryToken(DeliveryHistory));
+    mockNotificationRepo = module.get(getRepositoryToken(Notification));
+    mockRedis = module.get(RedisService);
+
+    // Default: Redis returns 1 (first call of the day — under any cap)
+    mockRedis.eval.mockResolvedValue(1);
+  });
+
+  afterEach(() => jest.clearAllMocks());
+
+  // ── getPreferences ──────────────────────────────────────────────────────────
+
+  describe('getPreferences', () => {
+    it('returns existing preferences', async () => {
+      const prefs = makePrefs();
+      mockPrefRepo.findOne.mockResolvedValue(prefs);
+
+      const result = await service.getPreferences('user-1');
+      expect(result.userId).toBe('user-1');
+    });
+
+    it('creates default preferences when none exist', async () => {
+      mockPrefRepo.findOne.mockResolvedValue(null);
+      mockPrefRepo.create.mockReturnValue(makePrefs());
+      mockPrefRepo.save.mockResolvedValue(makePrefs());
+
+      await service.getPreferences('user-1');
+
+      expect(mockPrefRepo.create).toHaveBeenCalled();
+      expect(mockPrefRepo.save).toHaveBeenCalled();
+    });
+  });
+
+  // ── isChannelEnabled ────────────────────────────────────────────────────────
+
+  describe('isChannelEnabled', () => {
+    it('returns true for an enabled channel', async () => {
+      mockPrefRepo.findOne.mockResolvedValue(makePrefs());
+      expect(await service.isChannelEnabled('user-1', DeliveryChannel.IN_APP)).toBe(true);
+    });
+
+    it('returns false for a disabled channel', async () => {
+      mockPrefRepo.findOne.mockResolvedValue(makePrefs());
+      expect(await service.isChannelEnabled('user-1', DeliveryChannel.PUSH)).toBe(false);
+    });
+  });
+
+  // ── isCategoryEnabled ───────────────────────────────────────────────────────
+
+  describe('isCategoryEnabled', () => {
+    it('returns true when category is explicitly enabled', async () => {
+      mockPrefRepo.findOne.mockResolvedValue(
+        makePrefs({ categorySubscriptions: { [EventType.CLAIM_CREATED]: true } }),
+      );
+      expect(await service.isCategoryEnabled('user-1', EventType.CLAIM_CREATED)).toBe(true);
+    });
+
+    it('returns true by default when no subscriptions are set', async () => {
+      mockPrefRepo.findOne.mockResolvedValue(makePrefs({ categorySubscriptions: {} }));
+      expect(await service.isCategoryEnabled('user-1', EventType.CLAIM_CREATED)).toBe(true);
+    });
+
+    it('returns false when category is explicitly disabled', async () => {
+      mockPrefRepo.findOne.mockResolvedValue(
+        makePrefs({ categorySubscriptions: { [EventType.CLAIM_CREATED]: false } }),
+      );
+      expect(await service.isCategoryEnabled('user-1', EventType.CLAIM_CREATED)).toBe(false);
+    });
+  });
+
+  // ── isInQuietHours ──────────────────────────────────────────────────────────
+
+  describe('isInQuietHours', () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+      jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+      jest.restoreAllMocks();
+    });
+
+    it('returns false when quiet hours are disabled', async () => {
+      mockPrefRepo.findOne.mockResolvedValue(
+        makePrefs({ quietHours: { enabled: false } }),
+      );
+      expect(await service.isInQuietHours('user-1')).toBe(false);
+    });
+
+    it('returns false when no quiet hours configured', async () => {
+      mockPrefRepo.findOne.mockResolvedValue(makePrefs({ quietHours: undefined }));
+      expect(await service.isInQuietHours('user-1')).toBe(false);
+    });
+
+    it('returns true inside a same-day window', async () => {
+      jest.setSystemTime(new Date('2026-06-15T12:00:00Z'));
+      mockPrefRepo.findOne.mockResolvedValue(
+        makePrefs({ quietHours: { enabled: true, startTime: '09:00', endTime: '17:00', timezone: 'UTC' } }),
+      );
+      expect(await service.isInQuietHours('user-1')).toBe(true);
+    });
+
+    it('returns false outside a same-day window', async () => {
+      jest.setSystemTime(new Date('2026-06-15T18:00:00Z'));
+      mockPrefRepo.findOne.mockResolvedValue(
+        makePrefs({ quietHours: { enabled: true, startTime: '09:00', endTime: '17:00', timezone: 'UTC' } }),
+      );
+      expect(await service.isInQuietHours('user-1')).toBe(false);
+    });
+
+    it('handles overnight window correctly', async () => {
+      jest.setSystemTime(new Date('2026-06-16T00:30:00Z'));
+      mockPrefRepo.findOne.mockResolvedValue(
+        makePrefs({ quietHours: { enabled: true, startTime: '22:00', endTime: '08:00', timezone: 'UTC' } }),
+      );
+      expect(await service.isInQuietHours('user-1')).toBe(true);
+    });
+
+    it('falls back to UTC for an invalid timezone', async () => {
+      jest.setSystemTime(new Date('2026-06-15T01:30:00Z'));
+      mockPrefRepo.findOne.mockResolvedValue(
+        makePrefs({ quietHours: { enabled: true, startTime: '01:00', endTime: '02:00', timezone: 'Not/AZone' } }),
+      );
+      expect(await service.isInQuietHours('user-1')).toBe(true);
+    });
+  });
+
+  // ── canDeliverNotification (quota enforcement) ──────────────────────────────
+
+  describe('canDeliverNotification — overall daily cap', () => {
+    it('allows delivery when cap is null (unlimited)', async () => {
+      mockPrefRepo.findOne.mockResolvedValue(
+        makePrefs({ maxNotificationsPerDay: undefined }),
+      );
+
+      const result = await service.canDeliverNotification('user-1', DeliveryChannel.IN_APP);
+
+      expect(result.allowed).toBe(true);
+      expect(mockRedis.eval).not.toHaveBeenCalled();
+    });
+
+    it('allows delivery when Redis counter is below the cap', async () => {
+      mockPrefRepo.findOne.mockResolvedValue(
+        makePrefs({ maxNotificationsPerDay: 10 }),
+      );
+      mockRedis.eval.mockResolvedValue(5); // counter = 5, cap = 10
+
+      const result = await service.canDeliverNotification('user-1', DeliveryChannel.IN_APP);
+
+      expect(result.allowed).toBe(true);
+    });
+
+    it('allows delivery exactly at the cap (counter == cap)', async () => {
+      mockPrefRepo.findOne.mockResolvedValue(
+        makePrefs({ maxNotificationsPerDay: 10 }),
+      );
+      mockRedis.eval.mockResolvedValue(10); // exactly at cap
+
+      const result = await service.canDeliverNotification('user-1', DeliveryChannel.IN_APP);
+
+      expect(result.allowed).toBe(true);
+    });
+
+    it('denies delivery when counter exceeds the cap', async () => {
+      mockPrefRepo.findOne.mockResolvedValue(
+        makePrefs({ maxNotificationsPerDay: 10 }),
+      );
+      mockRedis.eval
+        .mockResolvedValueOnce(11)   // overall INCR returns 11 → over cap
+        .mockResolvedValueOnce(10);  // DECR rollback
+
+      const result = await service.canDeliverNotification('user-1', DeliveryChannel.IN_APP);
+
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toBe('overall_cap_reached');
+      expect(result.resetAt).toMatch(/^\d{4}-\d{2}-\d{2}T00:00:00\.000Z$/);
+    });
+
+    it('deliveries stop exactly at the configured overall daily cap', async () => {
+      mockPrefRepo.findOne.mockResolvedValue(
+        makePrefs({ maxNotificationsPerDay: 3 }),
+      );
+
+      // First 3 succeed (counter 1, 2, 3)
+      for (let i = 1; i <= 3; i++) {
+        mockRedis.eval.mockResolvedValueOnce(i);
+        const r = await service.canDeliverNotification('user-1', DeliveryChannel.IN_APP);
+        expect(r.allowed).toBe(true);
+      }
+
+      // 4th call: INCR returns 4 (over cap=3), then DECR rollback
+      mockRedis.eval
+        .mockResolvedValueOnce(4)
+        .mockResolvedValueOnce(3);
+      const denied = await service.canDeliverNotification('user-1', DeliveryChannel.IN_APP);
+      expect(denied.allowed).toBe(false);
+      expect(denied.reason).toBe('overall_cap_reached');
+    });
+  });
+
+  describe('canDeliverNotification — email-specific cap', () => {
+    it('allows email delivery when email cap is null (unlimited)', async () => {
+      mockPrefRepo.findOne.mockResolvedValue(
+        makePrefs({ maxEmailsPerDay: undefined }),
+      );
+
+      const result = await service.canDeliverNotification('user-1', DeliveryChannel.EMAIL);
+
+      expect(result.allowed).toBe(true);
+    });
+
+    it('denies email delivery when email counter exceeds the cap', async () => {
+      mockPrefRepo.findOne.mockResolvedValue(
+        makePrefs({ maxNotificationsPerDay: 100, maxEmailsPerDay: 5 }),
+      );
+      // overall INCR = 1 (fine), email INCR = 6 (over cap=5)
+      mockRedis.eval
+        .mockResolvedValueOnce(1)   // overall counter
+        .mockResolvedValueOnce(6)   // email counter → over cap
+        .mockResolvedValueOnce(5)   // email DECR rollback
+        .mockResolvedValueOnce(0);  // overall DECR rollback
+
+      const result = await service.canDeliverNotification('user-1', DeliveryChannel.EMAIL);
+
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toBe('email_cap_reached');
+      expect(result.resetAt).toMatch(/^\d{4}-\d{2}-\d{2}T00:00:00\.000Z$/);
+    });
+
+    it('email cap does not affect non-email channels', async () => {
+      mockPrefRepo.findOne.mockResolvedValue(
+        makePrefs({ maxNotificationsPerDay: 10, maxEmailsPerDay: 2 }),
+      );
+      // Only overall INCR is called; no email INCR for PUSH
+      mockRedis.eval.mockResolvedValueOnce(3);
+
+      const result = await service.canDeliverNotification('user-1', DeliveryChannel.PUSH);
+
+      expect(result.allowed).toBe(true);
+      expect(mockRedis.eval).toHaveBeenCalledTimes(1); // only overall
+    });
+
+    it('email deliveries stop at the configured email daily cap', async () => {
+      mockPrefRepo.findOne.mockResolvedValue(
+        makePrefs({ maxEmailsPerDay: 2 }),
+      );
+
+      // 2 succeed
+      for (let i = 1; i <= 2; i++) {
+        mockRedis.eval.mockResolvedValueOnce(i);
+        const r = await service.canDeliverNotification('user-1', DeliveryChannel.EMAIL);
+        expect(r.allowed).toBe(true);
+      }
+
+      // 3rd is denied
+      mockRedis.eval
+        .mockResolvedValueOnce(3)   // email INCR over cap
+        .mockResolvedValueOnce(2);  // DECR rollback
+      const denied = await service.canDeliverNotification('user-1', DeliveryChannel.EMAIL);
+      expect(denied.allowed).toBe(false);
+      expect(denied.reason).toBe('email_cap_reached');
+    });
+  });
+
+  describe('canDeliverNotification — Redis unavailable (DB fallback)', () => {
+    it('falls back to DB and allows delivery when count is below cap', async () => {
+      mockPrefRepo.findOne.mockResolvedValue(
+        makePrefs({ maxNotificationsPerDay: 10 }),
+      );
+      mockRedis.eval.mockRejectedValue(new Error('Redis unavailable'));
+
+      const qb = makeQb(3); // DB says 3 deliveries today
+      mockHistoryRepo.createQueryBuilder.mockReturnValue(qb as any);
+
+      const result = await service.canDeliverNotification('user-1', DeliveryChannel.IN_APP);
+
+      expect(result.allowed).toBe(true);
+    });
+
+    it('falls back to DB and denies when count meets or exceeds cap', async () => {
+      mockPrefRepo.findOne.mockResolvedValue(
+        makePrefs({ maxNotificationsPerDay: 5 }),
+      );
+      mockRedis.eval.mockRejectedValue(new Error('Redis unavailable'));
+
+      const qb = makeQb(5); // DB says exactly at cap → deny
+      mockHistoryRepo.createQueryBuilder.mockReturnValue(qb as any);
+
+      const result = await service.canDeliverNotification('user-1', DeliveryChannel.IN_APP);
+
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toBe('overall_cap_reached');
+    });
+
+    it('denies delivery (fail-closed) when both Redis and DB fail', async () => {
+      mockPrefRepo.findOne.mockResolvedValue(
+        makePrefs({ maxNotificationsPerDay: 10 }),
+      );
+      mockRedis.eval.mockRejectedValue(new Error('Redis unavailable'));
+
+      const qb = {
+        innerJoin: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getCount: jest.fn().mockRejectedValue(new Error('DB error')),
+      };
+      mockHistoryRepo.createQueryBuilder.mockReturnValue(qb as any);
+
+      const result = await service.canDeliverNotification('user-1', DeliveryChannel.IN_APP);
+
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toBe('overall_cap_reached');
+    });
+  });
+
+  describe('canDeliverNotification — idempotency and concurrent workers', () => {
+    it('the Lua INCR + EXPIREAT script is called once per channel type', async () => {
+      mockPrefRepo.findOne.mockResolvedValue(
+        makePrefs({ maxNotificationsPerDay: 100, maxEmailsPerDay: 50 }),
+      );
+      mockRedis.eval.mockResolvedValue(1);
+
+      await service.canDeliverNotification('user-1', DeliveryChannel.EMAIL);
+
+      // Should call eval twice: once for overall, once for email
+      expect(mockRedis.eval).toHaveBeenCalledTimes(2);
+    });
+
+    it('concurrent calls each get distinct incremented values via Redis atomicity', async () => {
+      mockPrefRepo.findOne.mockResolvedValue(
+        makePrefs({ maxNotificationsPerDay: 3 }),
+      );
+      // Simulate 3 concurrent workers: each gets a unique counter
+      mockRedis.eval
+        .mockResolvedValueOnce(1)
+        .mockResolvedValueOnce(2)
+        .mockResolvedValueOnce(3);
+
+      const results = await Promise.all([
+        service.canDeliverNotification('user-1', DeliveryChannel.IN_APP),
+        service.canDeliverNotification('user-1', DeliveryChannel.IN_APP),
+        service.canDeliverNotification('user-1', DeliveryChannel.IN_APP),
+      ]);
+
+      expect(results.every((r) => r.allowed)).toBe(true);
+    });
+
+    it('resetAt is an ISO-8601 UTC midnight timestamp', async () => {
+      mockPrefRepo.findOne.mockResolvedValue(
+        makePrefs({ maxNotificationsPerDay: 1 }),
+      );
+      mockRedis.eval
+        .mockResolvedValueOnce(2)   // over cap
+        .mockResolvedValueOnce(1);  // rollback
+
+      const result = await service.canDeliverNotification('user-1', DeliveryChannel.IN_APP);
+
+      expect(result.allowed).toBe(false);
+      expect(result.resetAt).toBeDefined();
+      const reset = new Date(result.resetAt!);
+      expect(reset.getUTCHours()).toBe(0);
+      expect(reset.getUTCMinutes()).toBe(0);
+      expect(reset.getUTCSeconds()).toBe(0);
+    });
+
+    it('timezone and day-boundary: resetAt always points to next UTC midnight', async () => {
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date('2026-06-15T23:59:00Z'));
+
+      mockPrefRepo.findOne.mockResolvedValue(
+        makePrefs({ maxNotificationsPerDay: 1 }),
+      );
+      mockRedis.eval
+        .mockResolvedValueOnce(2)
+        .mockResolvedValueOnce(1);
+
+      const result = await service.canDeliverNotification('user-1', DeliveryChannel.IN_APP);
+
+      expect(result.resetAt).toBe('2026-06-16T00:00:00.000Z');
+
+      jest.useRealTimers();
+    });
+  });
+
+  // ── shouldDeliver ───────────────────────────────────────────────────────────
+
+  describe('shouldDeliver', () => {
+    it('allows delivery when all constraints pass', async () => {
+      mockPrefRepo.findOne.mockResolvedValue(
+        makePrefs({
+          channels: { [DeliveryChannel.IN_APP]: true } as any,
+          categorySubscriptions: { [EventType.CLAIM_CREATED]: true },
+          quietHours: { enabled: false },
+        }),
+      );
+      mockRedis.eval.mockResolvedValue(1);
+
+      const result = await service.shouldDeliver('user-1', EventType.CLAIM_CREATED, DeliveryChannel.IN_APP);
+
+      expect(result.allowed).toBe(true);
+      expect(result.resetAt).toBeUndefined();
+    });
+
+    it('blocks when channel is disabled', async () => {
+      mockPrefRepo.findOne.mockResolvedValue(
+        makePrefs({ channels: { [DeliveryChannel.IN_APP]: false } as any }),
+      );
+
+      const result = await service.shouldDeliver('user-1', EventType.CLAIM_CREATED, DeliveryChannel.IN_APP);
+
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toContain('disabled');
+    });
+
+    it('blocks when category is disabled', async () => {
+      mockPrefRepo.findOne.mockResolvedValue(
+        makePrefs({
+          channels: { [DeliveryChannel.IN_APP]: true } as any,
+          categorySubscriptions: { [EventType.CLAIM_CREATED]: false },
+        }),
+      );
+
+      const result = await service.shouldDeliver('user-1', EventType.CLAIM_CREATED, DeliveryChannel.IN_APP);
+
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toContain('disabled');
+    });
+
+    it('blocks email during quiet hours', async () => {
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date('2026-06-15T12:00:00Z'));
+
+      mockPrefRepo.findOne.mockResolvedValue(
+        makePrefs({
+          channels: { [DeliveryChannel.EMAIL]: true } as any,
+          categorySubscriptions: {},
+          quietHours: { enabled: true, startTime: '09:00', endTime: '17:00', timezone: 'UTC' },
+        }),
+      );
+
+      const result = await service.shouldDeliver('user-1', EventType.CLAIM_CREATED, DeliveryChannel.EMAIL);
+
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toContain('quiet hours');
+
+      jest.useRealTimers();
+    });
+
+    it('exposes resetAt when overall cap is the denial reason', async () => {
+      mockPrefRepo.findOne.mockResolvedValue(
+        makePrefs({
+          channels: { [DeliveryChannel.IN_APP]: true } as any,
+          categorySubscriptions: {},
+          maxNotificationsPerDay: 5,
+        }),
+      );
+      mockRedis.eval
+        .mockResolvedValueOnce(6)   // over cap
+        .mockResolvedValueOnce(5);  // rollback
+
+      const result = await service.shouldDeliver('user-1', EventType.CLAIM_CREATED, DeliveryChannel.IN_APP);
+
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toContain('Daily limit reached');
+      expect(result.resetAt).toMatch(/^\d{4}-\d{2}-\d{2}T00:00:00\.000Z$/);
+    });
+
+    it('exposes resetAt when email cap is the denial reason', async () => {
+      mockPrefRepo.findOne.mockResolvedValue(
+        makePrefs({
+          channels: { [DeliveryChannel.EMAIL]: true } as any,
+          categorySubscriptions: {},
+          maxEmailsPerDay: 2,
+        }),
+      );
+      mockRedis.eval
+        .mockResolvedValueOnce(3)   // email over cap
+        .mockResolvedValueOnce(2);  // rollback
+
+      const result = await service.shouldDeliver('user-1', EventType.CLAIM_CREATED, DeliveryChannel.EMAIL);
+
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toContain('Daily email limit');
+      expect(result.resetAt).toMatch(/^\d{4}-\d{2}-\d{2}T00:00:00\.000Z$/);
+    });
+  });
+
+  // ── getEnabledChannels ──────────────────────────────────────────────────────
+
+  describe('getEnabledChannels', () => {
+    it('returns only enabled channels', async () => {
+      mockPrefRepo.findOne.mockResolvedValue(
+        makePrefs({
+          channels: {
+            [DeliveryChannel.IN_APP]: true,
+            [DeliveryChannel.EMAIL]: true,
+            [DeliveryChannel.PUSH]: false,
+            [DeliveryChannel.WEBHOOK]: false,
+            [DeliveryChannel.WEBSOCKET]: true,
+            [DeliveryChannel.SMS]: false,
+          } as any,
+        }),
+      );
+
+      const result = await service.getEnabledChannels('user-1');
+
+      expect(result).toContain(DeliveryChannel.IN_APP);
+      expect(result).toContain(DeliveryChannel.EMAIL);
+      expect(result).toContain(DeliveryChannel.WEBSOCKET);
+      expect(result).not.toContain(DeliveryChannel.PUSH);
+      expect(result.length).toBe(3);
+    });
+  });
+
+  // ── updatePreferences ───────────────────────────────────────────────────────
+
+  describe('updatePreferences', () => {
+    it('saves updated preferences', async () => {
+      const original = makePrefs();
+      mockPrefRepo.findOne.mockResolvedValue(original);
+      mockPrefRepo.save.mockResolvedValue({ ...original, language: 'fr' } as any);
+
+      await service.updatePreferences('user-1', { language: 'fr' });
+
+      expect(mockPrefRepo.save).toHaveBeenCalled();
+    });
+  });
+});
 
 describe('PreferenceEnforcer', () => {
   let service: PreferenceEnforcer;
