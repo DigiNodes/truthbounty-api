@@ -7,7 +7,6 @@ import {
   IndexerCheckpoint,
   DeadLetterReplay,
 } from './entities';
-import { BlockchainStateService } from './state.service';
 import { ReorgDetectorService } from './reorg-detector.service';
 import { ReconciliationService } from './reconciliation.service';
 import { EventIndexingService } from './event-indexing.service';
@@ -50,7 +49,6 @@ import { WebhookController } from './webhook.controller';
   ],
   providers: [
     BlockchainIndexerService,
-    BlockchainStateService,
     ReadinessService,
     DependencyProvenanceService,
     ReorgDetectorService,
@@ -72,7 +70,6 @@ import { WebhookController } from './webhook.controller';
   controllers: [BlockchainController, StreamController, WebhookController],
   exports: [
     BlockchainIndexerService,
-    BlockchainStateService,
     ReadinessService,
     DependencyProvenanceService,
     ReorgDetectorService,

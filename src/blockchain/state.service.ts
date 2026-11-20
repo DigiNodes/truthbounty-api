@@ -126,6 +126,13 @@ export class BlockchainStateService {
   private rollbackAudit: CursorRollbackAuditEntry[] = [];
   /** Serializes concurrent cursor mutations per scope. */
   private readonly cursorLocks: Map<string, Promise<void>> = new Map();
+  /**
+   * Canonical cursor authority must be the durable Prisma-backed cursor
+   * (BlockCursorService). This in-memory store is a bounded cache only and
+   * is restricted to tests/local use unless explicitly enabled.
+   */
+  private readonly inMemoryCursorAuthorityAllowed: boolean;
+
 
   private readonly maxBlocksInMemory: number;
   private readonly maxEventsInMemory: number;
@@ -213,6 +220,11 @@ export class BlockchainStateService {
     this.rollbackAuthorizationSecret = this.configService?.get<string>(
       'blockchain.cursorRollbackAuthorization',
     );
+    this.inMemoryCursorAuthorityAllowed =
+      this.configService?.get<boolean>(
+        'blockchain.allowInMemoryCursorAuthority',
+        false,
+      ) ?? false;
     this.staleThresholdMs =
       this.configService?.get<number>(
         'blockchain.readinessStaleThresholdMs',

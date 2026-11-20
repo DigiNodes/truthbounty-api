@@ -14,15 +14,24 @@ export interface BlockHeader {
 
 export type ConfirmationLevel = 'observed' | 'safe' | 'finalized';
 
+/**
+ * Durable cursor state scoped by chain, source, release and projection, with
+ * the deployment floor and artifact checksum that provenance checks must match.
+ */
 export interface CursorState {
   chainId: number;
   source: string;
+  releaseId: string;
+  projectionId: string;
+  deploymentBlock: bigint;
+  artifactChecksum: string;
   processedHeight: bigint;
   processedHash: string;
   safeHeight: bigint;
   safeHash: string;
   finalizedHeight: bigint;
   finalizedHash: string;
+  version: number;
   updatedAt: Date;
 }
 

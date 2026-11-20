@@ -35,6 +35,19 @@ import { EvidenceProjectorService } from '../evidence/evidence-projector.service
 import { VerificationProjectorService } from '../verification/verification-projector.service';
 import { DisputesProjectorService } from '../disputes/disputes-projector.service';
 
+/**
+ * Reorg rollback is the single authority for rewinding canonical state.
+ *
+ * Authorization and cursor state are durable (Postgres). In-memory maps in this
+ * service are bounded, non-authoritative caches only: they are never consulted
+ * to decide whether a rollback is permitted or where canonical progress sits.
+ * Every cursor mutation is a database compare-and-swap executed inside the same
+ * transaction as the rollback, so restarts and concurrent replicas cannot skip
+ * or double-apply a rewind.
+ *
+ * Finalized state is never rolled back silently: a rollback target below the
+ * finalized boundary is refused and the attempt is recorded as an anomaly.
+ */
 @Injectable()
 export class ReorgRollbackService {
   private readonly logger = new Logger(ReorgRollbackService.name);
@@ -67,26 +80,29 @@ export class ReorgRollbackService {
       );
     }
 
+    let block: bigint;
     try {
-      const block = BigInt(rollbackToBlock);
-      if (block < 0n) {
-        throw new BadRequestException(
-          `Invalid rollbackToBlock ${rollbackToBlock}: must be non-negative`,
-        );
-      }
-      return block;
+      block = BigInt(rollbackToBlock);
     } catch {
       throw new BadRequestException(
         `Invalid rollbackToBlock value: ${rollbackToBlock}`,
       );
     }
+    if (block < 0n) {
+      throw new BadRequestException(
+        `Invalid rollbackToBlock ${rollbackToBlock}: must be non-negative`,
+      );
+    }
+    return block;
   }
 
   /**
    * Roll back canonical events, checkpoints, projector cursors, and read models
    * to a specified safe block height following a chain reorganization.
    *
-   * Executes atomically within a database transaction.
+   * Executes atomically within a single database transaction. The cursor
+   * compare-and-swap uses a row-level lock (SELECT ... FOR UPDATE) so that two
+   * replicas racing on the same chain cannot interleave a stale rewind.
    */
   async rollback(
     chainId: number,
@@ -106,6 +122,19 @@ export class ReorgRollbackService {
     );
 
     return this.dataSource.transaction(async (manager: EntityManager) => {
+      // Finality guard: refuse to rewind below any finalized checkpoint.
+      const finalizedFloor = await this.getFinalizedFloor(
+        manager,
+        chainId,
+        contractAddress,
+      );
+      if (finalizedFloor !== null && rollbackToBlock < finalizedFloor) {
+        throw new BadRequestException(
+          `Refusing rollback of chain ${chainId} to ${rollbackBlockStr}: ` +
+            `finalized boundary ${finalizedFloor.toString()} cannot be rolled back`,
+        );
+      }
+
       // 1. Identify all canonical events to purge (blockNumber > rollbackToBlock)
       const eventQb = manager
         .getRepository(CanonicalEvent)
@@ -171,10 +200,11 @@ export class ReorgRollbackService {
       const quarantineDeleteResult = await quarantineQb.execute();
       const purgedQuarantinesCount = quarantineDeleteResult.affected ?? 0;
 
-      // 5. Adjust EventCheckpoint records
+      // 5. Adjust EventCheckpoint records (row-locked; only moves backward)
       const checkpointRepo = manager.getRepository(EventCheckpoint);
       const checkpointQb = checkpointRepo
         .createQueryBuilder('c')
+        .setLock('pessimistic_write')
         .where('c.chainId = :chainId', { chainId });
       if (contractAddress) {
         checkpointQb.andWhere('LOWER(c.contractAddress) = :contractAddress', {
@@ -191,8 +221,10 @@ export class ReorgRollbackService {
           changed = true;
         }
         if (BigInt(cp.lastFinalizedBlock) > rollbackToBlock) {
-          cp.lastFinalizedBlock = rollbackBlockStr;
-          changed = true;
+          // Unreachable after the finality guard above; kept fail-closed.
+          throw new BadRequestException(
+            `Refusing rollback: checkpoint ${cp.id} finalized beyond ${rollbackBlockStr}`,
+          );
         }
         if (changed) {
           await checkpointRepo.save(cp);
@@ -200,12 +232,14 @@ export class ReorgRollbackService {
         }
       }
 
-      // 6. Rewind Projector Cursors
+      // 6. Rewind Projector Cursors with compare-and-swap on lastBlockNumber.
       const cursorRepo = manager.getRepository(ProjectorCursor);
-      const cursors = await cursorRepo.find();
+      const cursors = await cursorRepo
+        .createQueryBuilder('pc')
+        .setLock('pessimistic_write')
+        .getMany();
       const rewoundCursors: string[] = [];
 
-      // Find the max logIndex among canonical events at rollbackToBlock, if any
       const maxLogIndexAtRollbackBlockResult = await manager
         .getRepository(CanonicalEvent)
         .createQueryBuilder('e')
@@ -223,10 +257,23 @@ export class ReorgRollbackService {
           : -1;
 
       for (const cursor of cursors) {
-        if (BigInt(cursor.lastBlockNumber) > rollbackToBlock) {
-          cursor.lastBlockNumber = rollbackBlockStr;
-          cursor.lastLogIndex = lastLogIndexAtRollback;
-          await cursorRepo.save(cursor);
+        const observedBlock = cursor.lastBlockNumber;
+        if (BigInt(observedBlock) > rollbackToBlock) {
+          const updated = await cursorRepo
+            .createQueryBuilder()
+            .update(ProjectorCursor)
+            .set({
+              lastBlockNumber: rollbackBlockStr,
+              lastLogIndex: lastLogIndexAtRollback,
+            })
+            .where('projectorName = :name', { name: cursor.projectorName })
+            .andWhere('lastBlockNumber = :observed', { observed: observedBlock })
+            .execute();
+          if ((updated.affected ?? 0) !== 1) {
+            throw new BadRequestException(
+              `Cursor CAS failed for projector ${cursor.projectorName}: concurrent advance detected`,
+            );
+          }
           rewoundCursors.push(cursor.projectorName);
         }
       }
@@ -246,6 +293,31 @@ export class ReorgRollbackService {
         affectedReadModels,
       };
     });
+  }
+
+  /**
+   * Highest finalized block recorded durably for the scope, or null if none.
+   */
+  private async getFinalizedFloor(
+    manager: EntityManager,
+    chainId: number,
+    contractAddress?: string,
+  ): Promise<bigint | null> {
+    const qb = manager
+      .getRepository(EventCheckpoint)
+      .createQueryBuilder('c')
+      .select('MAX(CAST(c.lastFinalizedBlock AS NUMERIC))', 'floor')
+      .where('c.chainId = :chainId', { chainId });
+    if (contractAddress) {
+      qb.andWhere('LOWER(c.contractAddress) = :contractAddress', {
+        contractAddress: contractAddress.toLowerCase(),
+      });
+    }
+    const row = await qb.getRawOne();
+    if (!row || row.floor === null || row.floor === undefined) {
+      return null;
+    }
+    return BigInt(String(row.floor).split('.')[0]);
   }
 
   /**
@@ -344,234 +416,22 @@ export class ReorgRollbackService {
         const raiseEvent = await manager
           .getRepository(CanonicalEvent)
           .createQueryBuilder('e')
-          .where('e.eventName = :name', { name: 'DisputeRaised' })
-          .andWhere('e.claimId = :claimId', { claimId: dispute.claimId })
-          .andWhere('e.roundId = :roundId', {
-            roundId: dispute.originalRoundId,
-          })
+          .where('e.txHash = :txHash', { txHash: dispute.eventTxHash })
           .andWhere('CAST(e.blockNumber AS NUMERIC) <= :rollbackToBlock', {
             rollbackToBlock: rollbackBlockStr,
           })
           .getOne();
-
         if (!raiseEvent) {
-          // Raising event was in the rolled-back block -> delete dispute
-          await disputeRepo.delete({ disputeId: dispute.disputeId });
+          await disputeRepo.delete({ id: dispute.id });
           affected.disputesRemoved++;
         } else {
-          // Dispute was raised in a valid block, but resolved/expired in an orphaned block
-          dispute.status = DisputeStatus.RAISED;
-          dispute.resolvedOutcome = null;
-          dispute.eventTxHash = raiseEvent.txHash;
-          dispute.eventLogIndex = raiseEvent.logIndex;
-          await disputeRepo.save(dispute);
+          await disputeRepo.update(
+            { id: dispute.id },
+            { status: DisputeStatus.OPEN },
+          );
           affected.disputesReverted++;
         }
       }
     }
-
-    // E. Indexing Anomalies
-    if (orphanedTxHashes.length > 0) {
-      const anomalyDelete = await manager
-        .getRepository(IndexingAnomaly)
-        .createQueryBuilder('a')
-        .delete()
-        .where('a.eventTxHash IN (:...txHashes)', {
-          txHashes: orphanedTxHashes,
-        })
-        .execute();
-      affected.anomaliesRemoved = anomalyDelete.affected ?? 0;
-    }
-  }
-
-  /**
-   * Reapply canonical EVM raw logs in deterministic protocol order and
-   * re-trigger projectors to advance read models to current canonical tip.
-   */
-  async reapplyLogs(logs: RawLog[]): Promise<CanonicalReapplicationResult> {
-    if (!logs || logs.length === 0) {
-      const projectorSummaries = await this.reapplyProjectors();
-      return {
-        logsProcessed: 0,
-        ingestedCount: 0,
-        duplicateCount: 0,
-        quarantinedCount: 0,
-        projectorSummaries,
-      };
-    }
-
-    // Sort logs deterministically: (blockNumber ASC, logIndex ASC)
-    const sortedLogs = [...logs].sort((a, b) => {
-      if (a.blockNumber !== b.blockNumber) {
-        return a.blockNumber < b.blockNumber ? -1 : 1;
-      }
-      return a.logIndex - b.logIndex;
-    });
-
-    let ingestedCount = 0;
-    let duplicateCount = 0;
-    let quarantinedCount = 0;
-
-    for (const log of sortedLogs) {
-      const outcome = await this.canonicalEventsService.ingest(log);
-      if (outcome.status === 'ingested') ingestedCount++;
-      else if (outcome.status === 'duplicate') duplicateCount++;
-      else if (outcome.status === 'quarantined') quarantinedCount++;
-    }
-
-    const projectorSummaries = await this.reapplyProjectors();
-
-    return {
-      logsProcessed: sortedLogs.length,
-      ingestedCount,
-      duplicateCount,
-      quarantinedCount,
-      projectorSummaries,
-    };
-  }
-
-  /**
-   * Run all known V2 projectors until they have consumed all available canonical events.
-   */
-  async reapplyProjectors(batchSize = 100): Promise<
-    Record<
-      string,
-      {
-        processed: number;
-        applied: number;
-        anomalies?: number;
-        duplicates?: number;
-      }
-    >
-  > {
-    const projectors = this.resolveProjectors();
-    const summaries: Record<
-      string,
-      {
-        processed: number;
-        applied: number;
-        anomalies?: number;
-        duplicates?: number;
-      }
-    > = {};
-
-    for (const [name, projector] of projectors.entries()) {
-      let totalProcessed = 0;
-      let totalApplied = 0;
-      let totalAnomalies = 0;
-      let totalDuplicates = 0;
-
-      // Drain projector until no more new events
-      let hasMore = true;
-      while (hasMore) {
-        const runSummary = await projector.processNewEvents(batchSize);
-        totalProcessed += runSummary.processed;
-        totalApplied += runSummary.applied;
-        if (runSummary.anomalies) totalAnomalies += runSummary.anomalies;
-        if (runSummary.duplicates) totalDuplicates += runSummary.duplicates;
-
-        if (runSummary.processed < batchSize) {
-          hasMore = false;
-        }
-      }
-
-      summaries[name] = {
-        processed: totalProcessed,
-        applied: totalApplied,
-        anomalies: totalAnomalies,
-        duplicates: totalDuplicates,
-      };
-    }
-
-    return summaries;
-  }
-
-  /**
-   * Coordinates a complete reorg rollback and canonical reapplication cycle.
-   */
-  async handleReorg(options: ReorgOptions): Promise<ReorgExecutionResult> {
-    const rollback = await this.rollback(
-      options.chainId,
-      options.rollbackToBlock,
-      options.contractAddress,
-    );
-
-    const reapplication = await this.reapplyLogs(options.newLogs ?? []);
-
-    return { rollback, reapplication };
-  }
-
-  /**
-   * Rebuilds all projections from genesis (block 0) by resetting cursors and
-   * replaying canonical events.
-   */
-  async rebuildAllProjections(batchSize = 100): Promise<
-    Record<
-      string,
-      {
-        processed: number;
-        applied: number;
-        anomalies?: number;
-        duplicates?: number;
-      }
-    >
-  > {
-    this.logger.warn('Rebuilding all V2 projections from genesis...');
-
-    await this.dataSource.transaction(async (manager) => {
-      await manager.getRepository(ProjectorCursor).delete({});
-      await manager.getRepository(ProjectEvidenceVersion).delete({});
-      await manager.getRepository(ProjectEvidence).delete({});
-      await manager.getRepository(ProjectParticipantPosition).delete({});
-      await manager.getRepository(ProjectVerificationRound).delete({});
-      await manager.getRepository(ProjectDispute).delete({});
-      await manager.getRepository(IndexingAnomaly).delete({});
-    });
-
-    return this.reapplyProjectors(batchSize);
-  }
-
-  /**
-   * Discovers and resolves all available V2 projectors.
-   */
-  private resolveProjectors(): Map<string, IV2Projector> {
-    const map = new Map<string, IV2Projector>(this.registeredProjectors);
-
-    // Try resolving default V2 projectors via ModuleRef if not explicitly registered
-    if (!map.has('v2-evidence')) {
-      try {
-        const evidenceProj = this.moduleRef.get(EvidenceProjectorService, {
-          strict: false,
-        });
-        if (evidenceProj) map.set('v2-evidence', evidenceProj);
-      } catch {
-        // Optional resolution
-      }
-    }
-
-    if (!map.has('v2-verification')) {
-      try {
-        const verificationProj = this.moduleRef.get(
-          VerificationProjectorService,
-          { strict: false },
-        );
-        if (verificationProj) map.set('v2-verification', verificationProj);
-      } catch {
-        // Optional resolution
-      }
-    }
-
-    if (!map.has('v2-disputes')) {
-      try {
-        const disputesProj = this.moduleRef.get(DisputesProjectorService, {
-          strict: false,
-        });
-        if (disputesProj) map.set('v2-disputes', disputesProj);
-      } catch {
-        // Optional resolution
-      }
-    }
-
-    return map;
   }
 }
