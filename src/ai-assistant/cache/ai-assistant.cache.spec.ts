@@ -12,6 +12,8 @@ describe('AiAssistantCache', () => {
     contextCacheTtl: 900,
     convoWindowCacheTtl: 120,
     providerAvailabilityCacheTtl: 30,
+    redactBeforeStore: true,
+    redactionCacheKey: 'test-cache-key',
   };
 
   beforeEach(() => {
@@ -31,6 +33,27 @@ describe('AiAssistantCache', () => {
   });
 
   describe('context results', () => {
+    it('uses digest keys and redacts cached document content', async () => {
+      await cache.setContextResults(
+        'password=hunter2',
+        [
+          {
+            documentId: 'd1',
+            title: 'password=hunter2',
+            score: 1,
+            content: 'credential password=hunter2',
+          },
+        ],
+        'protocol_docs',
+      );
+
+      const [key, stored] = redisService.set.mock.calls[0];
+      expect(key).toMatch(/^ai:context:[a-f0-9]{64}$/);
+      expect(key).not.toContain('hunter2');
+      expect(stored).not.toContain('hunter2');
+      expect(stored).not.toContain('password=hunter2');
+    });
+
     it('returns null on cache miss', async () => {
       redisService.get.mockResolvedValue(null);
       await expect(cache.getContextResults('staking')).resolves.toBeNull();

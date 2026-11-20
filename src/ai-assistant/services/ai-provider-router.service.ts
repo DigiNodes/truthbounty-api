@@ -117,7 +117,7 @@ export class AiProviderRouterService {
       return { response, provider: provider.name, fallback };
     } catch (error) {
       this.logger.error(
-        `Provider "${provider.name}" chat() failed: ${(error as Error).message}`,
+        `Provider "${provider.name}" chat() failed`,
       );
       const fallbackProvider =
         this.providers[this.fallbackNameFor(provider.name as AiProviderName)];
