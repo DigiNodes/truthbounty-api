@@ -112,6 +112,11 @@
  * ├─────────────────────────────────────────────────┼──────────────────────────────────────────┤
  * │ POST   /admin/auth/login                        │ PUBLIC (returns admin identity only)     │
  * │ All other /admin/* routes                       │ ADMIN(varies, see AdminController)       │
+ * ├─────────────────────────────────────────────────┼──────────────────────────────────────────┤
+ * │ POST   /api/v2/internal/notifications/events    │ SERVICE or AUTHN + AdminOnly             │
+ * │ POST   /api/v2/internal/notifications/events/batch │ SERVICE or AUTHN + AdminOnly          │
+ * │ POST   /api/v2/internal/notifications/events/status/:eventId │ SERVICE, ADMIN, or AUTHN (owner/recipient) │
+ * │ POST   /api/v2/internal/notifications/events/metrics │ SERVICE or AUTHN + AdminOnly        │
  * └─────────────────────────────────────────────────┴──────────────────────────────────────────┘
  *
  * FAILURE-CLOSED INVARIANTS
