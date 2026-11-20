@@ -153,13 +153,24 @@ export class GovernanceProjectionService {
     const description = this.readString(event, 'description');
     const proposer = this.readAddress(event, 'proposer') ?? '0x0';
 
+    // #889: the row stores the Governor proposal id, not the bare
+    // descriptionHash carried in the event payload.
+    const proposalHash = descriptionHash
+      ? this.decoder.computeProposalHash(
+          targets,
+          values,
+          calldatas,
+          descriptionHash,
+        )
+      : '';
+
     // Decode every call against the approved ABI for its target.
     const proposalRow = await this.upsertProposal({
       chainId: event.chainId,
       proposalId,
       governorAddress: event.contractAddress,
       proposer,
-      proposalHash: descriptionHash ?? '',
+      proposalHash,
       description,
       state: ProposalChainState.PENDING,
       eta: null,
@@ -395,6 +406,17 @@ export class GovernanceProjectionService {
         })
         .andWhere('e.payload LIKE :propId', {
           propId: `%"proposalId":"${proposal.proposalId}"%`,
+        })
+        // #890: only lifecycle transitions restore state. A VoteCast for the
+        // same proposal must not reset a queued/executed proposal to PENDING.
+        .andWhere('e.eventName IN (:...lifecycleEvents)', {
+          lifecycleEvents: [
+            'ProposalCreated',
+            'ProposalQueued',
+            'ProposalExecuted',
+            'ProposalCanceled',
+            'ProposalExpired',
+          ],
         })
         .orderBy('e.blockNumber', 'DESC')
         .addOrderBy('e.logIndex', 'DESC')
