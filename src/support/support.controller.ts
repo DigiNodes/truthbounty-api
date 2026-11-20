@@ -6,9 +6,21 @@ import {
   Param,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
-import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { Public } from '../decorators/public.decorator';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { AdminGuard } from '../admin/guards/admin.guard';
+import { RolesGuard } from '../admin/guards/roles.guard';
+import { Roles } from '../admin/decorators/roles.decorator';
+import { AdminRole } from '../admin/entities/admin.entity';
 import { CreateSupportRequestDto } from './dto/create-support-request.dto';
 import { SupportRequestService } from './support.service';
 
@@ -46,14 +58,19 @@ export class SupportController {
     return this.supportService.getSupportRequest(id);
   }
 
-  @Public()
   @Delete('requests/:id')
-  @ApiOperation({ summary: 'Delete or expire a support request' })
+  @UseGuards(JwtAuthGuard, AdminGuard, RolesGuard)
+  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMINISTRATOR)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Delete a support request by id',
+    description:
+      'Hard-deletes the targeted support request and clears its deduplication fingerprint.',
+  })
+  @ApiResponse({ status: 200, description: 'Targeted deletion result' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Admin access required' })
   deleteSupportRequest(@Param('id') id: string) {
-    const request = this.supportService.getSupportRequest(id);
-    if (!request) return { deleted: false, id };
-
-    this.supportService.cleanupExpiredSupportRequests();
-    return { deleted: true, id, reference: request.reference };
+    return this.supportService.deleteSupportRequest(id);
   }
 }
