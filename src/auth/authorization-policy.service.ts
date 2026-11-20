@@ -4,11 +4,16 @@ import {
   CanActivate,
   ExecutionContext,
   ForbiddenException,
+  SetMetadata,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { RedisService } from '../redis/redis.service';
 import { createHmac, timingSafeEqual, randomBytes } from 'crypto';
+import {
+  AuthenticatedPrincipal,
+  extractCapabilitySubject,
+} from './types/authenticated-request';
 
 /**
  * Authorization Policy Service
@@ -211,9 +216,15 @@ export interface CapabilityToken {
   signature: string;
 }
 
+/**
+ * Reconciled distinct type for HMAC-signed capability tokens.
+ */
+export type HmacCapabilityToken = CapabilityToken;
+
 export interface CapabilityIssueRequest {
   aud: string;
-  sub: string;
+  sub?: string;
+  principal?: AuthenticatedPrincipal;
   cap: string;
   resource: ResourceType;
   resourceId?: string;
@@ -1066,8 +1077,18 @@ export class AuthorizationPolicyService {
   async issueCapabilityToken(
     request: CapabilityIssueRequest,
   ): Promise<CapabilityToken> {
+    const sub = request.principal
+      ? extractCapabilitySubject(request.principal)
+      : typeof request.sub === 'string' && request.sub.trim().length > 0
+        ? (request.sub.startsWith('0x') ? request.sub.trim().toLowerCase() : request.sub.trim())
+        : undefined;
+
+    if (!sub) {
+      throw new CapabilityTokenError('subject_missing', 'Capability subject missing or invalid');
+    }
+
     this.assertRequiredString(request.aud, 'aud');
-    this.assertRequiredString(request.sub, 'sub');
+    this.assertRequiredString(sub, 'sub');
     this.assertRequiredString(request.cap, 'cap');
 
     if (!Object.values(ResourceType).includes(request.resource)) {
@@ -1085,7 +1106,7 @@ export class AuthorizationPolicyService {
     const claims: CapabilityTokenClaims = {
       ver: 1,
       aud: request.aud,
-      sub: request.sub,
+      sub,
       cap: request.cap,
       resource: request.resource,
       resourceId: request.resourceId,
@@ -1371,8 +1392,28 @@ export class AuthorizationGuard implements CanActivate {
   }
 }
 
+export const REQUIRE_CAPABILITY_KEY = 'capability';
+
+export interface CapabilityRequirement {
+  aud: string;
+  cap: string;
+  resource: ResourceType;
+  action: ActionType;
+}
+
+export const RequireCapability = (requirement: CapabilityRequirement) =>
+  SetMetadata(REQUIRE_CAPABILITY_KEY, requirement);
+
 /**
  * Guard that requires a valid capability token on the request.
+ *
+ * Derives the capability subject from the verified AuthenticatedPrincipal (request.user),
+ * following strict precedence:
+ *   1. Linked user ID (userId or user.id)
+ *   2. Wallet-only address (normalized to lowercase)
+ *
+ * Never reads caller-supplied body/query/header parameters for the subject.
+ * Fails closed if the principal or capability token is missing, malformed, or of the wrong format.
  */
 @Injectable()
 export class CapabilityTokenGuard implements CanActivate {
@@ -1383,20 +1424,37 @@ export class CapabilityTokenGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
-    const requirement = this.reflector.get<{
-      aud: string;
-      cap: string;
-      resource: ResourceType;
-      action: ActionType;
-    }>('capability', context.getHandler());
+    const requirement = this.reflector.get<CapabilityRequirement>(
+      REQUIRE_CAPABILITY_KEY,
+      context.getHandler(),
+    );
     if (!requirement) {
       throw new ForbiddenException('Capability requirement missing');
     }
-    const token = request.body?.capabilityToken as CapabilityToken | undefined;
-    const sub = request.user?.id as string | undefined;
-    if (!token || !sub) {
+
+    // Derive subject strictly from verified AuthenticatedPrincipal (never from request body)
+    const sub = extractCapabilitySubject(request.user);
+    if (!sub) {
       throw new ForbiddenException('Missing capability token or subject');
     }
+
+    const rawToken = request.body?.capabilityToken;
+    if (!rawToken) {
+      throw new ForbiddenException('Missing capability token or subject');
+    }
+
+    // Strict format validation: rejects JWT strings, nulls, non-objects, or missing claims/signature
+    if (
+      typeof rawToken !== 'object' ||
+      rawToken === null ||
+      !rawToken.claims ||
+      typeof rawToken.signature !== 'string'
+    ) {
+      throw new ForbiddenException('Malformed capability token');
+    }
+
+    const token = rawToken as CapabilityToken;
+
     try {
       await this.policyService.useCapabilityToken({
         token,
