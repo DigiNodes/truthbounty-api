@@ -11,6 +11,12 @@ import { ProposalDecoderService } from './proposal-decoder.service';
 import { GovernanceProjectionService } from './governance-projection.service';
 import { GovernanceReadService } from './governance-read.service';
 import { GovernanceReadController } from './governance-read.controller';
+import {
+  defaultRoleChangeCursorFactory,
+  defaultRoleChangeReleaseResolver,
+  ROLE_CHANGE_CURSOR_FACTORY,
+  ROLE_CHANGE_CURSOR_RELEASE,
+} from './role-change.cursor';
 
 import { ArtifactRegistryService } from '../events/artifact-registry.service';
 import { ContractArtifact } from '../events/entities/contract-artifact.entity';
@@ -48,6 +54,14 @@ import { ContractArtifact } from '../events/entities/contract-artifact.entity';
     ProposalDecoderService,
     GovernanceProjectionService,
     GovernanceReadService,
+    {
+      provide: ROLE_CHANGE_CURSOR_FACTORY,
+      useValue: defaultRoleChangeCursorFactory,
+    },
+    {
+      provide: ROLE_CHANGE_CURSOR_RELEASE,
+      useValue: defaultRoleChangeReleaseResolver,
+    },
   ],
   exports: [GovernanceReadService, GovernanceProjectionService],
 })

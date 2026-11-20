@@ -139,6 +139,24 @@ concurrent inserts of newer blocks appear after the cursor position and do not
 shift already-returned pages. A cursor whose position is ahead of the current
  `indexed_watermark` fails closed with `CURSOR_STALE`.
 
+## Governance role-change audit cursor (PREWAVE-BE-191)
+
+`GET /v2/governance/role-changes` paginates with the same signed cursor
+service. Its position is the full ordering key
+`[blockNumber, logIndex, txHash]`: block numbers stay decimal strings and are
+compared as SQL `NUMERIC`, log index and transaction hash provide deterministic
+ordering for events at the same block. The keyset predicate is
+`(block < :block) OR (block = :block AND (log < :log OR (log = :log AND tx < :tx)))`,
+so events sharing a block are never skipped at a page boundary. The cursor is
+bound to `chainId`, normalized `account`/`role` filters, the route
+`v2:governance:role-changes`, schema version 1 and the sort descriptor
+`blockNumber:DESC,logIndex:DESC,txHash:DESC`.
+
+Cursors issued before this change carried a bare block number. They are not
+migrated: the ordered position lacked `logIndex`, so continuing from one would
+repeat or skip same-block events. Such tokens fail verification with
+`INVALID_CURSOR` and clients must restart pagination from the first page.
+
 ## Tests
 
 ```bash

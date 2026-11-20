@@ -32,7 +32,7 @@ function makeService(
     activeKey: { id: 'k2025', secret: 'super-secret-active' },
     previousKeys: overrides.previousKeys ?? [],
     ttlSeconds: overrides.ttlSeconds ?? 60 * 60,
-    now: now,
+    nowFns: now,
   });
 }
 
@@ -97,7 +97,7 @@ describe('CursorService', () => {
     const oldSvc = new CursorService({
       activeKey: oldKey,
       ttlSeconds: 60 * 60,
-      now: () => 1700000000000,
+      nowFns: () => 1700000000000,
     });
     const cursor = oldSvc.encode({ ...baseBinding, position: '42' });
     const newSvc = makeService({ previousKeys: [oldKey] });
