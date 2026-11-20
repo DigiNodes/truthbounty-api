@@ -4,6 +4,14 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager, QueryRunner } from 'typeorm';
 import { buildPoolConfig, PoolConfig } from './pool.config';
 
+/** Mirrors TypeORM's IsolationLevel without a deep package import. */
+export type TransactionIsolationLevel =
+  | 'READ UNCOMMITTED'
+  | 'READ COMMITTED'
+  | 'REPEATABLE READ'
+  | 'SERIALIZABLE'
+  | 'SNAPSHOT';
+
 /**
  * Callback signature for transactional operations.
  *
@@ -96,17 +104,23 @@ export class TransactionRunner {
    *   queries within the callback.
    * @param options.deadlineMs - Optional override for the transaction
    *   deadline (clamped to the configured maximum).
+   * @param options.isolationLevel - Optional isolation level. Read-side
+   *   projections use `REPEATABLE READ` so several queries observe one
+   *   committed snapshot.
    * @returns The return value of `callback`.
    */
   async run<T>(
     callback: TransactionCallback<T>,
-    options: { deadlineMs?: number } = {},
+    options: {
+      deadlineMs?: number;
+      isolationLevel?: TransactionIsolationLevel;
+    } = {},
   ): Promise<T> {
     const deadlineMs = this.resolveDeadline(options.deadlineMs);
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await this.applyTimeouts(queryRunner);
-    await queryRunner.startTransaction();
+    await queryRunner.startTransaction(options.isolationLevel);
 
     let deadlineTimer: NodeJS.Timeout | undefined;
     const deadlinePromise = new Promise<never>((_, reject) => {
