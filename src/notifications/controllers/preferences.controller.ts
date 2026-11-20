@@ -8,14 +8,22 @@ import {
   Param,
   UseGuards,
   Logger,
+  BadRequestException,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
-import { CurrentUser } from '../../auth/decorators/current-user.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { PreferenceEnforcer } from '../services/preference-enforcer.service';
 import { NotificationPreference } from '../entities/notification-preference.entity';
-import { DeliveryChannel } from '../interfaces/notification.types';
 import { requireDeliveryChannel } from '../delivery/delivery-channel';
+import { validateWebhookDestination } from '../delivery/webhook-ssrf.guard';
+
+import { ConfigService } from '@nestjs/config';
 
 @ApiTags('Notifications - Preferences')
 @Controller('api/v2/notifications/preferences')
@@ -23,8 +31,17 @@ import { requireDeliveryChannel } from '../delivery/delivery-channel';
 @ApiBearerAuth()
 export class PreferencesController {
   private readonly logger = new Logger(PreferencesController.name);
+  private readonly requireHttps: boolean;
 
-  constructor(private preferenceEnforcer: PreferenceEnforcer) {}
+  constructor(
+    private preferenceEnforcer: PreferenceEnforcer,
+    private configService: ConfigService,
+  ) {
+    this.requireHttps = this.configService.get<boolean>(
+      'WEBHOOK_REQUIRE_HTTPS',
+      true,
+    );
+  }
 
   /**
    * Get user notification preferences
@@ -36,7 +53,9 @@ export class PreferencesController {
     description: 'User preferences',
     type: NotificationPreference,
   })
-  async getPreferences(@CurrentUser('id') userId: string): Promise<NotificationPreference> {
+  async getPreferences(
+    @CurrentUser('id') userId: string,
+  ): Promise<NotificationPreference> {
     this.logger.debug(`Fetching preferences for user ${userId}`);
     return this.preferenceEnforcer.getPreferences(userId);
   }
@@ -114,7 +133,9 @@ export class PreferencesController {
    */
   @Delete('quiet-hours')
   @ApiOperation({ summary: 'Disable quiet hours' })
-  async disableQuietHours(@CurrentUser('id') userId: string): Promise<NotificationPreference> {
+  async disableQuietHours(
+    @CurrentUser('id') userId: string,
+  ): Promise<NotificationPreference> {
     const prefs = await this.preferenceEnforcer.getPreferences(userId);
     prefs.quietHours = { enabled: false };
     return this.preferenceEnforcer.updatePreferences(userId, prefs);
@@ -156,6 +177,11 @@ export class PreferencesController {
 
   /**
    * Configure webhook
+   *
+   * The destination URL is validated against the public-destination SSRF
+   * policy before it is persisted. Validation is repeated at delivery time in
+   * `WebhookChannel.send()` because DNS records change; save-time validation
+   * fails fast and prevents storing a destination that can never be reached.
    */
   @Post('webhook')
   @ApiOperation({ summary: 'Configure webhook' })
@@ -168,6 +194,15 @@ export class PreferencesController {
       events?: string[];
     },
   ): Promise<NotificationPreference> {
+    if (webhookConfig?.url) {
+      const result = await validateWebhookDestination(webhookConfig.url, {
+        requireHttps: this.requireHttps,
+      });
+      if (!result.valid) {
+        throw new BadRequestException(result.error ?? 'Invalid webhook URL');
+      }
+    }
+
     const prefs = await this.preferenceEnforcer.getPreferences(userId);
     prefs.webhookConfig = webhookConfig;
     return this.preferenceEnforcer.updatePreferences(userId, prefs);
@@ -178,7 +213,9 @@ export class PreferencesController {
    */
   @Delete('webhook')
   @ApiOperation({ summary: 'Remove webhook' })
-  async removeWebhook(@CurrentUser('id') userId: string): Promise<NotificationPreference> {
+  async removeWebhook(
+    @CurrentUser('id') userId: string,
+  ): Promise<NotificationPreference> {
     const prefs = await this.preferenceEnforcer.getPreferences(userId);
     prefs.webhookConfig = null;
     return this.preferenceEnforcer.updatePreferences(userId, prefs);

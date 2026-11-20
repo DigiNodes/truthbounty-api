@@ -1,19 +1,45 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
-import { NotificationChannel, ChannelDeliveryResult, RenderedNotificationPayload } from './channel.interface';
+import * as http from 'http';
+import * as https from 'https';
+import type { LookupFunction } from 'net';
+import {
+  NotificationChannel,
+  ChannelDeliveryResult,
+  RenderedNotificationPayload,
+} from './channel.interface';
 import { PreferenceEnforcer } from '../services/preference-enforcer.service';
 import { DeliveryChannel } from '../interfaces/notification.types';
 import { narrowDeliveryError } from '../delivery/delivery-error';
+import {
+  validateWebhookDestination,
+  createValidatingDnsLookup,
+  DEFAULT_WEBHOOK_PORTS,
+  type WebhookUrlOptions,
+} from '../delivery/webhook-ssrf.guard';
 import { firstValueFrom } from 'rxjs';
 import { timeout } from 'rxjs/operators';
 import * as crypto from 'crypto';
 
 /**
  * WebhookChannel
- * 
+ *
  * Delivers notifications via HTTP POST to user-configured webhooks.
- * 
+ *
+ * SSRF protection (see `src/notifications/delivery/webhook-ssrf.guard.ts`):
+ * - Destination policy (public IPs only, no loopback/private/link-local/
+ *   multicast/reserved/metadata) is enforced at delivery time, not just save
+ *   time, because DNS records change.
+ * - A validating DNS lookup is installed on the request agent so the *exact*
+ *   addresses the socket connects to are validated at connection time. This
+ *   closes the DNS-rebinding window between resolve and dial.
+ * - Redirects are disabled (`maxRedirects: 0`) and 3xx responses are rejected.
+ *   The HMAC signature header is therefore never forwarded to a host the
+ *   destination policy never approved.
+ * - Response size and timeouts are bounded.
+ * - Event filtering per webhook.
+ *
  * Features:
  * - HTTPS validation (production only)
  * - HMAC-SHA256 signature verification
@@ -29,6 +55,8 @@ export class WebhookChannel implements NotificationChannel {
 
   private readonly webhookTimeout: number;
   private readonly requireHttps: boolean;
+  private readonly maxResponseBytes: number;
+  private readonly allowedPorts: readonly number[];
 
   constructor(
     private httpService: HttpService,
@@ -43,15 +71,46 @@ export class WebhookChannel implements NotificationChannel {
       'WEBHOOK_REQUIRE_HTTPS',
       true,
     );
+    // Bound the response body so a malicious receiver cannot exhaust memory
+    // via an unbounded (possibly decompressed) stream. axios `maxContentLength`
+    // is checked against the decompressed content length in the http adapter.
+    this.maxResponseBytes = this.configService.get<number>(
+      'WEBHOOK_MAX_RESPONSE_BYTES',
+      256 * 1024, // 256 KiB
+    );
+    const configuredPorts = this.configService.get<string>(
+      'WEBHOOK_ALLOWED_PORTS',
+    );
+    this.allowedPorts = configuredPorts
+      ? configuredPorts
+          .split(',')
+          .map((p) => Number.parseInt(p.trim(), 10))
+          .filter((p) => Number.isFinite(p))
+      : DEFAULT_WEBHOOK_PORTS;
+  }
+
+  /**
+   * Build the shared SSRF validation options from channel configuration.
+   * Exposed so tests and callers use the same option set.
+   */
+  private ssrfOptions(): WebhookUrlOptions {
+    return {
+      requireHttps: this.requireHttps,
+      allowedPorts: this.allowedPorts,
+    };
   }
 
   async isEnabled(userId: string): Promise<boolean> {
-    return this.preferenceEnforcer.isChannelEnabled(userId, 'WEBHOOK' as any);
+    return this.preferenceEnforcer.isChannelEnabled(userId, 'WEBHOOK');
   }
 
-  async send(payload: RenderedNotificationPayload): Promise<ChannelDeliveryResult> {
+  async send(
+    payload: RenderedNotificationPayload,
+  ): Promise<ChannelDeliveryResult> {
     try {
-      const preferences = await this.preferenceEnforcer.getPreferences(payload.userId);
+      const preferences = await this.preferenceEnforcer.getPreferences(
+        payload.userId,
+      );
 
       if (!preferences.webhookConfig?.url) {
         return {
@@ -73,15 +132,25 @@ export class WebhookChannel implements NotificationChannel {
         return { success: true, deliveryTimestamp: new Date() };
       }
 
-      // Validate URL
-      if (!this.isValidWebhookUrl(webhookUrl)) {
+      // Re-validate the destination at delivery time. DNS records and redirect
+      // behavior can change between save and delivery, so the policy is applied
+      // here as well as when the webhook is configured. The per-address DNS
+      // lookup installed on the agent below is the authoritative rebinding guard.
+      const destination = await validateWebhookDestination(
+        webhookUrl,
+        this.ssrfOptions(),
+      );
+      if (!destination.valid) {
+        this.logger.warn(
+          `Webhook destination rejected for user ${payload.userId}: ${destination.error}`,
+        );
         return {
           success: false,
-          error: 'Invalid webhook URL',
+          error: 'Invalid webhook destination',
         };
       }
 
-      // Build webhook payload
+      // Build webhook payload (kept minimal; no secrets or unnecessary PII).
       const webhookPayload = {
         event: payload.eventType,
         timestamp: new Date().toISOString(),
@@ -110,13 +179,54 @@ export class WebhookChannel implements NotificationChannel {
         headers['X-Webhook-Signature'] = `sha256=${signature}`;
       }
 
-      // Send webhook
-      const webhookTimeout = preferences.webhookConfig.timeout || this.webhookTimeout;
+      // Install a validating DNS lookup on a fresh, non-pooled agent so the
+      // socket only ever connects to validated addresses. The lookup validates
+      // at connection time, defeating DNS rebinding. A fresh agent per request
+      // also prevents a poisoned pooled connection from being reused.
+      //
+      // The guard's lookup is structurally a Node `LookupFunction` but is
+      // typed permissively (callback receives `string | LookupAddress[] | null`
+      // on the error path) for test ergonomics; assert it to the agent's
+      // expected `LookupFunction` at this single integration point.
+      const isHttps = webhookUrl.toLowerCase().startsWith('https://');
+      const validatingLookup =
+        createValidatingDnsLookup() as unknown as LookupFunction;
+      const agent = isHttps
+        ? new https.Agent({ lookup: validatingLookup, keepAlive: false })
+        : new http.Agent({ lookup: validatingLookup, keepAlive: false });
+
+      const webhookTimeout =
+        preferences.webhookConfig.timeout || this.webhookTimeout;
+
+      // Send webhook. Redirects are disabled (`maxRedirects: 0`); any 3xx is
+      // rejected below. This guarantees the signature header is never forwarded
+      // to a host the destination policy did not approve. Response size and the
+      // overall request are bounded.
       const response = await firstValueFrom(
         this.httpService
-          .post(webhookUrl, webhookPayload, { headers })
+          .post(webhookUrl, webhookPayload, {
+            headers,
+            maxRedirects: 0,
+            maxContentLength: this.maxResponseBytes,
+            maxBodyLength: this.maxResponseBytes,
+            timeout: webhookTimeout,
+            ...(isHttps ? { httpsAgent: agent } : { httpAgent: agent }),
+          })
           .pipe(timeout(webhookTimeout)),
       );
+
+      // Reject redirects. Because maxRedirects is 0 the signature was sent only
+      // to the validated destination; we must not follow the Location target.
+      if (response.status >= 300 && response.status < 400) {
+        this.logger.warn(
+          `Webhook returned a redirect (${response.status}); redirects are not allowed`,
+        );
+        return {
+          success: false,
+          error:
+            'Webhook destination attempted a redirect, which is not allowed',
+        };
+      }
 
       this.logger.debug(
         `Webhook sent to ${webhookUrl} for ${payload.userId} (status: ${response.status})`,
@@ -145,7 +255,9 @@ export class WebhookChannel implements NotificationChannel {
     }
   }
 
-  async validateConfig(userId: string): Promise<{ valid: boolean; errors: string[] }> {
+  async validateConfig(
+    userId: string,
+  ): Promise<{ valid: boolean; errors: string[] }> {
     const errors: string[] = [];
 
     const preferences = await this.preferenceEnforcer.getPreferences(userId);
@@ -158,37 +270,14 @@ export class WebhookChannel implements NotificationChannel {
 
     if (!url) {
       errors.push('Webhook URL is required');
-    } else if (!this.isValidWebhookUrl(url)) {
-      if (this.requireHttps && !url.startsWith('https://')) {
-        errors.push('Webhook URL must use HTTPS');
-      } else if (!url.startsWith('http://') && !url.startsWith('https://')) {
-        errors.push('Webhook URL must be a valid HTTP URL');
+    } else {
+      // Full validation: structural policy + DNS resolution + per-address check.
+      const result = await validateWebhookDestination(url, this.ssrfOptions());
+      if (!result.valid) {
+        errors.push(result.error ?? 'Invalid webhook URL');
       }
     }
 
     return { valid: errors.length === 0, errors };
-  }
-
-  /**
-   * Validate webhook URL format
-   */
-  private isValidWebhookUrl(url: string): boolean {
-    try {
-      const parsed = new URL(url);
-
-      // HTTPS required in production
-      if (this.requireHttps && parsed.protocol !== 'https:') {
-        return false;
-      }
-
-      // Allow http or https
-      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-        return false;
-      }
-
-      return true;
-    } catch {
-      return false;
-    }
   }
 }
