@@ -86,7 +86,19 @@
  * │ POST   /identity/users/:id/wallets              │ AUTHN (any authenticated user)           │
  * │ DELETE /identity/users/:id/wallets/:chain/:addr │ AUTHN (any authenticated user)           │
  * │ POST   /identity/users/:id/verify-worldcoin     │ AUTHN (any authenticated user)           │
- * │ GET    /identity/users/:id/sybil-score          │ PUBLIC                                   │
+ * │ GET    /identity/users/:id/sybil-score          │ PUBLIC (sanitized public view)           │
+ * ├─────────────────────────────────────────────────┼──────────────────────────────────────────┤
+ * │ GET    /sybil/users/:userId/public-score        │ PUBLIC                                   │
+ * │ GET    /sybil/models                            │ PUBLIC                                   │
+ * │ GET    /sybil/users/:userId/score               │ AUTHN + (OWNER or ROLE(moderator,admin)) │
+ * │ GET    /sybil/users/:userId/history             │ AUTHN + (OWNER or ROLE(moderator,admin)) │
+ * │ GET    /sybil/users/:userId/appeals             │ AUTHN + (OWNER or ROLE(moderator,admin)) │
+ * │ GET    /sybil/users/:userId/voting              │ SERVICE (x-service-api-key)              │
+ * │ POST   /sybil/users/:userId/score               │ AUTHN + (OWNER or ROLE(moderator,admin)) │
+ * │ POST   /sybil/users/:userId/recompute           │ AUTHN + (OWNER or ROLE(moderator,admin)) │
+ * │ POST   /sybil/users/:userId/appeal              │ AUTHN + (OWNER or ROLE(moderator,admin)) │
+ * │ POST   /sybil/users/:userId/verify-worldcoin     │ ROLE(admin)                              │
+ * │ POST   /sybil/recalculate-all                   │ ROLE(admin)                              │
  * ├─────────────────────────────────────────────────┼──────────────────────────────────────────┤
  * │ GET    /audit/*                                 │ ADMIN(auditor)                           │
  * │ POST   /audit/export                            │ ADMIN(auditor)                           │

@@ -23,8 +23,10 @@ import {
   StaleFeatureException,
   SybilAppealRecord,
   SybilAppealRequestDto,
+  SybilModelConfig,
   SybilScoreComputationResult,
   SybilSignals,
+  SybilVotingScoreDto,
 } from './sybil-resistance.types';
 
 @Injectable()
@@ -628,17 +630,22 @@ Final score: ${composite.toFixed(4)} (weighted average)`,
   }
 
   /**
-   * Get all Sybil score history for a user
+   * PREWAVE-BE-150: Get all Sybil score history for a user with bounded pagination
    */
   async getSybilScoreHistory(
     userId: string,
     limit: number = 10,
+    offset?: number,
   ): Promise<any[]> {
-    return this.prisma.sybilScore.findMany({
+    const findArgs: any = {
       where: { userId },
       orderBy: { createdAt: 'desc' },
       take: limit,
-    });
+    };
+    if (offset !== undefined && offset > 0) {
+      findArgs.skip = offset;
+    }
+    return this.prisma.sybilScore.findMany(findArgs);
   }
 
   /**
@@ -698,19 +705,30 @@ Final score: ${composite.toFixed(4)} (weighted average)`,
   }
 
   /**
-   * Get Sybil score with metadata for verification/voting engines
+   * PREWAVE-BE-150: Get Sybil score formatted for voting/verification engines
+   * Sanitizes calculationDetails so sensitiveData is never leaked
    */
   async getSybilScoreForVoting(userId: string): Promise<{
     userId: string;
     score: number;
     isVerified: boolean;
-    details: any;
+    details?: any;
   }> {
     const score = await this.getLatestSybilScore(userId);
 
-    const details = score.calculationDetails
+    let details = score.calculationDetails
       ? JSON.parse(score.calculationDetails)
       : null;
+    if (details) {
+      details = this.provenanceService.stripSensitiveFields(details);
+      if (details.featureProvenance) {
+        for (const prov of Object.values(details.featureProvenance) as any[]) {
+          if (prov && typeof prov === 'object') {
+            delete prov.sensitiveData;
+          }
+        }
+      }
+    }
     if (details && !details.explanation) {
       try {
         const expl = await this.prisma.sybilExplanation.findFirst({

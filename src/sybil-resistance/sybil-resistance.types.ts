@@ -234,3 +234,103 @@ export class UnauthorizedProvenanceException extends BadRequestException {
     super(`Unauthorized provenance: ${message}`);
   }
 }
+
+/**
+ * PREWAVE-BE-150: Sanitized Feature Provenance (strictly redacting sensitiveData)
+ */
+export interface SanitizedFeatureProvenance {
+  featureName:
+    | 'worldcoin'
+    | 'wallet_age'
+    | 'staking'
+    | 'accuracy'
+    | (string & {});
+  source: 'canonical_chain' | 'world_id' | 'wallet_registry' | 'claims_history';
+  observedAt: string;
+  freshnessMs: number;
+  isStale: boolean;
+  isMissing: boolean;
+  details: Record<string, any>;
+  // sensitiveData (nullifierHash, proof, walletAddresses) is strictly EXCLUDED!
+}
+
+/**
+ * PREWAVE-BE-150: Sanitized Calculation Details
+ */
+export interface SanitizedCalculationDetails {
+  version: string;
+  worldcoinWeight?: number;
+  walletAgeWeight?: number;
+  stakingWeight?: number;
+  accuracyWeight?: number;
+  componentScores: {
+    worldcoin: number;
+    walletAge: number;
+    staking: number;
+    accuracy: number;
+  };
+  timestamp: string;
+  explanation: string;
+  riskScore: number;
+  riskLevel: SybilRiskLevel;
+  provenanceDigest: string;
+  missingFeatures: string[];
+  staleFeatures: string[];
+  featureProvenance?: Record<string, SanitizedFeatureProvenance>;
+}
+
+/**
+ * PREWAVE-BE-150: Dedicated Sanitized Sybil Score Response DTO
+ */
+export interface SanitizedSybilScoreDto {
+  id?: string;
+  userId?: string;
+  compositeScore: number;
+  worldcoinScore?: number;
+  walletAgeScore?: number;
+  stakingScore?: number;
+  accuracyScore?: number;
+  createdAt?: Date | string;
+  details?: SanitizedCalculationDetails;
+}
+
+/**
+ * PREWAVE-BE-150: Dedicated Sanitized Sybil Appeal Response DTO
+ */
+export interface SanitizedSybilAppealDto {
+  appealId: string;
+  userId: string;
+  status: AppealStatus;
+  reason: string;
+  previousScore: number;
+  previousRiskScore: number;
+  newScore: number;
+  newRiskScore: number;
+  modelVersion: string;
+  recomputedAt: string;
+  provenanceDigest: string;
+  // additionalEvidenceSummary is excluded from public/owner response
+}
+
+/**
+ * PREWAVE-BE-150: Minimal Voting Engine Response DTO
+ */
+export interface SybilVotingScoreDto {
+  userId: string;
+  score: number;
+  isVerified: boolean;
+}
+
+/**
+ * PREWAVE-BE-150: Sanitized Sybil Score Computation Result DTO
+ */
+export interface SanitizedSybilScoreComputationResult {
+  score: number;
+  riskScore: number;
+  riskLevel: SybilRiskLevel;
+  version: string;
+  provenanceDigest: string;
+  missingFeatures: string[];
+  staleFeatures: string[];
+  details: SanitizedCalculationDetails;
+}

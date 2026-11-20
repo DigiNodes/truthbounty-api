@@ -5,8 +5,15 @@ import {
   FeatureProvenance,
   InvalidFeatureBoundsException,
   PublicSybilScoreView,
+  SanitizedCalculationDetails,
+  SanitizedFeatureProvenance,
+  SanitizedSybilAppealDto,
+  SanitizedSybilScoreComputationResult,
+  SanitizedSybilScoreDto,
+  SybilAppealRecord,
   SybilScoreComputationResult,
   SybilSignals,
+  SybilVotingScoreDto,
   UnauthorizedProvenanceException,
 } from './sybil-resistance.types';
 
@@ -401,5 +408,192 @@ export class SybilProvenanceService {
     this.logger.debug(
       'Contract outcome immutability validated: Score is read-only projection',
     );
+  }
+
+  /**
+   * PREWAVE-BE-150: Deeply strip sensitive identity and wallet keys from an object
+   * GUARANTEE: nullifierHash, proof, walletAddresses, sensitiveData never escape
+   */
+  public stripSensitiveFields(obj: any): any {
+    if (!obj || typeof obj !== 'object') {
+      return obj;
+    }
+    if (Array.isArray(obj)) {
+      return obj.map((item) => this.stripSensitiveFields(item));
+    }
+    const clean: Record<string, any> = {};
+    const SENSITIVE_KEYS = new Set([
+      'nullifierHash',
+      'nullifier_hash',
+      'proof',
+      'walletAddresses',
+      'wallet_addresses',
+      'sensitiveData',
+      'sensitive_data',
+    ]);
+    for (const [k, v] of Object.entries(obj)) {
+      if (!SENSITIVE_KEYS.has(k)) {
+        clean[k] = this.stripSensitiveFields(v);
+      }
+    }
+    return clean;
+  }
+
+  /**
+   * PREWAVE-BE-150: Sanitize calculation details by redacting sensitiveData from feature provenance
+   */
+  public sanitizeCalculationDetails(raw: any): SanitizedCalculationDetails {
+    let details: any = raw;
+    if (typeof raw === 'string') {
+      try {
+        details = JSON.parse(raw);
+      } catch {
+        return {
+          version: 'unknown',
+          componentScores: {
+            worldcoin: 0,
+            walletAge: 0,
+            staking: 0,
+            accuracy: 0,
+          },
+          timestamp: new Date().toISOString(),
+          explanation: '',
+          riskScore: 0,
+          riskLevel: 'LOW',
+          provenanceDigest: '',
+          missingFeatures: [],
+          staleFeatures: [],
+        };
+      }
+    }
+
+    if (!details || typeof details !== 'object') {
+      return details;
+    }
+
+    const sanitizedFeatureProvenance: Record<string, SanitizedFeatureProvenance> = {};
+    if (
+      details.featureProvenance &&
+      typeof details.featureProvenance === 'object'
+    ) {
+      for (const [key, prov] of Object.entries(details.featureProvenance)) {
+        if (prov && typeof prov === 'object') {
+          const { sensitiveData, ...rest } = prov as any;
+          sanitizedFeatureProvenance[key] = {
+            ...rest,
+            details: this.stripSensitiveFields(rest.details),
+          };
+        }
+      }
+    }
+
+    return {
+      version: details.version || '1.0.0',
+      worldcoinWeight: details.worldcoinWeight,
+      walletAgeWeight: details.walletAgeWeight,
+      stakingWeight: details.stakingWeight,
+      accuracyWeight: details.accuracyWeight,
+      componentScores: details.componentScores || {
+        worldcoin: 0,
+        walletAge: 0,
+        staking: 0,
+        accuracy: 0,
+      },
+      timestamp: details.timestamp || new Date().toISOString(),
+      explanation: details.explanation || '',
+      riskScore: details.riskScore ?? 0,
+      riskLevel: details.riskLevel ?? 'LOW',
+      provenanceDigest: details.provenanceDigest || '',
+      missingFeatures: details.missingFeatures || [],
+      staleFeatures: details.staleFeatures || [],
+      featureProvenance: sanitizedFeatureProvenance,
+    };
+  }
+
+  /**
+   * PREWAVE-BE-150: Convert a raw Prisma score or computation entity into a SanitizedSybilScoreDto
+   */
+  public toSanitizedScoreDto(score: any): SanitizedSybilScoreDto {
+    if (!score || typeof score !== 'object') {
+      return score;
+    }
+
+    const result: SanitizedSybilScoreDto = {
+      compositeScore: score.compositeScore ?? score.score ?? 0,
+    };
+
+    if (score.id !== undefined) result.id = score.id;
+    if (score.userId !== undefined) result.userId = score.userId;
+    if (score.worldcoinScore !== undefined)
+      result.worldcoinScore = score.worldcoinScore;
+    if (score.walletAgeScore !== undefined)
+      result.walletAgeScore = score.walletAgeScore;
+    if (score.stakingScore !== undefined)
+      result.stakingScore = score.stakingScore;
+    if (score.accuracyScore !== undefined)
+      result.accuracyScore = score.accuracyScore;
+    if (score.createdAt !== undefined) result.createdAt = score.createdAt;
+
+    if (score.calculationDetails) {
+      result.details = this.sanitizeCalculationDetails(score.calculationDetails);
+    } else if (score.details) {
+      result.details = this.sanitizeCalculationDetails(score.details);
+    }
+
+    return result;
+  }
+
+  /**
+   * PREWAVE-BE-150: Convert an appeal record into SanitizedSybilAppealDto (excluding private evidence)
+   */
+  public toSanitizedAppealDto(appeal: any): SanitizedSybilAppealDto {
+    if (!appeal || typeof appeal !== 'object') {
+      return appeal;
+    }
+    return {
+      appealId: appeal.appealId,
+      userId: appeal.userId,
+      status: appeal.status,
+      reason: appeal.reason,
+      previousScore: appeal.previousScore,
+      previousRiskScore: appeal.previousRiskScore,
+      newScore: appeal.newScore,
+      newRiskScore: appeal.newRiskScore,
+      modelVersion: appeal.modelVersion,
+      recomputedAt: appeal.recomputedAt,
+      provenanceDigest: appeal.provenanceDigest,
+    };
+  }
+
+  /**
+   * PREWAVE-BE-150: Minimal, restricted voting engine score view
+   */
+  public toVotingScoreDto(score: any): SybilVotingScoreDto {
+    if (!score || typeof score !== 'object') {
+      return { userId: '', score: 0, isVerified: false };
+    }
+    return {
+      userId: score.userId || '',
+      score: score.score ?? score.compositeScore ?? 0,
+      isVerified: Boolean(score.isVerified ?? (score.worldcoinScore > 0)),
+    };
+  }
+
+  /**
+   * PREWAVE-BE-150: Convert SybilScoreComputationResult to sanitized result
+   */
+  public toSanitizedScoreComputationResult(
+    result: SybilScoreComputationResult,
+  ): SanitizedSybilScoreComputationResult {
+    return {
+      score: result.score,
+      riskScore: result.riskScore,
+      riskLevel: result.riskLevel,
+      version: result.version,
+      provenanceDigest: result.provenanceDigest,
+      missingFeatures: result.missingFeatures,
+      staleFeatures: result.staleFeatures,
+      details: this.sanitizeCalculationDetails(result.details),
+    };
   }
 }
