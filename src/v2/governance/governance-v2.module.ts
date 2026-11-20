@@ -14,6 +14,7 @@ import { GovernanceReadController } from './governance-read.controller';
 
 import { ArtifactRegistryService } from '../events/artifact-registry.service';
 import { ContractArtifact } from '../events/entities/contract-artifact.entity';
+import { DatabaseModule } from '../../database/database.module';
 
 /**
  * GovernanceV2Module — V2-BE-067
@@ -33,6 +34,9 @@ import { ContractArtifact } from '../events/entities/contract-artifact.entity';
  */
 @Module({
   imports: [
+    // Shared TypeORM transaction helper (V2-BE-111). No new DataSource or
+    // competing persistence authority is introduced here.
+    DatabaseModule,
     TypeOrmModule.forFeature([
       GovernanceProposal,
       GovernanceAction,

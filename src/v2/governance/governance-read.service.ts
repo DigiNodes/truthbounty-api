@@ -18,6 +18,7 @@ import {
   ProposalTimelockReadModel,
   RoleChangeReadModel,
 } from './interfaces/governance-read-model.interface';
+import { TransactionRunner } from '../../database/transaction.runner';
 
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 100;
@@ -49,6 +50,7 @@ export class GovernanceReadService {
     private readonly votes: Repository<ProposalVote>,
     @InjectRepository(RoleChange)
     private readonly roleChanges: Repository<RoleChange>,
+    private readonly transactionRunner: TransactionRunner,
   ) {}
 
   // ── Proposal detail ─────────────────────────────────────────────────────
@@ -57,38 +59,47 @@ export class GovernanceReadService {
     chainId: number,
     proposalId: string,
   ): Promise<GovernanceProposalReadModel> {
-    const row = await this.proposals.findOne({
-      where: { chainId, proposalId },
-    });
-    if (!row) {
-      throw new NotFoundException(
-        `Proposal ${proposalId} not found on chain ${chainId}`,
-      );
-    }
+    // All three reads share one REPEATABLE READ snapshot. A projector cannot
+    // commit a half-replaced action set between the proposal read and the
+    // action read: this request sees either the old or the new projection.
+    return this.transactionRunner.run(async (manager) => {
+      const proposalRepo = manager.getRepository(GovernanceProposal);
+      const actionRepo = manager.getRepository(GovernanceAction);
+      const voteRepo = manager.getRepository(ProposalVote);
 
-    const [actions, voteTotals] = await Promise.all([
-      this.actions.find({
+      const row = await proposalRepo.findOne({
         where: { chainId, proposalId },
-        order: { actionIndex: 'ASC' },
-      }),
-      this.computeVoteTotals(chainId, proposalId),
-    ]);
+      });
+      if (!row) {
+        throw new NotFoundException(
+          `Proposal ${proposalId} not found on chain ${chainId}`,
+        );
+      }
 
-    return {
-      chainId: row.chainId,
-      proposalId: row.proposalId,
-      governorAddress: row.governorAddress,
-      proposer: row.proposer,
-      proposalHash: row.proposalHash,
-      description: row.description,
-      state: row.state,
-      eta: row.eta,
-      stateChangedAtBlock: row.stateChangedAtBlock,
-      stateChangedAt: row.stateChangedAt,
-      artifactVersion: row.artifactVersion,
-      actions: actions.map(this.toActionReadModel),
-      voteTotals,
-    };
+      const [actions, voteTotals] = await Promise.all([
+        actionRepo.find({
+          where: { chainId, proposalId },
+          order: { actionIndex: 'ASC' },
+        }),
+        this.computeVoteTotals(voteRepo, chainId, proposalId),
+      ]);
+
+      return {
+        chainId: row.chainId,
+        proposalId: row.proposalId,
+        governorAddress: row.governorAddress,
+        proposer: row.proposer,
+        proposalHash: row.proposalHash,
+        description: row.description,
+        state: row.state,
+        eta: row.eta,
+        stateChangedAtBlock: row.stateChangedAtBlock,
+        stateChangedAt: row.stateChangedAt,
+        artifactVersion: row.artifactVersion,
+        actions: actions.map(this.toActionReadModel),
+        voteTotals,
+      };
+    }, { isolationLevel: 'REPEATABLE READ' });
   }
 
   // ── Proposal list (cursor pagination) ──────────────────────────────────
@@ -238,6 +249,7 @@ export class GovernanceReadService {
   // ── Helpers ─────────────────────────────────────────────────────────────
 
   private async computeVoteTotals(
+    voteRepo: Repository<ProposalVote>,
     chainId: number,
     proposalId: string,
   ): Promise<{
@@ -246,7 +258,7 @@ export class GovernanceReadService {
     abstain: string;
     voters: number;
   }> {
-    const rows = await this.votes.find({ where: { chainId, proposalId } });
+    const rows = await voteRepo.find({ where: { chainId, proposalId } });
     let forSum = 0n;
     let againstSum = 0n;
     let abstainSum = 0n;

@@ -14,6 +14,7 @@ import { RoleChange, RoleChangeKind } from './entities/role-change.entity';
 import { CanonicalEvent } from '../events/entities/canonical-event.entity';
 import { ArtifactRegistryService } from '../events/artifact-registry.service';
 import { ProposalDecoderService } from './proposal-decoder.service';
+import { TransactionRunner } from '../../database/transaction.runner';
 
 /**
  * GovernanceProjectionService — V2-BE-067
@@ -29,6 +30,8 @@ import { ProposalDecoderService } from './proposal-decoder.service';
  *   - ABI change is detected by comparing the event's artifactVersion to the
  *     version recorded on the proposal row; a mismatch marks the row stale
  *     rather than silently reinterpreting.
+ *   - ProposalCreated is one atomic projection: the proposal row and its
+ *     complete action set are committed together, or not at all.
  */
 @Injectable()
 export class GovernanceProjectionService {
@@ -47,6 +50,7 @@ export class GovernanceProjectionService {
     private readonly events: Repository<CanonicalEvent>,
     private readonly artifactRegistry: ArtifactRegistryService,
     private readonly decoder: ProposalDecoderService,
+    private readonly transactionRunner: TransactionRunner,
   ) {}
 
   /**
@@ -129,6 +133,7 @@ export class GovernanceProjectionService {
 
   private async projectProposalCreated(
     event: CanonicalEvent,
+    force = false,
   ): Promise<'applied' | 'duplicate' | 'stale_artifact'> {
     const proposalId = this.readBigInt(event, 'proposalId');
     if (proposalId === null) {
@@ -141,41 +146,30 @@ export class GovernanceProjectionService {
     const existing = await this.proposals.findOne({
       where: { chainId: event.chainId, proposalId },
     });
-    if (existing && existing.lastEventTxHash === event.txHash &&
-        existing.lastEventLogIndex === event.logIndex) {
+    if (!force && existing && this.isFullyApplied(existing, event)) {
       return 'duplicate';
     }
 
     const targets = this.readStringArray(event, 'targets');
     const values = this.readStringArray(event, 'values');
     const calldatas = this.readStringArray(event, 'calldatas');
+    if (
+      targets.length !== values.length ||
+      targets.length !== calldatas.length
+    ) {
+      this.logger.warn(
+        `ProposalCreated event ${event.txHash}:${event.logIndex} has mismatched action arrays; refusing to project`,
+      );
+      return 'skipped' as never;
+    }
+
     const descriptionHash = this.readString(event, 'descriptionHash');
     const description = this.readString(event, 'description');
     const proposer = this.readAddress(event, 'proposer') ?? '0x0';
 
-    // Decode every call against the approved ABI for its target.
-    const proposalRow = await this.upsertProposal({
-      chainId: event.chainId,
-      proposalId,
-      governorAddress: event.contractAddress,
-      proposer,
-      proposalHash: descriptionHash ?? '',
-      description,
-      state: ProposalChainState.PENDING,
-      eta: null,
-      stateChangedAtBlock: event.blockNumber,
-      stateChangedAt: event.blockTimestamp,
-      artifactVersion: event.artifactVersion,
-      lastEventTxHash: event.txHash,
-      lastEventLogIndex: event.logIndex,
-    });
-
-    // Replace actions atomically for this proposal version.
-    await this.actions.delete({
-      chainId: event.chainId,
-      proposalId,
-    });
-
+    // Decode and validate every call BEFORE any committed row is touched.
+    // A decoding failure must leave the previous projection intact.
+    const decodedActions: Array<Partial<GovernanceAction>> = [];
     for (let i = 0; i < targets.length; i++) {
       const artifact = await this.artifactRegistry.resolve(
         event.chainId,
@@ -187,26 +181,105 @@ export class GovernanceProjectionService {
         calldatas[i] ?? '0x',
         artifact?.iface ?? null,
       );
-      await this.actions.save(
-        this.actions.create({
-          chainId: event.chainId,
-          proposalId,
-          actionIndex: i,
-          target: decoded.target,
-          valueWei: decoded.valueWei,
-          calldata: decoded.calldata,
-          selector: decoded.selector,
-          functionSignature: decoded.functionSignature,
-          selectorUnknown: decoded.selectorUnknown,
-          decodedArgs: decoded.decodedArgs,
-          calldataChecksum: decoded.calldataChecksum,
-          artifactVersion: event.artifactVersion,
-        }),
-      );
+      if (
+        !decoded ||
+        typeof decoded.target !== 'string' ||
+        typeof decoded.valueWei !== 'string' ||
+        typeof decoded.calldata !== 'string' ||
+        typeof decoded.calldataChecksum !== 'string'
+      ) {
+        throw new Error(
+          `Invalid decoded action ${i} for ProposalCreated ${event.txHash}:${event.logIndex}`,
+        );
+      }
+      decodedActions.push({
+        chainId: event.chainId,
+        proposalId,
+        actionIndex: i,
+        target: decoded.target,
+        valueWei: decoded.valueWei,
+        calldata: decoded.calldata,
+        selector: decoded.selector,
+        functionSignature: decoded.functionSignature,
+        selectorUnknown: decoded.selectorUnknown,
+        decodedArgs: decoded.decodedArgs,
+        calldataChecksum: decoded.calldataChecksum,
+        artifactVersion: event.artifactVersion,
+      });
     }
 
+    let applied = false;
+    let projectedRowId: string | undefined;
+    try {
+      await this.transactionRunner.run(async (manager) => {
+        const proposalRepo = manager.getRepository(GovernanceProposal);
+        const actionRepo = manager.getRepository(GovernanceAction);
+
+        // Serialize concurrent projections of the same proposal. For a new
+        // proposal the unique (chainId, proposalId) row is the lock.
+        const locked = await proposalRepo
+          .createQueryBuilder('p')
+          .setLock('pessimistic_write')
+          .where('p.chainId = :chainId', { chainId: event.chainId })
+          .andWhere('p.proposalId = :proposalId', { proposalId })
+          .getOne();
+
+        if (
+          !force &&
+          locked &&
+          this.isFullyApplied(locked, event)
+        ) {
+          applied = false;
+          return;
+        }
+
+        const proposalRow = await this.upsertProposalWithin(proposalRepo, {
+          chainId: event.chainId,
+          proposalId,
+          governorAddress: event.contractAddress,
+          proposer,
+          proposalHash: descriptionHash ?? '',
+          description,
+          state: ProposalChainState.PENDING,
+          eta: null,
+          stateChangedAtBlock: event.blockNumber,
+          stateChangedAt: event.blockTimestamp,
+          artifactVersion: event.artifactVersion,
+          lastEventTxHash: event.txHash,
+          lastEventLogIndex: event.logIndex,
+          createdEventTxHash: event.txHash,
+          createdEventLogIndex: event.logIndex,
+          actionCount: decodedActions.length,
+        });
+
+        // Delete and re-insert inside the same transaction: readers can only
+        // ever observe the previous complete set or the new complete set.
+        await actionRepo.delete({
+          chainId: event.chainId,
+          proposalId,
+        });
+        if (decodedActions.length > 0) {
+          await actionRepo.save(
+            decodedActions.map((action) => actionRepo.create(action)),
+          );
+        }
+        applied = true;
+        projectedRowId = proposalRow.id;
+      });
+    } catch (error) {
+      // A concurrent attempt may have committed the identical projection
+      // while this one waited on the row lock; only that case is a duplicate.
+      const after = await this.proposals.findOne({
+        where: { chainId: event.chainId, proposalId },
+      });
+      if (after && this.isFullyApplied(after, event)) return 'duplicate';
+      throw error;
+    }
+
+    if (!applied) return 'duplicate';
+
     this.logger.log(
-      `Projected ProposalCreated ${proposalId} (${proposalRow.id}) with ${targets.length} call(s)`,
+      `Projected ProposalCreated ${proposalId} (${projectedRowId}) with ${decodedActions.length} call(s)`,
     );
     return 'applied';
   }
@@ -417,13 +490,11 @@ export class GovernanceProjectionService {
       proposal.artifactVersion = lastValidEvent.artifactVersion;
       await this.proposals.save(proposal);
 
-      // Recompute actions in case the abi-version changed.
+      // Recompute actions in case the abi-version changed. The projector
+      // replaces the action set inside one transaction, so the replay cannot
+      // expose a half-rebuilt projection.
       if (lastValidEvent.eventName === 'ProposalCreated') {
-        await this.actions.delete({
-          chainId: proposal.chainId,
-          proposalId: proposal.proposalId,
-        });
-        await this.projectProposalCreated(lastValidEvent);
+        await this.projectProposalCreated(lastValidEvent, true);
       }
     }
 
@@ -434,10 +505,11 @@ export class GovernanceProjectionService {
 
   // ── Helpers ─────────────────────────────────────────────────────────────
 
-  private async upsertProposal(
+  private async upsertProposalWithin(
+    repo: Repository<GovernanceProposal>,
     partial: Partial<GovernanceProposal>,
   ): Promise<GovernanceProposal> {
-    const existing = await this.proposals.findOne({
+    const existing = await repo.findOne({
       where: {
         chainId: partial.chainId!,
         proposalId: partial.proposalId!,
@@ -445,9 +517,27 @@ export class GovernanceProjectionService {
     });
     if (existing) {
       Object.assign(existing, partial);
-      return this.proposals.save(existing);
+      return repo.save(existing);
     }
-    return this.proposals.save(this.proposals.create(partial));
+    return repo.save(repo.create(partial));
+  }
+
+  /**
+   * The exact ProposalCreated event is considered fully applied only when
+   * its identity AND the expected action count are committed on the row.
+   * A proposal marked by the old non-atomic projector fails this check and
+   * is therefore repaired on the next replay.
+   */
+  private isFullyApplied(
+    row: GovernanceProposal,
+    event: CanonicalEvent,
+  ): boolean {
+    const expectedCount = this.readStringArray(event, 'targets').length;
+    return (
+      row.createdEventTxHash === event.txHash &&
+      row.createdEventLogIndex === event.logIndex &&
+      (row.actionCount ?? 0) === expectedCount
+    );
   }
 
   private readBigInt(event: CanonicalEvent, key: string): string | null {

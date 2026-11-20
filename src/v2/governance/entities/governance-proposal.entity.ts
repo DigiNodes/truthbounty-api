@@ -103,6 +103,22 @@ export class GovernanceProposal {
   @Column({ type: 'int' })
   lastEventLogIndex: number;
 
+  /**
+   * Identity of the ProposalCreated event whose full action set is committed.
+   * Kept separate from `lastEvent*` because later lifecycle events advance
+   * that marker without invalidating the already-projected actions.
+   */
+  @Column({ type: 'varchar', length: 66, nullable: true })
+  createdEventTxHash: string | null;
+
+  /** Log index complement of `createdEventTxHash`. */
+  @Column({ type: 'int', nullable: true })
+  createdEventLogIndex: number | null;
+
+  /** Number of action rows committed for `createdEventTxHash`. */
+  @Column({ type: 'int', default: 0 })
+  actionCount: number;
+
   @CreateDateColumn()
   createdAt: Date;
 
