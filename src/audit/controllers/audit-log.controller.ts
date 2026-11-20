@@ -48,6 +48,7 @@ import {
   AuditPaginatedResponse,
   AuditResponse,
 } from '../interfaces/audit-response.interface';
+import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { AdminGuard } from '../../admin/guards/admin.guard';
 import { RolesGuard } from '../../admin/guards/roles.guard';
 import { AuditExportCapabilityGuard } from '../guards/audit-export-capability.guard';
@@ -57,12 +58,13 @@ import { AdminRole } from '../../admin/entities/admin.entity';
 /**
  * AuditController — authorization aligned with the V2 API Authorization Matrix.
  *
- * ALL audit endpoints require admin-plane authentication (AdminGuard + RolesGuard).
+ * ALL audit endpoints require admin-plane authentication (JwtAuthGuard + AdminGuard + RolesGuard).
  *
  * Standard audit queries   → ADMIN(auditor) — minimum role for read access.
  * Legal hold mutations     → ADMIN(administrator) — elevated destructive action.
  * Export / compliance      → ADMIN(auditor).
  * Security events          → ADMIN(security_analyst | administrator | super_admin).
+ * Chain integrity verify   → ADMIN(security_analyst | administrator | super_admin).
  *
  * Rationale: Audit logs contain failed-login events, permission-escalation records,
  * and admin action history. Exposing these to unauthenticated callers would create a
@@ -73,7 +75,7 @@ import { AdminRole } from '../../admin/entities/admin.entity';
 @ApiTags('audit')
 @ApiBearerAuth()
 @Controller('audit')
-@UseGuards(AdminGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, AdminGuard, RolesGuard)
 export class AuditController {
   constructor(
     private readonly auditTrailService: AuditTrailService,
@@ -621,10 +623,21 @@ export class AuditController {
   }
 
   @Get('integrity/chain/verify')
+  @Roles(
+    AdminRole.SUPER_ADMIN,
+    AdminRole.ADMINISTRATOR,
+    AdminRole.SECURITY_ANALYST,
+  )
   @ApiOperation({
     summary:
       'Verify the audit log hash chain is intact (detects tampering, deletion, and reordering)',
   })
+  @ApiResponse({
+    status: 200,
+    description: 'Audit hash chain verification result',
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Admin access required' })
   async verifyChain(
     @Query('fromSequence') fromSequence?: string,
     @Query('toSequence') toSequence?: string,
