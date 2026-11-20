@@ -47,6 +47,12 @@ import { PreferencesController } from './controllers/preferences.controller';
 import { NotificationsQueryController } from './controllers/notifications-query.controller';
 import { EventPublisherController } from './controllers/event-publisher.controller';
 
+// Guards
+import {
+  ServiceOrAdminGuard,
+  ServiceOrJwtAuthGuard,
+} from './guards/event-publisher-auth.guard';
+
 // Existing services
 import { NotificationsService } from './services/notifications.service';
 
@@ -138,6 +144,10 @@ import { NotificationsService } from './services/notifications.service';
     VerificationEventPublisher,
     RewardEventPublisher,
     GovernanceEventPublisher,
+
+    // Guards
+    ServiceOrAdminGuard,
+    ServiceOrJwtAuthGuard,
 
     // Existing services
     NotificationsService,

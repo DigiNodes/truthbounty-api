@@ -1,10 +1,28 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  BadRequestException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, EntityManager } from 'typeorm';
 import { OutboxEvent } from '../../outbox/entities/outbox-event.entity';
-import { PublishEventDto } from '../dto/publish-event.dto';
+import {
+  PublishEventDto,
+  MAX_RECIPIENTS_PER_EVENT,
+  MAX_BATCH_EVENTS,
+  MAX_BATCH_TOTAL_RECIPIENTS,
+} from '../dto/publish-event.dto';
 import { EventType, EVENT_PRIORITY_MAP, PRIORITY_RETRY_CONFIG } from '../enums/event-type.enum';
 import * as crypto from 'crypto';
+
+export interface EventStatusCaller {
+  userId?: string;
+  isAdmin?: boolean;
+  isService?: boolean;
+}
+
+const VALID_EVENT_TYPES = new Set<string>(Object.values(EventType));
 
 /**
  * NotificationEventPublisher
@@ -30,6 +48,47 @@ export class NotificationEventPublisher {
   ) {}
 
   /**
+   * Validate a single publishable event at the service boundary.
+   */
+  validateEvent(event: PublishEventDto): void {
+    if (!event || typeof event !== 'object') {
+      throw new BadRequestException('Event payload is required');
+    }
+
+    if (!event.eventType || !VALID_EVENT_TYPES.has(event.eventType)) {
+      throw new BadRequestException(`Invalid event type: ${String(event.eventType)}`);
+    }
+
+    if (typeof event.aggregateId !== 'string' || event.aggregateId.trim().length === 0) {
+      throw new BadRequestException('aggregateId must be a non-empty string');
+    }
+
+    if (!Array.isArray(event.recipientIds) || event.recipientIds.length === 0) {
+      throw new BadRequestException('At least one recipient is required');
+    }
+
+    if (event.recipientIds.length > MAX_RECIPIENTS_PER_EVENT) {
+      throw new BadRequestException(
+        `Recipient count (${event.recipientIds.length}) exceeds maximum of ${MAX_RECIPIENTS_PER_EVENT} per event`,
+      );
+    }
+
+    for (const recipientId of event.recipientIds) {
+      if (typeof recipientId !== 'string' || recipientId.trim().length === 0) {
+        throw new BadRequestException('All recipientIds must be non-empty strings');
+      }
+    }
+
+    if (
+      event.metadata === null ||
+      typeof event.metadata !== 'object' ||
+      Array.isArray(event.metadata)
+    ) {
+      throw new BadRequestException('metadata must be an object');
+    }
+  }
+
+  /**
    * Publish a protocol event for notification delivery
    * 
    * Must be called within a TypeORM transaction to ensure atomicity:
@@ -46,10 +105,7 @@ export class NotificationEventPublisher {
     event: PublishEventDto,
     manager?: EntityManager,
   ): Promise<{ id: string; status: string; idempotencyKey: string }> {
-    // Validate event
-    if (!event.recipientIds || event.recipientIds.length === 0) {
-      throw new BadRequestException('At least one recipient is required');
-    }
+    this.validateEvent(event);
 
     // Generate idempotency key
     const idempotencyKey = this.generateIdempotencyKey(
@@ -109,6 +165,28 @@ export class NotificationEventPublisher {
     events: PublishEventDto[],
     manager?: EntityManager,
   ): Promise<Array<{ id: string; status: string; idempotencyKey: string }>> {
+    if (!Array.isArray(events) || events.length === 0) {
+      throw new BadRequestException('Batch must contain at least one event');
+    }
+
+    if (events.length > MAX_BATCH_EVENTS) {
+      throw new BadRequestException(
+        `Batch size (${events.length}) exceeds maximum of ${MAX_BATCH_EVENTS} events`,
+      );
+    }
+
+    let totalRecipients = 0;
+    for (const event of events) {
+      this.validateEvent(event);
+      totalRecipients += event.recipientIds.length;
+    }
+
+    if (totalRecipients > MAX_BATCH_TOTAL_RECIPIENTS) {
+      throw new BadRequestException(
+        `Batch total recipients (${totalRecipients}) exceeds maximum of ${MAX_BATCH_TOTAL_RECIPIENTS}`,
+      );
+    }
+
     const results: Array<{
       id: string;
       status: string;
@@ -143,22 +221,58 @@ export class NotificationEventPublisher {
   }
 
   /**
-   * Query outbox status for an event
-   * Used for polling delivery status
+   * Query outbox status for an event.
+   *
+   * Authorization:
+   * - Service-to-service (`caller.isService`) or Admin (`caller.isAdmin`) may inspect any event.
+   * - Ordinary authenticated callers may only inspect events where their userId matches
+   *   `payload.sourceUserId` or is included in `payload.recipientIds`.
+   * - Fails closed if caller context is missing or unauthorized.
    */
-  async getEventStatus(outboxEventId: string): Promise<{
+  async getEventStatus(
+    outboxEventId: string,
+    caller?: EventStatusCaller,
+  ): Promise<{
     id: string;
     status: string;
     retryCount: number;
     processedAt?: Date;
     lastError?: string;
   } | null> {
+    if (!caller || (!caller.isService && !caller.isAdmin && !caller.userId)) {
+      throw new ForbiddenException('Caller identity or privilege required to inspect event status');
+    }
+
+    if (typeof outboxEventId !== 'string' || outboxEventId.trim().length === 0) {
+      throw new BadRequestException('eventId is required');
+    }
+
     const event = await this.outboxRepository.findOne({
       where: { id: outboxEventId },
     });
 
     if (!event) {
       return null;
+    }
+
+    if (!caller.isService && !caller.isAdmin) {
+      const payload = (event.payload || {}) as {
+        sourceUserId?: string;
+        recipientIds?: string[];
+      };
+      const isSourceOwner =
+        typeof payload.sourceUserId === 'string' &&
+        payload.sourceUserId === caller.userId;
+      const isRecipient =
+        Array.isArray(payload.recipientIds) &&
+        payload.recipientIds.includes(caller.userId!);
+
+      if (!isSourceOwner && !isRecipient) {
+        this.logger.warn(
+          `Cross-user event status lookup denied for user ${caller.userId} on event ${outboxEventId}`,
+        );
+        throw new ForbiddenException('You do not have permission to view this event status');
+      }
     }
 
     return {
