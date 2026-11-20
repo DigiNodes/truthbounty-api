@@ -119,4 +119,96 @@ describe('IpfsService gateway sanitization', () => {
     expect(first).toBe('https://trim.example.com/ipfs/QmTrim');
     expect(second).toBe(first);
   });
+
+  it('does not log credentials or query values when URL parsing fails', () => {
+    const rawUrl =
+      'https://user:USERINFO_CANARY@[invalid-host/?token=QUERY_CANARY';
+    const svc = new IpfsService({ getUrl: () => rawUrl } as any);
+    const warnSpy = jest
+      .spyOn(svc['logger'], 'warn')
+      .mockImplementation(() => undefined);
+
+    expect(svc.getGatewayUrl('QmTest')).toBeUndefined();
+
+    const warning = warnSpy.mock.calls.flat().join(' ');
+    expect(warning).toContain('(invalid_url)');
+    expect(warning).not.toContain('USERINFO_CANARY');
+    expect(warning).not.toContain('QUERY_CANARY');
+    expect(warning).not.toContain(rawUrl);
+  });
+
+  it('does not log provider-derived hostnames containing tenant canaries', () => {
+    const rawUrl =
+      'https://TENANT-HOST-CANARY.gateway.example.com:8443/private/path?token=HOST_QUERY_CANARY';
+    const svc = new IpfsService({ getUrl: () => rawUrl } as any);
+    const warnSpy = jest
+      .spyOn(svc['logger'], 'warn')
+      .mockImplementation(() => undefined);
+
+    expect(svc.getGatewayUrl('QmTest')).toBeUndefined();
+
+    const warning = warnSpy.mock.calls.flat().join(' ');
+    expect(warning).toContain('(unsupported_port)');
+    expect(warning).not.toContain('TENANT-HOST-CANARY');
+    expect(warning).not.toContain('gateway.example.com');
+    expect(warning).not.toContain('private/path');
+    expect(warning).not.toContain('HOST_QUERY_CANARY');
+  });
+
+  it('rejects unsafe and malformed URLs without echoing provider data', () => {
+    const rawUrls = [
+      'https://gateway.example.com/\u0001private?token=CONTROL_CANARY',
+      'https://gateway.example.com/%E0%A4%A?token=ENCODING_CANARY',
+      'https://10.0.0.1/private/path?token=PRIVATE_CANARY',
+      'ftp://gateway.example.com/private/path?token=SCHEME_CANARY',
+    ];
+
+    for (const rawUrl of rawUrls) {
+      const svc = new IpfsService({ getUrl: () => rawUrl } as any);
+      const warnSpy = jest
+        .spyOn(svc['logger'], 'warn')
+        .mockImplementation(() => undefined);
+
+      expect(svc.getGatewayUrl('QmTest')).toBeUndefined();
+
+      const warning = warnSpy.mock.calls.flat().join(' ');
+      expect(warning).not.toContain(rawUrl);
+      expect(warning).not.toMatch(
+        /CONTROL_CANARY|ENCODING_CANARY|PRIVATE_CANARY|SCHEME_CANARY/,
+      );
+      expect(warning).not.toContain('/private/path');
+      expect(warning).not.toContain('token=');
+    }
+  });
+
+  it('normalizes and accepts safe public gateway URLs', () => {
+    const svc = new IpfsService({
+      getUrl: () => 'HTTPS://Gateway.Example.com:443/ipfs/QmTest',
+    } as any);
+
+    expect(svc.getGatewayUrl('QmTest')).toBe(
+      'https://gateway.example.com/ipfs/QmTest',
+    );
+  });
+
+  it('logs provider errors without stringifying their messages', () => {
+    const error = new Error(
+      'provider failed for https://gateway.example.com/?token=ERROR_CANARY',
+    );
+    const svc = new IpfsService({
+      getUrl: () => {
+        throw error;
+      },
+    } as any);
+    const errorSpy = jest
+      .spyOn(svc['logger'], 'error')
+      .mockImplementation(() => undefined);
+
+    expect(() => svc.getGatewayUrl('QmTest')).toThrow(error);
+
+    const loggedError = errorSpy.mock.calls.flat().join(' ');
+    expect(loggedError).toContain('(provider_error)');
+    expect(loggedError).not.toContain('ERROR_CANARY');
+    expect(loggedError).not.toContain(error.message);
+  });
 });
