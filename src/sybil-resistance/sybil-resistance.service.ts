@@ -200,7 +200,12 @@ export class SybilResistanceService {
   }
 
   /**
-   * Submit an appeal against a Sybil score calculation
+   * Submit an appeal against a Sybil score calculation.
+   *
+   * Enforces one-active-appeal rule: a user may not submit a new appeal while
+   * a SUBMITTED appeal is still pending review.  This is enforced at the
+   * persistence boundary (not only at the controller) so it holds regardless
+   * of which call site reaches this method.
    */
   async submitAppeal(
     userId: string,
@@ -222,6 +227,19 @@ export class SybilResistanceService {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
       throw new NotFoundException(`User ${userId} not found`);
+    }
+
+    // One-active-appeal rule: reject if the user already has a SUBMITTED
+    // (pending) appeal.  Completed appeals (RESOLVED, UPHELD, REJECTED) do not
+    // block a new submission.
+    const existingAppeals = this.appeals.get(userId) || [];
+    const hasActiveAppeal = existingAppeals.some(
+      (a) => a.status === 'SUBMITTED',
+    );
+    if (hasActiveAppeal) {
+      throw new InvalidFeatureBoundsException(
+        'You already have a pending appeal. Wait for it to be resolved before submitting a new one.',
+      );
     }
 
     // Get latest score
@@ -642,9 +660,13 @@ Final score: ${composite.toFixed(4)} (weighted average)`,
   }
 
   /**
-   * Batch recalculate Sybil scores for verification purposes
+   * Batch recalculate Sybil scores for verification purposes.
+   *
+   * Privileged operation: restricted to administrators in the controller layer.
+   * The actorId parameter carries the authenticated admin's identity for audit
+   * logging; callers must supply it. Never expose this method without a guard.
    */
-  async recalculateAllScores(): Promise<
+  async recalculateAllScores(actorId?: string): Promise<
     Array<{
       userId: string;
       success: boolean;
@@ -652,6 +674,10 @@ Final score: ${composite.toFixed(4)} (weighted average)`,
       error?: string;
     }>
   > {
+    this.logger.log(
+      `sybil.recalculate_all started [actor=${actorId ?? 'unknown'}]`,
+    );
+
     const users = await this.prisma.user.findMany();
     const results: Array<{
       userId: string;
@@ -676,6 +702,12 @@ Final score: ${composite.toFixed(4)} (weighted average)`,
         });
       }
     }
+
+    const succeeded = results.filter((r) => r.success).length;
+    this.logger.log(
+      `sybil.recalculate_all completed [actor=${actorId ?? 'unknown'}] ` +
+        `total=${results.length} succeeded=${succeeded} failed=${results.length - succeeded}`,
+    );
 
     return results;
   }
