@@ -13,9 +13,12 @@ import { StakeEvent } from '../staking/entities/stake-event.entity';
 import { StakingEventType } from '../staking/types/staking-event.type';
 import { SybilModelRegistry } from './sybil-model-registry';
 import { SybilProvenanceService } from './sybil-provenance.service';
+import { SybilStakingAuthorityService } from './sybil-staking-authority.service';
 import {
+  ApprovedStakingAuthority,
   CalculationDetails,
-  ChainArtifactAuthority,
+  StakingCheckpointSnapshot,
+  SybilModelConfig,
   InvalidFeatureBoundsException,
   MissingFeatureException,
   PublicSybilScoreView,
@@ -34,6 +37,7 @@ export class SybilResistanceService {
   // Model and Provenance sub-services
   private readonly modelRegistry: SybilModelRegistry;
   private readonly provenanceService: SybilProvenanceService;
+  private readonly stakingAuthorityService: SybilStakingAuthorityService;
 
   // In-memory appeals registry
   private readonly appeals = new Map<string, SybilAppealRecord[]>();
@@ -59,9 +63,12 @@ export class SybilResistanceService {
     modelRegistry?: SybilModelRegistry,
     @Optional()
     provenanceService?: SybilProvenanceService,
+    @Optional()
+    stakingAuthorityService?: SybilStakingAuthorityService,
   ) {
     this.modelRegistry = modelRegistry || new SybilModelRegistry();
     this.provenanceService = provenanceService || new SybilProvenanceService();
+    this.stakingAuthorityService = stakingAuthorityService!;
 
     this.MIN_CLAIMS_FOR_ACCURACY_SCORE = this.configService.get<number>(
       'sybil.minClaimsForAccuracyScore',
@@ -81,7 +88,64 @@ export class SybilResistanceService {
     score: number;
     details: CalculationDetails;
   }> {
-    // 1. Fetch user and all signals
+    const { score, details } = await this.computeScoreWithSignals(
+      userId,
+      options,
+    );
+    return { score, details };
+  }
+
+  private async resolveStakingAuthority(
+    options?: RecomputeScoreOptions,
+  ): Promise<ApprovedStakingAuthority | null> {
+    let authority: ApprovedStakingAuthority | null = null;
+    try {
+      authority = await this.stakingAuthorityService.resolve();
+    } catch (error) {
+      this.logger.warn(
+        `Staking authority unavailable; staking feature treated as missing: ${
+          error instanceof Error ? error.message : 'unknown error'
+        }`,
+      );
+      authority = null;
+    }
+
+    if (options?.authority) {
+      try {
+        this.provenanceService.validateChainAuthority(options.authority);
+      } catch {
+        authority = null;
+      }
+
+      if (
+        authority &&
+        (options.authority.chainId !== authority.chainId ||
+          options.authority.releaseId !== authority.releaseId ||
+          options.authority.artifactHash.toLowerCase() !==
+            authority.artifactHash.toLowerCase() ||
+          options.authority.contractAddress.toLowerCase() !==
+            authority.contractAddress.toLowerCase() ||
+          options.authority.finalizedThroughBlock !==
+            authority.finalizedThroughBlock)
+      ) {
+        this.logger.warn(
+          'Caller-supplied chain authority conflicts with approved registry; staking feature treated as missing',
+        );
+        authority = null;
+      }
+    }
+
+    return authority;
+  }
+
+  private async computeScoreWithSignals(
+    userId: string,
+    options?: RecomputeScoreOptions,
+  ): Promise<{
+    score: number;
+    details: CalculationDetails;
+    signals: SybilSignals;
+  }> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       include: { wallets: true },
@@ -91,32 +155,21 @@ export class SybilResistanceService {
       throw new NotFoundException(`User ${userId} not found`);
     }
 
-    // 2. Resolve model configuration
     const modelVersion =
       options?.pinnedVersion || this.modelRegistry.getDefaultVersion();
     const modelConfig = this.modelRegistry.getModel(modelVersion);
 
-    // 3. Validate authority if provided
-    if (options?.authority) {
-      this.provenanceService.validateChainAuthority(options.authority);
-    }
+    const authority = await this.resolveStakingAuthority(options);
 
-    // 4. Gather all signals
-    const signals = await this.gatherSignals(
-      user,
-      user.wallets,
-      options?.authority,
-    );
+    const signals = await this.gatherSignals(user, user.wallets, authority);
 
-    // 5. Build feature provenance record
     const { provenanceMap, staleFeatures, missingFeatures } =
       this.provenanceService.buildFeatureProvenanceRecord(
         signals,
         modelConfig.thresholds.maxFreshnessMs,
-        options?.authority,
+        authority ?? undefined,
       );
 
-    // 6. Fail-closed guards
     if (options?.failClosedOnStale && staleFeatures.length > 0) {
       throw new StaleFeatureException(
         `Features exceeded max allowable age (${modelConfig.thresholds.maxFreshnessMs}ms): ${staleFeatures.join(', ')}`,
@@ -129,27 +182,34 @@ export class SybilResistanceService {
       );
     }
 
-    // 7. Normalize signals according to model version (calls this.normalizeSignals so test spies work)
     const normalized = this.normalizeSignals(signals, modelConfig);
 
-    // 8. Compute composite resistance score (calls this.weightedCombination and clampScore so test spies work)
     const compositeScore = this.clampScore(
       this.weightedCombination(normalized, modelConfig),
     );
 
-    // 9. Compute risk score and risk classification
-    // Invariant: Missing inputs DO NOT silently become zero-risk
     const { riskScore, riskLevel } = this.modelRegistry.calculateRiskScore(
       compositeScore,
       missingFeatures,
       modelConfig,
     );
 
-    // 10. Generate cryptographic provenance digest
     const digestPayload = {
       userId,
       version: modelConfig.version,
-      authority: options?.authority ?? null,
+      stakingCheckpoint: authority
+        ? {
+            chainId: authority.chainId,
+            releaseId: authority.releaseId,
+            artifactHash: authority.artifactHash.toLowerCase(),
+            contractAddress: authority.contractAddress.toLowerCase(),
+            deploymentBlock: authority.deploymentBlock,
+            finalizedThroughBlock: authority.finalizedThroughBlock,
+            finalizedBlockHash: authority.finalizedBlockHash.toLowerCase(),
+            source: authority.source,
+            checkpointKey: authority.checkpointKey,
+          }
+        : null,
       componentScores: normalized,
       compositeScore: Number(compositeScore.toFixed(4)),
       riskScore,
@@ -159,7 +219,6 @@ export class SybilResistanceService {
     const provenanceDigest =
       this.modelRegistry.generateProvenanceDigest(digestPayload);
 
-    // 11. Create detailed calculation record
     const details = this.createCalculationDetails(
       normalized,
       modelConfig.version,
@@ -170,11 +229,13 @@ export class SybilResistanceService {
       missingFeatures,
       staleFeatures,
       modelConfig,
+      authority ? this.checkpointSnapshot(authority) : undefined,
     );
 
     return {
       score: Number(compositeScore.toFixed(4)),
       details,
+      signals,
     };
   }
 
@@ -298,17 +359,9 @@ export class SybilResistanceService {
    * Retrieve privacy-safe public view of Sybil score for a user
    */
   async getPublicSybilScore(userId: string): Promise<PublicSybilScoreView> {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      include: { wallets: true },
-    });
-
-    if (!user) {
-      throw new NotFoundException(`User ${userId} not found`);
-    }
-
-    const { score, details } = await this.computeSybilScore(userId);
-    const signals = await this.gatherSignals(user, user.wallets);
+    const { score, details, signals } = await this.computeScoreWithSignals(
+      userId,
+    );
 
     const computationResult: SybilScoreComputationResult = {
       score,
@@ -334,7 +387,7 @@ export class SybilResistanceService {
   private async gatherSignals(
     user: { id: string; worldcoinVerified?: boolean; createdAt?: Date } | null,
     wallets: Array<{ address?: string; linkedAt: Date }>,
-    authority?: ChainArtifactAuthority,
+    authority: ApprovedStakingAuthority | null,
   ): Promise<SybilSignals> {
     const now = Date.now();
     let oldestWalletAgeMs = 0;
@@ -380,7 +433,7 @@ export class SybilResistanceService {
     let totalHistoricalStake = BigInt(0);
     let stakingEventCount = 0;
 
-    if (walletAddresses.length > 0) {
+    if (authority && walletAddresses.length > 0) {
       const qb = this.stakeEventRepo
         .createQueryBuilder('se')
         .select('SUM(se.amount::numeric)', 'total')
@@ -389,14 +442,19 @@ export class SybilResistanceService {
         })
         .andWhere('se.type = :type', {
           type: StakingEventType.STAKE_DEPOSITED,
-        });
-
-      // Bind to finalized block checkpoint if authority is provided
-      if (authority && Number.isSafeInteger(authority.finalizedThroughBlock)) {
-        qb.andWhere('se.blockNumber <= :finalizedBlock', {
+        })
+        .andWhere('se.chainId = :chainId', {
+          chainId: authority.chainId,
+        })
+        .andWhere('LOWER(se.contractAddress) = :contractAddress', {
+          contractAddress: authority.contractAddress.toLowerCase(),
+        })
+        .andWhere('se.blockNumber >= :deploymentBlock', {
+          deploymentBlock: authority.deploymentBlock,
+        })
+        .andWhere('se.blockNumber <= :finalizedBlock', {
           finalizedBlock: authority.finalizedThroughBlock,
         });
-      }
 
       const depositEvents = await qb.getRawOne<{ total: string | null }>();
 
@@ -420,8 +478,28 @@ export class SybilResistanceService {
       totalStakedAmount: totalHistoricalStake,
       stakingEventCount,
       stakingFinalizedBlock: authority?.finalizedThroughBlock,
+      stakingCheckpoint: authority
+        ? this.checkpointSnapshot(authority)
+        : undefined,
+      stakingAuthorityError: authority ? undefined : 'authority_unavailable',
       claimsVotedOn,
       claimsCorrect,
+    };
+  }
+
+  private checkpointSnapshot(
+    authority: ApprovedStakingAuthority,
+  ): StakingCheckpointSnapshot {
+    return {
+      chainId: authority.chainId,
+      releaseId: authority.releaseId,
+      artifactHash: authority.artifactHash.toLowerCase(),
+      contractAddress: authority.contractAddress.toLowerCase(),
+      deploymentBlock: authority.deploymentBlock,
+      finalizedThroughBlock: authority.finalizedThroughBlock,
+      finalizedBlockHash: authority.finalizedBlockHash.toLowerCase(),
+      source: authority.source,
+      checkpointKey: authority.checkpointKey,
     };
   }
 
@@ -497,6 +575,7 @@ export class SybilResistanceService {
     missingFeatures: string[] = [],
     staleFeatures: string[] = [],
     modelConfig?: SybilModelConfig,
+    stakingCheckpoint?: StakingCheckpointSnapshot,
   ): CalculationDetails {
     const config = modelConfig || this.modelRegistry.getModel(version);
     const composite = this.clampScore(
@@ -529,6 +608,7 @@ Final score: ${composite.toFixed(4)} (weighted average)`,
       riskLevel,
       provenanceDigest,
       featureProvenance,
+      stakingCheckpoint,
       missingFeatures,
       staleFeatures,
     };
@@ -589,7 +669,35 @@ Final score: ${composite.toFixed(4)} (weighted average)`,
       return this.recordSybilScore(userId);
     }
 
+    const currentKey = await this.currentCheckpointKey();
+    if (!this.isCheckpointCurrent(score, currentKey)) {
+      return this.recordSybilScore(userId);
+    }
+
     return score;
+  }
+
+  private async currentCheckpointKey(): Promise<string | null> {
+    try {
+      const authority = await this.stakingAuthorityService.resolve();
+      return authority?.checkpointKey ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  private isCheckpointCurrent(score: any, currentKey: string | null): boolean {
+    let storedKey: string | null = null;
+    try {
+      const details = JSON.parse(score.calculationDetails || '{}');
+      storedKey =
+        details?.stakingCheckpoint?.checkpointKey ??
+        details?.featureProvenance?.staking?.details?.checkpointKey ??
+        null;
+    } catch {
+      return false;
+    }
+    return storedKey === currentKey;
   }
 
   /**
@@ -614,13 +722,19 @@ Final score: ${composite.toFixed(4)} (weighted average)`,
       }
     }
 
+    const currentKey = await this.currentCheckpointKey();
+    const staleUserIds = uniqueUserIds.filter((id) => {
+      const score = latestByUser.get(id);
+      return score && !this.isCheckpointCurrent(score, currentKey);
+    });
     const missingUserIds = uniqueUserIds.filter((id) => !latestByUser.has(id));
-    if (missingUserIds.length > 0) {
+    const recomputeUserIds = [...new Set([...missingUserIds, ...staleUserIds])];
+    if (recomputeUserIds.length > 0) {
       const computedScores = await Promise.all(
-        missingUserIds.map((userId) => this.recordSybilScore(userId)),
+        recomputeUserIds.map((userId) => this.recordSybilScore(userId)),
       );
-      for (let i = 0; i < missingUserIds.length; i++) {
-        latestByUser.set(missingUserIds[i], computedScores[i]);
+      for (let i = 0; i < recomputeUserIds.length; i++) {
+        latestByUser.set(recomputeUserIds[i], computedScores[i]);
       }
     }
 

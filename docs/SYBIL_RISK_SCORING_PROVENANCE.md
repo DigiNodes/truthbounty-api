@@ -32,6 +32,16 @@ Canonical finalized contract events remain authoritative. Scoring services fail 
 - Staking deposit block numbers exceed the finalized checkpoint.
 - Events are not finalized or not canonical.
 
+### PREWAVE-BE-166: approved staking authority
+
+`SybilStakingAuthorityService` resolves the staking authority server-side from the approved runtime binding and the provenance registry (`v2_contract_artifacts` + `v2_event_checkpoints`). Caller-supplied `authority` metadata from `RecomputeScoreOptions` is never sufficient: if it conflicts with the registry authority, staking is treated as missing. The same resolver is used by the internal and public score paths.
+
+The production `StakeEvent` query is bound to `chainId`, `contractAddress`, and the inclusive block range `[deploymentBlock, finalizedThroughBlock]`. Events on another chain, another deployment, before deployment, or above the finalized checkpoint cannot contribute to the score. If the binding, approved artifact, finalized checkpoint, or finalized block hash is missing or invalid, the staking feature is recorded as missing (`authorityError`) and no staking rows are read; strict mode applies `MissingFeatureException`.
+
+Each calculation record stores the exact `stakingCheckpoint` (chain, release, artifact hash, deployment block, finalized block, finalized block hash, source, and a SHA-256 `checkpointKey`) both at the top level and inside `featureProvenance.staking`. Public score views remain sanitized and expose only the digest and aggregate summaries.
+
+When the finalized checkpoint advances, regresses, or changes hash during a reorg, `checkpointKey` changes deterministically. Cached scores whose recorded checkpoint no longer matches the registry are recomputed on read (`getLatestSybilScore`/`getLatestSybilScores`) instead of being presented as current.
+
 ## 3. Freshness & Fail-Closed Evaluation
 
 Each feature has an observation timestamp. Freshness is calculated as `elapsedMs = now - observedAt`.

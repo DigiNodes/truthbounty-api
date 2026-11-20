@@ -8,6 +8,7 @@ import { StakingEventType } from '../types/staking-event.type';
 @Index(['timestamp'])
 @Index(['blockNumber'])
 @Index(['claimId', 'walletAddress'])
+@Index(['chainId', 'contractAddress', 'blockNumber'])
 export class StakeEvent {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -31,6 +32,12 @@ export class StakeEvent {
 
   @Column()
   blockNumber: number;
+
+  @Column({ type: 'int', nullable: true })
+  chainId: number | null;
+
+  @Column({ type: 'varchar', length: 42, nullable: true })
+  contractAddress: string | null;
 
   @Column()
   timestamp: Date;
