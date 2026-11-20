@@ -26,6 +26,8 @@ import { FeatureFlagsModule } from '../feature-flags/feature-flags.module';
 import { QueueName } from '../jobs/jobs.types';
 
 import { PublicIncidentsModule } from '../health/public-incidents/public-incidents.module';
+import { OperationalControl } from './entities/operational-control.entity';
+import { OperationalControlEvent } from './entities/operational-control-event.entity';
 
 @Module({
   imports: [
@@ -35,6 +37,8 @@ import { PublicIncidentsModule } from '../health/public-incidents/public-inciden
       ModerationReport,
       AuditLog,
       Claim,
+      OperationalControl,
+      OperationalControlEvent,
     ]),
     PublicIncidentsModule,
     FeatureFlagsModule,
