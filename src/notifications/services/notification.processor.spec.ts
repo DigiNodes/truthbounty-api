@@ -11,12 +11,14 @@ import {
   DeliveryChannel,
   DeliveryStatus,
 } from '../interfaces/notification.types';
+import { buildDeliveryIdempotencyKey } from '../delivery/delivery-idempotency-key';
 
 describe('NotificationProcessor', () => {
   let processor: NotificationProcessor;
   let redisService: Partial<RedisService>;
   let deliveryHistoryService: Partial<DeliveryHistoryService>;
   let notificationRepository: any;
+  let emailService: { sendNotificationEmail: jest.Mock };
 
   const mockNotification = {
     id: 'notif-uuid-1',
@@ -30,27 +32,52 @@ describe('NotificationProcessor', () => {
     id: 'history-uuid-1',
     notificationId: 'notif-uuid-1',
     channel: DeliveryChannel.IN_APP,
-    status: DeliveryStatus.PENDING,
+    status: DeliveryStatus.PROCESSING,
     retryAttempts: 0,
   };
+
+  const key = buildDeliveryIdempotencyKey({
+    eventType: 'notification.send',
+    recipientId: 'user-123',
+    channel: DeliveryChannel.IN_APP,
+    aggregateId: 'notif-uuid-1',
+  });
 
   beforeEach(async () => {
     redisService = {
       setnx: jest.fn().mockResolvedValue(true),
+      set: jest.fn().mockResolvedValue(true),
     };
 
     deliveryHistoryService = {
+      acquireClaim: jest.fn().mockResolvedValue({
+        acquired: true,
+        idempotencyKey: key,
+        claimId: 'claim-1',
+        status: DeliveryStatus.PROCESSING,
+        reason: 'acquired',
+      }),
       findPendingDeliveryByNotificationAndChannel: jest
         .fn()
         .mockResolvedValue(mockDeliveryRecord),
-      findByIdempotencyKey: jest.fn().mockResolvedValue(null),
+      findByIdempotencyKey: jest.fn().mockResolvedValue(mockDeliveryRecord),
       createDeliveryRecord: jest.fn().mockResolvedValue(mockDeliveryRecord),
       updateDeliveryStatus: jest.fn().mockResolvedValue(mockDeliveryRecord),
       incrementRetryAttempts: jest.fn().mockResolvedValue(mockDeliveryRecord),
+      confirmClaim: jest.fn().mockResolvedValue(mockDeliveryRecord),
+      failClaim: jest.fn().mockResolvedValue(mockDeliveryRecord),
+      markClaimUncertain: jest.fn().mockResolvedValue(mockDeliveryRecord),
     };
 
     notificationRepository = {
       findOne: jest.fn().mockResolvedValue(mockNotification),
+    };
+    emailService = {
+      sendNotificationEmail: jest.fn().mockResolvedValue({
+        success: true,
+        status: DeliveryStatus.DELIVERED,
+        deliveredAt: new Date(),
+      }),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -64,10 +91,7 @@ describe('NotificationProcessor', () => {
           provide: WebSocketService,
           useValue: { broadcastNotification: jest.fn() },
         },
-        {
-          provide: EmailService,
-          useValue: { sendNotificationEmail: jest.fn() },
-        },
+        { provide: EmailService, useValue: emailService },
         {
           provide: WebhookService,
           useValue: { getUserWebhooks: jest.fn().mockResolvedValue([]) },
@@ -80,22 +104,30 @@ describe('NotificationProcessor', () => {
     processor = module.get<NotificationProcessor>(NotificationProcessor);
   });
 
-  it('should process job and deliver via channel', async () => {
-    const job = {
+  const job = (attemptsMade = 0) =>
+    ({
       data: {
         notificationId: 'notif-uuid-1',
         channel: DeliveryChannel.IN_APP,
-        idempotencyKey: 'key-123',
+        idempotencyKey: key,
       },
-      attemptsMade: 0,
-    } as any;
+      attemptsMade,
+    }) as any;
 
-    const result = await processor.process(job);
+  it('acquires the durable claim before delivering', async () => {
+    const result = await processor.process(job());
 
-    expect(redisService.setnx).toHaveBeenCalledWith(
-      'idempotency:notification:key-123',
-      '1',
-      86400,
+    expect(deliveryHistoryService.acquireClaim).toHaveBeenCalledWith(
+      expect.objectContaining({
+        idempotencyKey: key,
+        recipientId: 'user-123',
+        channel: DeliveryChannel.IN_APP,
+      }),
+    );
+    expect(deliveryHistoryService.confirmClaim).toHaveBeenCalledWith(
+      key,
+      'claim-1',
+      expect.any(Object),
     );
     expect(result).toEqual(
       expect.objectContaining({
@@ -105,51 +137,91 @@ describe('NotificationProcessor', () => {
     );
   });
 
-  it('should suppress duplicate job execution when Redis SETNX returns false', async () => {
+  it('does not treat a failed Redis SETNX as a failed or acquired claim', async () => {
     (redisService.setnx as jest.Mock).mockResolvedValueOnce(false);
 
-    const job = {
-      data: {
-        notificationId: 'notif-uuid-1',
-        channel: DeliveryChannel.IN_APP,
-        idempotencyKey: 'key-123',
-      },
-      attemptsMade: 0,
-    } as any;
+    const result = await processor.process(job());
 
-    const result = await processor.process(job);
-
-    expect(result).toEqual({
-      success: true,
-      status: DeliveryStatus.DELIVERED,
-      deduplicated: true,
-    });
-    expect(notificationRepository.findOne).not.toHaveBeenCalled();
+    expect(result.success).toBe(true);
+    expect(result.deduplicated).toBeUndefined();
+    expect(deliveryHistoryService.confirmClaim).toHaveBeenCalled();
   });
 
-  it('should suppress duplicate job execution when DB check shows DELIVERED status', async () => {
-    (
-      deliveryHistoryService.findByIdempotencyKey as jest.Mock
-    ).mockResolvedValueOnce({
+  it('suppresses a job when the durable claim reports DELIVERED', async () => {
+    (deliveryHistoryService.acquireClaim as jest.Mock).mockResolvedValueOnce({
+      acquired: false,
+      idempotencyKey: key,
       status: DeliveryStatus.DELIVERED,
+      reason: 'delivered',
     });
 
-    const job = {
-      data: {
-        notificationId: 'notif-uuid-1',
-        channel: DeliveryChannel.IN_APP,
-        idempotencyKey: 'key-123',
-      },
-      attemptsMade: 0,
-    } as any;
-
-    const result = await processor.process(job);
+    const result = await processor.process(job(1));
 
     expect(result).toEqual({
       success: true,
       status: DeliveryStatus.DELIVERED,
       deduplicated: true,
     });
-    expect(notificationRepository.findOne).not.toHaveBeenCalled();
+    expect(notificationRepository.findOne).toHaveBeenCalled();
+    expect(emailService.sendNotificationEmail).not.toHaveBeenCalled();
+  });
+
+  it('passes the delivery idempotency key to email providers', async () => {
+    await processor.process({
+      data: {
+        notificationId: 'notif-uuid-1',
+        channel: DeliveryChannel.EMAIL,
+        idempotencyKey: key,
+      },
+      attemptsMade: 0,
+    } as any);
+
+    expect(emailService.sendNotificationEmail).toHaveBeenCalledWith(
+      mockNotification,
+      'user@example.com',
+      key,
+    );
+  });
+
+  it('retries the job when another worker holds the durable claim', async () => {
+    (deliveryHistoryService.acquireClaim as jest.Mock).mockResolvedValueOnce({
+      acquired: false,
+      idempotencyKey: key,
+      status: DeliveryStatus.PROCESSING,
+      reason: 'in_progress',
+    });
+
+    await expect(processor.process(job())).rejects.toThrow(
+      'Delivery claim not acquired (in_progress)',
+    );
+    expect(emailService.sendNotificationEmail).not.toHaveBeenCalled();
+    expect(deliveryHistoryService.confirmClaim).not.toHaveBeenCalled();
+  });
+
+  it('keeps the claim processing when the provider outcome is uncertain', async () => {
+    emailService.sendNotificationEmail.mockResolvedValueOnce({
+      success: false,
+      status: DeliveryStatus.FAILED,
+      error: 'provider timeout',
+    });
+
+    await expect(
+      processor.process({
+        data: {
+          notificationId: 'notif-uuid-1',
+          channel: DeliveryChannel.EMAIL,
+          idempotencyKey: key,
+        },
+        attemptsMade: 0,
+      } as any),
+    ).rejects.toThrow('provider timeout');
+
+    expect(deliveryHistoryService.markClaimUncertain).toHaveBeenCalledWith(
+      key,
+      'claim-1',
+      'provider timeout',
+    );
+    expect(deliveryHistoryService.failClaim).not.toHaveBeenCalled();
+    expect(deliveryHistoryService.updateDeliveryStatus).not.toHaveBeenCalled();
   });
 });

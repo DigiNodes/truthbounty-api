@@ -3,18 +3,22 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, EntityManager } from 'typeorm';
 import { OutboxEvent } from '../../outbox/entities/outbox-event.entity';
 import { PublishEventDto } from '../dto/publish-event.dto';
-import { EventType, EVENT_PRIORITY_MAP, PRIORITY_RETRY_CONFIG } from '../enums/event-type.enum';
-import * as crypto from 'crypto';
+import {
+  EventType,
+  EVENT_PRIORITY_MAP,
+  PRIORITY_RETRY_CONFIG,
+} from '../enums/event-type.enum';
+import { buildOutboxIdempotencyKey } from '../delivery/delivery-idempotency-key';
 
 /**
  * NotificationEventPublisher
- * 
+ *
  * Central service for publishing protocol events that trigger notifications.
  * Uses the transactional outbox pattern for guaranteed delivery:
  * 1. Event and notification outbox entry created in atomic transaction
  * 2. OutboxScheduler polls and creates BullMQ jobs
  * 3. NotificationProcessor dequeues and delivers via channels
- * 
+ *
  * Provides:
  * - Exactly-once delivery semantics (idempotency keys)
  * - Decoupling of business logic from notification delivery
@@ -31,13 +35,13 @@ export class NotificationEventPublisher {
 
   /**
    * Publish a protocol event for notification delivery
-   * 
+   *
    * Must be called within a TypeORM transaction to ensure atomicity:
-   * 
+   *
    * await this.transactionRunner.run(async (manager) => {
    *   await this.eventPublisher.publishEvent(event, manager);
    * });
-   * 
+   *
    * @param event Event to publish
    * @param manager Optional EntityManager for transactional write
    * @returns Outbox event ID
@@ -91,7 +95,7 @@ export class NotificationEventPublisher {
 
     this.logger.log(
       `Published notification event: ${event.eventType} ` +
-      `for ${event.recipientIds.length} recipients (outboxId: ${savedEvent.id})`,
+        `for ${event.recipientIds.length} recipients (outboxId: ${savedEvent.id})`,
     );
 
     return {
@@ -126,7 +130,7 @@ export class NotificationEventPublisher {
   /**
    * Generate deterministic idempotency key
    * Ensures duplicate event publications are detected and suppressed
-   * 
+   *
    * Key components:
    * - eventType: distinguishes event types
    * - aggregateId: ensures unique per aggregate
@@ -137,9 +141,7 @@ export class NotificationEventPublisher {
     aggregateId: string,
     recipientIds: string[],
   ): string {
-    const sorted = [...recipientIds].sort().join(',');
-    const combined = `${eventType}:${aggregateId}:${sorted}`;
-    return crypto.createHash('sha256').update(combined).digest('hex');
+    return buildOutboxIdempotencyKey(eventType, aggregateId, recipientIds);
   }
 
   /**
