@@ -1,4 +1,10 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
@@ -16,8 +22,22 @@ import {
   GovernanceProposalListResult,
   GovernanceProposalReadModel,
   ProposalTimelockReadModel,
+  RoleChangeListResult,
   RoleChangeReadModel,
 } from './interfaces/governance-read-model.interface';
+import { CursorService } from '../../common/pagination/cursor.service';
+import {
+  buildRoleChangeBinding,
+  decodeRoleChangePosition,
+  defaultRoleChangeCursorFactory,
+  defaultRoleChangeReleaseResolver,
+  encodeRoleChangePosition,
+  ROLE_CHANGE_CURSOR_FACTORY,
+  ROLE_CHANGE_CURSOR_RELEASE,
+  RoleChangeCursorFactory,
+  RoleChangeOrderKey,
+  RoleChangeReleaseResolver,
+} from './role-change.cursor';
 
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 100;
@@ -39,6 +59,7 @@ const MAX_LIMIT = 100;
 @Injectable()
 export class GovernanceReadService {
   private readonly logger = new Logger(GovernanceReadService.name);
+  private cachedCursor?: CursorService;
 
   constructor(
     @InjectRepository(GovernanceProposal)
@@ -49,7 +70,20 @@ export class GovernanceReadService {
     private readonly votes: Repository<ProposalVote>,
     @InjectRepository(RoleChange)
     private readonly roleChanges: Repository<RoleChange>,
+    @Optional()
+    @Inject(ROLE_CHANGE_CURSOR_FACTORY)
+    private readonly cursorFactory: RoleChangeCursorFactory = defaultRoleChangeCursorFactory,
+    @Optional()
+    @Inject(ROLE_CHANGE_CURSOR_RELEASE)
+    private readonly releaseResolver: RoleChangeReleaseResolver = defaultRoleChangeReleaseResolver,
   ) {}
+
+  private get cursor(): CursorService {
+    if (!this.cachedCursor) {
+      this.cachedCursor = this.cursorFactory();
+    }
+    return this.cachedCursor;
+  }
 
   // ── Proposal detail ─────────────────────────────────────────────────────
 
@@ -182,17 +216,36 @@ export class GovernanceReadService {
     role?: string;
     limit?: number;
     cursor?: string | null;
-  }): Promise<{ items: RoleChangeReadModel[]; nextCursor: string | null }> {
+  }): Promise<RoleChangeListResult> {
     const limit = Math.min(
       Math.max(params.limit ?? DEFAULT_LIMIT, 1),
       MAX_LIMIT,
     );
+
+    const binding = buildRoleChangeBinding(
+      {
+        chainId: params.chainId,
+        account: params.account,
+        role: params.role,
+      },
+      this.releaseResolver(),
+    );
+
+    let orderKey: RoleChangeOrderKey | null = null;
+    if (params.cursor) {
+      const verified = this.cursor.verify({
+        ...binding,
+        cursor: params.cursor,
+      });
+      orderKey = decodeRoleChangePosition(verified.position);
+    }
 
     const qb = this.roleChanges
       .createQueryBuilder('r')
       .where('r.chainId = :chainId', { chainId: params.chainId })
       .orderBy('CAST(r.blockNumber AS NUMERIC)', 'DESC')
       .addOrderBy('r.logIndex', 'DESC')
+      .addOrderBy('r.txHash', 'DESC')
       .take(limit + 1);
 
     if (params.account) {
@@ -203,15 +256,24 @@ export class GovernanceReadService {
     if (params.role) {
       qb.andWhere('r.role = :role', { role: params.role });
     }
-    if (params.cursor) {
-      qb.andWhere('CAST(r.blockNumber AS NUMERIC) < :cursor', {
-        cursor: params.cursor,
-      });
+    if (orderKey) {
+      qb.andWhere(
+        '(CAST(r.blockNumber AS NUMERIC) < :cursorBlockNumber OR ' +
+          '(CAST(r.blockNumber AS NUMERIC) = :cursorBlockNumber AND ' +
+          '(r.logIndex < :cursorLogIndex OR ' +
+          '(r.logIndex = :cursorLogIndex AND r.txHash < :cursorTxHash))))',
+        {
+          cursorBlockNumber: orderKey.blockNumber,
+          cursorLogIndex: orderKey.logIndex,
+          cursorTxHash: orderKey.txHash,
+        },
+      );
     }
 
     const rows = await qb.getMany();
     const hasMore = rows.length > limit;
-    const items = (hasMore ? rows.slice(0, limit) : rows).map(
+    const page = hasMore ? rows.slice(0, limit) : rows;
+    const items = page.map(
       (r): RoleChangeReadModel => ({
         chainId: r.chainId,
         contractAddress: r.contractAddress,
@@ -221,15 +283,23 @@ export class GovernanceReadService {
         sender: r.sender,
         txHash: r.txHash,
         logIndex: r.logIndex,
-        blockNumber: r.blockNumber,
+        blockNumber: String(r.blockNumber),
         blockTimestamp: r.blockTimestamp,
         artifactVersion: r.artifactVersion,
       }),
     );
 
+    const last = page[page.length - 1];
     const nextCursor =
-      hasMore && items.length > 0
-        ? items[items.length - 1].blockNumber
+      hasMore && last
+        ? this.cursor.encode({
+            ...binding,
+            position: encodeRoleChangePosition({
+              blockNumber: String(last.blockNumber),
+              logIndex: last.logIndex,
+              txHash: last.txHash,
+            }),
+          })
         : null;
 
     return { items, nextCursor };

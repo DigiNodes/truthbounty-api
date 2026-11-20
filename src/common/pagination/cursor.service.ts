@@ -121,11 +121,11 @@ export class CursorService {
       0,
       CURSOR_MAX_PREVIOUS_KEYS,
     );
-    this.ttdSeconds = resolved.ttlSeconds ?? CURSOR_DEFAULT_TTL_SECONDS;
+    this.ttlSeconds = resolved.ttlSeconds ?? CURSOR_DEFAULT_TTL_SECONDS;
     this.nowFns = resolved.nowFns ?? (() => Date.now());
   }
 
-  private static resolveOptionsFromEnv(): CursorServiceOptions {
+  static resolveOptionsFromEnv(): CursorServiceOptions {
     const activeId = getRuntimeEnvironment().CURSOR_KEY_ID;
     const activeSecret = getRuntimeEnvironment().CURSOR_KEY_SECRET;
     if (!activeId || !activeSecret) {
@@ -166,7 +166,7 @@ export class CursorService {
       throw new Error('CursorService.encode: position is required');
     }
     const now = this.nowFns();
-    const expiresAt = input.expiresAtMx ?? now + this.ttlSeconds * 1000;
+    const expiresAt = input.expiresAtMs ?? now + this.ttlSeconds * 1000;
     if (!expiresAt || expiresAt <= now) {
       throw new Error('CursorService.encode: expiry must be in the future');
     }
@@ -315,7 +315,7 @@ export class CursorService {
         artifactChecksum: input.release.artifactChecksum,
       },
     };
-    return createHmac('sha256')
+    return createHmac('sha256', 'truthbounty-cursor-binding-v1')
       .update(JSON.stringify(canonical))
       .digest('base64url');
   }
@@ -330,4 +330,8 @@ export class CursorService {
     for (const [key, val] of entries) out[key] = this.canonicalize(val);
     return out;
   }
+}
+
+export function resolveCursorServiceOptionsFromEnv(): CursorServiceOptions {
+  return CursorService.resolveOptionsFromEnv();
 }
