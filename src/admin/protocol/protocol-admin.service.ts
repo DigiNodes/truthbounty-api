@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { getRuntimeEnvironment } from '../../config/runtime-config';
 import {
   Injectable,
@@ -5,13 +6,15 @@ import {
   NotFoundException,
   ConflictException,
   BadRequestException,
+  ForbiddenException,
+  OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, EntityManager } from 'typeorm';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 
-import { Admin } from '../entities/admin.entity';
+import { Admin, AdminRole } from '../entities/admin.entity';
 import { AuditLog } from '../../audit/entities/audit-log.entity';
 import { AuditTrailService } from '../../audit/services/audit-trail.service';
 import { FeatureFlagsService } from '../../feature-flags/feature-flags.service';
@@ -19,6 +22,8 @@ import { ConfigurationService } from '../../feature-flags/configuration.service'
 import { JobsService } from '../../jobs/jobs.service';
 import { QueueName } from '../../jobs/jobs.types';
 import { RedisService } from '../../redis/redis.service';
+import { OperationalControl } from '../entities/operational-control.entity';
+import { OperationalControlEvent } from '../entities/operational-control-event.entity';
 
 import {
   ServiceType,
@@ -68,7 +73,7 @@ export interface MaintenanceSchedule {
 }
 
 @Injectable()
-export class ProtocolAdminService {
+export class ProtocolAdminService implements OnModuleInit {
   private readonly logger = new Logger(ProtocolAdminService.name);
 
   private maintenanceActive = false;
@@ -85,6 +90,10 @@ export class ProtocolAdminService {
     private readonly adminRepo: Repository<Admin>,
     @InjectRepository(AuditLog)
     private readonly auditLogRepo: Repository<AuditLog>,
+    @InjectRepository(OperationalControl)
+    private readonly controlRepo: Repository<OperationalControl>,
+    @InjectRepository(OperationalControlEvent)
+    private readonly controlEventRepo: Repository<OperationalControlEvent>,
     private readonly dataSource: DataSource,
     private readonly auditTrailService: AuditTrailService,
     private readonly featureFlagsService: FeatureFlagsService,
@@ -104,20 +113,246 @@ export class ProtocolAdminService {
     this.serviceStates.set('queues_operational', true);
   }
 
+  async onModuleInit(): Promise<void> {
+    await this.reconcilePersistedState();
+  }
+
+  private async reconcilePersistedState(): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      const repo = manager.getRepository(OperationalControl);
+      let control = await repo.findOne({
+        where: { id: 'system' },
+        lock: { mode: 'pessimistic_write' },
+      });
+
+      let created = false;
+      if (!control) {
+        created = true;
+        control = repo.create({
+          id: 'system',
+          maintenanceActive: false,
+          maintenanceReason: null,
+          maintenanceStartedAt: null,
+          maintenanceScheduledEnd: null,
+          schedules: [],
+          emergencies: {},
+          services: {},
+          pendingCanonicalActions: {},
+          updatedBy: null,
+        });
+      }
+
+      const now = Date.now();
+      let dirty = created;
+
+      const emergencies = { ...(control.emergencies ?? {}) } as Record<
+        string,
+        EmergencyState & { expiresAt?: number }
+      >;
+      for (const [action, state] of Object.entries(emergencies)) {
+        if (state.expiresAt && state.expiresAt <= now) {
+          delete emergencies[action];
+          dirty = true;
+        }
+      }
+
+      const schedules = (control.schedules ??
+        []) as unknown as MaintenanceSchedule[];
+      for (const schedule of schedules) {
+        let nextStatus = schedule.status;
+        if (
+          schedule.status === 'scheduled' &&
+          Date.parse(schedule.startTime) <= now
+        ) {
+          nextStatus =
+            !schedule.endTime || Date.parse(schedule.endTime) > now
+              ? 'active'
+              : 'completed';
+        } else if (
+          (schedule.status === 'active' || schedule.status === 'scheduled') &&
+          schedule.endTime &&
+          Date.parse(schedule.endTime) <= now
+        ) {
+          nextStatus = 'completed';
+        }
+        if (nextStatus !== schedule.status) {
+          schedule.status = nextStatus;
+          dirty = true;
+        }
+      }
+
+      const pendingCanonical = {
+        ...(control.pendingCanonicalActions ?? {}),
+      } as Record<string, { status?: string }>;
+      for (const [action, pending] of Object.entries(pendingCanonical)) {
+        if (pending.status === 'resolved') {
+          delete pendingCanonical[action];
+          dirty = true;
+        }
+      }
+
+      if (dirty) {
+        control.emergencies = emergencies;
+        control.schedules = schedules as unknown as Record<string, unknown>[];
+        control.pendingCanonicalActions = pendingCanonical;
+        control.updatedAt = new Date();
+        await repo.save(control);
+      }
+      this.loadControlCache(control);
+    });
+  }
+
+  private loadControlCache(control: OperationalControl): void {
+    this.maintenanceActive = control.maintenanceActive;
+    this.maintenanceReason = control.maintenanceReason ?? '';
+    this.maintenanceStartedAt =
+      control.maintenanceStartedAt?.toISOString() ?? null;
+    this.maintenanceScheduledEnd =
+      control.maintenanceScheduledEnd?.toISOString() ?? null;
+    this.scheduledMaintenance = (control.schedules ??
+      []) as unknown as MaintenanceSchedule[];
+    this.emergencyStates = new Map(
+      Object.entries(control.emergencies ?? {}) as [string, EmergencyState][],
+    );
+
+    const services = {
+      notifications: true,
+      integrations: true,
+      queues_operational: true,
+      ...(control.services ?? {}),
+    } as Record<string, boolean>;
+    const now = Date.now();
+    for (const state of this.emergencyStates.values()) {
+      if (state.expiresAt && state.expiresAt <= now) continue;
+      for (const key of this.emergencyServiceKeys(state.action)) {
+        services[key] = false;
+      }
+    }
+    this.serviceStates = new Map(Object.entries(services));
+  }
+
+  private emergencyServiceKeys(action: EmergencyAction): string[] {
+    switch (action) {
+      case EmergencyAction.SUSPEND_ALL_SERVICES:
+      case EmergencyAction.EMERGENCY_SHUTDOWN:
+        return ['notifications', 'integrations', 'queues_operational'];
+      case EmergencyAction.DISABLE_NOTIFICATIONS:
+        return ['notifications'];
+      case EmergencyAction.PAUSE_ALL_QUEUES:
+        return ['queues_operational'];
+      case EmergencyAction.SUSPEND_INTEGRATIONS:
+        return ['integrations'];
+      default:
+        return [];
+    }
+  }
+
+  private async assertControlAdmin(adminId: string): Promise<void> {
+    const admin = await this.adminRepo.findOneBy({ id: adminId });
+    if (!admin) {
+      throw new ForbiddenException('Administrative principal not found');
+    }
+    if (
+      admin.role !== AdminRole.SUPER_ADMIN &&
+      admin.role !== AdminRole.ADMINISTRATOR
+    ) {
+      throw new ForbiddenException(
+        'Role is not permitted to mutate operational controls',
+      );
+    }
+  }
+
+  private async getLockedControl(
+    manager: EntityManager,
+  ): Promise<OperationalControl> {
+    const repo = manager.getRepository(OperationalControl);
+    const existing = await repo.findOne({
+      where: { id: 'system' },
+      lock: { mode: 'pessimistic_write' },
+    });
+    if (existing) return existing;
+    return repo.create({
+      id: 'system',
+      maintenanceActive: false,
+      maintenanceReason: null,
+      maintenanceStartedAt: null,
+      maintenanceScheduledEnd: null,
+      schedules: [],
+      emergencies: {},
+      services: {},
+      pendingCanonicalActions: {},
+      updatedBy: null,
+    });
+  }
+
+  private async recordControlEvent(
+    manager: EntityManager,
+    control: OperationalControl,
+    operation: string,
+    actorId: string,
+    reason: string,
+    beforeState: Record<string, unknown>,
+    afterState: Record<string, unknown>,
+    targetId = 'system',
+  ): Promise<string> {
+    const id = randomUUID();
+    const auditReference = `oce-${id}`;
+    const repo = manager.getRepository(OperationalControlEvent);
+    await repo.save(
+      repo.create({
+        id,
+        controlId: targetId,
+        operation,
+        actorId: actorId.slice(0, 64),
+        reason: (reason || 'unspecified').slice(0, 255),
+        beforeState,
+        afterState,
+        auditReference,
+        controlVersion: control.version ?? 0,
+      }),
+    );
+    return auditReference;
+  }
+
+  private async persistServiceState(
+    serviceKey: string,
+    operational: boolean,
+    adminId?: string,
+    reason?: string,
+  ): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      const control = await this.getLockedControl(manager);
+      const services = { ...(control.services ?? {}) };
+      const previous = services[serviceKey] ?? true;
+      services[serviceKey] = operational;
+      control.services = services;
+      if (adminId) control.updatedBy = adminId;
+      await manager.getRepository(OperationalControl).save(control);
+      await this.recordControlEvent(
+        manager,
+        control,
+        operational ? 'service_restore' : 'service_suspend',
+        adminId ?? 'system',
+        reason ?? `${serviceKey} ${operational ? 'restored' : 'suspended'}`,
+        { operational: previous },
+        { operational },
+        serviceKey,
+      );
+      this.loadControlCache(control);
+    });
+  }
+
   // ──────────────────────────────────────────────
   //  SYSTEM STATUS
   // ──────────────────────────────────────────────
 
   async getSystemStatus(): Promise<SystemStatusResponse> {
+    await this.reconcilePersistedState();
+
+    const now = Date.now();
     const activeEmergencies: string[] = [];
     this.emergencyStates.forEach((state, action) => {
-      if (state.expiresAt) {
-        if (Date.now() < state.expiresAt) {
-          activeEmergencies.push(action);
-        } else {
-          this.emergencyStates.delete(action);
-        }
-      } else {
+      if (!state.expiresAt || now < state.expiresAt) {
         activeEmergencies.push(action);
       }
     });
@@ -173,6 +408,7 @@ export class ProtocolAdminService {
   }
 
   async getDetailedOperationalStats(): Promise<Record<string, unknown>> {
+    await this.reconcilePersistedState();
     const allMetrics = await this.jobsService.getAllQueueMetrics();
     const queueMetrics = allMetrics.reduce(
       (acc, m) => {
@@ -216,18 +452,38 @@ export class ProtocolAdminService {
     dto: SetMaintenanceModeDto,
     adminId: string,
   ): Promise<MaintenanceStatusResponse> {
-    const wasActive = this.maintenanceActive;
-    this.maintenanceActive = dto.enabled;
-    this.maintenanceReason = dto.reason ?? '';
-    this.maintenanceStartedAt = dto.enabled ? new Date().toISOString() : null;
-    this.maintenanceScheduledEnd = dto.scheduledEnd ?? null;
-
-    const actionType = dto.enabled
-      ? AuditActionType.MAINTENANCE_MODE_ENABLED
-      : AuditActionType.MAINTENANCE_MODE_DISABLED;
+    await this.assertControlAdmin(adminId);
+    let auditReference = '';
+    await this.dataSource.transaction(async (manager) => {
+      const control = await this.getLockedControl(manager);
+      const before = {
+        maintenanceActive: control.maintenanceActive,
+        reason: control.maintenanceReason,
+      };
+      control.maintenanceActive = dto.enabled;
+      control.maintenanceReason = dto.reason ?? null;
+      control.maintenanceStartedAt = dto.enabled ? new Date() : null;
+      control.maintenanceScheduledEnd = dto.scheduledEnd
+        ? new Date(dto.scheduledEnd)
+        : null;
+      control.updatedBy = adminId;
+      await manager.getRepository(OperationalControl).save(control);
+      auditReference = await this.recordControlEvent(
+        manager,
+        control,
+        dto.enabled ? 'maintenance_enable' : 'maintenance_disable',
+        adminId,
+        dto.reason ?? 'maintenance state change',
+        before,
+        { maintenanceActive: dto.enabled, reason: dto.reason ?? null },
+      );
+      this.loadControlCache(control);
+    });
 
     await this.auditTrailService.log({
-      actionType,
+      actionType: dto.enabled
+        ? AuditActionType.MAINTENANCE_MODE_ENABLED
+        : AuditActionType.MAINTENANCE_MODE_DISABLED,
       entityType: AuditEntityType.MAINTENANCE,
       entityId: 'system',
       userId: adminId,
@@ -236,8 +492,9 @@ export class ProtocolAdminService {
       description: dto.enabled
         ? `Maintenance mode enabled${dto.reason ? `: ${dto.reason}` : ''}`
         : 'Maintenance mode disabled',
-      beforeState: { maintenanceActive: wasActive },
+      beforeState: { maintenanceActive: this.maintenanceActive },
       afterState: { maintenanceActive: dto.enabled, reason: dto.reason },
+      metadata: { auditReference },
     });
 
     this.logger.log(
@@ -250,8 +507,14 @@ export class ProtocolAdminService {
     dto: ScheduleMaintenanceDto,
     adminId: string,
   ): Promise<MaintenanceSchedule> {
+    await this.assertControlAdmin(adminId);
+
+    if (dto.endTime && Date.parse(dto.endTime) <= Date.parse(dto.startTime)) {
+      throw new BadRequestException('endTime must be after startTime');
+    }
+
     const schedule: MaintenanceSchedule = {
-      id: `mnt-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+      id: `mnt-${Date.now()}-${randomUUID().slice(0, 8)}`,
       description: dto.description,
       startTime: dto.startTime,
       endTime: dto.endTime,
@@ -261,7 +524,32 @@ export class ProtocolAdminService {
       createdBy: adminId,
     };
 
-    this.scheduledMaintenance.push(schedule);
+    await this.dataSource.transaction(async (manager) => {
+      const control = await this.getLockedControl(manager);
+      const schedules = [
+        ...((control.schedules ?? []) as unknown as MaintenanceSchedule[]),
+      ];
+      if (schedules.some((s) => s.id === schedule.id)) {
+        throw new ConflictException(
+          `Maintenance schedule ${schedule.id} already exists`,
+        );
+      }
+      schedules.push(schedule);
+      control.schedules = schedules as unknown as Record<string, unknown>[];
+      control.updatedBy = adminId;
+      await manager.getRepository(OperationalControl).save(control);
+      await this.recordControlEvent(
+        manager,
+        control,
+        'maintenance_schedule',
+        adminId,
+        dto.description,
+        { scheduleCount: schedules.length - 1 },
+        { schedule },
+        schedule.id,
+      );
+      this.loadControlCache(control);
+    });
 
     await this.auditTrailService.log({
       actionType: AuditActionType.MAINTENANCE_SCHEDULED,
@@ -277,30 +565,46 @@ export class ProtocolAdminService {
     this.logger.log(
       `Maintenance scheduled: ${schedule.id} - ${dto.description}`,
     );
+
     return schedule;
   }
 
   async cancelMaintenance(scheduleId: string, adminId: string): Promise<void> {
-    const index = this.scheduledMaintenance.findIndex(
-      (s) => s.id === scheduleId,
-    );
-    if (index === -1) {
-      throw new NotFoundException(
-        `Maintenance schedule ${scheduleId} not found`,
-      );
-    }
+    await this.assertControlAdmin(adminId);
 
-    const schedule = this.scheduledMaintenance[index];
-    if (schedule.status !== 'scheduled') {
-      throw new ConflictException(
-        `Cannot cancel maintenance with status '${schedule.status}'`,
+    await this.dataSource.transaction(async (manager) => {
+      const control = await this.getLockedControl(manager);
+      const schedules = [
+        ...((control.schedules ?? []) as unknown as MaintenanceSchedule[]),
+      ];
+      const index = schedules.findIndex((s) => s.id === scheduleId);
+      if (index === -1) {
+        throw new NotFoundException(
+          `Maintenance schedule ${scheduleId} not found`,
+        );
+      }
+      const persistedSchedule = schedules[index];
+      if (persistedSchedule.status !== 'scheduled') {
+        throw new ConflictException(
+          `Cannot cancel maintenance with status '${persistedSchedule.status}'`,
+        );
+      }
+      schedules[index] = { ...persistedSchedule, status: 'cancelled' };
+      control.schedules = schedules as unknown as Record<string, unknown>[];
+      control.updatedBy = adminId;
+      await manager.getRepository(OperationalControl).save(control);
+      await this.recordControlEvent(
+        manager,
+        control,
+        'maintenance_cancel',
+        adminId,
+        persistedSchedule.description,
+        { status: persistedSchedule.status },
+        { status: 'cancelled' },
+        scheduleId,
       );
-    }
-
-    this.scheduledMaintenance[index] = {
-      ...schedule,
-      status: 'cancelled',
-    };
+      this.loadControlCache(control);
+    });
 
     await this.auditTrailService.log({
       actionType: AuditActionType.MAINTENANCE_CANCELLED,
@@ -309,13 +613,15 @@ export class ProtocolAdminService {
       userId: adminId,
       severity: AuditSeverity.MEDIUM,
       category: AuditCategory.MAINTENANCE,
-      description: `Cancelled maintenance: ${schedule.description}`,
-      beforeState: { status: schedule.status },
+      description: `Cancelled maintenance schedule ${scheduleId}`,
       afterState: { status: 'cancelled' },
     });
+
+    this.logger.log(`Maintenance schedule cancelled: ${scheduleId}`);
   }
 
   async getMaintenanceStatus(): Promise<MaintenanceStatusResponse> {
+    await this.reconcilePersistedState();
     return {
       active: this.maintenanceActive,
       reason: this.maintenanceReason || undefined,
@@ -335,6 +641,7 @@ export class ProtocolAdminService {
     dto: ControlServiceDto,
     adminId: string,
   ): Promise<ServiceControlResponse> {
+    await this.assertControlAdmin(adminId);
     const { serviceType, action, queueName, reason } = dto;
     const beforeState = {
       operational: this.serviceStates.get(serviceType) ?? true,
@@ -381,7 +688,9 @@ export class ProtocolAdminService {
             beforeState,
           );
         default:
-          throw new BadRequestException(`Unknown service type: ${serviceType}`);
+          throw new BadRequestException(
+            `Unknown service type: ${String(serviceType)}`,
+          );
       }
     } catch (error) {
       this.logger.error(
@@ -437,7 +746,9 @@ export class ProtocolAdminService {
           auditActionType = AuditActionType.SERVICE_SUSPENDED;
           break;
         default:
-          throw new BadRequestException(`Unknown queue action: ${action}`);
+          throw new BadRequestException(
+            `Unknown queue action: ${String(action)}`,
+          );
       }
     }
 
@@ -472,7 +783,12 @@ export class ProtocolAdminService {
     beforeState?: Record<string, unknown>,
   ): Promise<ServiceControlResponse> {
     const isSuspending = action === ServiceAction.SUSPEND;
-    this.serviceStates.set('notifications', !isSuspending);
+    await this.persistServiceState(
+      'notifications',
+      !isSuspending,
+      adminId,
+      reason,
+    );
 
     const auditActionType = isSuspending
       ? AuditActionType.SERVICE_SUSPENDED
@@ -511,7 +827,12 @@ export class ProtocolAdminService {
     beforeState?: Record<string, unknown>,
   ): Promise<ServiceControlResponse> {
     const isSuspending = action === ServiceAction.SUSPEND;
-    this.serviceStates.set('integrations', !isSuspending);
+    await this.persistServiceState(
+      'integrations',
+      !isSuspending,
+      adminId,
+      reason,
+    );
 
     const auditActionType = isSuspending
       ? AuditActionType.INTEGRATION_SUSPENDED
@@ -589,7 +910,7 @@ export class ProtocolAdminService {
   ): Promise<ServiceControlResponse> {
     const serviceKey = serviceType;
     const isSuspending = action === ServiceAction.SUSPEND;
-    this.serviceStates.set(serviceKey, !isSuspending);
+    await this.persistServiceState(serviceKey, !isSuspending, adminId, reason);
 
     const auditActionType = isSuspending
       ? AuditActionType.SERVICE_SUSPENDED
@@ -683,6 +1004,7 @@ export class ProtocolAdminService {
     dto: ExecuteEmergencyActionDto,
     adminId: string,
   ): Promise<EmergencyActionResponse> {
+    await this.assertControlAdmin(adminId);
     const { action, reason, durationMinutes } = dto;
     const expiresAt = durationMinutes
       ? Date.now() + durationMinutes * 60 * 1000
@@ -695,10 +1017,45 @@ export class ProtocolAdminService {
       expiresAt,
     };
 
-    this.emergencyStates.set(action, emergency);
-
     const affectedServices = this.getAffectedServices(action);
-    this.applyEmergencyState(action, true);
+    let auditReference = '';
+
+    await this.dataSource.transaction(async (manager) => {
+      const control = await this.getLockedControl(manager);
+      const emergencies = {
+        ...((control.emergencies ?? {}) as Record<string, EmergencyState>),
+      };
+      emergencies[action] = emergency;
+      control.emergencies = emergencies;
+      if (
+        action === EmergencyAction.EMERGENCY_SHUTDOWN ||
+        action === EmergencyAction.PAUSE_ALL_QUEUES
+      ) {
+        control.pendingCanonicalActions = {
+          ...(control.pendingCanonicalActions ?? {}),
+          [action]: {
+            status: 'pending',
+            reason,
+            requestedBy: adminId,
+            requestedAt: emergency.timestamp,
+            canonicalEvidenceRequired: true,
+          },
+        };
+      }
+      control.updatedBy = adminId;
+      await manager.getRepository(OperationalControl).save(control);
+      auditReference = await this.recordControlEvent(
+        manager,
+        control,
+        'emergency_execute',
+        adminId,
+        reason,
+        {},
+        { action, expiresAt: emergency.expiresAt, affectedServices },
+        `emergency-${action}`,
+      );
+      this.loadControlCache(control);
+    });
 
     await this.auditTrailService.log({
       actionType: AuditActionType.EMERGENCY_ACTION_EXECUTED,
@@ -714,6 +1071,7 @@ export class ProtocolAdminService {
         expiresAt: expiresAt ? new Date(expiresAt).toISOString() : undefined,
         affectedServices,
       },
+      metadata: { auditReference },
     });
 
     this.logger.warn(
@@ -733,13 +1091,34 @@ export class ProtocolAdminService {
     action: EmergencyAction,
     adminId: string,
   ): Promise<void> {
-    const emergency = this.emergencyStates.get(action);
-    if (!emergency) {
-      throw new NotFoundException(`No active emergency action: ${action}`);
-    }
+    await this.assertControlAdmin(adminId);
 
-    this.emergencyStates.delete(action);
-    this.applyEmergencyState(action, false);
+    let resolved: EmergencyState | undefined;
+    await this.dataSource.transaction(async (manager) => {
+      const control = await this.getLockedControl(manager);
+      const emergencies = {
+        ...((control.emergencies ?? {}) as Record<string, EmergencyState>),
+      };
+      resolved = emergencies[action];
+      if (!resolved) {
+        throw new NotFoundException(`No active emergency action: ${action}`);
+      }
+      delete emergencies[action];
+      control.emergencies = emergencies;
+      control.updatedBy = adminId;
+      await manager.getRepository(OperationalControl).save(control);
+      await this.recordControlEvent(
+        manager,
+        control,
+        'emergency_resolve',
+        adminId,
+        `Resolved emergency action ${action}`,
+        resolved as unknown as Record<string, unknown>,
+        { resolved: true },
+        `emergency-${action}`,
+      );
+      this.loadControlCache(control);
+    });
 
     await this.auditTrailService.log({
       actionType: AuditActionType.SERVICE_RESTORED,
@@ -749,11 +1128,69 @@ export class ProtocolAdminService {
       severity: AuditSeverity.HIGH,
       category: AuditCategory.EMERGENCY,
       description: `Resolved emergency action: ${action}`,
-      beforeState: emergency,
+      beforeState: resolved,
       afterState: { resolved: true, resolvedAt: new Date().toISOString() },
     });
 
     this.logger.log(`Emergency action resolved: ${action} by admin ${adminId}`);
+  }
+
+  async resolveCanonicalAction(
+    action: string,
+    evidence: {
+      transactionHash?: string;
+      ledger?: number;
+      eventId?: string;
+    },
+    actorId: string,
+  ): Promise<void> {
+    await this.assertControlAdmin(actorId);
+
+    await this.dataSource.transaction(async (manager) => {
+      const control = await this.getLockedControl(manager);
+      const pendingCanonical = {
+        ...((control.pendingCanonicalActions ?? {}) as Record<
+          string,
+          Record<string, unknown>
+        >),
+      };
+      const entry = pendingCanonical[action];
+      if (!entry || entry.status !== 'pending') {
+        throw new NotFoundException(`No pending canonical action: ${action}`);
+      }
+      pendingCanonical[action] = {
+        ...entry,
+        status: 'resolved',
+        resolvedAt: new Date().toISOString(),
+        resolvedBy: actorId,
+        canonicalEvidence: evidence,
+      };
+      control.pendingCanonicalActions = pendingCanonical;
+      control.updatedBy = actorId;
+      await manager.getRepository(OperationalControl).save(control);
+      await this.recordControlEvent(
+        manager,
+        control,
+        'canonical_action_resolved',
+        actorId,
+        `Canonical evidence confirmed for ${action}`,
+        { status: 'pending' },
+        { status: 'resolved', evidence },
+        action,
+      );
+      this.loadControlCache(control);
+    });
+
+    await this.auditTrailService.log({
+      actionType: AuditActionType.EMERGENCY_ACTION_EXECUTED,
+      entityType: AuditEntityType.SERVICE,
+      entityId: `canonical-${action}`,
+      userId: actorId,
+      severity: AuditSeverity.HIGH,
+      category: AuditCategory.EMERGENCY,
+      description: `Canonical evidence confirmed for pending action: ${action}`,
+      afterState: { action, evidence },
+    });
   }
 
   private getAffectedServices(action: EmergencyAction): string[] {
@@ -778,31 +1215,6 @@ export class ProtocolAdminService {
         return ['all'];
       default:
         return ['unknown'];
-    }
-  }
-
-  private applyEmergencyState(action: EmergencyAction, active: boolean): void {
-    switch (action) {
-      case EmergencyAction.SUSPEND_ALL_SERVICES:
-        this.serviceStates.set('notifications', !active);
-        this.serviceStates.set('integrations', !active);
-        this.serviceStates.set('queues_operational', !active);
-        break;
-      case EmergencyAction.DISABLE_NOTIFICATIONS:
-        this.serviceStates.set('notifications', !active);
-        break;
-      case EmergencyAction.PAUSE_ALL_QUEUES:
-        this.serviceStates.set('queues_operational', !active);
-        break;
-      case EmergencyAction.SUSPEND_INTEGRATIONS:
-        this.serviceStates.set('integrations', !active);
-        break;
-      case EmergencyAction.EMERGENCY_SHUTDOWN:
-        this.serviceStates.set('notifications', !active);
-        this.serviceStates.set('integrations', !active);
-        this.serviceStates.set('queues_operational', !active);
-        this.maintenanceActive = active;
-        break;
     }
   }
 
@@ -928,9 +1340,9 @@ export class ProtocolAdminService {
 
   private async countEntity(table: string): Promise<number> {
     try {
-      const result = await this.dataSource.query(
-        `SELECT COUNT(*) as count FROM ${table}`,
-      );
+      const result = await this.dataSource.query<
+        Array<{ count?: string | number }>
+      >(`SELECT COUNT(*) as count FROM ${table}`);
       return Number(result[0]?.count ?? 0);
     } catch {
       return 0;
