@@ -19,9 +19,15 @@ import { NotificationGateway } from './websockets/websocket.gateway';
 import { EmailService } from './services/email.service';
 import { WebhookService } from './services/webhook.service';
 import { NotificationProcessor } from './services/notification.processor';
+import { NotificationEventPublisher } from './services/notification-event-publisher.service';
+import { VerificationEventPublisher } from './services/verification-event-publisher.service';
 import { Notification } from './entities/notification.entity';
 import { NotificationPreference } from './entities/notification-preference.entity';
 import { DeliveryHistory } from './entities/delivery-history.entity';
+import { CanonicalEvent } from '../v2/events/entities/canonical-event.entity';
+import { ProjectVerificationRound } from '../v2/verification/entities/project-verification-round.entity';
+import { ProjectParticipantPosition } from '../v2/verification/entities/project-participant-position.entity';
+import { User } from '../entities/user.entity';
 
 @Module({
   imports: [
@@ -29,6 +35,10 @@ import { DeliveryHistory } from './entities/delivery-history.entity';
       Notification,
       NotificationPreference,
       DeliveryHistory,
+      CanonicalEvent,
+      ProjectVerificationRound,
+      ProjectParticipantPosition,
+      User,
     ]),
     BullModule.registerQueue(
       {
@@ -66,12 +76,16 @@ import { DeliveryHistory } from './entities/delivery-history.entity';
     WebhookService,
     NotificationProcessor,
     NotificationGateway,
+    NotificationEventPublisher,
+    VerificationEventPublisher,
   ],
   exports: [
     NotificationsService,
     NotificationPreferencesService,
     DeliveryHistoryService,
     NotificationGateway,
+    NotificationEventPublisher,
+    VerificationEventPublisher,
   ],
 })
 export class NotificationsModule {}
