@@ -126,7 +126,7 @@ export class IpfsService {
       // Return normalized URL (this will percent-encode parts as needed)
       return url.toString();
     } catch {
-      this.logger.warn(`Invalid gateway URL from provider: ${urlStr}`);
+      this.logger.warn('Invalid gateway URL from provider');
       return undefined;
     }
   }

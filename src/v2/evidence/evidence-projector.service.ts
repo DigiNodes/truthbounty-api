@@ -61,7 +61,12 @@ export class EvidenceProjectorService {
 
     const cursor = await this.dataSource
       .getRepository(ProjectorCursor)
-      .findOne({ where: { projectorName: PROJECTOR_NAME } });
+      .findOne({
+        where: {
+          projectorName:
+            this.canonicalEvents.getScopedProjectorName(PROJECTOR_NAME),
+        },
+      });
     const after = cursor
       ? { blockNumber: cursor.lastBlockNumber, logIndex: cursor.lastLogIndex }
       : null;
@@ -97,7 +102,8 @@ export class EvidenceProjectorService {
       // in the same transaction as the projection and its downstream event.
       await manager.getRepository(ProjectorCursor).upsert(
         {
-          projectorName: PROJECTOR_NAME,
+          projectorName:
+            this.canonicalEvents.getScopedProjectorName(PROJECTOR_NAME),
           lastBlockNumber: event.blockNumber,
           lastLogIndex: event.logIndex,
         },

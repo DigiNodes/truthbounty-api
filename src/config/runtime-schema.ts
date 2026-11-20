@@ -318,10 +318,8 @@ export const runtimeSchema = {
     aliases: ['MANIFEST_MAX_AGE_DAYS'],
   },
   CONTRACT_RELEASE_STRICT: boolean(true),
-  IPFS_PROVIDER: choice(['local', 'pinata', 'web3storage'], 'local'),
+  IPFS_PROVIDER: choice(['local'], 'local'),
   IPFS_LOCAL_STORAGE_PATH: text({ default: 'data/ipfs' }),
-  IPFS_GATEWAY_URL: url(undefined, true),
-  IPFS_API_URL: url(undefined, true),
   SMTP_HOST: { ...hostname, productionRequired: true },
   SMTP_PORT: integer(587, 1, 65535),
   SMTP_USER: secret(true),
@@ -656,7 +654,7 @@ export function parseRuntimeConfig(env: Environment): RuntimeConfig {
     }
     if (config.IPFS_PROVIDER === 'local')
       errors.push(
-        'IPFS_PROVIDER: local storage forbidden in staging/production',
+        'IPFS_PROVIDER: local storage is development-only; no production adapter is supported',
       );
     if (config.AI_PROVIDER === 'mock')
       errors.push('AI_PROVIDER: mock forbidden in staging/production');
@@ -684,11 +682,7 @@ export function parseRuntimeConfig(env: Environment): RuntimeConfig {
       )
         errors.push(`${key}: development placeholder forbidden`);
     }
-    for (const key of [
-      'RPC_URL',
-      'IPFS_GATEWAY_URL',
-      'IPFS_API_URL',
-    ] as const) {
+    for (const key of ['RPC_URL'] as const) {
       if (config[key] && !/^(https|wss):/.test(config[key]))
         errors.push(`${key}: secure transport required`);
     }

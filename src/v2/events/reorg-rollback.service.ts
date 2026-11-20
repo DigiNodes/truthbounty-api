@@ -1,7 +1,7 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { ModuleRef } from '@nestjs/core';
-import { DataSource, EntityManager } from 'typeorm';
+import { DataSource, EntityManager, In } from 'typeorm';
 import { CanonicalEvent } from './entities/canonical-event.entity';
 import { EventCheckpoint } from './entities/event-checkpoint.entity';
 import { EventQuarantine } from './entities/event-quarantine.entity';
@@ -22,6 +22,7 @@ import {
   DisputeStatus,
 } from '../disputes/entities/project-dispute.entity';
 import { CanonicalEventsService } from './canonical-events.service';
+import { CanonicalEventQueryService } from './canonical-event-query.service';
 import { RawLog } from './interfaces/canonical-event.interface';
 import {
   IV2Projector,
@@ -43,6 +44,7 @@ export class ReorgRollbackService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly canonicalEventsService: CanonicalEventsService,
+    private readonly projectorScope: CanonicalEventQueryService,
     private readonly moduleRef: ModuleRef,
   ) {}
 
@@ -97,6 +99,11 @@ export class ReorgRollbackService {
       chainId,
       rollbackToBlockInput,
     );
+    if (chainId !== this.projectorScope.getScope().chainId) {
+      throw new BadRequestException(
+        'Rollback chain does not match the configured release scope',
+      );
+    }
     const rollbackBlockStr = rollbackToBlock.toString();
 
     this.logger.warn(
@@ -202,7 +209,18 @@ export class ReorgRollbackService {
 
       // 6. Rewind Projector Cursors
       const cursorRepo = manager.getRepository(ProjectorCursor);
-      const cursors = await cursorRepo.find();
+      const cursors = await cursorRepo.find({
+        where: {
+          projectorName: In(
+            this.projectorScope.getScopedProjectorNames([
+              'v2-evidence',
+              'v2-verification',
+              'v2-disputes',
+              'v2-rewards',
+            ]),
+          ),
+        },
+      });
       const rewoundCursors: string[] = [];
 
       // Find the max logIndex among canonical events at rollbackToBlock, if any
@@ -518,8 +536,16 @@ export class ReorgRollbackService {
   > {
     this.logger.warn('Rebuilding all V2 projections from genesis...');
 
+    const scopedCursorNames = this.projectorScope.getScopedProjectorNames([
+      'v2-evidence',
+      'v2-verification',
+      'v2-disputes',
+      'v2-rewards',
+    ]);
     await this.dataSource.transaction(async (manager) => {
-      await manager.getRepository(ProjectorCursor).delete({});
+      await manager
+        .getRepository(ProjectorCursor)
+        .delete({ projectorName: In(scopedCursorNames) });
       await manager.getRepository(ProjectEvidenceVersion).delete({});
       await manager.getRepository(ProjectEvidence).delete({});
       await manager.getRepository(ProjectParticipantPosition).delete({});

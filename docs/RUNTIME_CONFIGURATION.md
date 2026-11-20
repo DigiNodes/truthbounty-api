@@ -6,6 +6,8 @@ Staging/production require explicitly supplied deployment settings. All supplied
 
 A release file must match `CONTRACT_RELEASE_SHA256`, `CONTRACT_RELEASE_ID`, `CHAIN_ID` and `CONTRACT_RELEASE_DEPLOYMENT_BLOCK`. This boundary pins metadata; the prerequisite canonical-manifest validator owns ABI/event/freshness and network verification.
 
+IPFS currently supports only the local filesystem adapter, for development and tests. It produces canonical CIDv1 identifiers but does not publish content or provide a gateway. Staging and production reject this adapter; no remote provider is production-supported yet.
+
 Legacy `RELEASE_MANIFEST_MAX_AGE_MS` must migrate to `CONTRACT_RELEASE_MAX_AGE_DAYS`; downstream milliseconds are derived. Same-key file precedence is process environment > `.env.local` > `.env`; duplicate assignments inside either file are rejected.
 
 | Variable | Type | Default | Required explicitly when deployed | Aliases (use only one) |
@@ -116,10 +118,8 @@ Legacy `RELEASE_MANIFEST_MAX_AGE_MS` must migrate to `CONTRACT_RELEASE_MAX_AGE_D
 | CONTRACT_RELEASE_DEPLOYMENT_BLOCK | integer 0..9007199254740991 | 0 | yes | DEPLOYMENT_BLOCK |
 | CONTRACT_RELEASE_MAX_AGE_DAYS | integer 1..365 | 90 | no | MANIFEST_MAX_AGE_DAYS |
 | CONTRACT_RELEASE_STRICT | true or false | true | no | - |
-| IPFS_PROVIDER | local / pinata / web3storage | local | no | - |
+| IPFS_PROVIDER | local | local | no | - |
 | IPFS_LOCAL_STORAGE_PATH | non-empty string | data/ipfs | no | - |
-| IPFS_GATEWAY_URL | URL (https:, http:) | (unset) | yes | - |
-| IPFS_API_URL | URL (https:, http:) | (unset) | yes | - |
 | SMTP_HOST | hostname or IP address (without scheme, credentials or port) | (unset) | yes | - |
 | SMTP_PORT | integer 1..65535 | 587 | no | - |
 | SMTP_USER | non-empty string | (unset) | yes | - |

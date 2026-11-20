@@ -35,9 +35,7 @@ const production = {
   CAPABILITY_TOKEN_SIGNING_KEY: 'a-distinct-capability-key-for-this-unit-test',
   SIWE_DOMAIN: 'truthbounty.internal',
   ALLOWED_ORIGINS: 'https://app.internal',
-  IPFS_PROVIDER: 'pinata',
-  IPFS_GATEWAY_URL: 'https://ipfs.internal',
-  IPFS_API_URL: 'https://ipfs.internal/api',
+  IPFS_PROVIDER: 'local',
   SMTP_HOST: 'smtp.internal',
   SMTP_USER: 'mailer',
   SMTP_PASSWORD: 'mail-credential',
@@ -69,6 +67,19 @@ describe('runtime schema', () => {
     expect(() =>
       parseRuntimeConfig({ SIWE_SUPPORTED_CHAIN_IDS: 'NaN' }),
     ).toThrow('SIWE_SUPPORTED_CHAIN_IDS');
+  });
+  it('accepts only the implemented local IPFS provider in development', () => {
+    expect(parseRuntimeConfig({ IPFS_PROVIDER: 'local' }).IPFS_PROVIDER).toBe(
+      'local',
+    );
+    for (const provider of ['pinata', 'web3storage', 'unknown']) {
+      expect(() =>
+        parseRuntimeConfig({ IPFS_PROVIDER: provider }),
+      ).toThrow('IPFS_PROVIDER');
+    }
+    expect(() =>
+      parseRuntimeConfig({ ...production, IPFS_PROVIDER: 'local' }),
+    ).toThrow('IPFS_PROVIDER: local storage is development-only');
   });
   it('keeps finalized-cursor artifact checksums distinct from manifest checksums', () => {
     const config = parseRuntimeConfig({
@@ -161,7 +172,7 @@ describe('runtime schema', () => {
     ['DB_PORT', '5432oops'],
     ['SMTP_PORT', '0'],
     ['RPC_URL', 'javascript:credential'],
-    ['IPFS_API_URL', 'not-a-url'],
+    ['IPFS_PROVIDER', 'pinata'],
     ['CONTRACT_ADDRESS', '0x0000000000000000000000000000000000000000'],
     ['CONTRACT_RELEASE_SHA256', 'not-a-checksum'],
     ['LOG_LEVEL', 'anything'],
@@ -227,7 +238,9 @@ describe('runtime schema', () => {
     expect(() => parseRuntimeConfig({ NODE_ENV: 'staging' })).toThrow(
       'CHAIN_ID: required explicitly',
     );
-    expect(() => parseRuntimeConfig(production)).not.toThrow();
+    expect(() => parseRuntimeConfig(production)).toThrow(
+      'IPFS_PROVIDER: local storage is development-only',
+    );
   });
   it.each([
     ['LOCAL_DEV_MODE', 'true'],
@@ -322,7 +335,11 @@ describe('startup snapshot', () => {
   });
   it('accepts a pinned matching release', () => {
     const read = jest.fn(() => release);
-    const snapshot = createRuntimeSnapshot(production, [], read);
+    const snapshot = createRuntimeSnapshot(
+      { ...production, NODE_ENV: 'development' },
+      [],
+      read,
+    );
     expect(snapshot.config.CONTRACT_RELEASE_ID).toBe('op-test-v1');
     expect(read).toHaveBeenCalledTimes(1);
     expect(Object.isFrozen(snapshot.environment)).toBe(true);
