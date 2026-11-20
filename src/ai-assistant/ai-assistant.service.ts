@@ -3,10 +3,14 @@ import {
   NotFoundException,
   Logger,
   ForbiddenException,
+  Optional,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { LlmProviderService } from './llm-provider.service';
 import { RagService } from './rag.service';
+import { SafetyGuardrailService } from './services/safety-guardrail.service';
+import { AiConfig } from './config/ai.config';
 import { CreateConversationDto, SendMessageDto } from './dto/ai-assistant.dto';
 
 @Injectable()
@@ -17,13 +21,34 @@ export class AiAssistantService {
     private prisma: PrismaService,
     private llmProvider: LlmProviderService,
     private ragService: RagService,
-  ) {}
+    @Optional() private safetyGuardrail?: SafetyGuardrailService,
+    @Optional() private configService?: ConfigService,
+  ) {
+    const aiConfig = this.configService?.get<AiConfig>('ai');
+    const nodeEnv =
+      this.configService?.get<string>('NODE_ENV', 'development')?.toLowerCase();
+    if (
+      ['production', 'staging'].includes(nodeEnv ?? '') &&
+      aiConfig?.redactBeforeStore &&
+      typeof this.safetyGuardrail?.redact !== 'function'
+    ) {
+      throw new Error(
+        'AI_REDACT_BEFORE_STORE=true requires a wired redaction implementation',
+      );
+    }
+  }
 
   async createConversation(userId: string, dto: CreateConversationDto) {
+    const aiConfig = this.configService?.get<AiConfig>('ai');
+    const title = aiConfig?.redactBeforeStore
+      ? this.safetyGuardrail?.redact(dto.title || 'New Conversation').text ||
+        dto.title ||
+        'New Conversation'
+      : dto.title || 'New Conversation';
     return this.prisma.conversation.create({
       data: {
         userId,
-        title: dto.title || 'New Conversation',
+        title,
       },
     });
   }
@@ -61,6 +86,11 @@ export class AiAssistantService {
     conversationId: string,
     dto: SendMessageDto,
   ) {
+    const aiConfig = this.configService?.get<AiConfig>('ai');
+    const storedUserContent =
+      aiConfig?.redactBeforeStore && this.safetyGuardrail
+        ? this.safetyGuardrail.redact(dto.content).text
+        : dto.content;
     const conversation = await this.prisma.conversation.findUnique({
       where: { id: conversationId },
     });
@@ -80,7 +110,7 @@ export class AiAssistantService {
       data: {
         conversationId,
         role: 'user',
-        content: dto.content,
+        content: storedUserContent,
       },
     });
 
@@ -126,7 +156,10 @@ ${context}
       data: {
         conversationId,
         role: 'assistant',
-        content: llmResponse.content,
+        content:
+          aiConfig?.redactBeforeStore && this.safetyGuardrail
+            ? this.safetyGuardrail.redact(llmResponse.content).text
+            : llmResponse.content,
       },
     });
 

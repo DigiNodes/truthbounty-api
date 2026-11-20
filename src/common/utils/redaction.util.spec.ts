@@ -2,9 +2,26 @@ import {
   redactSensitiveData,
   redactObject,
   generateRequestId,
+  redactPromptText,
 } from './redaction.util';
 
 describe('Redaction Utils', () => {
+  describe('redactPromptText', () => {
+    it('redacts common secret fixtures without changing ordinary text', () => {
+      const secret = redactPromptText(
+        'password=hunter2; private key: 0x' + 'a'.repeat(64),
+      );
+      expect(secret.redacted).toBe(true);
+      expect(secret.text).not.toContain('hunter2');
+      expect(secret.text).not.toContain('a'.repeat(64));
+
+      expect(redactPromptText('How does staking work?')).toEqual({
+        text: 'How does staking work?',
+        redacted: false,
+      });
+    });
+  });
+
   describe('redactSensitiveData', () => {
     it('should redact passwords', () => {
       const input = 'password=secret123';

@@ -82,7 +82,8 @@ export class LlmProviderService {
       `No valid LLM provider configured for ${provider}, using mock response.`,
     );
     return {
-      content: `This is a mock response from the AI Assistant because the API keys for ${provider} are not configured. You said: ${messages[messages.length - 1]?.content}`,
+      content:
+        'This is a mock response from the AI Assistant because no configured provider is available.',
       usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
       provider: 'mock',
       model: 'mock-model',

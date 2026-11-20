@@ -1,9 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createHash } from 'crypto';
+import { createHmac } from 'crypto';
 import { RedisService } from '../../redis/redis.service';
 import { AiConfig } from '../config/ai.config';
 import { AiChatMessage } from '../providers/ai-provider.interface';
+import { redactPromptText } from '../../common/utils/redaction.util';
 
 export interface CachedContextResult {
   documentId: string;
@@ -35,7 +36,8 @@ export class AiAssistantCache {
   }
 
   private contextKey(query: string, category?: string): string {
-    const hash = createHash('sha1')
+    const keyMaterial = this.aiConfig.redactionCacheKey || 'local-ai-context-key';
+    const hash = createHmac('sha256', keyMaterial)
       .update(`${query.toLowerCase().trim()}::${category ?? ''}`)
       .digest('hex');
     return `ai:context:${hash}`;
@@ -48,7 +50,13 @@ export class AiAssistantCache {
     const data = await this.redisService.get(this.contextKey(query, category));
     if (!data) return null;
     try {
-      return JSON.parse(data);
+      const results = JSON.parse(data) as CachedContextResult[];
+      if (!this.aiConfig.redactBeforeStore) return results;
+      return results.map((result) => ({
+        ...result,
+        title: redactPromptText(result.title).text,
+        content: redactPromptText(result.content).text,
+      }));
     } catch (e) {
       this.logger.error(
         `Failed to parse cached context results: ${(e as Error).message}`,
@@ -63,9 +71,16 @@ export class AiAssistantCache {
     category?: string,
   ): Promise<void> {
     const key = this.contextKey(query, category);
+    const storedResults = this.aiConfig.redactBeforeStore
+      ? results.map((result) => ({
+          ...result,
+          content: redactPromptText(result.content).text,
+          title: redactPromptText(result.title).text,
+        }))
+      : results;
     await this.redisService.set(
       key,
-      JSON.stringify(results),
+      JSON.stringify(storedResults),
       this.aiConfig.contextCacheTtl,
     );
 
@@ -112,7 +127,12 @@ export class AiAssistantCache {
     );
     if (!data) return null;
     try {
-      return JSON.parse(data);
+      const messages = JSON.parse(data) as AiChatMessage[];
+      if (!this.aiConfig.redactBeforeStore) return messages;
+      return messages.map((message) => ({
+        ...message,
+        content: redactPromptText(message.content).text,
+      }));
     } catch (e) {
       this.logger.error(
         `Failed to parse cached conversation window: ${(e as Error).message}`,
@@ -125,9 +145,15 @@ export class AiAssistantCache {
     conversationId: string,
     messages: AiChatMessage[],
   ): Promise<void> {
+    const storedMessages = this.aiConfig.redactBeforeStore
+      ? messages.map((message) => ({
+          ...message,
+          content: redactPromptText(message.content).text,
+        }))
+      : messages;
     await this.redisService.set(
       this.convoWindowKey(conversationId),
-      JSON.stringify(messages),
+      JSON.stringify(storedMessages),
       this.aiConfig.convoWindowCacheTtl,
     );
   }
@@ -164,9 +190,15 @@ export class AiAssistantCache {
   }
 
   async setStreamPending(marker: StreamPendingMarker): Promise<void> {
+    const storedMarker = this.aiConfig.redactBeforeStore
+      ? {
+          ...marker,
+          content: redactPromptText(marker.content).text,
+        }
+      : marker;
     await this.redisService.set(
       this.streamPendingKey(marker.messageId),
-      JSON.stringify(marker),
+      JSON.stringify(storedMarker),
       120,
     );
   }
@@ -177,7 +209,12 @@ export class AiAssistantCache {
     const data = await this.redisService.get(this.streamPendingKey(messageId));
     if (!data) return null;
     try {
-      return JSON.parse(data);
+      const marker = JSON.parse(data) as StreamPendingMarker;
+      if (!this.aiConfig.redactBeforeStore) return marker;
+      return {
+        ...marker,
+        content: redactPromptText(marker.content).text,
+      };
     } catch (e) {
       this.logger.error(
         `Failed to parse pending stream marker: ${(e as Error).message}`,
