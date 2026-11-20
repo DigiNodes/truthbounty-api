@@ -117,6 +117,7 @@ describe('GovernanceProjectionService', () => {
   let votes: ReturnType<typeof makeRepo>;
   let roleChanges: ReturnType<typeof makeRepo>;
   let events: ReturnType<typeof makeRepo>;
+  let transitions: ReturnType<typeof makeRepo>;
   let artifactRegistry: any;
   let decoder: any;
   let service: GovernanceProjectionService;
@@ -127,6 +128,7 @@ describe('GovernanceProjectionService', () => {
     votes = makeRepo();
     roleChanges = makeRepo();
     events = makeRepo();
+    transitions = makeRepo();
     artifactRegistry = { resolve: jest.fn(async () => null) };
     decoder = {
       decodeCall: jest.fn((target, value, calldata) => ({
@@ -149,6 +151,7 @@ describe('GovernanceProjectionService', () => {
       events as any,
       artifactRegistry as any,
       decoder as any,
+      transitions as any,
     );
   });
 
@@ -279,6 +282,72 @@ describe('GovernanceProjectionService', () => {
     expect(second).toBe('duplicate');
   });
 
+  // ─── Lifecycle transition history (PREWAVE-BE-190) ─────────────────────
+
+  it('records canonical lifecycle transitions with full provenance', async () => {
+    await seedProposal(ProposalChainState.PENDING);
+
+    const event = makeEvent({
+      eventName: 'ProposalQueued',
+      txHash: '0xqueue',
+      logIndex: 7,
+      blockNumber: '150',
+      blockTimestamp: new Date('2026-01-02T00:00:00Z'),
+      artifactVersion: 'v1',
+      payload: { proposalId: '1', eta: '1700000000' } as any,
+    });
+
+    await (service as any).projectEvent(event);
+
+    expect(transitions._store).toHaveLength(1);
+    expect(transitions._store[0]).toMatchObject({
+      chainId: 11155420,
+      contractAddress: '0x0000000000000000000000000000000000001001',
+      proposalId: '1',
+      eventName: 'ProposalQueued',
+      state: ProposalChainState.QUEUED,
+      eta: '1700000000',
+      txHash: '0xqueue',
+      logIndex: 7,
+      blockNumber: '150',
+      artifactVersion: 'v1',
+    });
+  });
+
+  it('keeps earlier transitions after a later state transition', async () => {
+    await seedProposal(ProposalChainState.PENDING);
+
+    await (service as any).projectEvent(
+      makeEvent({
+        eventName: 'ProposalQueued',
+        txHash: '0xqueue',
+        logIndex: 1,
+        blockNumber: '150',
+        payload: { proposalId: '1', eta: '1700000000' } as any,
+      }),
+    );
+    // Advance the lastEvent marker so the next event is not a duplicate.
+    (proposals._store[0] as any).lastEventTxHash = '0xqueue';
+    (proposals._store[0] as any).lastEventLogIndex = 1;
+
+    await (service as any).projectEvent(
+      makeEvent({
+        eventName: 'ProposalExecuted',
+        txHash: '0xexec',
+        logIndex: 2,
+        blockNumber: '200',
+        payload: { proposalId: '1' } as any,
+      }),
+    );
+
+    expect(transitions._store.map((t: any) => t.eventName)).toEqual([
+      'ProposalQueued',
+      'ProposalExecuted',
+    ]);
+    // The proposal's current state changed; history did not lose the queue.
+    expect((proposals._store[0] as any).state).toBe(ProposalChainState.EXECUTED);
+  });
+
   // ─── Reorg ──────────────────────────────────────────────────────────────
 
   it('rollbackAboveBlock resets a stale proposal to the last canonical event', async () => {
@@ -344,6 +413,83 @@ describe('GovernanceProjectionService', () => {
     await service.rollbackAboveBlock(11155420, 250n);
 
     expect(proposals._store.length).toBe(0);
+  });
+
+  it('rollbackAboveBlock removes only reverted lifecycle transitions', async () => {
+    await seedProposal(ProposalChainState.EXECUTED);
+    (proposals._store[0] as any).stateChangedAtBlock = '200';
+
+    (transitions._store as any[]).push(
+      {
+        id: 't-1',
+        chainId: 11155420,
+        proposalId: '1',
+        eventName: 'ProposalQueued',
+        txHash: '0xqueue',
+        logIndex: 1,
+        blockNumber: '150',
+      } as any,
+      {
+        id: 't-2',
+        chainId: 11155420,
+        proposalId: '1',
+        eventName: 'ProposalExecuted',
+        txHash: '0xexec',
+        logIndex: 2,
+        blockNumber: '200',
+      } as any,
+    );
+
+    transitions.createQueryBuilder = jest.fn(() => {
+      let block: bigint | null = null;
+      const qb: any = {
+        where: jest.fn(function (this: any, sql, params) {
+          block = params?.rollbackToBlock ?? null;
+          return this;
+        }),
+        andWhere: jest.fn(function (this: any, sql, params) {
+          if (params?.rollbackToBlock !== undefined) {
+            block = params.rollbackToBlock;
+          }
+          return this;
+        }),
+        delete: jest.fn().mockReturnThis(),
+        execute: jest.fn(async () => {
+          if (block === null) return { affected: 0 };
+          const before = transitions._store.length;
+          for (let i = transitions._store.length - 1; i >= 0; i--) {
+            if (BigInt((transitions._store[i] as any).blockNumber) > block) {
+              transitions._store.splice(i, 1);
+            }
+          }
+          return { affected: before - transitions._store.length };
+        }),
+      };
+      return qb;
+    });
+
+    const lastValid = makeEvent({
+      eventName: 'ProposalQueued',
+      txHash: '0xqueue',
+      logIndex: 1,
+      blockNumber: '150',
+      payload: { proposalId: '1', eta: '1700000000' } as any,
+    });
+    events.createQueryBuilder = jest.fn(() => ({
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      addOrderBy: jest.fn().mockReturnThis(),
+      getOne: jest.fn(async () => lastValid),
+      getMany: jest.fn(async () => [lastValid]),
+    }));
+
+    await service.rollbackAboveBlock(11155420, 150n);
+
+    expect(transitions._store.map((t: any) => t.eventName)).toEqual([
+      'ProposalQueued',
+    ]);
+    expect((proposals._store[0] as any).state).toBe(ProposalChainState.QUEUED);
   });
 
   // ─── Role changes ───────────────────────────────────────────────────────
