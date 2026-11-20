@@ -13,7 +13,7 @@ import { RedisService } from '../redis/redis.service';
 import { SiweService } from './services/siwe.service';
 import { TokenService, TokenPair } from './services/token.service';
 import {
-  AUTG_GENERIC_FAILURE_MESSAGE,
+  AUTH_GENERIC_FAILURE_MESSAGE,
   constantTimeAddressEqual,
   timingSafeEqualUtf8,
 } from '../common/utils/timing-safe.util';
