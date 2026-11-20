@@ -1,7 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { BlockList, isIP } from 'node:net';
 import { Readable } from 'stream';
-import { redactSensitiveData } from '../common/utils/redaction.util';
 import { IPFS_PROVIDER, IpfsAddResult, IpfsProvider } from './interfaces';
 
 type AddressFamily = 'ipv4' | 'ipv6';
@@ -109,17 +108,8 @@ export class IpfsService {
     return this.sanitizeGatewayUrl(raw);
   }
 
-  private logGatewayRejection(
-    category: GatewayUrlFailure,
-    hostname?: string,
-  ): void {
-    const safeHostname =
-      hostname && !isUnsafeHostname(hostname)
-        ? redactSensitiveData(hostname.toLowerCase())
-        : undefined;
-    const context = safeHostname ? ` host=${safeHostname}` : '';
-
-    this.logger.warn(`Rejected IPFS gateway URL (${category})${context}`);
+  private logGatewayRejection(category: GatewayUrlFailure): void {
+    this.logger.warn(`Rejected IPFS gateway URL (${category})`);
   }
 
   /**
@@ -159,18 +149,18 @@ export class IpfsService {
 
     // Only allow http(s).
     if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-      this.logGatewayRejection('unsupported_scheme', url.hostname);
+      this.logGatewayRejection('unsupported_scheme');
       return undefined;
     }
 
     // Gateway URLs must not target private infrastructure or carry credentials.
     if (url.username || url.password) {
-      this.logGatewayRejection('credentials_present', url.hostname);
+      this.logGatewayRejection('credentials_present');
       return undefined;
     }
 
     if (url.port !== '' && url.port !== '80' && url.port !== '443') {
-      this.logGatewayRejection('unsupported_port', url.hostname);
+      this.logGatewayRejection('unsupported_port');
       return undefined;
     }
 
