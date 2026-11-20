@@ -186,20 +186,31 @@ The following test coverage is required (not implemented in this minimal fix):
 **Creating Admins:**
 ```bash
 # Via API (requires existing super_admin or administrator)
+# Super administrators can grant any role. Administrators can grant roles up to administrator (cannot grant super_admin).
+# If role is omitted, it defaults to the least-privilege role: auditor.
 POST /admin/admins
 {
   "walletAddress": "0x...",
-  "role": "auditor"  # Start with minimum privilege
+  "role": "auditor"  # Start with minimum privilege (default)
 }
 ```
+
+**Role-Grant Policy & Privilege Escalation Protection (PREWAVE-BE-135):**
+- **Strict Role-Grant Policy:** Enforced directly in `AdminService` and decoupled from the endpoint route hierarchy (`ADMIN_ROLE_GRANT_POLICY`).
+- **Super Administrator Privilege Protection:** An `administrator` cannot create accounts with `super_admin` role, cannot promote an existing lower-privilege account to `super_admin`, and cannot alter the role or status of an existing `super_admin` account.
+- **Grant Scope:**
+  - `super_admin`: Can grant all roles (`super_admin`, `administrator`, `security_analyst`, `governance_operator`, `moderator`, `auditor`).
+  - `administrator`: Can grant roles at or below administrator (`administrator`, `security_analyst`, `governance_operator`, `moderator`, `auditor`).
+  - Lower roles: No grant authority.
+- **Durable Audit Trail:** Every grant, update, and status change attempt (including denied privilege escalation attempts) is durably recorded in the tamper-evident audit log with actor ID, target, previous role, new role, and outcome (`success` or `denied`).
 
 **Role Hierarchy Access:**
 - `auditor` (30) - Read-only: `/admin/jobs/metrics/*`, `/audit/*`
 - `moderator` (50) - Moderation queue only
 - `governance_operator` (60) - Governance + read access
 - `security_analyst` (60) - Security + read access
-- `administrator` (80) - Full operational control except admin management
-- `super_admin` (100) - Full system control including admin creation
+- `administrator` (80) - Operational control; can create and manage operators up to administrator tier
+- `super_admin` (100) - Full system control including super_admin role granting
 
 ### Emergency Response
 
