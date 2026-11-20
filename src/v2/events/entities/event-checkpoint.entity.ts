@@ -10,18 +10,23 @@ import {
 /**
  * Per-(chain, contract) ingestion cursor.
  *
- * V2-BE-011 depends on V2-BE-010 ("Implement Reorg-Safe Event Cursor and
- * Checkpoint Store"), which has not merged and has no frozen interface yet.
- * This entity is a deliberately minimal stand-in: it tracks a safe block
- * (finality-lagged, safe to read) and a finalized block, and is advanced in
- * the same DB transaction as the canonical-event writes it accompanies so a
- * crash mid-batch can never leave the cursor ahead of the data it describes.
- * It is expected to be replaced or reconciled once V2-BE-010 lands; see the
- * PR description for the residual rework this implies.
+ * Three facts are persisted separately and must never be conflated:
+ *  - `lastProcessedBlock`: ingestion progress (the highest canonical log
+ *    processed for this contract), independent of chain finality.
+ *  - `lastSafeBlock` / hash: the provider-observed safe head.
+ *  - `lastFinalizedBlock` / hash: the provider-observed finalized head.
+ *
+ * The finality fields are derived only from provider-reported chain heads.
+ * They are advanced in the same DB transaction as the event writes they
+ * accompany, so a crash mid-batch can never leave the cursor ahead of the
+ * data it describes. `headSource` and `headsObservedAt` record the provenance
+ * and observation time so read models can fail closed when finality is stale
+ * or unavailable.
  */
 @Entity('v2_event_checkpoints')
 @Unique('uq_v2_checkpoint_source', ['chainId', 'contractAddress'])
 @Check('chk_v2_checkpoint_chain_positive', '"chainId" > 0')
+@Check('chk_v2_checkpoint_processed_nonneg', '"lastProcessedBlock" >= 0')
 @Check('chk_v2_checkpoint_safe_nonneg', '"lastSafeBlock" >= 0')
 @Check('chk_v2_checkpoint_final_nonneg', '"lastFinalizedBlock" >= 0')
 @Check(
@@ -38,6 +43,11 @@ export class EventCheckpoint {
   @Column({ type: 'varchar', length: 42 })
   contractAddress: string;
 
+  /** Highest canonical-event block processed for this contract. */
+  @Column({ type: 'bigint', default: 0 })
+  lastProcessedBlock: string;
+
+  /** Provider-observed safe head (never the block of an ingested log). */
   @Column({ type: 'bigint', default: 0 })
   lastSafeBlock: string;
 
@@ -49,6 +59,18 @@ export class EventCheckpoint {
 
   @Column({ type: 'varchar', length: 66, nullable: true })
   lastFinalizedBlockHash: string | null;
+
+  /** Highest provider-observed (latest) head at the time of the advance. */
+  @Column({ type: 'bigint', nullable: true })
+  observedHead: string | null;
+
+  /** Machine-readable finality source, e.g. provider finality tags. */
+  @Column({ type: 'varchar', length: 128, nullable: true })
+  headSource: string | null;
+
+  /** When the source reported the safe/finalized heads. */
+  @Column({ type: 'timestamp', nullable: true })
+  headsObservedAt: Date | null;
 
   @UpdateDateColumn()
   updatedAt: Date;

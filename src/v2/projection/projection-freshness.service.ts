@@ -141,11 +141,8 @@ export class ProjectionFreshnessService {
 
     if (!cursor) degrade('cursor-missing');
 
-    const { safeHeight, finalizedHeight } = this.resolveFinality(
-      checkpoints,
-      snapshot,
-      degrade,
-    );
+    const { safeHeight, finalizedHeight, finalitySource, headsObservedAt } =
+      this.resolveFinality(checkpoints, snapshot, degrade);
 
     const observedHead =
       snapshot && Number.isFinite(snapshot.observedHeadBlock)
@@ -178,6 +175,8 @@ export class ProjectionFreshnessService {
       indexedLogIndex,
       finalizedHeight,
       safeHeight,
+      finalitySource,
+      headsObservedAt,
       observedHead,
       headDistance,
       lastSuccess,
@@ -222,9 +221,17 @@ export class ProjectionFreshnessService {
       ReturnType<BlockchainStateService['getIndexerHealth']>
     > | null,
     degrade: (reason: string) => void,
-  ): { safeHeight: string | null; finalizedHeight: string | null } {
+  ): {
+    safeHeight: string | null;
+    finalizedHeight: string | null;
+    finalitySource: string | null;
+    headsObservedAt: string | null;
+  } {
     let safeHeight: string | null = null;
     let finalizedHeight: string | null = null;
+    let finalitySource: string | null = null;
+    let headsObservedAt: string | null = null;
+    let hasCheckpointWithHeights = false;
 
     for (const checkpoint of checkpoints) {
       const safe = this.toBlockString(checkpoint.lastSafeBlock);
@@ -232,16 +239,38 @@ export class ProjectionFreshnessService {
       try {
         if (
           safe !== null &&
+          BigInt(safe) > 0n &&
           (safeHeight === null || BigInt(safe) > BigInt(safeHeight))
         ) {
           safeHeight = safe;
+          hasCheckpointWithHeights = true;
         }
         if (
           finalized !== null &&
+          BigInt(finalized) > 0n &&
           (finalizedHeight === null ||
             BigInt(finalized) > BigInt(finalizedHeight))
         ) {
           finalizedHeight = finalized;
+          hasCheckpointWithHeights = true;
+        }
+        if (
+          (safe !== null && BigInt(safe) > 0n) ||
+          (finalized !== null && BigInt(finalized) > 0n)
+        ) {
+          if (
+            finalitySource === null &&
+            typeof checkpoint.headSource === 'string' &&
+            checkpoint.headSource.length > 0
+          ) {
+            finalitySource = checkpoint.headSource;
+          }
+          if (headsObservedAt === null && checkpoint.headsObservedAt) {
+            const observed = new Date(checkpoint.headsObservedAt);
+            if (Number.isFinite(observed.getTime())) {
+              headsObservedAt = observed.toISOString();
+            }
+          }
         }
       } catch {
         // Ignore malformed checkpoint rows; they must never break the report.
@@ -262,7 +291,15 @@ export class ProjectionFreshnessService {
 
     if (finalizedHeight === null) degrade('finality-unavailable');
     if (safeHeight === null) degrade('safe-unavailable');
-    return { safeHeight, finalizedHeight };
+    // A checkpoint that advanced without a provenance/observation time is not
+    // trustworthy finality: surface it instead of presenting it as safe data.
+    if (
+      hasCheckpointWithHeights &&
+      (finalitySource === null || headsObservedAt === null)
+    ) {
+      degrade('finality-provenance-missing');
+    }
+    return { safeHeight, finalizedHeight, finalitySource, headsObservedAt };
   }
 
   private computeHeadDistance(

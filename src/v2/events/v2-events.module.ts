@@ -18,6 +18,7 @@ import { EventQuarantineService } from './event-quarantine.service';
 import { EventQuarantineReplayService } from './event-quarantine-replay.service';
 import { EventQuarantineRetentionService } from './event-quarantine-retention.service';
 import { EventQuarantineController } from './event-quarantine.controller';
+import { CANONICAL_CHAIN_HEADS, RpcChainHeadsProvider } from './chain-heads';
 
 @Module({
   imports: [
@@ -42,6 +43,10 @@ import { EventQuarantineController } from './event-quarantine.controller';
     EventQuarantineService,
     EventQuarantineReplayService,
     EventQuarantineRetentionService,
+    {
+      provide: CANONICAL_CHAIN_HEADS,
+      useClass: RpcChainHeadsProvider,
+    },
   ],
   exports: [
     CanonicalEventsService,

@@ -13,6 +13,8 @@ import {
 } from './entities/event-quarantine.entity';
 import { EventCheckpoint } from './entities/event-checkpoint.entity';
 import { RawLog } from './interfaces/canonical-event.interface';
+import { CANONICAL_CHAIN_HEADS, CanonicalChainHeads } from './chain-heads';
+import { IndexerConfigService } from '../../config/indexer-config.service';
 import { DataSource, Repository } from 'typeorm';
 import * as crypto from 'crypto';
 
@@ -29,6 +31,9 @@ describe('CanonicalEventsService (integration)', () => {
   let artifactRepo: Repository<ContractArtifact>;
   let quarantineRepo: Repository<EventQuarantine>;
   let checkpointRepo: Repository<EventCheckpoint>;
+  let providerHeads: CanonicalChainHeads;
+  let headsAvailable: boolean;
+  let observedAt: Date;
 
   const abi = [
     'event EvidenceRegistered(bytes32 indexed claimId, address indexed submitter, bytes32 digest)',
@@ -61,6 +66,18 @@ describe('CanonicalEventsService (integration)', () => {
   }
 
   beforeEach(async () => {
+    observedAt = new Date();
+    headsAvailable = true;
+    providerHeads = {
+      chainId: 10,
+      observedHead: 520n,
+      safeHead: 500n,
+      finalizedHead: 480n,
+      safeBlockHash: '0x' + '66'.repeat(32),
+      finalizedBlockHash: '0x' + '77'.repeat(32),
+      observedAt,
+      source: 'provider:eth_getBlockByNumber(latest|safe|finalized)',
+    };
     moduleRef = await Test.createTestingModule({
       imports: [
         TypeOrmModule.forRoot({
@@ -88,6 +105,19 @@ describe('CanonicalEventsService (integration)', () => {
         ArtifactRegistryService,
         EventDecoderService,
         EventQuarantineService,
+        {
+          provide: IndexerConfigService,
+          useValue: {
+            getEventIndexerConfig: () => ({ rpcUrl: '', chainId: 10 }),
+          },
+        },
+        {
+          provide: CANONICAL_CHAIN_HEADS,
+          useValue: {
+            getHeads: async (chainId: number) =>
+              headsAvailable && chainId === 10 ? providerHeads : null,
+          },
+        },
       ],
     }).compile();
 
@@ -191,5 +221,138 @@ describe('CanonicalEventsService (integration)', () => {
 
     const quarantined = await quarantineRepo.find();
     expect(quarantined).toHaveLength(1);
+  });
+
+  describe('finality derived from provider chain heads', () => {
+    async function checkpoint() {
+      return checkpointRepo.findOne({
+        where: { chainId: 10, contractAddress },
+      });
+    }
+
+    it('keeps both watermarks behind the log when provider heads are behind it', async () => {
+      providerHeads = {
+        ...providerHeads,
+        observedHead: 120n,
+        safeHead: 100n,
+        finalizedHead: 50n,
+      };
+
+      await service.ingest(makeLog({ blockNumber: 500n }));
+
+      const cp = await checkpoint();
+      expect(String(cp?.lastProcessedBlock)).toBe('500');
+      expect(String(cp?.lastSafeBlock)).toBe('100');
+      expect(String(cp?.lastFinalizedBlock)).toBe('50');
+    });
+
+    it('advances finality from heads during backfill instead of the log block', async () => {
+      providerHeads = {
+        ...providerHeads,
+        observedHead: 1100n,
+        safeHead: 1000n,
+        finalizedHead: 900n,
+      };
+
+      await service.ingest(
+        makeLog({ blockNumber: 100n, transactionHash: '0x' + '88'.repeat(32) }),
+      );
+
+      const cp = await checkpoint();
+      expect(String(cp?.lastProcessedBlock)).toBe('100');
+      expect(String(cp?.lastSafeBlock)).toBe('1000');
+      expect(String(cp?.lastFinalizedBlock)).toBe('900');
+    });
+
+    it('records head provenance and observation time alongside the watermarks', async () => {
+      await service.ingest(makeLog());
+
+      const cp = await checkpoint();
+      expect(cp?.headSource).toBe(providerHeads.source);
+      expect(cp?.headsObservedAt).not.toBeNull();
+      expect(String(cp?.observedHead)).toBe('520');
+      expect(cp?.lastSafeBlockHash).toBe(providerHeads.safeBlockHash);
+      expect(cp?.lastFinalizedBlockHash).toBe(providerHeads.finalizedBlockHash);
+    });
+
+    it.each([
+      ['missing', 'missing'],
+      ['wrong chain', { ...providerHeads, chainId: 137 }],
+      [
+        'stale',
+        { ...providerHeads, observedAt: new Date(Date.now() - 20 * 60_000) },
+      ],
+      [
+        'contradictory ordering',
+        { ...providerHeads, safeHead: 40n, finalizedHead: 50n },
+      ],
+      [
+        'safe above observed',
+        { ...providerHeads, observedHead: 100n, safeHead: 500n },
+      ],
+      ['malformed hash', { ...providerHeads, safeBlockHash: '0xdeadbeef' }],
+      ['negative head', { ...providerHeads, finalizedHead: -1n }],
+    ])('fails closed on %s heads', async (label, heads) => {
+      if (label === 'missing') {
+        headsAvailable = false;
+      } else {
+        providerHeads = heads as CanonicalChainHeads;
+      }
+
+      await service.ingest(makeLog());
+
+      const cp = await checkpoint();
+      expect(String(cp?.lastProcessedBlock)).toBe('500');
+      expect(String(cp?.lastSafeBlock)).toBe('0');
+      expect(String(cp?.lastFinalizedBlock)).toBe('0');
+      expect(cp?.headSource).toBeNull();
+      expect(cp?.headsObservedAt).toBeNull();
+    });
+
+    it('does not advertise a reorged height as safe or finalized', async () => {
+      await service.ingest(makeLog());
+      expect(String((await checkpoint())?.lastSafeBlock)).toBe('500');
+
+      // Provider heads regress after a reorg of an unfinalized block.
+      providerHeads = {
+        ...providerHeads,
+        observedHead: 430n,
+        safeHead: 450n,
+        finalizedHead: 430n,
+      };
+      await service.ingest(
+        makeLog({ blockNumber: 520n, transactionHash: '0x' + '99'.repeat(32) }),
+      );
+
+      const cp = await checkpoint();
+      expect(String(cp?.lastSafeBlock)).toBe('500');
+      expect(String(cp?.lastFinalizedBlock)).toBe('480');
+      expect(String(cp?.lastProcessedBlock)).toBe('520');
+    });
+
+    it('never regresses watermarks for out-of-order or concurrent ingests', async () => {
+      providerHeads = {
+        ...providerHeads,
+        observedHead: 700n,
+        safeHead: 700n,
+        finalizedHead: 650n,
+      };
+      const blocks = [600n, 200n, 400n, 100n, 500n];
+      for (const [index, blockNumber] of blocks.entries()) {
+        await service.ingest(
+          makeLog({
+            blockNumber,
+            logIndex: index,
+            transactionHash:
+              '0x' + (index + 1).toString(16).padStart(2, '0').repeat(32),
+          }),
+        );
+      }
+
+      const cp = await checkpoint();
+      expect(String(cp?.lastSafeBlock)).toBe('700');
+      expect(String(cp?.lastFinalizedBlock)).toBe('650');
+      expect(String(cp?.lastProcessedBlock)).toBe('600');
+    });
   });
 });

@@ -1,6 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import { ArtifactRegistryService } from './artifact-registry.service';
 import { EventDecoderService } from './event-decoder.service';
 import { CanonicalEvent } from './entities/canonical-event.entity';
@@ -12,6 +12,12 @@ import { EventCheckpoint } from './entities/event-checkpoint.entity';
 import { RawLog, IngestOutcome } from './interfaces/canonical-event.interface';
 import { IndexerConfigService } from '../../config/indexer-config.service';
 import { EventQuarantineService } from './event-quarantine.service';
+import {
+  CANONICAL_CHAIN_HEADS,
+  ChainHeadsProvider,
+  DEFAULT_MAX_HEAD_AGE_MS,
+  validateChainHeads,
+} from './chain-heads';
 
 /** Postgres unique_violation error code. */
 const PG_UNIQUE_VIOLATION = '23505';
@@ -65,11 +71,31 @@ export class CanonicalEventsService {
     private readonly decoder: EventDecoderService,
     private readonly indexerConfig: IndexerConfigService,
     private readonly quarantine: EventQuarantineService,
+    @Optional()
+    @Inject(CANONICAL_CHAIN_HEADS)
+    private readonly chainHeads?: ChainHeadsProvider,
   ) {}
 
-  private getFinalizedBlock(currentEventBlock: bigint): bigint {
-    const config = this.indexerConfig.getEventIndexerConfig();
-    return currentEventBlock - BigInt(config.confirmations.finalized);
+  /**
+   * Reads the authoritative provider heads for this log's chain. No provider
+   * response (or an invalid/stale/contradictory one) yields null, which makes
+   * ingestion fail closed on finality while still recording progress.
+   */
+  private async readHeads(chainId: number) {
+    if (!this.chainHeads) return null;
+    try {
+      return validateChainHeads(
+        await this.chainHeads.getHeads(chainId),
+        chainId,
+        new Date(),
+        DEFAULT_MAX_HEAD_AGE_MS,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Provider head observation failed for chain ${chainId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return null;
+    }
   }
 
   /**
@@ -169,6 +195,8 @@ export class CanonicalEventsService {
       return { status: 'quarantined', reason: QuarantineReason.ARTIFACT_DRIFT };
     }
 
+    const heads = await this.readHeads(log.chainId);
+
     return this.dataSource.transaction(async (manager) => {
       try {
         await manager.insert(CanonicalEvent, {
@@ -196,39 +224,109 @@ export class CanonicalEventsService {
         throw err;
       }
 
-      // Advance the checkpoint atomically with the event write. Monotonic:
-      // never move any cursor backward, so out-of-order batches can't regress state.
-      const newBlock = normalized.event.blockNumber;
-      const newBlockStr = newBlock.toString();
-      const finalizedBlock = this.getFinalizedBlock(newBlock);
-      const finalizedBlockStr =
-        finalizedBlock > 0n ? finalizedBlock.toString() : '0';
-
-      const updateResult = await manager
-        .createQueryBuilder()
-        .update(EventCheckpoint)
-        .set({
-          lastSafeBlock: () => `GREATEST("lastSafeBlock", '${newBlockStr}')`,
-          lastFinalizedBlock: () =>
-            `GREATEST("lastFinalizedBlock", '${finalizedBlockStr}')`,
-        })
-        .where('chainId = :chainId AND contractAddress = :contractAddress', {
-          chainId: log.chainId,
-          contractAddress: normalized.event.contractAddress,
-        })
-        .execute();
-
-      if (updateResult.affected === 0) {
-        await manager.insert(EventCheckpoint, {
-          chainId: log.chainId,
-          contractAddress: normalized.event.contractAddress,
-          lastSafeBlock: newBlockStr,
-          lastFinalizedBlock: finalizedBlockStr,
-        });
-      }
+      // Progress and finality are distinct facts. Ingestion always advances
+      // progress; safe/finalized only ever follow validated provider heads.
+      await this.advanceCheckpoint(
+        manager,
+        log.chainId,
+        normalized.event.contractAddress,
+        normalized.event.blockNumber,
+        heads,
+      );
 
       return { status: 'ingested', event: normalized.event };
     });
+  }
+
+  /**
+   * Advances the durable checkpoint inside the ingestion transaction.
+   *
+   * Progress follows the ingested log. Safe/finalized follow provider heads
+   * only, are clamped to `finalized <= safe <= observed`, and are monotonic so
+   * regressing observations can never move a watermark backward. When heads
+   * are unavailable the finality fields and their provenance are left intact.
+   */
+  private async advanceCheckpoint(
+    manager: EntityManager,
+    chainId: number,
+    contractAddress: string,
+    processedBlock: bigint,
+    heads: ReturnType<typeof validateChainHeads>,
+  ): Promise<void> {
+    const repo = manager.getRepository(EventCheckpoint);
+    const query = repo
+      .createQueryBuilder('checkpoint')
+      .where(
+        'checkpoint.chainId = :chainId AND checkpoint.contractAddress = :contractAddress',
+        { chainId, contractAddress },
+      );
+    // Postgres serializes concurrent writers on the checkpoint row; sqlite is
+    // single-writer and ignores row locks.
+    if (manager.connection.options.type === 'postgres') {
+      query.setLock('pessimistic_write');
+    }
+    const existing = await query.getOne();
+    const checkpoint =
+      existing ??
+      repo.create({
+        chainId,
+        contractAddress,
+        lastProcessedBlock: '0',
+        lastSafeBlock: '0',
+        lastFinalizedBlock: '0',
+        lastSafeBlockHash: null,
+        lastFinalizedBlockHash: null,
+        observedHead: null,
+        headSource: null,
+        headsObservedAt: null,
+      });
+
+    const currentProcessed = this.toBigInt(checkpoint.lastProcessedBlock);
+    const currentSafe = this.toBigInt(checkpoint.lastSafeBlock);
+    const currentFinalized = this.toBigInt(checkpoint.lastFinalizedBlock);
+    checkpoint.lastProcessedBlock = (
+      currentProcessed > processedBlock ? currentProcessed : processedBlock
+    ).toString();
+
+    if (heads) {
+      const observed = heads.observedHead;
+      const safe = heads.safeHead < observed ? heads.safeHead : observed;
+      const finalized = heads.finalizedHead < safe ? heads.finalizedHead : safe;
+      const nextSafe = currentSafe > safe ? currentSafe : safe;
+      let nextFinalized =
+        currentFinalized > finalized ? currentFinalized : finalized;
+      if (nextFinalized > nextSafe) nextFinalized = nextSafe;
+
+      checkpoint.lastSafeBlock = nextSafe.toString();
+      checkpoint.lastFinalizedBlock = nextFinalized.toString();
+      checkpoint.observedHead = observed.toString();
+      checkpoint.headSource = heads.source;
+      checkpoint.headsObservedAt = heads.observedAt;
+      if (heads.safeBlockHash && nextSafe === safe) {
+        checkpoint.lastSafeBlockHash = heads.safeBlockHash;
+      }
+      if (heads.finalizedBlockHash && nextFinalized === finalized) {
+        checkpoint.lastFinalizedBlockHash = heads.finalizedBlockHash;
+      }
+    }
+
+    // A lost insert race aborts the whole transaction (including the event
+    // write), so a concurrent batch can never leave conflicting checkpoints.
+    if (existing) {
+      await repo.save(checkpoint);
+    } else {
+      await repo.insert(checkpoint);
+    }
+  }
+
+  private toBigInt(value: unknown): bigint {
+    try {
+      if (value === null || value === undefined) return 0n;
+      const parsed = BigInt(value as string);
+      return parsed < 0n ? 0n : parsed;
+    } catch {
+      return 0n;
+    }
   }
 
   /**
@@ -276,7 +374,10 @@ export class CanonicalEventsService {
   private isUniqueViolation(err: unknown): boolean {
     if (typeof err !== 'object' || err === null) return false;
     const code = (err as { code?: string }).code;
-    return code === PG_UNIQUE_VIOLATION || code === 'SQLITE_CONSTRAINT';
+    return (
+      code === PG_UNIQUE_VIOLATION ||
+      (typeof code === 'string' && code.startsWith('SQLITE_CONSTRAINT'))
+    );
   }
 
   /**
