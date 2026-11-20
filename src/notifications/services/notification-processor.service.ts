@@ -11,6 +11,7 @@ import { EventType } from '../enums/event-type.enum';
 import { DeliveryChannel } from '../interfaces/notification.types';
 import { parseDeliveryChannel } from '../delivery/delivery-channel';
 import { planDeliveryRetry } from '../delivery/delivery-retry.policy';
+import { buildDeliveryIdempotencyKey } from '../delivery/delivery-idempotency-key';
 
 export interface NotificationProcessorJob {
   outboxEventId: string;
@@ -25,16 +26,16 @@ export interface NotificationProcessorJob {
 
 /**
  * NotificationProcessor
- * 
+ *
  * BullMQ job processor that handles notification delivery.
- * 
+ *
  * Responsibilities:
  * 1. Dequeue jobs from BullMQ
  * 2. Load outbox event details
  * 3. Call orchestrator to deliver to users
  * 4. Handle errors and retries
  * 5. Update outbox status (DISPATCHED/DEAD_LETTER)
- * 
+ *
  * Job Flow:
  * OutboxScheduler → creates job → BullMQ queue
  *                                      ↓
@@ -65,7 +66,7 @@ export class NotificationProcessor {
    * This is the main entry point called by BullMQ worker
    */
   async processJob(job: Job<NotificationProcessorJob>): Promise<any> {
-    const { outboxEventId, eventType, recipientIds, payload, idempotencyKey } = job.data;
+    const { outboxEventId, eventType, recipientIds, payload } = job.data;
 
     this.logger.log(
       `Processing notification job ${job.id}: ${eventType} to ${recipientIds.length} recipients`,
@@ -91,22 +92,29 @@ export class NotificationProcessor {
 
       for (const userId of recipientIds) {
         try {
-          // Check idempotency
-          const shouldDeliver = await this.deliveryTracker.checkIdempotency(
-            `${idempotencyKey}:${userId}`,
-          );
+          // Per recipient/channel claims are acquired by the orchestrator.
+          // This read-only check only short-circuits already confirmed work.
+          const preferenceChannel =
+            parseDeliveryChannel(payload?.channel) ?? DeliveryChannel.IN_APP;
+          const deliveryIdempotencyKey = buildDeliveryIdempotencyKey({
+            eventType,
+            recipientId: userId,
+            channel: preferenceChannel,
+            aggregateId: payload?.aggregateId ?? job.data.aggregateId,
+          });
 
-          if (!shouldDeliver) {
+          if (await this.deliveryTracker.isDelivered(deliveryIdempotencyKey)) {
             this.logger.debug(`Skipping duplicate delivery to ${userId}`);
-            deliveryResults[userId] = { status: 'skipped', reason: 'duplicate' };
+            deliveryResults[userId] = {
+              status: 'skipped',
+              reason: 'duplicate',
+            };
             continue;
           }
 
           // Check user preferences. The channel is resolved from the
           // publisher payload and falls back to in-app; a null channel is
           // never handed to the enforcer or the orchestrator.
-          const preferenceChannel =
-            parseDeliveryChannel(payload?.channel) ?? DeliveryChannel.IN_APP;
           const shouldNotify = await this.preferenceEnforcer.shouldDeliver(
             userId,
             eventType,
@@ -114,13 +122,23 @@ export class NotificationProcessor {
           );
 
           if (!shouldNotify.allowed) {
-            this.logger.debug(`Delivery blocked for ${userId}: ${shouldNotify.reason}`);
-            deliveryResults[userId] = { status: 'blocked', reason: shouldNotify.reason };
+            this.logger.debug(
+              `Delivery blocked for ${userId}: ${shouldNotify.reason}`,
+            );
+            deliveryResults[userId] = {
+              status: 'blocked',
+              reason: shouldNotify.reason,
+            };
             continue;
           }
 
           // Orchestrate delivery via enabled channels
-          await this.orchestrator.deliverNotification(eventType, [userId], payload);
+          await this.orchestrator.deliverNotification(eventType, [userId], {
+            ...payload,
+            aggregateId: payload?.aggregateId ?? job.data.aggregateId,
+            notificationId:
+              payload?.notificationId ?? job.data.aggregateId ?? outboxEventId,
+          });
 
           deliveryResults[userId] = { status: 'delivered' };
         } catch (error) {
@@ -140,7 +158,10 @@ export class NotificationProcessor {
 
       return { success: true, deliveryResults };
     } catch (error) {
-      this.logger.error(`Notification job ${job.id} failed: ${error.message}`, error.stack);
+      this.logger.error(
+        `Notification job ${job.id} failed: ${error.message}`,
+        error.stack,
+      );
 
       // Handle retry or dead-letter
       return await this.handleJobFailure(job, error, outboxEventId);
