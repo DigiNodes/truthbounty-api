@@ -77,7 +77,10 @@ export class DisputesProjectorService {
 
     const cursorRepo = this.dataSource.getRepository(ProjectorCursor);
     const cursor = await cursorRepo.findOne({
-      where: { projectorName: PROJECTOR_NAME },
+      where: {
+        projectorName:
+          this.canonicalEvents.getScopedProjectorName(PROJECTOR_NAME),
+      },
     });
     const after = cursor
       ? { blockNumber: cursor.lastBlockNumber, logIndex: cursor.lastLogIndex }
@@ -102,7 +105,8 @@ export class DisputesProjectorService {
 
       await cursorRepo.upsert(
         {
-          projectorName: PROJECTOR_NAME,
+          projectorName:
+            this.canonicalEvents.getScopedProjectorName(PROJECTOR_NAME),
           lastBlockNumber: event.blockNumber,
           lastLogIndex: event.logIndex,
         },
