@@ -28,6 +28,7 @@ import { ClaimsModule } from './claims/claims.module';
 import { ClaimFeedModule } from './claims/v2/claim-feed.module';
 import { ClaimReadModelsModule } from './claims/v2/read-models/claim-read-models.module';
 import { DisputeReadModelsModule } from './v2/disputes/read-models/dispute-read-models.module';
+import { DisputeModule } from './dispute/dispute.module';
 import { AuditModule } from './audit/audit.module';
 import { ThemeModule } from './theme.module';
 import { SupportModule } from './support/support.module';
@@ -374,6 +375,7 @@ async function createThrottlerStorage(
     ClaimReadModelsModule,
     // PREWAVE-BE-007: versioned dispute register/detail read models
     DisputeReadModelsModule,
+    DisputeModule,
     AuditModule,
     ThemeModule,
     SupportModule,

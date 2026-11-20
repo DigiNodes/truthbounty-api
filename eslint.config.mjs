@@ -98,4 +98,9 @@ export default tseslint.config(
       'no-restricted-imports': 'off',
     },
   },
+  {
+    // Issue 865 follows the maintainer's newer Prisma/PostgreSQL decision (#831).
+    files: ['src/dispute/dispute-journal.store.ts'],
+    rules: { 'no-restricted-imports': 'off' },
+  },
 );
