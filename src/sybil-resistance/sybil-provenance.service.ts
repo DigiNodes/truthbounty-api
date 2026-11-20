@@ -288,6 +288,8 @@ export class SybilProvenanceService {
         releaseId: authority?.releaseId,
         contractAddress: authority?.contractAddress,
         finalizedThroughBlock: authority?.finalizedThroughBlock,
+        checkpoint: signals.stakingCheckpoint ?? null,
+        authorityError: signals.stakingAuthorityError ?? null,
       },
     };
 

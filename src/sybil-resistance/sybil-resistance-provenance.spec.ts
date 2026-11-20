@@ -4,8 +4,10 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { SybilResistanceService } from './sybil-resistance.service';
 import { SybilModelRegistry } from './sybil-model-registry';
 import { SybilProvenanceService } from './sybil-provenance.service';
+import { SybilStakingAuthorityService } from './sybil-staking-authority.service';
 import { StakeEvent } from '../staking/entities/stake-event.entity';
 import {
+  ApprovedStakingAuthority,
   ChainArtifactAuthority,
   InvalidFeatureBoundsException,
   MissingFeatureException,
@@ -70,6 +72,15 @@ describe('SybilResistanceService — PREWAVE-BE-062 Provenance & Production-Read
     finalizedThroughBlock: 24850000,
   };
 
+  const approvedAuthority: ApprovedStakingAuthority = {
+    ...canonicalAuthority,
+    deploymentBlock: 1000,
+    finalizedBlockHash:
+      '0xbb183dd1270bacc47f49f05f3d2ac0c8f021b41138da06d822377a2845cddb22',
+    source: 'approved_runtime_registry',
+    checkpointKey: 'canonical-checkpoint-key',
+  };
+
   const mockUser: any = {
     id: mockUserId,
     createdAt: new Date(Date.now() - 100 * 24 * 60 * 60 * 1000),
@@ -93,6 +104,12 @@ describe('SybilResistanceService — PREWAVE-BE-062 Provenance & Production-Read
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SybilResistanceService,
+        {
+          provide: SybilStakingAuthorityService,
+          useValue: {
+            resolve: jest.fn().mockResolvedValue(approvedAuthority),
+          },
+        },
         {
           provide: SybilModelRegistry,
           useValue: modelRegistry,

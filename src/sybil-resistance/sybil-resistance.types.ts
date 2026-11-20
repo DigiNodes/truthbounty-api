@@ -32,6 +32,30 @@ export interface ChainArtifactAuthority {
 }
 
 /**
+ * Authority resolved from the server-side approved runtime/provenance registry.
+ * Caller-supplied chain metadata is never sufficient to produce this value.
+ */
+export interface ApprovedStakingAuthority extends ChainArtifactAuthority {
+  deploymentBlock: number;
+  finalizedBlockHash: string;
+  source: 'approved_runtime_registry';
+  checkpointKey: string;
+}
+
+/** Exact finalized checkpoint recorded with a staking-derived score. */
+export interface StakingCheckpointSnapshot {
+  chainId: number;
+  releaseId: string;
+  artifactHash: string;
+  contractAddress: string;
+  deploymentBlock: number;
+  finalizedThroughBlock: number;
+  finalizedBlockHash: string;
+  source: 'approved_runtime_registry';
+  checkpointKey: string;
+}
+
+/**
  * Feature provenance tracking per individual signal
  */
 export interface FeatureProvenance {
@@ -64,6 +88,8 @@ export interface SybilSignals {
   totalStakedAmount: bigint;
   stakingEventCount?: number;
   stakingFinalizedBlock?: number;
+  stakingCheckpoint?: StakingCheckpointSnapshot;
+  stakingAuthorityError?: string;
   claimsVotedOn: number;
   claimsCorrect: number;
   featuresObservedAt?: {
@@ -125,6 +151,7 @@ export interface CalculationDetails {
   riskLevel: SybilRiskLevel;
   provenanceDigest: string;
   featureProvenance: Record<string, FeatureProvenance>;
+  stakingCheckpoint?: StakingCheckpointSnapshot;
   missingFeatures: string[];
   staleFeatures: string[];
 }

@@ -2,6 +2,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { SybilResistanceService } from './sybil-resistance.service';
+import { SybilStakingAuthorityService } from './sybil-staking-authority.service';
+import { ApprovedStakingAuthority } from './sybil-resistance.types';
 import { StakeEvent } from '../staking/entities/stake-event.entity';
 import { StakingEventType } from '../staking/types/staking-event.type';
 
@@ -61,10 +63,36 @@ describe('SybilResistanceService', () => {
     wallets: [mockWallet],
   };
 
+  const approvedAuthority: ApprovedStakingAuthority = {
+    chainId: 11155420,
+    releaseId: 'rel-opsepolia-20261015-v2',
+    artifactHash:
+      'f183dd1270bacc47f49f05f3d2ac0c8f021b41138da06d822377a2845cddb22f',
+    contractAddress: '0x0000000000000000000000000000000000001004',
+    deploymentBlock: 1000,
+    finalizedThroughBlock: 24850000,
+    finalizedBlockHash:
+      '0xaa183dd1270bacc47f49f05f3d2ac0c8f021b41138da06d822377a2845cddb22',
+    source: 'approved_runtime_registry',
+    checkpointKey: 'test-approved-checkpoint-key',
+  };
+
+  let authorityService: {
+    resolve: jest.Mock<Promise<ApprovedStakingAuthority | null>, []>;
+  };
+
   beforeEach(async () => {
+    authorityService = {
+      resolve: jest.fn().mockResolvedValue(approvedAuthority),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SybilResistanceService,
+        {
+          provide: SybilStakingAuthorityService,
+          useValue: authorityService,
+        },
         {
           provide: PrismaService,
           useValue: {
@@ -276,6 +304,10 @@ describe('SybilResistanceService', () => {
   });
 
   describe('getLatestSybilScore', () => {
+    beforeEach(() => {
+      authorityService.resolve.mockResolvedValue(null);
+    });
+
     it('should return the most recent score', async () => {
       const mockScore = {
         id: 'score-1',
@@ -502,6 +534,10 @@ describe('SybilResistanceService', () => {
   });
 
   describe('getSybilScoreForVoting', () => {
+    beforeEach(() => {
+      authorityService.resolve.mockResolvedValue(null);
+    });
+
     it('should return score formatted for voting engines', async () => {
       const mockScore = {
         id: 'score-1',
@@ -649,6 +685,10 @@ describe('SybilResistanceService', () => {
       const mod = await Test.createTestingModule({
         providers: [
           SybilResistanceService,
+          {
+            provide: SybilStakingAuthorityService,
+            useValue: authorityService,
+          },
           {
             provide: PrismaService,
             useValue: {
@@ -1058,6 +1098,259 @@ describe('SybilResistanceService', () => {
         },
       });
       expect(result).toBe(99);
+    });
+  });
+
+  describe('finalized chain authority for staking signals (issue #869)', () => {
+    const ONE_TOKEN = BigInt('1000000000000000000');
+
+    const mockHistoricalTotal = (total: string | null) => {
+      stakeEventRepo.createQueryBuilder.mockReturnValue(
+        makeQb(total ? { total } : { total: null }),
+      );
+    };
+
+    const makeEvent = (overrides: Record<string, unknown> = {}) => ({
+      walletAddress: mockWallet.address,
+      type: StakingEventType.STAKE_DEPOSITED,
+      chainId: approvedAuthority.chainId,
+      contractAddress: approvedAuthority.contractAddress,
+      blockNumber: approvedAuthority.finalizedThroughBlock,
+      amount: ONE_TOKEN.toString(),
+      ...overrides,
+    });
+
+    const condition = (sql: string, params: any) => {
+      if (sql.includes('walletAddress'))
+        return (event: any) => params.addresses.includes(event.walletAddress);
+      if (sql.includes('se.type'))
+        return (event: any) => event.type === params.type;
+      if (sql.includes('se.chainId'))
+        return (event: any) => event.chainId === params.chainId;
+      if (sql.includes('contractAddress'))
+        return (event: any) =>
+          event.contractAddress?.toLowerCase() ===
+          params.contractAddress.toLowerCase();
+      if (sql.includes('deploymentBlock'))
+        return (event: any) => event.blockNumber >= params.deploymentBlock;
+      if (sql.includes('finalizedBlock'))
+        return (event: any) => event.blockNumber <= params.finalizedBlock;
+      return () => true;
+    };
+
+    const makeEventFilteringQb = (events: any[]) => {
+      const filters: Array<(event: any) => boolean> = [];
+      const qb: any = {
+        select: jest.fn().mockReturnThis(),
+        where: jest.fn((sql: string, params: any) => {
+          filters.push(condition(sql, params));
+          return qb;
+        }),
+        andWhere: jest.fn((sql: string, params: any) => {
+          filters.push(condition(sql, params));
+          return qb;
+        }),
+        getRawOne: jest.fn().mockImplementation(async () => {
+          const matched = events.filter((event) =>
+            filters.every((filter) => filter(event)),
+          );
+          const total = matched.reduce(
+            (sum, event) => sum + BigInt(event.amount),
+            0n,
+          );
+          return { total: total.toString() };
+        }),
+      };
+      return qb;
+    };
+
+    beforeEach(() => {
+      jest.spyOn(prisma.user, 'findUnique').mockResolvedValue(mockUser);
+      jest
+        .spyOn(prisma.worldIdVerification, 'findFirst')
+        .mockResolvedValue(null);
+    });
+
+    it('marks staking missing and never queries StakeEvent when no approved authority is available', async () => {
+      authorityService.resolve.mockRejectedValueOnce(
+        new Error('registry_unavailable'),
+      );
+      mockHistoricalTotal(ONE_TOKEN.toString());
+
+      const { details } = await service.computeSybilScore(mockUserId);
+
+      expect(stakeEventRepo.createQueryBuilder).not.toHaveBeenCalled();
+      expect(details.componentScores.staking).toBe(0);
+      expect(details.missingFeatures).toContain('staking');
+      expect(details.stakingCheckpoint).toBeUndefined();
+      expect(
+        details.featureProvenance.staking.details.authorityError,
+      ).toBe('authority_unavailable');
+    });
+
+    it('does not accept caller-supplied chain metadata in place of the registry authority', async () => {
+      mockHistoricalTotal(ONE_TOKEN.toString());
+
+      const { details } = await service.computeSybilScore(mockUserId, {
+        authority: {
+          chainId: approvedAuthority.chainId,
+          releaseId: approvedAuthority.releaseId,
+          artifactHash: approvedAuthority.artifactHash,
+          contractAddress: approvedAuthority.contractAddress,
+          finalizedThroughBlock: approvedAuthority.finalizedThroughBlock + 1,
+        },
+      });
+
+      expect(stakeEventRepo.createQueryBuilder).not.toHaveBeenCalled();
+      expect(details.componentScores.staking).toBe(0);
+      expect(details.missingFeatures).toContain('staking');
+    });
+
+    it('binds the production query to chain, deployment and finalized block', async () => {
+      mockHistoricalTotal(ONE_TOKEN.toString());
+
+      await service.computeSybilScore(mockUserId);
+
+      const qb = stakeEventRepo.createQueryBuilder.mock.results[0].value;
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        'se.chainId = :chainId',
+        expect.objectContaining({ chainId: approvedAuthority.chainId }),
+      );
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        'LOWER(se.contractAddress) = :contractAddress',
+        expect.objectContaining({
+          contractAddress: approvedAuthority.contractAddress.toLowerCase(),
+        }),
+      );
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        'se.blockNumber >= :deploymentBlock',
+        expect.objectContaining({
+          deploymentBlock: approvedAuthority.deploymentBlock,
+        }),
+      );
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        'se.blockNumber <= :finalizedBlock',
+        expect.objectContaining({
+          finalizedBlock: approvedAuthority.finalizedThroughBlock,
+        }),
+      );
+    });
+
+    it('excludes stake events above the finalized block or from another chain/deployment', async () => {
+      stakeEventRepo.createQueryBuilder.mockReturnValue(
+        makeEventFilteringQb([
+          makeEvent(),
+          makeEvent({ blockNumber: approvedAuthority.finalizedThroughBlock + 1 }),
+          makeEvent({ chainId: 10 }),
+          makeEvent({ contractAddress: '0x0000000000000000000000000000000000009999' }),
+          makeEvent({ blockNumber: approvedAuthority.deploymentBlock - 1 }),
+        ]),
+      );
+
+      const { details } = await service.computeSybilScore(mockUserId);
+
+      expect(details.componentScores.staking).toBe(1);
+      expect(details.featureProvenance.staking.details.totalDepositedUnits).toBe(
+        ONE_TOKEN.toString(),
+      );
+    });
+
+    it('does not count a score from unfinalized or wrong-chain events only', async () => {
+      stakeEventRepo.createQueryBuilder.mockReturnValue(
+        makeEventFilteringQb([
+          makeEvent({ blockNumber: approvedAuthority.finalizedThroughBlock + 1 }),
+          makeEvent({ chainId: 10 }),
+        ]),
+      );
+
+      const { details } = await service.computeSybilScore(mockUserId);
+
+      expect(details.componentScores.staking).toBe(0);
+      expect(details.missingFeatures).toContain('staking');
+    });
+
+    it('uses the same approved checkpoint on public and internal score paths', async () => {
+      mockHistoricalTotal(ONE_TOKEN.toString());
+
+      const internal = await service.computeSybilScore(mockUserId);
+      const publicView = await service.getPublicSybilScore(mockUserId);
+
+      expect(authorityService.resolve).toHaveBeenCalledTimes(2);
+      expect(publicView.provenanceDigest).toBe(
+        internal.details.provenanceDigest,
+      );
+      expect(internal.details.stakingCheckpoint?.checkpointKey).toBe(
+        approvedAuthority.checkpointKey,
+      );
+      expect((publicView as any).stakingCheckpoint).toBeUndefined();
+    });
+
+    it('records the exact finalized checkpoint and source provenance', async () => {
+      mockHistoricalTotal(ONE_TOKEN.toString());
+
+      const { details } = await service.computeSybilScore(mockUserId);
+
+      expect(details.stakingCheckpoint).toEqual({
+        chainId: approvedAuthority.chainId,
+        releaseId: approvedAuthority.releaseId,
+        artifactHash: approvedAuthority.artifactHash.toLowerCase(),
+        contractAddress: approvedAuthority.contractAddress.toLowerCase(),
+        deploymentBlock: approvedAuthority.deploymentBlock,
+        finalizedThroughBlock: approvedAuthority.finalizedThroughBlock,
+        finalizedBlockHash: approvedAuthority.finalizedBlockHash.toLowerCase(),
+        source: 'approved_runtime_registry',
+        checkpointKey: approvedAuthority.checkpointKey,
+      });
+      expect(
+        details.featureProvenance.staking.details.checkpoint,
+      ).toEqual(details.stakingCheckpoint);
+    });
+
+    it('recomputes a stored score deterministically when the checkpoint regresses or reorgs', async () => {
+      const storedScore = {
+        id: 'old-score',
+        userId: mockUserId,
+        compositeScore: 0.4,
+        calculationDetails: JSON.stringify({
+          stakingCheckpoint: { checkpointKey: 'previous-checkpoint-key' },
+        }),
+      };
+      jest
+        .spyOn(prisma.sybilScore, 'findFirst')
+        .mockResolvedValueOnce(storedScore);
+      const recomputed = {
+        ...storedScore,
+        id: 'new-score',
+        compositeScore: 0.5,
+      };
+      jest.spyOn(prisma.sybilScore, 'create').mockResolvedValueOnce(recomputed);
+
+      const result = await service.getLatestSybilScore(mockUserId);
+
+      expect(authorityService.resolve).toHaveBeenCalled();
+      expect(prisma.sybilScore.create).toHaveBeenCalled();
+      expect(result.id).toBe('new-score');
+    });
+
+    it('keeps a stored score when its checkpoint still matches the registry', async () => {
+      const storedScore = {
+        id: 'current-score',
+        userId: mockUserId,
+        compositeScore: 0.5,
+        calculationDetails: JSON.stringify({
+          stakingCheckpoint: {
+            checkpointKey: approvedAuthority.checkpointKey,
+          },
+        }),
+      };
+      jest
+        .spyOn(prisma.sybilScore, 'findFirst')
+        .mockResolvedValueOnce(storedScore);
+
+      const result = await service.getLatestSybilScore(mockUserId);
+
+      expect(prisma.sybilScore.create).not.toHaveBeenCalled();
+      expect(result.id).toBe('current-score');
     });
   });
 });
