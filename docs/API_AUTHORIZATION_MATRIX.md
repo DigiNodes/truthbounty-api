@@ -39,6 +39,29 @@ A separate DB-backed identity (`admin_users` table). Requires `AdminGuard` (DB l
 | `moderator` | 50 | Moderation queue, reports |
 | `auditor` | 30 | Read-only audit logs, reports |
 
+#### Admin Role Grant Policy (PREWAVE-BE-135)
+
+Endpoint-level authorization (`RolesGuard`) governs who may reach administrative routes.
+However, **role-grant and account modification authority is decoupled from the numeric role hierarchy** and enforced strictly at the service layer in `AdminService` via `ADMIN_ROLE_GRANT_POLICY` (`src/admin/admin.policy.ts`):
+
+1. **Privilege Escalation Prevention:** An `administrator` (score 80) cannot create an account with `super_admin` (100) or promote any existing lower-privilege account to `super_admin`.
+2. **Account Protection:** An `administrator` cannot modify or alter the role or active status of an existing `super_admin` account.
+3. **Grant Authority Scope:**
+   - `super_admin`: Authorized to grant all admin-operator roles (`super_admin`, `administrator`, `security_analyst`, `governance_operator`, `moderator`, `auditor`).
+   - `administrator`: Authorized to grant roles at or below its own tier (`administrator`, `security_analyst`, `governance_operator`, `moderator`, `auditor`). Under no circumstances can an administrator grant `super_admin`.
+   - `security_analyst`, `governance_operator`, `moderator`, `auditor`: Cannot grant or modify any admin roles (empty set).
+4. **Least-Privilege Defaults:** Account creation without an explicit role defaults to `auditor` (score 30).
+5. **Durable Audit Trail:** All grant, promotion, and status mutation attempts (both permitted and denied) are recorded in the tamper-evident administrative audit trail capturing actor, target, before/after roles, outcome (`success` or `denied`), and reason. Denied attempts fail closed without mutating persistence records.
+
+| Actor Role | Permitted Grant Roles | Can Modify Existing `super_admin`? |
+|---|---|---|
+| `super_admin` | `super_admin`, `administrator`, `security_analyst`, `governance_operator`, `moderator`, `auditor` | Yes |
+| `administrator` | `administrator`, `security_analyst`, `governance_operator`, `moderator`, `auditor` | **No** (Strictly Denied) |
+| `security_analyst` | None (empty set) | No |
+| `governance_operator` | None (empty set) | No |
+| `moderator` | None (empty set) | No |
+| `auditor` | None (empty set) | No |
+
 ---
 
 ## Guard Stack
@@ -208,15 +231,15 @@ Notation:
 
 ### Admin (operator plane)
 
-| Method | Route | Authorization |
-|-------|-------|--------------|
-| POST | `/admin/auth/login` | PUBLIC (identity lookup only) |
-| GET | `/admin/auth/profile` | ADMIN(auditor) |
-| POST | `/admin/admins` | ADMIN(administrator) |
-| GET | `/admin/admins` | ADMIN(auditor) |
-| GET | `/admin/admins/:id` | ADMIN(auditor) |
-| PATCH | `/admin/admins/:id/role` | ADMIN(administrator) |
-| PATCH | `/admin/admins/:id/status` | ADMIN(administrator) |
+| Method | Route | Authorization | Notes |
+|-------|-------|--------------|-------|
+| POST | `/admin/auth/login` | PUBLIC (identity lookup only) | |
+| GET | `/admin/auth/profile` | ADMIN(auditor) | |
+| POST | `/admin/admins` | ADMIN(administrator) | Enforces AdminRoleGrantPolicy; administrator cannot create super_admin; defaults to auditor; durably audited |
+| GET | `/admin/admins` | ADMIN(auditor) | Paginated list |
+| GET | `/admin/admins/:id` | ADMIN(auditor) | |
+| PATCH | `/admin/admins/:id/role` | ADMIN(administrator) | Enforces AdminRoleGrantPolicy; administrator cannot promote to super_admin or modify existing super_admin; durably audited |
+| PATCH | `/admin/admins/:id/status` | ADMIN(administrator) | Administrator cannot alter super_admin status; durably audited |
 | All `/admin/moderation/*` | varies | See ModerationController |
 | All `/admin/incidents/*` | varies | See IncidentController |
 | All `/admin/protocol/*` | varies | See ProtocolAdminController |

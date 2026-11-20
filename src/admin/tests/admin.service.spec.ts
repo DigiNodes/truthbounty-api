@@ -13,24 +13,26 @@ describe('AdminService', () => {
   let service: AdminService;
   let repo: jest.Mocked<Repository<Admin>>;
 
-  const mockAdmin: Admin = {
-    id: 'admin-1',
-    walletAddress: '0x123',
-    role: AdminRole.ADMINISTRATOR,
-    isActive: true,
-    permissions: null,
-    lastLoginAt: null,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  };
-
-  const mockSuperAdmin: Admin = {
-    ...mockAdmin,
-    id: 'super-1',
-    role: AdminRole.SUPER_ADMIN,
-  };
+  let mockAdmin: Admin;
+  let mockSuperAdmin: Admin;
 
   beforeEach(async () => {
+    mockAdmin = {
+      id: 'admin-1',
+      walletAddress: '0x123',
+      role: AdminRole.ADMINISTRATOR,
+      isActive: true,
+      permissions: null,
+      lastLoginAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    mockSuperAdmin = {
+      ...mockAdmin,
+      id: 'super-1',
+      role: AdminRole.SUPER_ADMIN,
+    };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AdminService,
@@ -96,6 +98,15 @@ describe('AdminService', () => {
         service.create(
           { walletAddress: '0x456', role: AdminRole.MODERATOR },
           auditor,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should throw ForbiddenException if administrator tries to create super_admin', async () => {
+      await expect(
+        service.create(
+          { walletAddress: '0x456', role: AdminRole.SUPER_ADMIN },
+          mockAdmin,
         ),
       ).rejects.toThrow(ForbiddenException);
     });
@@ -177,6 +188,26 @@ describe('AdminService', () => {
         service.updateRole('admin-1', { role: AdminRole.MODERATOR }, auditor),
       ).rejects.toThrow(ForbiddenException);
     });
+
+    it('should throw ForbiddenException when administrator tries to promote to super_admin', async () => {
+      repo.findOneBy.mockResolvedValue(mockAdmin);
+
+      await expect(
+        service.updateRole(
+          'admin-1',
+          { role: AdminRole.SUPER_ADMIN },
+          mockAdmin,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should throw ForbiddenException when administrator tries to alter a super_admin', async () => {
+      repo.findOneBy.mockResolvedValue(mockSuperAdmin);
+
+      await expect(
+        service.updateRole('super-1', { role: AdminRole.MODERATOR }, mockAdmin),
+      ).rejects.toThrow(new ForbiddenException('Cannot modify a super admin'));
+    });
   });
 
   describe('updateStatus', () => {
@@ -191,6 +222,14 @@ describe('AdminService', () => {
       );
 
       expect(result.isActive).toBe(false);
+    });
+
+    it('should throw ForbiddenException when administrator tries to alter super_admin status', async () => {
+      repo.findOneBy.mockResolvedValue(mockSuperAdmin);
+
+      await expect(
+        service.updateStatus('super-1', { isActive: false }, mockAdmin),
+      ).rejects.toThrow(new ForbiddenException('Cannot modify a super admin'));
     });
   });
 
