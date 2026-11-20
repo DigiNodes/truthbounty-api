@@ -1,11 +1,11 @@
 export interface AuthenticatedPrincipal {
   address: string;
-  userId?: string;
+  userId?: string | null;
   sub?: string;
   user?: {
     role?: string;
     [key: string]: any;
-  };
+  } | null;
   [key: string]: any;
 }
 
