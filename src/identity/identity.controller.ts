@@ -53,11 +53,11 @@ export class IdentityController {
   }
 
   @Get('users/:id/sybil-score')
-  @ApiOperation({ summary: "Get user's current Sybil resistance score" })
+  @ApiOperation({ summary: "Get user's current Sybil resistance score (sanitized public view)" })
   @ApiParam({ name: 'id', description: 'User ID' })
   @ApiResponse({ status: 200, description: 'Sybil score details' })
   async getSybilScore(@Param('id') userId: string) {
-    return this.sybilService.getLatestSybilScore(userId);
+    return this.sybilService.getPublicSybilScore(userId);
   }
 
   // ── WRITE (authenticated users only) ─────────────────────────────────────

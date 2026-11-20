@@ -1,11 +1,11 @@
 export interface AuthenticatedPrincipal {
   address: string;
-  userId?: string;
+  userId?: string | null;
   sub?: string;
   user?: {
     role?: string;
     [key: string]: any;
-  };
+  } | null;
   [key: string]: any;
 }
 
@@ -23,6 +23,8 @@ export function isAuthenticatedRequest(req: any): req is AuthenticatedRequest {
   return (
     principal !== null &&
     typeof principal === 'object' &&
-    typeof principal.address === 'string'
+    (typeof principal.address === 'string' ||
+      typeof principal.userId === 'string' ||
+      (principal.user !== null && typeof principal.user === 'object'))
   );
 }

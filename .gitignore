@@ -19,6 +19,7 @@ lerna-debug.log*
 /coverage
 /.nyc_output
 /artifacts
+.swc_cache
 
 # IDEs and editors
 /.idea
