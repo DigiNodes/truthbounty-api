@@ -25,8 +25,10 @@ import { FeatureFlag } from './entities/feature-flag.entity';
 import { ConfigurationValue } from './entities/configuration-value.entity';
 import {
   CreateFeatureFlagInput,
+  EmergencyDisableFeatureFlagInput,
   FeatureFlagContext,
   FeatureFlagEvaluationResult,
+  RollbackFeatureFlagInput,
   UpdateFeatureFlagInput,
 } from './feature-flags.types';
 
@@ -152,23 +154,82 @@ export class FeatureFlagsController {
   @AdminOnly()
   @UseGuards(JwtAuthGuard, AdminGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Rollback a feature flag' })
+  @ApiOperation({ summary: 'Rollback a feature flag to a historical version' })
   async rollbackFlag(
     @Param('id') id: string,
-    @Body('targetVersion') targetVersion: number,
+    @Body() input: RollbackFeatureFlagInput,
     @Request() req: RequestWithUser,
   ): Promise<FeatureFlag> {
     const userId = this.userIdFrom(req);
-    const flag = await this.flagsService.rollback(id, targetVersion);
+    const before = await this.flagsService.findOne(id);
+    const flag = await this.flagsService.rollback(
+      id,
+      input.targetVersion,
+      userId,
+      input.reason,
+      input.expectedVersion,
+    );
     await this.auditTrailService.log({
       actionType: AuditActionType.CONFIG_ROLLED_BACK,
       entityType: AuditEntityType.CONFIGURATION,
       entityId: flag.id,
       userId,
-      description: `Rolled back feature flag ${flag.key} to version ${targetVersion}`,
-      afterState: { version: flag.version } as Record<string, any>,
+      description: `Rolled back feature flag ${flag.key} from snapshot version ${input.targetVersion} to version ${flag.version}`,
+      beforeState: before,
+      afterState: flag,
+      metadata: {
+        sourceVersion: input.targetVersion,
+        fromVersion: before.version,
+        toVersion: flag.version,
+        restoredFromVersion: flag.rolledBackFromVersion,
+        reason: input.reason ?? null,
+      },
     });
     return flag;
+  }
+
+  @Post('feature-flags/:id/emergency-disable')
+  @AdminOnly()
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Emergency disable a feature flag without rollback',
+  })
+  async emergencyDisableFlag(
+    @Param('id') id: string,
+    @Body() input: EmergencyDisableFeatureFlagInput,
+    @Request() req: RequestWithUser,
+  ): Promise<FeatureFlag> {
+    const userId = this.userIdFrom(req);
+    const before = await this.flagsService.findOne(id);
+    const flag = await this.flagsService.emergencyDisable(
+      id,
+      userId,
+      input.reason,
+      input.expectedVersion,
+    );
+    await this.auditTrailService.log({
+      actionType: AuditActionType.FEATURE_FLAG_DISABLED,
+      entityType: AuditEntityType.CONFIGURATION,
+      entityId: flag.id,
+      userId,
+      description: `Emergency disabled feature flag ${flag.key}`,
+      beforeState: before,
+      afterState: flag,
+      metadata: {
+        operation: 'emergency_disable',
+        reason: input.reason ?? null,
+        fromVersion: before.version,
+        toVersion: flag.version,
+      },
+    });
+    return flag;
+  }
+
+  @Get('feature-flags/:id/history')
+  @ApiOperation({ summary: 'List immutable feature flag version snapshots' })
+  getFlagHistory(@Param('id') id: string) {
+    return this.flagsService.getHistory(id);
   }
 
   @Get('configuration')
