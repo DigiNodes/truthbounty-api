@@ -7,7 +7,6 @@ import {
   ABUSE_APPEAL_REGISTER,
   AbuseAppealService,
   DEFAULT_ABUSE_APPEAL_POLICY,
-  InMemoryAbuseAppealRegister,
 } from './abuse-appeal.service';
 import {
   ABUSE_CLOCK,
@@ -16,10 +15,7 @@ import {
   SystemAbuseClock,
   buildAbuseDetectors,
 } from './abuse-signal.service';
-import {
-  ABUSE_SIGNAL_STORE,
-  InMemoryAbuseSignalStore,
-} from './abuse-signal.store';
+import { ABUSE_SIGNAL_STORE } from './abuse-signal.store';
 import { AbuseSignalInterceptor } from './abuse-signal.interceptor';
 import { AbuseSignalsController } from './abuse-signals.controller';
 import {
@@ -31,6 +27,12 @@ import {
 } from './abuse-signals.config';
 import { AbuseAppealRecord } from './entities/abuse-appeal-record.entity';
 import { AbuseDecisionRecord } from './entities/abuse-decision-record.entity';
+import { AbuseActionRecord } from './entities/abuse-action-record.entity';
+import { AbuseAppealDecisionHistoryRecord } from './entities/abuse-appeal-decision-history.entity';
+import {
+  TypeOrmAbuseAppealRegister,
+  TypeOrmAbuseSignalStore,
+} from './persistent-abuse.store';
 
 /**
  * Abuse signals (PREWAVE-BE-086, #681).
@@ -41,26 +43,27 @@ import { AbuseDecisionRecord } from './entities/abuse-decision-record.entity';
  *
  * **This module is not protocol authority.** It holds no repository for claims,
  * verification, disputes, rewards, treasury or governance, injects no chain
- * client and no signer, and writes only `abuse_decisions` / `abuse_appeals`.
+ * client and no signer, and writes only abuse-signal evidence tables.
  * Finalized canonical contract events remain authoritative for anything
  * on-chain, and a signal can never change an outcome.
  *
  * **Default is observe-only.** `loadAbusePolicyConfig` leaves
  * `enforcementEnabled` false, so a fresh deployment records signals and refuses
  * nothing. Turning enforcement on is a deliberate maintainer action, which is
- * why this can sit on `main` as a candidate before activation.
- *
- * **No new external dependency while observing.** The default store and appeal
- * register are in-process and bounded. Deployments that enable enforcement
- * across more than one replica bind shared implementations to
- * {@link ABUSE_SIGNAL_STORE} and {@link ABUSE_APPEAL_REGISTER}; the interfaces
- * above them do not change.
+ * why this can sit on `main` as a candidate before activation. Decisions,
+ * bounded actions and appeals are persisted in PostgreSQL even while the module
+ * is observing, so a restart cannot erase moderation evidence.
  */
 @Module({
   imports: [
     AdminModule,
     DatabaseModule,
-    TypeOrmModule.forFeature([AbuseDecisionRecord, AbuseAppealRecord]),
+    TypeOrmModule.forFeature([
+      AbuseDecisionRecord,
+      AbuseActionRecord,
+      AbuseAppealRecord,
+      AbuseAppealDecisionHistoryRecord,
+    ]),
   ],
   controllers: [AbuseSignalsController],
   providers: [
@@ -81,11 +84,8 @@ import { AbuseDecisionRecord } from './entities/abuse-decision-record.entity';
       inject: [ABUSE_POLICY],
     },
     { provide: ABUSE_CLOCK, useClass: SystemAbuseClock },
-    {
-      provide: ABUSE_SIGNAL_STORE,
-      useFactory: (): InMemoryAbuseSignalStore => new InMemoryAbuseSignalStore(),
-    },
-    { provide: ABUSE_APPEAL_REGISTER, useClass: InMemoryAbuseAppealRegister },
+    { provide: ABUSE_SIGNAL_STORE, useClass: TypeOrmAbuseSignalStore },
+    { provide: ABUSE_APPEAL_REGISTER, useClass: TypeOrmAbuseAppealRegister },
     {
       provide: ABUSE_APPEAL_POLICY,
       useValue: DEFAULT_ABUSE_APPEAL_POLICY,
