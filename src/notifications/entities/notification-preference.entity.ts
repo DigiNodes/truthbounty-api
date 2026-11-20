@@ -155,7 +155,7 @@ export class NotificationPreference {
     events?: string[]; // EventTypes to webhook
     retryAttempts?: number;
     timeout?: number; // ms
-  };
+  } | null;
 
   /**
    * Push notification configuration
