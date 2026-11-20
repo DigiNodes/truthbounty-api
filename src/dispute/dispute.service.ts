@@ -6,7 +6,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository } from 'typeorm';
 import {
   Dispute,
   DisputeStatus,
@@ -21,8 +21,6 @@ export interface DisputeConfig {
   LOW_CONFIDENCE_THRESHOLD: number;
   /** Minority opposition ratio at or above which a dispute is triggered (0–1). */
   MINORITY_OPPOSITION_THRESHOLD: number;
-  /** Hours after creation before an open/reviewing dispute is considered expired. */
-  MAX_DISPUTE_DURATION_HOURS: number;
   /** Hours that must pass before a second dispute can be raised on the same claim. */
   DISPUTE_COOLDOWN_HOURS: number;
 }
@@ -30,7 +28,6 @@ export interface DisputeConfig {
 export const DEFAULT_CONFIG: DisputeConfig = {
   LOW_CONFIDENCE_THRESHOLD: 0.6,
   MINORITY_OPPOSITION_THRESHOLD: 0.3,
-  MAX_DISPUTE_DURATION_HOURS: 72,
   DISPUTE_COOLDOWN_HOURS: 24,
 };
 
@@ -95,7 +92,6 @@ export class DisputeService {
   constructor(
     @InjectRepository(Dispute)
     private readonly disputeRepository: Repository<Dispute>,
-    private readonly dataSource: DataSource,
     config?: Partial<DisputeConfig>,
   ) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -272,38 +268,6 @@ export class DisputeService {
     return saved;
   }
 
-  /**
-   * Expire a single dispute that has exceeded MAX_DISPUTE_DURATION_HOURS.
-   * Wraps the update in a transaction to prevent double-expiry races.
-   */
-  async expireDispute(disputeId: string): Promise<Dispute> {
-    return this.dataSource.transaction(async (manager) => {
-      const dispute = await manager.findOne(Dispute, {
-        where: { id: disputeId },
-      });
-
-      if (!dispute)
-        throw new NotFoundException(`Dispute ${disputeId} not found`);
-
-      if (!RESOLVABLE_STATUSES.includes(dispute.status)) {
-        throw new BadRequestException(
-          `Dispute ${disputeId} is in status ${dispute.status} and cannot be expired`,
-        );
-      }
-
-      dispute.status = DisputeStatus.EXPIRED;
-      dispute.resolvedAt = new Date();
-      dispute.metadata = {
-        ...dispute.metadata,
-        expiredReason: `Exceeded ${this.config.MAX_DISPUTE_DURATION_HOURS}h maximum duration`,
-      };
-
-      const saved = await manager.save(dispute);
-      this.logger.log(`Dispute ${disputeId} expired`);
-      return saved;
-    });
-  }
-
   // ─── Queries ─────────────────────────────────────────────────────────────
 
   /**
@@ -325,20 +289,6 @@ export class DisputeService {
       where: { claimId },
       order: { createdAt: 'DESC' },
     });
-  }
-
-  /**
-   * Return disputes whose OPEN/REVIEWING status has outlasted the configured
-   * maximum duration. Intended for a scheduled expiry job.
-   */
-  async getExpiredDisputes(): Promise<Dispute[]> {
-    return this.disputeRepository
-      .createQueryBuilder('d')
-      .where('d.status IN (:...statuses)', { statuses: RESOLVABLE_STATUSES })
-      .andWhere('d.createdAt < :expiryTime', {
-        expiryTime: this.hoursAgo(this.config.MAX_DISPUTE_DURATION_HOURS),
-      })
-      .getMany();
   }
 
   /**
