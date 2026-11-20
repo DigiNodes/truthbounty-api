@@ -70,10 +70,13 @@ export class SiweService {
     const { domain, address, uri, chainId, nonce, statement } = params;
 
     const issuedAt = new Date().toISOString();
-    const expirationMs = this.configService.get<number>(
-      'AUTH_NONCE_TTL_MS',
-      5 * 60 * 1000,
+    const configuredExpirationMs = Number(
+      this.configService.get('AUTH_NONCE_TTL_MS', 5 * 60 * 1000),
     );
+    const expirationMs =
+      Number.isFinite(configuredExpirationMs) && configuredExpirationMs > 0
+        ? configuredExpirationMs
+        : 5 * 60 * 1000;
     const expirationTime =
       params.expirationTime ??
       new Date(Date.now() + expirationMs).toISOString();
@@ -184,7 +187,7 @@ export class SiweService {
       timingSafeEqualUtf8(message, message);
       return {
         success: false,
-        error: 'AUTH_FAILED',
+        error: 'INVALID_SIGNATURE',
         address: undefined,
       };
     }
@@ -244,7 +247,7 @@ export class SiweService {
       timingSafeEqualUtf8(message, message);
       return {
         success: false,
-        error: 'AUTH_FAILED',
+        error: 'ADDRESS_MISMATCH',
         address: recoveredAddress,
       };
     }

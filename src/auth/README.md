@@ -40,6 +40,36 @@ Response:
 }
 ```
 
+### 1b. Get a SIWE (EIP-4361) challenge
+
+```bash
+POST /auth/challenge
+Content-Type: application/json
+
+{
+  "address": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
+  "domain": "app.truthbounty.com",
+  "uri": "https://app.truthbounty.com",
+  "chainId": 10
+}
+
+Response:
+{
+  "message": "app.truthbounty.com wants you to sign in with your Ethereum account:\n0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb\n\nSign in to TruthBounty — decentralized news verification\n\nURI: https://app.truthbounty.com\nVersion: 1\nChain ID: 10\nNonce: ...\nIssued At: ...\nExpiration Time: ...",
+  "format": "siwe",
+  "address": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb"
+}
+```
+
+The exact returned `message` must be signed and submitted unchanged to `/auth/login`.
+The server detects the format from the signed message itself: SIWE messages go
+through strict `SiweService.verifySiwe()` validation (domain, URI origin, chain,
+statement, nonce, signer, issued-at and expiration), while legacy messages use
+the backward-compatible path. Client-supplied format hints are ignored, malformed
+SIWE messages are never downgraded to legacy verification, and the verified
+address — not the submitted `address` field — is the principal used for token
+issuance.
+
 ### 2. Sign Message (Client-side)
 
 Using ethers.js:
@@ -100,9 +130,13 @@ Content-Type: application/json
 - Expired nonces are automatically cleaned up
 
 ### Signature Verification
-- Uses `ethers.verifyMessage()` to verify ECDSA signatures (EIP-191)
+- SIWE messages: `SiweService.verifySiwe()` enforces EIP-4361 structure, domain,
+  URI/origin, supported chain, expected statement, nonce shape, signer binding,
+  issued-at freshness and expiration; failures never fall back to legacy
+- Legacy messages: `ethers.verifyMessage()` verifies the ECDSA signature (EIP-191)
+  and the exact expected challenge string
 - Validates that the recovered address matches the claimed address
-- Prevents signature tampering
+- Prevents signature tampering and nonce replay (single-use, atomic consumption)
 
 ### JWT Token
 - Signed with HMAC-SHA256 algorithm

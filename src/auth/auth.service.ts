@@ -13,17 +13,30 @@ import { RedisService } from '../redis/redis.service';
 import { SiweService } from './services/siwe.service';
 import { TokenService, TokenPair } from './services/token.service';
 import {
-  AUTG_GENERIC_FAILURE_MESSAGE,
+  AUTH_GENERIC_FAILURE_MESSAGE,
   constantTimeAddressEqual,
   timingSafeEqualUtf8,
 } from '../common/utils/timing-safe.util';
+import { AuthenticatedPrincipal } from './types/authenticated-request';
 import {
-  AuthenticatedPrincipal,
-} from './types/authenticated-request';
+  ParsedSiweMessage,
+  SiweVerifyResult,
+} from './types/siwe.types';
+
+const SIWE_ENVELOPE = 'wants you to sign in with your Ethereum account';
+const DEFAULT_SIWE_STATEMENT =
+  'Sign in to TruthBounty — decentralized news verification';
 
 interface ChallengeRecord {
   nonce: string;
   issuedAt: number; // Unix ms — app-layer TTL source of truth
+  address?: string;
+  siwe?: {
+    domain: string;
+    uri: string;
+    chainId: number;
+    statement: string;
+  };
 }
 
 interface LoginResponseUser {
@@ -62,8 +75,40 @@ export class AuthService {
     options?: { chainId?: number; domain?: string; uri?: string },
   ): Promise<{ message: string; format: 'siwe' | 'legacy' }> {
     const nonce = this.generateRandomNonce();
-    const key = `auth:nonce:${address.toLowerCase()}`;
-    const record: ChallengeRecord = { nonce, issuedAt: Date.now() };
+    const normalizedAddress = address.toLowerCase();
+    const key = `auth:nonce:${normalizedAddress}`;
+
+    const siwe =
+      options?.domain || options?.uri || options?.chainId
+        ? {
+            domain:
+              options.domain ||
+              this.configService.get<string>('SIWE_DOMAIN', 'truthbounty.com'),
+            uri:
+              options.uri ||
+              this.configService.get<string>(
+                'SIWE_ORIGIN',
+                'https://app.truthbounty.com',
+              ),
+            chainId: options.chainId || 1,
+            statement: DEFAULT_SIWE_STATEMENT,
+          }
+        : undefined;
+
+    const message = siwe
+      ? this.siweService.buildSiweMessage({
+          ...siwe,
+          address,
+          nonce,
+        })
+      : this.siweService.buildLegacyMessage(nonce);
+
+    const record: ChallengeRecord = {
+      nonce,
+      issuedAt: Date.now(),
+      address: normalizedAddress,
+      ...(siwe ? { siwe } : {}),
+    };
 
     try {
       const ok = await this.redisService.set(
@@ -72,49 +117,21 @@ export class AuthService {
         this.NONCE_TTL_SECONDS,
       );
       if (!ok) {
-        this.logger.error(`Failed to persist nonce for ${address}`);
+        this.logger.error('Failed to persist nonce challenge');
         throw new InternalServerErrorException(
           'Failed to generate challenge. Please try again later.',
         );
       }
     } catch (err) {
       this.logger.error(
-        `Error persisting nonce for ${address}: ${err?.message ?? err}`,
+        `Error persisting nonce challenge: ${err?.message ?? err}`,
       );
       throw new InternalServerErrorException(
         'Failed to generate challenge. Please try again later.',
       );
     }
 
-    // If SIWE parameters are provided, build a SIWE-compliant message
-    if (options?.domain || options?.uri || options?.chainId) {
-      const domain =
-        options.domain ||
-        this.configService.get<string>('SIWE_DOMAIN', 'truthbounty.com');
-      const uri =
-        options.uri ||
-        this.configService.get<string>(
-          'SIWE_ORIGIN',
-          'https://app.truthbounty.com',
-        );
-      const chainId = options.chainId || 1;
-
-      const message = this.siweService.buildSiweMessage({
-        domain,
-        address,
-        uri,
-        chainId,
-        nonce,
-        statement: 'Sign in to TruthBounty — decentralized news verification',
-      });
-      return { message, format: 'siwe' };
-    }
-
-    // Legacy format for backward compatibility
-    return {
-      message: this.siweService.buildLegacyMessage(nonce),
-      format: 'legacy',
-    };
+    return { message, format: siwe ? 'siwe' : 'legacy' };
   }
 
   /**
@@ -123,98 +140,104 @@ export class AuthService {
    */
   async login(loginDto: LoginDto): Promise<LoginResponse> {
     const { address, signature, message } = loginDto;
-    const normalizedAddress = address.toLowerCase();
+    const normalizedAddress = typeof address === 'string' ? address.toLowerCase() : '';
     const key = `auth:nonce:${normalizedAddress}`;
 
-    // 1. Verify the signature — all failures collapse to a constant-shape
-    // 401 so callers cannot distinguish bad signature / address mismatch /
-    // missing challenge / expired challenge / invalid nonce via status,
-    // message, code, or timing. Distinct reasons are logged server-side only.
-    let recoveredAddress: string;
+    const fail = (reason: string): never => {
+      this.logger.warn(`Login failed [${reason}] for ${normalizedAddress}`);
+      timingSafeEqualUtf8(message ?? '', message ?? '');
+      throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
+    };
+
+    const isSiwe = this.isSiweMessage(message);
+    let legacySigner: string | undefined;
+    if (!isSiwe) {
+      try {
+        legacySigner = verifyMessage(message, signature);
+      } catch {
+        return fail('signature-parse');
+      }
+      if (!constantTimeAddressEqual(legacySigner, normalizedAddress)) {
+        return fail('address-mismatch');
+      }
+    }
+
+    let raw: string | null;
     try {
-      recoveredAddress = verifyMessage(message, signature);
-    } catch (error) {
-      this.logger.warn(
-        `Login failed [signature-parse] for ${normalizedAddress}`,
-      );
-      // Dummy timing-safe work to normalize the failure path.
-      timingSafeEqualUtf8(message, message);
-      throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
+      raw = await this.redisService.get(key);
+    } catch {
+      return fail('challenge-read-error');
     }
-
-    // 2. Check if recovered address matches the claimed address (timing-safe).
-    if (!constantTimeAddressEqual(recoveredAddress, address)) {
-      this.logger.warn(
-        `Login failed [address-mismatch] for ${normalizedAddress}`,
-      );
-      timingSafeEqualUtf8(message, message);
-      throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
-    }
-
-    // 3. Verify the message contains a valid, non-expired nonce.
-    // Fetch the challenge record regardless of the address-match outcome shape
-    // above so hit-vs-miss timing is bounded by the same Redis + compare work.
-    const raw = await this.redisService.get(key);
     if (!raw) {
-      this.logger.warn(
-        `Login failed [challenge-not-found] for ${normalizedAddress}`,
-      );
-      timingSafeEqualUtf8(message, message);
-      throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
+      return fail('challenge-not-found');
     }
 
     let record: ChallengeRecord;
     try {
       record = JSON.parse(raw) as ChallengeRecord;
     } catch {
-      // Stored value is not a valid record — treat as expired/invalid
       await this.redisService.del(key).catch(() => null);
-      this.logger.warn(
-        `Login failed [challenge-corrupt] for ${normalizedAddress}`,
-      );
-      timingSafeEqualUtf8(message, message);
-      throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
+      return fail('challenge-corrupt');
+    }
+    if (
+      !record ||
+      typeof record.nonce !== 'string' ||
+      !Number.isFinite(record.issuedAt)
+    ) {
+      await this.redisService.del(key).catch(() => null);
+      return fail('challenge-corrupt');
     }
 
-    // App-layer TTA check: enforce expiry independently of Redis to prevent
-    // Redis-vs-app clock desync (BE-182). Redis TTL is the backstop;
-    // this check is the authoritative gate.
+    if (
+      record.address &&
+      !constantTimeAddressEqual(record.address, normalizedAddress)
+    ) {
+      return fail('challenge-address-mismatch');
+    }
+
     const elapsedSeconds = (Date.now() - record.issuedAt) / 1000;
-    if (elapsedSeconds >= this.NONCE_TTL_SECONDS) {
+    if (
+      !Number.isFinite(elapsedSeconds) ||
+      elapsedSeconds < 0 ||
+      elapsedSeconds >= this.NONCE_TTL_SECONDS
+    ) {
       await this.redisService.del(key).catch(() => null);
-      this.logger.warn(
-        `Login failed [challenge-expired] for ${normalizedAddress}`,
-      );
-      timingSafeEqualUtf8(message, message);
-      throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
+      return fail('challenge-expired');
     }
 
-    const expectedMessage = `Sign in to TruthBounty: ${record.nonce}`;
-
-    // Compare the full challenge message in constant time to avoid timing attacks.
-    if (!timingSafeEqualUtf8(message, expectedMessage)) {
-      this.logger.warn(
-        `Login failed [nonce-mismatch] for ${normalizedAddress}`,
-      );
-      throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
+    if (!isSiwe && record.siwe) {
+      return fail('format-downgrade');
     }
 
-    // Delete used nonce (prevent replay attacks)
-    await this.redisService.del(key).catch(() => null);
+    let principal: string;
+    if (isSiwe) {
+      principal = await this.verifySiweLogin(
+        message,
+        signature,
+        normalizedAddress,
+        record,
+        fail,
+      );
+    } else {
+      principal = this.verifyLegacyLogin(
+        message,
+        legacySigner as string,
+        normalizedAddress,
+        record,
+        fail,
+      );
+    }
 
-    // 7. Find or create user
+    await this.consumeChallenge(key, raw, fail);
+
     const user = await this.prisma.wallet.findFirst({
-      where: { address: address.toLowerCase() },
+      where: { address: principal },
       include: { user: true },
     });
-
-    // If wallet doesn't exist, we can still allow login but user won't have full access
-    // until they link their wallet properly
     const userId = user?.user?.id || null;
 
-    // 8. Generate token pair (access + refresh)
     const tokenPair = await this.tokenService.generateTokenPair(
-      address.toLowerCase(),
+      principal,
       userId,
     );
 
@@ -224,7 +247,7 @@ export class AuthService {
       expiresIn: tokenPair.expiresIn,
       user: {
         id: userId,
-        address: address.toLowerCase(),
+        address: principal,
       },
     };
   }
@@ -323,6 +346,203 @@ export class AuthService {
       jti: payload.jti,
       sub: payload.sub,
     };
+  }
+
+  private async verifySiweLogin(
+    message: string,
+    signature: string,
+    normalizedAddress: string,
+    record: ChallengeRecord,
+    fail: (reason: string) => never,
+  ): Promise<string> {
+    const parsed = this.parseSiweMessageSafely(message);
+    const policy = this.resolveSiwePolicy(record);
+    let result: SiweVerifyResult;
+    try {
+      result = await this.siweService.verifySiwe({
+        message,
+        signature,
+        expectedDomain: policy.domain,
+        expectedOrigin: policy.origin,
+        expectedChainId: policy.chainId,
+        expectedStatement: policy.statement,
+        allowedOrigins: policy.allowedOrigins,
+        allowedDomains: policy.allowedDomains,
+        supportedChainIds: policy.supportedChainIds,
+      });
+    } catch {
+      return fail('siwe-verification-error');
+    }
+    if (!result || !result.success) {
+      return fail(`siwe-${result?.error ?? 'rejected'}`);
+    }
+
+    const verifiedAddress = (
+      result.address ??
+      result.data?.address ??
+      ''
+    ).toLowerCase();
+    if (
+      !verifiedAddress ||
+      !constantTimeAddressEqual(verifiedAddress, normalizedAddress)
+    ) {
+      return fail('siwe-signer-mismatch');
+    }
+
+    const embeddedAddress = (
+      parsed?.address ??
+      result.data?.address ??
+      ''
+    ).toLowerCase();
+    if (
+      embeddedAddress &&
+      !constantTimeAddressEqual(embeddedAddress, verifiedAddress)
+    ) {
+      return fail('siwe-address-mismatch');
+    }
+
+    const signedNonce =
+      parsed?.nonce ?? result.data?.nonce ?? this.extractNonce(message);
+    if (!signedNonce || !timingSafeEqualUtf8(signedNonce, record.nonce)) {
+      return fail('siwe-nonce-mismatch');
+    }
+
+    return verifiedAddress;
+  }
+
+  private verifyLegacyLogin(
+    message: string,
+    recoveredAddress: string,
+    normalizedAddress: string,
+    record: ChallengeRecord,
+    fail: (reason: string) => never,
+  ): string {
+    if (!constantTimeAddressEqual(recoveredAddress, normalizedAddress)) {
+      return fail('address-mismatch');
+    }
+
+    const expectedMessage =
+      typeof this.siweService.buildLegacyMessage === 'function'
+        ? this.siweService.buildLegacyMessage(record.nonce)
+        : `Sign in to TruthBounty: ${record.nonce}`;
+    if (!timingSafeEqualUtf8(message, expectedMessage)) {
+      return fail('nonce-mismatch');
+    }
+    return recoveredAddress.toLowerCase();
+  }
+
+  private isSiweMessage(message: string): boolean {
+    if (typeof message !== 'string') {
+      return false;
+    }
+    const firstLine = message.split('\n')[0] ?? '';
+    if (firstLine.includes(SIWE_ENVELOPE)) {
+      return true;
+    }
+    const parsed = this.parseSiweMessageSafely(message);
+    return Boolean(parsed && parsed.uri && parsed.nonce && parsed.version);
+  }
+
+  private parseSiweMessageSafely(message: string): ParsedSiweMessage | null {
+    try {
+      const parsed = this.siweService.parseMessage(message);
+      return parsed && parsed.rawMessage?.includes(SIWE_ENVELOPE) ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private resolveSiwePolicy(record: ChallengeRecord) {
+    const get = (key: string, fallback: string): string =>
+      this.configService.get<string>(key, fallback) ?? fallback;
+    const domain = record.siwe?.domain ?? get('SIWE_DOMAIN', 'truthbounty.com');
+    const uri =
+      record.siwe?.uri ?? get('SIWE_ORIGIN', 'https://app.truthbounty.com');
+    const chainId =
+      record.siwe?.chainId ??
+      this.parseChainIds(get('SIWE_SUPPORTED_CHAIN_IDS', '10'))[0] ??
+      1;
+    let origin: string;
+    try {
+      origin = new URL(uri).origin;
+    } catch {
+      origin = uri;
+    }
+    const statement =
+      record.siwe?.statement ??
+      get('SIWE_EXPECTED_STATEMENT', DEFAULT_SIWE_STATEMENT);
+    const configuredChains = this.parseChainIds(
+      get('SIWE_SUPPORTED_CHAIN_IDS', '10'),
+    );
+
+    return {
+      domain,
+      origin,
+      chainId,
+      statement,
+      allowedOrigins: this.parseList(get('SIWE_ALLOWED_ORIGINS', '')),
+      allowedDomains: this.parseList(get('SIWE_ALLOWED_DOMAINS', '')),
+      supportedChainIds: Array.from(new Set([...configuredChains, chainId])),
+    };
+  }
+
+  private extractNonce(message: string): string | undefined {
+    if (typeof message !== 'string') {
+      return undefined;
+    }
+    const nonceLine = message
+      .split('\n')
+      .map((line) => line.trim())
+      .find((line) => line.startsWith('Nonce:'));
+    return nonceLine?.slice('Nonce:'.length).trim();
+  }
+
+  private async consumeChallenge(
+    key: string,
+    expectedValue: string,
+    fail: (reason: string) => never,
+  ): Promise<void> {
+    const redis = this.redisService as RedisService & {
+      consume?: (key: string, expectedValue: string) => Promise<boolean>;
+    };
+    if (typeof redis.consume === 'function') {
+      let consumed: boolean;
+      try {
+        consumed = await redis.consume(key, expectedValue);
+      } catch {
+        return fail('challenge-consume-error');
+      }
+      if (!consumed) {
+        return fail('challenge-already-used');
+      }
+      return;
+    }
+
+    let deleted: boolean;
+    try {
+      deleted = await this.redisService.del(key);
+    } catch {
+      return fail('challenge-consume-error');
+    }
+    if (!deleted) {
+      return fail('challenge-consume-error');
+    }
+  }
+
+  private parseList(raw: string | undefined): string[] {
+    if (typeof raw !== 'string') {
+      return [];
+    }
+    return raw
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean);
+  }
+
+  private parseChainIds(raw: string | undefined): number[] {
+    return this.parseList(raw)
+      .map((value) => Number.parseInt(value, 10))
+      .filter((value) => Number.isInteger(value) && value > 0);
   }
 
   /**

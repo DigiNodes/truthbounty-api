@@ -62,7 +62,7 @@ export class AuthController {
   @ThrottleByWallet('auth')
   @ApiOperation({
     summary:
-      'Login with wallet signature (supports SIWE and legacy formats). All failures return constant-shape 401 Invalid credentials.',
+      'Login with wallet signature. SIWE (EIP-4361) or legacy message format is detected from the signed message itself; client-side format hints are ignored. SIWE messages are strictly verified (domain, origin, chain, statement, nonce, signer, time). All failures return constant-shape 401 Invalid credentials.',
   })
   @ApiResponse({
     status: 201,
@@ -159,6 +159,7 @@ export class AuthController {
       service: 'Authentication Gateway',
       features: {
         siwe: true,
+        legacyWalletSignature: true,
         jwt: true,
         refreshTokens: true,
         sessionRevocation: true,

@@ -207,6 +207,26 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  async consume(key: string, expectedValue: string): Promise<boolean> {
+    if (!this.client || !this.isConnected) {
+      this.logger.error('Redis unavailable, failing closed for challenge consumption');
+      return false;
+    }
+
+    const script =
+      "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end";
+
+    try {
+      const result = await this.client.eval(script, 1, key, expectedValue);
+      return Number(result) === 1;
+    } catch (error) {
+      this.logger.error(
+        `Redis CONSUME error for key ${key}: ${this.getErrorMessage(error)}`,
+      );
+      return false;
+    }
+  }
+
   /**
    * Add one or more members to a Redis set
    */
