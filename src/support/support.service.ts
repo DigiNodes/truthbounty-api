@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { CreateSupportRequestDto } from './dto/create-support-request.dto';
 
@@ -18,6 +23,22 @@ export interface SupportRequestRecord {
   retentionDays: number;
 }
 
+export interface SupportStaffActor {
+  address?: string;
+  userId?: string;
+  sub?: string;
+  user?: {
+    id?: string;
+    role?: string;
+  };
+}
+
+export interface SupportRequestSubmission {
+  reference: string;
+  status: 'submitted' | 'duplicate';
+  duplicate: boolean;
+}
+
 @Injectable()
 export class SupportRequestService {
   private readonly logger = new Logger(SupportRequestService.name);
@@ -27,20 +48,19 @@ export class SupportRequestService {
   private readonly requests = new Map<string, SupportRequestRecord>();
   private readonly fingerprints = new Map<string, SupportRequestRecord>();
 
-  createSupportRequest(input: CreateSupportRequestDto): SupportRequestRecord {
+  createSupportRequest(input: CreateSupportRequestDto): SupportRequestSubmission {
     const normalized = this.normalizeRequest(input);
     const fingerprint = this.computeFingerprint(normalized);
 
     const duplicate = this.findDuplicate(fingerprint);
     if (duplicate) {
       this.logger.warn(
-        `Duplicate support request suppressed for contact ${normalized.contact}`,
+        'Duplicate support request suppressed',
       );
       return {
-        ...duplicate,
+        reference: duplicate.reference,
         status: 'duplicate',
         duplicate: true,
-        duplicateOf: duplicate.reference,
       };
     }
 
@@ -67,15 +87,43 @@ export class SupportRequestService {
 
     this.requests.set(record.id, record);
     this.fingerprints.set(fingerprint, record);
-    return record;
+    return {
+      reference: record.reference,
+      status: 'submitted',
+      duplicate: false,
+    };
   }
 
-  getSupportRequest(id: string): SupportRequestRecord | undefined {
+  getSupportRequest(
+    id: string,
+    actor: SupportStaffActor,
+  ): SupportRequestRecord | undefined {
+    this.assertSupportStaff(actor);
+    this.audit('read', id, actor);
     return this.requests.get(id);
   }
 
-  listSupportRequests(): SupportRequestRecord[] {
-    return Array.from(this.requests.values());
+  listSupportRequests(actor: SupportStaffActor): SupportRequestRecord[] {
+    this.assertSupportStaff(actor);
+    const records = Array.from(this.requests.values());
+    this.audit('list', `${records.length} records`, actor);
+    return records;
+  }
+
+  deleteSupportRequest(id: string, actor: SupportStaffActor): boolean {
+    this.assertSupportStaff(actor);
+    const record = this.requests.get(id);
+    if (!record) {
+      this.audit('delete-miss', id, actor);
+      return false;
+    }
+
+    this.requests.delete(id);
+    for (const [fingerprint, matched] of this.fingerprints.entries()) {
+      if (matched.id === id) this.fingerprints.delete(fingerprint);
+    }
+    this.audit('delete', id, actor);
+    return true;
   }
 
   cleanupExpiredSupportRequests(): string[] {
@@ -220,5 +268,17 @@ export class SupportRequestService {
   private filteredText(value: string | undefined): string {
     if (typeof value !== 'string') return '';
     return value.replace(/\s+/g, ' ').trim();
+  }
+
+  private assertSupportStaff(actor: SupportStaffActor): void {
+    if (!['moderator', 'admin'].includes(actor?.user?.role ?? '')) {
+      throw new ForbiddenException('Support staff access required');
+    }
+  }
+
+  private audit(action: string, target: string, actor: SupportStaffActor): void {
+    const actorId =
+      actor.userId ?? actor.user?.id ?? actor.sub ?? 'authenticated-staff';
+    this.logger.log(`Support request ${action}; actor=${actorId}; target=${target}`);
   }
 }
