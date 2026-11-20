@@ -19,6 +19,7 @@ export interface VoteWeightSummary {
 
 export type Verdict = 'true' | 'false' | 'inconclusive';
 
+
 export interface ConfidenceResult {
   score: number;
   verdict: Verdict;
