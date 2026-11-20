@@ -253,6 +253,9 @@ export class EventQuarantineService {
   private isUniqueViolation(err: unknown): boolean {
     if (typeof err !== 'object' || err === null) return false;
     const code = (err as { code?: string }).code;
-    return code === PG_UNIQUE_VIOLATION || code === 'SQLITE_CONSTRAINT';
+    return (
+      code === PG_UNIQUE_VIOLATION ||
+      (typeof code === 'string' && code.startsWith('SQLITE_CONSTRAINT'))
+    );
   }
 }

@@ -76,6 +76,9 @@ describe('ProjectionFreshnessService', () => {
         contractAddress: '0x' + 'aa'.repeat(20),
         lastSafeBlock: '1050',
         lastFinalizedBlock: '1000',
+        headSource: 'provider:eth_getBlockByNumber(latest|safe|finalized)',
+        headsObservedAt: cursorUpdatedAt,
+        observedHead: '1100',
         updatedAt: cursorUpdatedAt,
       },
     ]);
@@ -107,6 +110,8 @@ describe('ProjectionFreshnessService', () => {
         indexedLogIndex: 7,
         finalizedHeight: '1000',
         safeHeight: '1050',
+        finalitySource: 'provider:eth_getBlockByNumber(latest|safe|finalized)',
+        headsObservedAt: cursorUpdatedAt.toISOString(),
         observedHead: 1100,
         headDistance: '110',
         lastSuccess: cursorUpdatedAt.toISOString(),
@@ -125,6 +130,7 @@ describe('ProjectionFreshnessService', () => {
       expect(list.items.map((i) => i.projectorName)).toEqual([
         'v2-disputes',
         'v2-evidence',
+        'v2-rewards',
         'v2-verification',
       ]);
     });
@@ -187,6 +193,8 @@ describe('ProjectionFreshnessService', () => {
           contractAddress: '0x' + 'aa'.repeat(20),
           lastSafeBlock: huge,
           lastFinalizedBlock: huge,
+          headSource: 'provider:eth_getBlockByNumber(latest|safe|finalized)',
+          headsObservedAt: cursorUpdatedAt,
           updatedAt: cursorUpdatedAt,
         },
       ]);
@@ -318,6 +326,7 @@ describe('ProjectionFreshnessService', () => {
       expect(list.items.map((i) => i.projectorName)).toEqual([
         'v2-disputes',
         'v2-evidence',
+        'v2-rewards',
         'v2-verification',
       ]);
     });

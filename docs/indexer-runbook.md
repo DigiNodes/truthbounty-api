@@ -103,6 +103,8 @@ Each entry in `GET /v2/projections/freshness` reports:
 | `indexedBlock` | Highest canonical-event block applied by the projector (`null` if never ran). |
 | `finalizedHeight` | Highest finalized block known — DB checkpoints primary, indexer snapshot fallback (`null` + `finality-unavailable` when unknown). |
 | `safeHeight` | Highest safe block known, same sourcing as finalized. |
+| `finalitySource` | Machine-readable source of the provider finality tags recorded with the checkpoint (`null` when unavailable). |
+| `headsObservedAt` | ISO time the provider reported the safe/finalized heads (`null` when unavailable). |
 | `observedHead` | Live observed head from the indexer snapshot (`null` when unavailable). |
 | `headDistance` | `observedHead - indexedBlock` as a bigint-safe string (`null` when either side unknown). |
 | `lastSuccess` | ISO timestamp of the cursor's last advance (`null` if never ran). |
@@ -114,9 +116,24 @@ Notes:
 
 - The endpoints are derived read models only: they never settle protocol
   state, sign transactions, or compute verdicts.
-- `lastFinalizedBlock` in `v2_event_checkpoints` is advanced by ingestion;
-  until a checkpoint row exists, heights fall back to the live snapshot and
-  the report names the gap via `degradedReason` instead of guessing.
+- `v2_event_checkpoints` persists three distinct facts per `(chainId, contract)`:
+  `lastProcessedBlock` (ingestion progress), `lastSafeBlock`, and
+  `lastFinalizedBlock`. The finality pair is **never** derived from the block
+  of an ingested log or by subtracting a confirmation count. It is advanced
+  only from the provider's `latest`/`safe`/`finalized` responses, recorded with
+  `headSource`, `headsObservedAt`, `observedHead` and the corresponding block
+  hashes. This is the single durable checkpoint authority consumed by V2
+  freshness, data-state labeling and health.
+- A missing, malformed, stale, regressing, out-of-scope or contradictory head
+  response fails closed: ingestion still records progress but neither finality
+  watermark moves, and freshness reports `finality-unavailable`,
+  `safe-unavailable`, or `finality-provenance-missing` as appropriate.
+- Reorg handling restores checkpoints through the existing rollback path;
+  head watermarks are monotonic and never leapfrog the provider-observed
+  boundary (`finalized <= safe <= observed`).
+- Until a checkpoint with provenance exists, heights fall back to the live
+  snapshot and the report names the gap via `degradedReason` instead of
+  guessing.
 - Block heights are strings so values beyond `Number.MAX_SAFE_INTEGER` keep
   full precision; cross-driver (PostgreSQL/SQLite) normalization is applied.
 

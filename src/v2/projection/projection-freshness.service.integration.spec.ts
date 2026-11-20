@@ -77,6 +77,9 @@ describe('ProjectionFreshnessService (integration)', () => {
       contractAddress,
       lastSafeBlock: '1050',
       lastFinalizedBlock: '1000',
+      headSource: 'provider:eth_getBlockByNumber(latest|safe|finalized)',
+      headsObservedAt: new Date(),
+      observedHead: '1100',
     });
     await cursorRepo.save({
       projectorName: 'v2-evidence',

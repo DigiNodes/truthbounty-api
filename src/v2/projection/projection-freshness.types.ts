@@ -22,6 +22,10 @@ export interface ProjectionFreshness {
   finalizedHeight: string | null;
   /** Highest safe block known (DB checkpoint primary, indexer snapshot fallback). */
   safeHeight: string | null;
+  /** Finality source recorded with the checkpoint, or null when unavailable. */
+  finalitySource: string | null;
+  /** When the source reported the checkpoint heads, or null when unavailable. */
+  headsObservedAt: string | null;
   /** Highest block observed from the RPC provider, or null when unknown. */
   observedHead: number | null;
   /** observedHead - indexedBlock (>= 0), or null when either side is unknown. */
