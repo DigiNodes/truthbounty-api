@@ -1,9 +1,19 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { BlockList, isIP } from 'node:net';
 import { Readable } from 'stream';
+import { redactSensitiveData } from '../common/utils/redaction.util';
 import { IPFS_PROVIDER, IpfsAddResult, IpfsProvider } from './interfaces';
 
 type AddressFamily = 'ipv4' | 'ipv6';
+type GatewayUrlFailure =
+  | 'invalid_type'
+  | 'malformed_encoding'
+  | 'unsafe_characters'
+  | 'invalid_url'
+  | 'unsupported_scheme'
+  | 'credentials_present'
+  | 'unsupported_port'
+  | 'private_host';
 
 const blockedGatewayAddresses = new BlockList();
 const blockedGatewaySubnets: Array<[string, number, AddressFamily]> = [
@@ -86,10 +96,30 @@ export class IpfsService {
   getGatewayUrl(cid: string): string | undefined {
     if (typeof this.provider.getUrl !== 'function') return undefined;
 
-    const raw = this.provider.getUrl(cid);
+    let raw: string | undefined;
+    try {
+      raw = this.provider.getUrl(cid);
+    } catch (error) {
+      this.logger.error('IPFS gateway provider failed (provider_error)');
+      throw error;
+    }
+
     if (!raw) return undefined;
 
     return this.sanitizeGatewayUrl(raw);
+  }
+
+  private logGatewayRejection(
+    category: GatewayUrlFailure,
+    hostname?: string,
+  ): void {
+    const safeHostname =
+      hostname && !isUnsafeHostname(hostname)
+        ? redactSensitiveData(hostname.toLowerCase())
+        : undefined;
+    const context = safeHostname ? ` host=${safeHostname}` : '';
+
+    this.logger.warn(`Rejected IPFS gateway URL (${category})${context}`);
   }
 
   /**
@@ -99,35 +129,57 @@ export class IpfsService {
    * - Return a normalized URL string or undefined for unsafe values
    */
   private sanitizeGatewayUrl(urlStr: string): string | undefined {
-    try {
-      // Trim and disallow characters commonly used in XSS vectors in the raw provider string
-      const raw = typeof urlStr === 'string' ? urlStr.trim() : '';
-      if (!raw) return undefined;
-
-      const unsafePattern = /[<>\r\n]/;
-      if (unsafePattern.test(raw)) return undefined;
-
-      const url = new URL(raw);
-
-      // Only allow http(s)
-      if (url.protocol !== 'http:' && url.protocol !== 'https:')
-        return undefined;
-
-      // Gateway URLs must not target private infrastructure or carry credentials.
-      if (
-        url.username ||
-        url.password ||
-        (url.port !== '' && url.port !== '80' && url.port !== '443') ||
-        isUnsafeHostname(url.hostname)
-      ) {
-        return undefined;
-      }
-
-      // Return normalized URL (this will percent-encode parts as needed)
-      return url.toString();
-    } catch {
-      this.logger.warn(`Invalid gateway URL from provider: ${urlStr}`);
+    if (typeof urlStr !== 'string') {
+      this.logGatewayRejection('invalid_type');
       return undefined;
     }
+
+    const raw = urlStr.trim();
+    if (!raw) return undefined;
+
+    if (/[\u0000-\u001f\u007f-\u009f<>]/.test(raw)) {
+      this.logGatewayRejection('unsafe_characters');
+      return undefined;
+    }
+
+    try {
+      decodeURIComponent(raw);
+    } catch {
+      this.logGatewayRejection('malformed_encoding');
+      return undefined;
+    }
+
+    let url: URL;
+    try {
+      url = new URL(raw);
+    } catch {
+      this.logGatewayRejection('invalid_url');
+      return undefined;
+    }
+
+    // Only allow http(s).
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      this.logGatewayRejection('unsupported_scheme', url.hostname);
+      return undefined;
+    }
+
+    // Gateway URLs must not target private infrastructure or carry credentials.
+    if (url.username || url.password) {
+      this.logGatewayRejection('credentials_present', url.hostname);
+      return undefined;
+    }
+
+    if (url.port !== '' && url.port !== '80' && url.port !== '443') {
+      this.logGatewayRejection('unsupported_port', url.hostname);
+      return undefined;
+    }
+
+    if (isUnsafeHostname(url.hostname)) {
+      this.logGatewayRejection('private_host');
+      return undefined;
+    }
+
+    // Return normalized URL (this will percent-encode parts as needed).
+    return url.toString();
   }
 }
