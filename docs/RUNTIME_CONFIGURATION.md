@@ -210,6 +210,8 @@ Legacy `RELEASE_MANIFEST_MAX_AGE_MS` must migrate to `CONTRACT_RELEASE_MAX_AGE_D
 | CONTRACT_ADDRESS_MANIFEST | non-empty string | (unset) | no | - |
 | REWARD_CONTRACT_ADDRESS | non-zero 20-byte EVM address | (unset) | no | - |
 | CONTRACT_ADDRESS | non-zero 20-byte EVM address | (unset) | no | - |
+| DISPUTE_PROJECTION_CONTRACT_ADDRESS | non-zero 20-byte EVM address | (unset) | no | - |
+| DISPUTE_PROJECTION_DECODER_VERSION | non-empty string | (unset) | no | - |
 | TREASURY_ADDRESS | non-zero 20-byte EVM address | (unset) | no | - |
 | VERIFIER_ADDRESS | non-zero 20-byte EVM address | (unset) | no | - |
 | FEE_RECIPIENT | non-zero 20-byte EVM address | (unset) | no | - |

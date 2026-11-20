@@ -4,6 +4,9 @@
  * hashes. No Stellar/Soroban/Freighter concepts belong here.
  */
 export interface RawChainLog {
+  /** Approved decoder binding. Required for dispute projection inputs. */
+  releaseId?: string;
+  decoderVersion?: string;
   chainId: number;
   contractAddress: string;
   eventName: string;
