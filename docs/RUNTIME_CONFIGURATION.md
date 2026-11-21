@@ -130,6 +130,7 @@ Legacy `RELEASE_MANIFEST_MAX_AGE_MS` must migrate to `CONTRACT_RELEASE_MAX_AGE_D
 | NOTIFICATION_RETRY_DELAY | integer 1..9007199254740991 | 2000 | no | - |
 | AI_PROVIDER | openai / mock | mock | no | - |
 | DEFAULT_LLM_PROVIDER | openai / anthropic | openai | no | - |
+| AI_BUDGET_OPERATOR_IDS | comma-separated distinct UUIDs; empty denies all operators |  | no | - |
 | OPENAI_API_KEY | non-empty string | (unset) | no | - |
 | ANTHROPIC_API_KEY | non-empty string | (unset) | no | - |
 | OPENAI_BASE_URL | URL (https:, http:) | https://api.openai.com/v1 | no | - |

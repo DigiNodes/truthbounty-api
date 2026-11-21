@@ -35,3 +35,39 @@ These are regex/keyword-based heuristics, not an ML moderation model — they wi
 - No ML-based content moderation model (regex/keyword only, see limitations above).
 - No cross-module notification/event emission on flagged content (BE-020 notification infrastructure doesn't exist yet in this repo — see the architecture doc's "Known gap" section).
 - No per-conversation encryption at rest beyond the database's own storage guarantees.
+
+
+## Durable budget security boundary
+
+The active paid `services/LlmProviderService` admits chat/embedding attempts only
+after shared PostgreSQL reservation. Authenticated conversation ownership precedes
+admission. Provider/model bounds and prices are server-owned; ordinary callers
+cannot supply counts, prices, estimates, override authority or model policy.
+
+Admission, reconciliation and administrative effects serialize on the same
+authority lock. Database time is sampled after acquiring it. Unknown paid usage
+and interrupted processes retain their holds; price/policy changes never reset
+allowances. Historical coverage stays closed until the recorded longest-window
+drain. Budget denial never reaches an SDK, and SDK/accounting failure cannot
+invoke a fallback or automatic retry.
+
+Administrative effects require the verified app `admin` role plus the configured
+`AI_BUDGET_OPERATOR_IDS` allowlist, enforced by guards and the service. Overrides
+are finite, user-only, within24 hours and their window, and revocable; they cannot
+bypass provider/global ceilings or a coverage/configuration failure. Existing
+`AdminAuditService.execute` persists an attempt and commits success audit with the
+effect. A rejected audit write rolls effects back; ambiguous commits stay unknown.
+
+Budget/usage/audit rows contain opaque ownership and operation references, counts,
+tariffs and states. They contain no prompt/response payloads, credentials, raw
+provider error text or free-form reasons. User usage reads resolve the linked
+authenticated user; global/provider counters are not exposed.
+
+The new audit append repair supplies required database timestamp/retention/default
+severity and locks its persisted head. Historical audit hashes and migrations
+remain unchanged. The budget migration preserves unknown historical prices and
+refuses removal of populated evidence. Rollback stops dispatch while retaining
+accounting; no budget operation grants protocol authority.
+
+See [the budget operations guide](AI_ASSISTANT_OPERATIONS.md#durable-paid-provider-budgets)
+for activation and exact response states.

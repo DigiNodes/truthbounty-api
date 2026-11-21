@@ -1,7 +1,6 @@
 import {
   Injectable,
   NotFoundException,
-  Logger,
   ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -12,8 +11,6 @@ import { CreateConversationDto, SendMessageDto } from '../dto/ai-assistant.dto';
 
 @Injectable()
 export class AiAssistantService {
-  private readonly logger = new Logger(AiAssistantService.name);
-
   constructor(
     private prisma: PrismaService,
     private llmProvider: LlmProviderService,
@@ -81,7 +78,7 @@ export class AiAssistantService {
     const safetyCheck = this.safetyGuardrail.checkContent(dto.content);
 
     // 1. Save user message
-    const userMessage = await this.prisma.message.create({
+    await this.prisma.message.create({
       data: {
         conversationId,
         role: 'user',
@@ -145,7 +142,9 @@ ${context}
     const startTime = Date.now();
 
     // 5. Orchestrate LLM request
-    const llmResponse = await this.llmProvider.generateResponse(messagesToLlm);
+    const llmResponse = await this.llmProvider.generateResponse(messagesToLlm, {
+      userId,
+    });
 
     const latencyMs = Date.now() - startTime;
 
@@ -164,18 +163,7 @@ ${context}
       data: { updatedAt: new Date() },
     });
 
-    // 8. Track Usage Metrics
-    await this.prisma.aiUsageMetric.create({
-      data: {
-        userId,
-        provider: llmResponse.provider,
-        model: llmResponse.model,
-        promptTokens: llmResponse.usage?.prompt_tokens || 0,
-        completionTokens: llmResponse.usage?.completion_tokens || 0,
-        totalTokens: llmResponse.usage?.total_tokens || 0,
-        latencyMs,
-      },
-    });
+    // Paid usage is already reconciled durably by LlmProviderService.
 
     // Standardized API response
     return {
@@ -183,7 +171,14 @@ ${context}
       metadata: {
         provider: llmResponse.provider,
         latencyMs,
-        tokens: llmResponse.usage?.total_tokens || 0,
+        tokens: llmResponse.accounting
+          ? llmResponse.accounting.actualTokens
+          : llmResponse.usage?.total_tokens ?? null,
+        usageState: llmResponse.accounting?.state ?? 'mock',
+        chargedTokens: llmResponse.accounting?.chargedTokens ?? null,
+        chargedSpendUsdNanos:
+          llmResponse.accounting?.chargedSpendUsdNanos ?? null,
+        priceVersion: llmResponse.accounting?.priceVersion ?? null,
         citations,
       },
     };
