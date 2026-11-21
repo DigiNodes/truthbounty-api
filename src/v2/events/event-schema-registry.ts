@@ -75,6 +75,18 @@ export const EVENT_SCHEMA_REGISTRY: Record<string, EventFieldMapping> = {
     asset: 'asset',
     amount: 'amount',
   },
+
+  // Governance lifecycle (PREWAVE-BE-161). proposer/voter/weight remain in the
+  // free-form payload; downstream governance services re-derive them from the
+  // canonical event rather than from any HTTP request body.
+  ProposalCreated: { actor: 'proposer' },
+  ProposalQueued: {},
+  ProposalExecuted: {},
+  ProposalCanceled: {},
+  ProposalExpired: {},
+  VoteCast: { actor: 'voter' },
+  RoleGranted: { actor: 'account' },
+  RoleRevoked: { actor: 'account' },
 };
 
 /** Every event name this pipeline currently knows how to normalize. */

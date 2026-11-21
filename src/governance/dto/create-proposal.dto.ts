@@ -1,13 +1,22 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import {
   IsEnum,
   IsNotEmpty,
   IsObject,
   IsOptional,
   IsString,
+  ValidateNested,
 } from 'class-validator';
 import { ProposalCategory } from '../entities/proposal.entity';
+import { CanonicalEventEvidenceDto } from './canonical-event-evidence.dto';
 
+/**
+ * Off-chain draft by default. The proposer is always the verified principal
+ * from the JWT, never a body field. Supplying canonical ProposalCreated
+ * evidence upgrades the row to a chain-bound projection; the client still
+ * cannot choose the proposer or the deployment.
+ */
 export class CreateProposalDto {
   @ApiProperty({ description: 'Proposal title' })
   @IsString()
@@ -19,11 +28,6 @@ export class CreateProposalDto {
   @IsNotEmpty()
   description: string;
 
-  @ApiProperty({ description: 'Proposer wallet address' })
-  @IsString()
-  @IsNotEmpty()
-  proposer: string;
-
   @ApiPropertyOptional({
     enum: ProposalCategory,
     description: 'Proposal category',
@@ -33,13 +37,16 @@ export class CreateProposalDto {
   category?: ProposalCategory;
 
   @ApiPropertyOptional({
-    description: 'Blockchain transaction hash',
+    description:
+      'Canonical ProposalCreated log. Omit to create an off-chain draft only.',
+    type: CanonicalEventEvidenceDto,
   })
   @IsOptional()
-  @IsString()
-  blockchainTxHash?: string;
+  @ValidateNested()
+  @Type(() => CanonicalEventEvidenceDto)
+  canonicalEvent?: CanonicalEventEvidenceDto;
 
-  @ApiPropertyOptional({ description: 'Additional metadata' })
+  @ApiPropertyOptional({ description: 'Additional non-authoritative metadata' })
   @IsOptional()
   @IsObject()
   metadata?: Record<string, unknown>;
