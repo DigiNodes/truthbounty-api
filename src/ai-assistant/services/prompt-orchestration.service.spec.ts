@@ -102,6 +102,27 @@ describe('PromptOrchestrationService', () => {
     expect(providerRouter.chat).not.toHaveBeenCalled();
   });
 
+  it('fails closed without provider invocation when RAG retrieval fails', async () => {
+    contextRetrievalService.search.mockRejectedValue(
+      new Error('context database unavailable'),
+    );
+
+    const result = await service.generateReply({
+      conversation,
+      requesterId: 'user-1',
+      requesterRole: 'contributor',
+      userContent: 'How does staking work?',
+      endpoint: 'chat',
+    });
+
+    expect(result.safetyBlocked).toBe(false);
+    expect(result.flagged).toBe(true);
+    expect(result.flagReason).toBe('rag_retrieval_failed');
+    expect(result.provider).toBe('none');
+    expect(result.content).toContain('verified protocol context is unavailable');
+    expect(providerRouter.chat).not.toHaveBeenCalled();
+  });
+
   it('places the system prompt first and never lets caller content become a system message', async () => {
     await service.generateReply({
       conversation,
