@@ -1,18 +1,27 @@
 import {
-  Injectable,
-  NotFoundException,
   BadRequestException,
   ConflictException,
+  Injectable,
   Logger,
+  NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import {
   Dispute,
   DisputeStatus,
   DisputeTrigger,
   DisputeOutcome,
+  DisputeRecordKind,
+  DisputeDataState,
 } from './entities/dispute.entity';
+import {
+  CanonicalEventRef,
+  DisputeEvidenceService,
+  DISPUTE_TERMINAL_EVENTS,
+} from './canonical-dispute-evidence.service';
+import { CanonicalEvent } from '../v2/events/entities/canonical-event.entity';
 
 // ─── Configuration ────────────────────────────────────────────────────────────
 
@@ -21,9 +30,9 @@ export interface DisputeConfig {
   LOW_CONFIDENCE_THRESHOLD: number;
   /** Minority opposition ratio at or above which a dispute is triggered (0–1). */
   MINORITY_OPPOSITION_THRESHOLD: number;
-  /** Hours after creation before an open/reviewing dispute is considered expired. */
+  /** Hours after creation before an open/reviewing workflow record needs attention. */
   MAX_DISPUTE_DURATION_HOURS: number;
-  /** Hours that must pass before a second dispute can be raised on the same claim. */
+  /** Hours before a second workflow record can be raised on the same claim. */
   DISPUTE_COOLDOWN_HOURS: number;
 }
 
@@ -34,27 +43,27 @@ export const DEFAULT_CONFIG: DisputeConfig = {
   DISPUTE_COOLDOWN_HOURS: 24,
 };
 
-// ─── DTOs ─────────────────────────────────────────────────────────────────────
+// ─── Commands (never carry protocol-authoritative fields) ─────────────────────
 
-export interface CreateDisputeDto {
+export interface CreateDisputeCommand {
   claimId: string;
-  trigger: DisputeTrigger;
-  originalConfidence: number;
-  initiatorId?: string;
+  principal: string;
+  canonicalEvent?: CanonicalEventRef;
   metadata?: Record<string, unknown>;
 }
 
-export interface ResolveDisputeDto {
+export interface ProjectOutcomeCommand {
   disputeId: string;
-  outcome: DisputeOutcome;
-  finalConfidence: number;
+  canonicalEvent: CanonicalEventRef;
   metadata?: Record<string, unknown>;
 }
 
-export interface RejectDisputeDto {
+export interface TriageCommand {
   disputeId: string;
-  reason: string;
-  rejectedBy?: string;
+  principal: string;
+  reason?: string;
+  note?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface FindAllDisputesDto {
@@ -78,15 +87,25 @@ export interface PaginatedDisputes {
   offset: number;
 }
 
-// ─── Resolvable statuses ──────────────────────────────────────────────────────
-
 const RESOLVABLE_STATUSES: DisputeStatus[] = [
   DisputeStatus.OPEN,
   DisputeStatus.REVIEWING,
 ];
+const PRINCIPAL_ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/;
 
 // ─── Service ──────────────────────────────────────────────────────────────────
 
+/**
+ * Legacy dispute workflow service.
+ *
+ * Protocol-authoritative terminal fields (`status` RESOLVED/EXPIRED, `outcome`,
+ * `finalConfidence`, provenance) are never written from an HTTP request. They
+ * are projections of finalized canonical DisputeResolved/DisputeExpired logs,
+ * validated by DisputeEvidenceService. Moderator endpoints only append
+ * explicitly non-authoritative triage metadata. The initiator is always the
+ * verified JWT principal, and trigger/confidence are derived from the raised
+ * canonical event rather than from client input.
+ */
 @Injectable()
 export class DisputeService {
   private readonly logger = new Logger(DisputeService.name);
@@ -95,21 +114,16 @@ export class DisputeService {
   constructor(
     @InjectRepository(Dispute)
     private readonly disputeRepository: Repository<Dispute>,
-    private readonly dataSource: DataSource,
-    config?: Partial<DisputeConfig>,
+    @InjectRepository(CanonicalEvent)
+    private readonly canonicalEvents: Repository<CanonicalEvent>,
+    private readonly evidence: DisputeEvidenceService,
+    @Optional() config?: Partial<DisputeConfig>,
   ) {
     this.config = { ...DEFAULT_CONFIG, ...config };
   }
 
-  // ─── Trigger evaluation ──────────────────────────────────────────────────
+  // ─── Trigger evaluation (informational, server-side only) ───────────────
 
-  /**
-   * Evaluate whether a claim's current scores warrant opening a dispute.
-   *
-   * Rules are checked in priority order — the first matching rule wins.
-   * Returns a full explanation alongside the boolean so callers can log or
-   * surface the reason without re-deriving it.
-   */
   shouldTriggerDispute(
     confidence: number,
     minorityOpposition: number,
@@ -138,20 +152,41 @@ export class DisputeService {
 
   // ─── Create ──────────────────────────────────────────────────────────────
 
-  /**
-   * Open a new dispute for a claim.
-   *
-   * Guards:
-   * - Throws `ConflictException`    if an OPEN dispute already exists.
-   * - Throws `BadRequestException`  if the cooldown window has not elapsed.
-   * - Throws `BadRequestException`  if `originalConfidence` is outside [0, 1].
-   */
-  async createDispute(dto: CreateDisputeDto): Promise<Dispute> {
-    const { claimId, trigger, originalConfidence, initiatorId, metadata } = dto;
+  async createDispute(command: CreateDisputeCommand): Promise<Dispute> {
+    const principal = this.assertPrincipal(command.principal);
+    const raised = command.canonicalEvent
+      ? await this.evidence.assertDisputeRaised(
+          command.canonicalEvent,
+          principal,
+        )
+      : null;
 
-    this.validateConfidence(originalConfidence, 'originalConfidence');
+    if (
+      raised &&
+      command.claimId &&
+      command.claimId.trim() !== raised.claimId
+    ) {
+      throw new BadRequestException('CLAIM_ID_MISMATCH');
+    }
 
-    // Single query covering both the open-duplicate check and the cooldown check
+    const claimId = raised?.claimId ?? command.claimId;
+    if (typeof claimId !== 'string' || claimId.trim() === '') {
+      throw new BadRequestException('CLAIM_ID_REQUIRED');
+    }
+
+    if (raised) {
+      const duplicate = await this.disputeRepository.findOne({
+        where: {
+          chainId: raised.chainId,
+          eventTxHash: raised.txHash,
+          eventLogIndex: raised.logIndex,
+        },
+      });
+      if (duplicate) {
+        throw new ConflictException('CANONICAL_EVENT_ALREADY_RECORDED');
+      }
+    }
+
     const [activeDispute, recentDispute] = await Promise.all([
       this.disputeRepository.findOne({
         where: { claimId, status: DisputeStatus.OPEN },
@@ -171,7 +206,6 @@ export class DisputeService {
         `An open dispute already exists for claim ${claimId} (dispute id: ${activeDispute.id})`,
       );
     }
-
     if (recentDispute) {
       const elapsed = Date.now() - recentDispute.createdAt.getTime();
       const remainingHours = (
@@ -183,28 +217,66 @@ export class DisputeService {
       );
     }
 
+    const raiseProvenance = raised
+      ? {
+          chainId: raised.chainId,
+          deploymentAddress: raised.deploymentAddress,
+          artifactVersion: raised.artifactVersion,
+          canonicalClaimId: raised.claimId,
+          originalRoundId: raised.roundId,
+          eventTxHash: raised.txHash,
+          eventLogIndex: raised.logIndex,
+          eventBlockNumber: raised.blockNumber,
+        }
+      : {};
+
     const dispute = this.disputeRepository.create({
       claimId,
-      trigger,
-      originalConfidence,
-      initiatorId,
-      metadata: metadata ?? {},
+      trigger: raised?.trigger ?? DisputeTrigger.MANUAL,
+      originalConfidence: raised?.reportedConfidence ?? 0,
+      initiatorId: principal,
       status: DisputeStatus.OPEN,
+      recordKind: raised
+        ? DisputeRecordKind.CANONICAL_PROJECTION
+        : DisputeRecordKind.LEGACY_WORKFLOW,
+      dataState: raised
+        ? DisputeDataState.FINALIZED
+        : DisputeDataState.LOCAL_WORKFLOW,
+      ...raiseProvenance,
+      metadata: {
+        ...(command.metadata ?? {}),
+        ...(raised
+          ? {
+              source: 'DisputeRaised',
+              canonicalRaise: {
+                chainId: raised.chainId,
+                deploymentAddress: raised.deploymentAddress,
+                artifactVersion: raised.artifactVersion,
+                txHash: raised.txHash,
+                logIndex: raised.logIndex,
+                blockNumber: raised.blockNumber,
+                claimId: raised.claimId,
+                roundId: raised.roundId,
+              },
+              bondAsset: raised.bondAsset,
+              bondAmount: raised.bondAmount,
+            }
+          : {
+              source: 'LEGACY_WORKFLOW',
+              nonAuthoritative: true,
+            }),
+      },
     });
 
     const saved = await this.disputeRepository.save(dispute);
     this.logger.log(
-      `Dispute ${saved.id} created for claim ${claimId} — trigger=${trigger}, confidence=${originalConfidence}`,
+      `Dispute ${saved.id} created for claim ${claimId} by ${principal} — ` +
+        `kind=${saved.recordKind}, state=${saved.dataState}`,
     );
     return saved;
   }
 
-  // ─── Status transitions ──────────────────────────────────────────────────
-
-  /**
-   * Transition a dispute from OPEN → REVIEWING.
-   * Stamps `reviewStartedAt` and persists atomically.
-   */
+  /** Non-authoritative workflow label. Never a protocol outcome. */
   async startReview(disputeId: string): Promise<Dispute> {
     const dispute = await this.findDisputeOrThrow(disputeId);
     this.assertStatus(dispute, [DisputeStatus.OPEN], 'start review on');
@@ -213,103 +285,204 @@ export class DisputeService {
     dispute.reviewStartedAt = new Date();
 
     const saved = await this.disputeRepository.save(dispute);
-    this.logger.log(`Dispute ${disputeId} moved to REVIEWING`);
+    this.logger.log(`Dispute ${disputeId} moved to REVIEWING (workflow only)`);
     return saved;
   }
 
+  // ─── Canonical terminal projections ─────────────────────────────────────
+
   /**
-   * Resolve a dispute in OPEN or REVIEWING state.
-   * Merges any additional metadata with the existing record.
+   * The only path that may write a terminal protocol outcome. The caller
+   * supplies a log pointer; outcome, confidence, actor and provenance are
+   * re-derived from a finalized canonical event.
    */
-  async resolveDispute(dto: ResolveDisputeDto): Promise<Dispute> {
-    const { disputeId, outcome, finalConfidence, metadata } = dto;
+  async projectOutcome(command: ProjectOutcomeCommand): Promise<Dispute> {
+    const dispute = await this.findDisputeOrThrow(command.disputeId);
+    this.assertProjectable(dispute);
 
-    this.validateConfidence(finalConfidence, 'finalConfidence');
+    const evidence = await this.evidence.assertDisputeTerminal(
+      command.canonicalEvent,
+      dispute.canonicalClaimId as string,
+      dispute.originalRoundId as string,
+    );
 
+    const duplicate = await this.disputeRepository.findOne({
+      where: {
+        chainId: evidence.chainId,
+        eventTxHash: evidence.txHash,
+        eventLogIndex: evidence.logIndex,
+      },
+    });
+    if (duplicate && duplicate.id !== dispute.id) {
+      throw new ConflictException('CANONICAL_EVENT_ALREADY_RECORDED');
+    }
+    const alreadyProjected =
+      duplicate?.eventTxHash === evidence.txHash &&
+      duplicate?.eventLogIndex === evidence.logIndex;
+
+    if (!alreadyProjected) {
+      this.assertStatus(dispute, RESOLVABLE_STATUSES, 'project outcome onto');
+    }
+
+    const raise = (dispute.metadata?.canonicalRaise ?? {}) as Record<
+      string,
+      unknown
+    >;
+    const applied = this.applyTerminalEvidence(dispute, evidence, raise);
+    if (command.metadata) {
+      applied.metadata = { ...applied.metadata, ...command.metadata };
+    }
+
+    const saved = await this.disputeRepository.save(applied);
+    this.logger.log(
+      `Projected ${evidence.terminalEventName} ${evidence.txHash}:${evidence.logIndex} onto ${dispute.id}`,
+    );
+    return saved;
+  }
+
+  /** Rebuild a projection deterministically from canonical history. */
+  async replayProjection(disputeId: string): Promise<Dispute> {
     const dispute = await this.findDisputeOrThrow(disputeId);
-    this.assertStatus(dispute, RESOLVABLE_STATUSES, 'resolve');
+    if (dispute.recordKind !== DisputeRecordKind.CANONICAL_PROJECTION) {
+      return dispute;
+    }
 
-    dispute.status = DisputeStatus.RESOLVED;
-    dispute.outcome = outcome;
-    dispute.finalConfidence = finalConfidence;
-    dispute.resolvedAt = new Date();
+    const claimId = dispute.canonicalClaimId;
+    const roundId = dispute.originalRoundId;
+    if (!claimId || !roundId) return dispute;
 
-    if (metadata) {
-      dispute.metadata = { ...dispute.metadata, ...metadata };
+    const candidates = await this.canonicalEvents.find({
+      where: {
+        claimId,
+        eventName: In([...DISPUTE_TERMINAL_EVENTS]),
+      },
+      order: { blockNumber: 'DESC', logIndex: 'DESC' },
+    });
+
+    const raise = (dispute.metadata?.canonicalRaise ?? {}) as Record<
+      string,
+      unknown
+    >;
+    let rebuilt = false;
+
+    for (const candidate of candidates) {
+      if (candidate.roundId && candidate.roundId !== roundId) continue;
+      try {
+        const evidence = await this.evidence.assertDisputeTerminal(
+          {
+            chainId: candidate.chainId,
+            txHash: candidate.txHash,
+            logIndex: candidate.logIndex,
+          },
+          claimId,
+          roundId,
+        );
+        this.applyTerminalEvidence(dispute, evidence, raise);
+        rebuilt = true;
+        break;
+      } catch (error) {
+        if (!(error instanceof BadRequestException)) throw error;
+      }
+    }
+
+    if (!rebuilt) {
+      this.clearTerminalState(dispute, raise);
     }
 
     const saved = await this.disputeRepository.save(dispute);
     this.logger.log(
-      `Dispute ${disputeId} resolved — outcome=${outcome}, finalConfidence=${finalConfidence}`,
+      `Replayed dispute ${dispute.id}: terminal=${rebuilt}, dataState=${saved.dataState}`,
     );
     return saved;
   }
 
   /**
-   * Reject a dispute as spam or invalid.
-   * Only OPEN disputes may be rejected; REVIEWING disputes must be resolved.
+   * Deterministic reorg handling: drop projections backed by events above the
+   * new canonical head. A reorged terminal event restores the OPEN workflow
+   * state; a reorged raising event demotes the row to a legacy workflow record.
    */
-  async rejectDispute(dto: RejectDisputeDto): Promise<Dispute> {
-    const { disputeId, reason, rejectedBy } = dto;
+  async reconcileReorg(
+    chainId: number,
+    rollbackToBlock: bigint,
+  ): Promise<{ terminalCleared: number; disputesDemoted: number }> {
+    const rollbackBlock = rollbackToBlock.toString();
+    const stale = await this.disputeRepository
+      .createQueryBuilder('d')
+      .where('d.chainId = :chainId', { chainId })
+      .andWhere('CAST(d.eventBlockNumber AS NUMERIC) > :rollbackBlock', {
+        rollbackBlock,
+      })
+      .getMany();
 
-    if (!reason?.trim()) {
-      throw new BadRequestException('A rejection reason is required');
+    let terminalCleared = 0;
+    let disputesDemoted = 0;
+
+    for (const dispute of stale) {
+      const raise = (dispute.metadata?.canonicalRaise ?? {}) as Record<
+        string,
+        unknown
+      >;
+      const raiseBlockValue = raise.blockNumber;
+      const raiseBlock =
+        typeof raiseBlockValue === 'string' ||
+        typeof raiseBlockValue === 'number'
+          ? String(raiseBlockValue)
+          : '';
+      const isRaiseReorged =
+        raiseBlock !== '' && BigInt(raiseBlock) > rollbackToBlock;
+
+      if (isRaiseReorged) {
+        this.demoteToWorkflow(dispute);
+        disputesDemoted += 1;
+      } else {
+        this.clearTerminalState(dispute, raise);
+        terminalCleared += 1;
+      }
+      await this.disputeRepository.save(dispute);
     }
 
-    const dispute = await this.findDisputeOrThrow(disputeId);
-    this.assertStatus(dispute, [DisputeStatus.OPEN], 'reject');
+    this.logger.warn(
+      `Reorg reconciliation chain=${chainId} block=${rollbackBlock}: ` +
+        `terminalCleared=${terminalCleared}, disputesDemoted=${disputesDemoted}`,
+    );
+    return { terminalCleared, disputesDemoted };
+  }
 
-    dispute.status = DisputeStatus.REJECTED;
-    dispute.resolvedAt = new Date();
+  // ─── Non-authoritative moderator triage ──────────────────────────────────
+
+  /**
+   * Replaces the former resolve/reject writes. Triage is review metadata only:
+   * it never touches terminal status, outcome, confidence or resolvedAt.
+   */
+  async recordTriage(command: TriageCommand): Promise<Dispute> {
+    const principal = this.assertPrincipal(command.principal);
+    const dispute = await this.findDisputeOrThrow(command.disputeId);
+
+    const entry = {
+      by: principal,
+      at: new Date().toISOString(),
+      ...(command.reason ? { reason: command.reason } : {}),
+      ...(command.note ? { note: command.note } : {}),
+      ...(command.metadata ?? {}),
+      nonAuthoritative: true,
+    };
+    const existingTriage = Array.isArray(dispute.metadata?.reviewTriage)
+      ? (dispute.metadata.reviewTriage as Record<string, unknown>[])
+      : [];
     dispute.metadata = {
       ...dispute.metadata,
-      rejectionReason: reason,
-      ...(rejectedBy ? { rejectedBy } : {}),
+      reviewTriage: [...existingTriage, entry],
     };
 
     const saved = await this.disputeRepository.save(dispute);
-    this.logger.log(`Dispute ${disputeId} rejected — reason="${reason}"`);
+    this.logger.log(
+      `Non-authoritative triage recorded on ${dispute.id} by ${principal}`,
+    );
     return saved;
-  }
-
-  /**
-   * Expire a single dispute that has exceeded MAX_DISPUTE_DURATION_HOURS.
-   * Wraps the update in a transaction to prevent double-expiry races.
-   */
-  async expireDispute(disputeId: string): Promise<Dispute> {
-    return this.dataSource.transaction(async (manager) => {
-      const dispute = await manager.findOne(Dispute, {
-        where: { id: disputeId },
-      });
-
-      if (!dispute)
-        throw new NotFoundException(`Dispute ${disputeId} not found`);
-
-      if (!RESOLVABLE_STATUSES.includes(dispute.status)) {
-        throw new BadRequestException(
-          `Dispute ${disputeId} is in status ${dispute.status} and cannot be expired`,
-        );
-      }
-
-      dispute.status = DisputeStatus.EXPIRED;
-      dispute.resolvedAt = new Date();
-      dispute.metadata = {
-        ...dispute.metadata,
-        expiredReason: `Exceeded ${this.config.MAX_DISPUTE_DURATION_HOURS}h maximum duration`,
-      };
-
-      const saved = await manager.save(dispute);
-      this.logger.log(`Dispute ${disputeId} expired`);
-      return saved;
-    });
   }
 
   // ─── Queries ─────────────────────────────────────────────────────────────
 
-  /**
-   * Fetch the most recent dispute for a given claim.
-   * Returns `null` when no dispute has ever been raised.
-   */
   async getDisputeByClaimId(claimId: string): Promise<Dispute | null> {
     return this.disputeRepository.findOne({
       where: { claimId },
@@ -317,9 +490,6 @@ export class DisputeService {
     });
   }
 
-  /**
-   * Fetch all disputes for a claim, newest-first.
-   */
   async getDisputeHistoryForClaim(claimId: string): Promise<Dispute[]> {
     return this.disputeRepository.find({
       where: { claimId },
@@ -328,8 +498,9 @@ export class DisputeService {
   }
 
   /**
-   * Return disputes whose OPEN/REVIEWING status has outlasted the configured
-   * maximum duration. Intended for a scheduled expiry job.
+   * Workflow records that have been open past the configured duration. This
+   * is an attention queue, not an expiry authority: the protocol deadline and
+   * any terminal EXPIRED state come from a canonical DisputeExpired event.
    */
   async getExpiredDisputes(): Promise<Dispute[]> {
     return this.disputeRepository
@@ -341,10 +512,6 @@ export class DisputeService {
       .getMany();
   }
 
-  /**
-   * Paginated, filtered dispute listing.
-   * All filter fields are optional — omitting all returns the full set.
-   */
   async findAll(dto: FindAllDisputesDto = {}): Promise<PaginatedDisputes> {
     const { status, trigger, claimId, limit = 50, offset = 0 } = dto;
 
@@ -368,6 +535,111 @@ export class DisputeService {
 
   // ─── Private helpers ─────────────────────────────────────────────────────
 
+  private applyTerminalEvidence(
+    dispute: Dispute,
+    evidence: {
+      chainId: number;
+      deploymentAddress: string;
+      artifactVersion: string;
+      blockNumber: string;
+      txHash: string;
+      logIndex: number;
+      occurredAt: Date | null;
+      terminalEventName: string;
+      outcome: DisputeOutcome | null;
+      finalConfidence: number | null;
+    },
+    raise: Record<string, unknown>,
+  ): Dispute {
+    if (evidence.terminalEventName === 'DisputeExpired') {
+      dispute.status = DisputeStatus.EXPIRED;
+      dispute.outcome = null;
+      dispute.finalConfidence = null;
+    } else {
+      dispute.status = DisputeStatus.RESOLVED;
+      dispute.outcome = evidence.outcome;
+      dispute.finalConfidence = evidence.finalConfidence ?? 0;
+    }
+
+    dispute.resolvedAt = evidence.occurredAt ?? new Date();
+    dispute.recordKind = DisputeRecordKind.CANONICAL_PROJECTION;
+    dispute.dataState = DisputeDataState.FINALIZED;
+    dispute.chainId = evidence.chainId;
+    dispute.deploymentAddress = evidence.deploymentAddress;
+    dispute.artifactVersion = evidence.artifactVersion;
+    dispute.eventTxHash = evidence.txHash;
+    dispute.eventLogIndex = evidence.logIndex;
+    dispute.eventBlockNumber = evidence.blockNumber;
+    dispute.metadata = {
+      ...dispute.metadata,
+      canonicalRaise: raise,
+      canonicalTerminal: {
+        eventName: evidence.terminalEventName,
+        txHash: evidence.txHash,
+        logIndex: evidence.logIndex,
+        blockNumber: evidence.blockNumber,
+        artifactVersion: evidence.artifactVersion,
+      },
+      source: evidence.terminalEventName,
+      nonAuthoritative: false,
+    };
+    return dispute;
+  }
+
+  private clearTerminalState(
+    dispute: Dispute,
+    raise: Record<string, unknown>,
+  ): void {
+    dispute.status = DisputeStatus.OPEN;
+    dispute.outcome = null;
+    dispute.finalConfidence = null;
+    dispute.resolvedAt = null;
+    dispute.chainId = raise.chainId ? Number(raise.chainId) : null;
+    dispute.deploymentAddress =
+      typeof raise.deploymentAddress === 'string'
+        ? raise.deploymentAddress
+        : null;
+    dispute.artifactVersion =
+      typeof raise.artifactVersion === 'string' ? raise.artifactVersion : null;
+    dispute.eventTxHash =
+      typeof raise.txHash === 'string' ? raise.txHash : null;
+    dispute.eventLogIndex =
+      typeof raise.logIndex === 'number' ? raise.logIndex : null;
+    dispute.eventBlockNumber =
+      typeof raise.blockNumber === 'string' ? raise.blockNumber : null;
+    const metadata = { ...dispute.metadata, ...raise };
+    delete metadata.canonicalTerminal;
+    dispute.metadata = metadata;
+  }
+
+  private demoteToWorkflow(dispute: Dispute): void {
+    this.clearTerminalState(dispute, {});
+    dispute.recordKind = DisputeRecordKind.LEGACY_WORKFLOW;
+    dispute.dataState = DisputeDataState.LOCAL_WORKFLOW;
+    dispute.canonicalClaimId = null;
+    dispute.originalRoundId = null;
+    dispute.chainId = null;
+    dispute.deploymentAddress = null;
+    dispute.artifactVersion = null;
+    dispute.eventTxHash = null;
+    dispute.eventLogIndex = null;
+    dispute.eventBlockNumber = null;
+    const metadata = { ...dispute.metadata };
+    delete metadata.canonicalRaise;
+    delete metadata.canonicalTerminal;
+    dispute.metadata = { ...metadata, nonAuthoritative: true };
+  }
+
+  private assertProjectable(dispute: Dispute): void {
+    if (
+      dispute.recordKind !== DisputeRecordKind.CANONICAL_PROJECTION ||
+      !dispute.canonicalClaimId ||
+      !dispute.originalRoundId
+    ) {
+      throw new BadRequestException('CANONICAL_DISPUTE_REQUIRED');
+    }
+  }
+
   private async findDisputeOrThrow(disputeId: string): Promise<Dispute> {
     const dispute = await this.disputeRepository.findOne({
       where: { id: disputeId },
@@ -388,6 +660,16 @@ export class DisputeService {
         `Cannot ${action} dispute ${dispute.id}: current status is ${dispute.status}, expected one of [${allowed.join(', ')}]`,
       );
     }
+  }
+
+  private assertPrincipal(address: unknown): string {
+    if (
+      typeof address !== 'string' ||
+      !PRINCIPAL_ADDRESS_PATTERN.test(address)
+    ) {
+      throw new BadRequestException('INVALID_VERIFIED_PRINCIPAL');
+    }
+    return address.toLowerCase();
   }
 
   private validateConfidence(value: number, field: string): void {
