@@ -2,14 +2,20 @@
 
 ## Overview
 
-Idempotency keys ensure that duplicate requests for the same operation produce the same result, preventing duplicate actions and improving reliability. This is particularly important for critical operations like creating claims, submitting evidence, and filing disputes.
+Idempotency keys ensure that duplicate requests for the same operation produce the same result, preventing duplicate actions and improving reliability. This is particularly important for critical operations like filing disputes.
+
+> PREWAVE-BE-132: `POST /claims`, `POST /claims/:claimId/evidence` and
+> `PUT /claims/evidence/:evidenceId` are retired (`410 Gone`). Claims and
+> evidence are protocol transitions authorized only by user-signed on-chain
+> transactions; duplicate transaction/event delivery is handled by canonical
+> event projection, not by API idempotency keys. IPFS preparation
+> (`POST /claims/:claimId/evidence/upload`) is content-addressed and returns a
+> deterministic `preparationId` for repeated uploads.
 
 ## When to Use Idempotency Keys
 
-Idempotency keys should be used for all write operations that have side effects, including:
+Idempotency keys should be used for all remaining API-owned write operations that have side effects, including:
 
-- Creating claims (`POST /claims`)
-- Adding evidence to claims (`POST /claims/:claimId/evidence`)
 - Creating disputes (`POST /disputes`)
 
 ## How to Use Idempotency Keys
@@ -29,6 +35,8 @@ Authorization: Bearer <your-jwt-token>
   "content": "This is the content of the claim"
 }
 ```
+
+The legacy `POST /claims` example above now returns `410 LEGACY_PROTOCOL_WRITE_RETIRED`; use the chain-first flow instead.
 
 The `Idempotency-Key` should be a unique identifier that represents the specific operation being performed. We recommend using a cryptographically secure random string with at least 32 characters.
 

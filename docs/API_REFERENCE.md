@@ -32,15 +32,20 @@ Manage claims and their evidence.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/claims/latest` | Get latest claims |
-| GET | `/claims/user/:wallet` | Get claims by user wallet |
-| GET | `/claims/:id` | Get a single claim by ID |
-| POST | `/claims` | Create a new claim |
-| POST | `/claims/:claimId/evidence` | Add evidence to a claim |
-| PUT | `/claims/evidence/:evidenceId` | Update evidence with new version |
-| GET | `/claims/:claimId/evidence` | Get all evidence for a claim |
-| GET | `/claims/:claimId/evidence/latest` | Get latest evidence for a claim |
-| GET | `/claims/evidence/:evidenceId` | Get a single evidence by ID |
+| GET | `/claims/latest` | Get latest claims (legacy, deprecated) |
+| GET | `/claims/user/:wallet` | Get claims by user wallet (legacy, deprecated) |
+| GET | `/claims/:id` | Get a single claim by ID (legacy, deprecated) |
+| POST | `/claims` | **RETIRED — 410 Gone**: submit a user-signed claim transaction instead |
+| POST | `/claims/:claimId/evidence` | **RETIRED — 410 Gone**: submit a user-signed evidence registration instead |
+| PUT | `/claims/evidence/:evidenceId` | **RETIRED — 410 Gone**: submit a user-signed evidence replacement instead |
+| POST | `/claims/:claimId/evidence/upload` | Pin IPFS content for an already projected claim (non-authoritative, 202) |
+| GET | `/claims/:claimId/evidence` | Get all evidence for a claim (legacy, deprecated) |
+| GET | `/claims/:claimId/evidence/latest` | Get latest evidence for a claim (legacy, deprecated) |
+| GET | `/claims/evidence/:evidenceId` | Get a single evidence by ID (legacy, deprecated) |
+
+Canonical reads: `/api/v2/claims`, `/api/v2/claim-read-models/:claimId`,
+`/v2/claims/:claimId/evidence`. See
+[LEGACY_CLAIM_EVIDENCE_RETIREMENT.md](LEGACY_CLAIM_EVIDENCE_RETIREMENT.md).
 
 **Query Parameters:**
 - "limit" (optional): Number of results to return (default: 10)
@@ -51,22 +56,20 @@ Manage claims and their evidence.
 - `:claimId` - Claim ID
 - `:evidenceId` - Evidence ID
 
-**Request Body (POST /claims):**
-```json
-{
-  "title": "string",
-  "content": "string",
-  "category": "string",
-  "wallet": "string"
-}
-```
+**Retired write bodies (POST /claims, POST /claims/:claimId/evidence):** these
+routes now return `410 LEGACY_PROTOCOL_WRITE_RETIRED` regardless of the body.
 
-**Request Body (POST /claims/:claimId/evidence):**
+**Request Body (POST /claims/:claimId/evidence/upload):**
 ```json
 {
-  "cid": "string"
+  "content": "string",
+  "encoding": "utf8",
+  "filename": "optional-name.txt"
 }
 ```
+The response is a preparation receipt with `onChainRegistered: false`,
+`evidenceRegistered: false` and `canonical: false`; it is not proof of
+on-chain registration.
 
 ---
 

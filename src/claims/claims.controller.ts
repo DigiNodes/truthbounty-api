@@ -10,12 +10,15 @@ import {
 import { ClaimsService } from './claims.service';
 import { EvidenceService } from './evidence.service';
 import { CreateClaimDto } from './dto/create-claim.dto';
-import { Idempotent } from '../common/idempotency';
 import { PaginationCursorService } from '../common/pagination-cursor.service';
 import { SecretScannerService } from '../security/secret-scanner.service';
 import { SecretQuarantineService } from '../security/secret-quarantine.service';
 import { QuarantineAdminGuard } from '../security/quarantine-admin.guard';
 import { SecretDetectionResult } from '../security/secret-scanner.types';
+import {
+  assertLegacyProtocolWriteRetired,
+  LEGACY_READ_DEPRECATION,
+} from './legacy-protocol-write-retirement';
 
 const CURSOR_HEADER = 'x-pagination-cursor';
 
@@ -101,7 +104,13 @@ export class ClaimsController {
   }
 
   @Get('latest')
-  @ApiOperation({ summary: 'Get latest claims' })
+  @Header('Deprecation', LEGACY_READ_DEPRECATION.headerValue)
+  @Header('Link', LEGACY_READ_DEPRECATION.claimLink)
+  @ApiOperation({
+    summary: 'Get latest claims (legacy, deprecated read model)',
+    description: LEGACY_READ_DEPRECATION.notice,
+    deprecated: true,
+  })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'cursor', required: false, type: String })
   @ApiHeader({ description: 'Opaque pagination cursor (alternative to query param)', required: false })
@@ -129,7 +138,13 @@ export class ClaimsController {
   }
 
   @Get('user/:wallet')
-  @ApiOperation({ summary: 'Get claims by user wallet' })
+  @Header('Deprecation', LEGACY_READ_DEPRECATION.headerValue)
+  @Header('Link', LEGACY_READ_DEPRECATION.claimLink)
+  @ApiOperation({
+    summary: 'Get claims by user wallet (legacy, deprecated read model)',
+    description: LEGACY_READ_DEPRECATION.notice,
+    deprecated: true,
+  })
   @ApiParam({ name: 'wallet', description: 'Wallet address' })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'cursor', required: false, type: String })
@@ -189,7 +204,13 @@ export class ClaimsController {
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get a single claim by ID' })
+  @Header('Deprecation', LEGACY_READ_DEPRECATION.headerValue)
+  @Header('Link', LEGACY_READ_DEPRECATION.claimDetailLink)
+  @ApiOperation({
+    summary: 'Get a single claim by ID (legacy, deprecated read model)',
+    description: LEGACY_READ_DEPRECATION.notice,
+    deprecated: true,
+  })
   @ApiParam({ name: 'id', description: 'Claim ID' })
   @ApiResponse({ status: 200, description: 'Claim details' })
   @ApiResponse({ status: 404, description: 'Claim not found' })
@@ -198,46 +219,58 @@ export class ClaimsController {
   }
 
   @Post()
-  @Idempotent()
-  @ApiOperation({ summary: 'Create a new claim' })
-  @ApiResponse({ status: 201, description: 'Claim created' })
-  @ApiResponse({ status: 400, description: 'Invalid input data' })
-  @ApiResponse({ status: 422, description: 'Secret material detected and quarantined' })
-  async createOne(@Body() createClaimDto: CreateClaimDto) {
-    await this.guardSubmission(createClaimDto, { source: 'claims.create' });
-    return this.claimsService.createClaim(createClaimDto);
+  @ApiOperation({
+    summary: 'RETIRED: create a claim (410 Gone)',
+    description:
+      'The API cannot create authoritative claims. Submit a user-signed ClaimCreated transaction and read the V2 projection after the finalized event is indexed.',
+    deprecated: true,
+  })
+  @ApiResponse({ status: 410, description: 'Legacy authoritative write retired' })
+  async createOne(@Body() _createClaimDto: CreateClaimDto) {
+    return assertLegacyProtocolWriteRetired('claim.create');
   }
 
   // Evidence endpoints
   @Post(':claimId/evidence')
-  @Idempotent()
-  @ApiOperation({ summary: 'Add evidence to a claim' })
-  @ApiParam({ name: 'claimId', description: 'Claim ID' })
-  @ApiResponse({ status: 201, description: 'Evidence created' })
-  @ApiResponse({ status: 422, description: 'Secret material detected and quarantined' })
+  @ApiOperation({
+    summary: 'RETIRED: register evidence for a claim (410 Gone)',
+    description:
+      'The API cannot register evidence. Pin content with POST /claims/:claimId/evidence/upload, then submit a user-signed EvidenceRegistered transaction.',
+    deprecated: true,
+  })
+  @ApiParam({ name: 'claimId', description: 'Canonical claim ID' })
+  @ApiResponse({ status: 410, description: 'Legacy authoritative write retired' })
   async createEvidence(
-    @Param('claimId') claimId: string,
-    @Body() body: { cid: string; content?: string; attachments?: unknown[] },
+    @Param('claimId') _claimId: string,
+    @Body() _body: { cid: string; content?: string; attachments?: unknown[] },
   ) {
-    await this.guardSubmission(body, { claimId: claimId, source: 'claims.evidence.create' });
-    return this.evidenceService.createEvidence(claimId, body.cid);
+    return assertLegacyProtocolWriteRetired('evidence.register');
   }
 
   @Put('evidence/:evidenceId')
-  @ApiOperation({ summary: 'Update evidence with new version' })
-  @ApiParam({ name: 'evidenceId', description: 'Evidence ID' })
-  @ApiResponse({ status: 200, description: 'Evidence updated' })
-  @ApiResponse({ status: 422, description: 'Secret material detected and quarantined' })
+  @ApiOperation({
+    summary: 'RETIRED: replace evidence version (410 Gone)',
+    description:
+      'The API cannot replace evidence. Pin content with POST /claims/:claimId/evidence/upload, then submit a user-signed EvidenceReplaced transaction.',
+    deprecated: true,
+  })
+  @ApiParam({ name: 'evidenceId', description: 'Legacy evidence ID' })
+  @ApiResponse({ status: 410, description: 'Legacy authoritative write retired' })
   async updateEvidence(
-    @Param('evidenceId') evidenceId: string,
-    @Body() body: { cid: string; content?: string; attachments?: unknown[] },
+    @Param('evidenceId') _evidenceId: string,
+    @Body() _body: { cid: string; content?: string; attachments?: unknown[] },
   ) {
-    await this.guardSubmission(body, { source: 'claims.evidence.update' });
-    return this.evidenceService.addEvidenceVersion(evidenceId, body.cid);
+    return assertLegacyProtocolWriteRetired('evidence.replace');
   }
 
   @Get(':claimId/evidence')
-  @ApiOperation({ summary: 'Get all evidence for a claim' })
+  @Header('Deprecation', LEGACY_READ_DEPRECATION.headerValue)
+  @Header('Link', LEGACY_READ_DEPRECATION.evidenceLink)
+  @ApiOperation({
+    summary: 'Get all evidence for a claim (legacy, deprecated read model)',
+    description: LEGACY_READ_DEPRECATION.notice,
+    deprecated: true,
+  })
   @ApiParam({ name: 'claimId', description: 'Claim ID' })
   @ApiResponse({ status: 200, description: 'List of evidence' })
   async getEvidenceForClaim(@Param('claimId') claimId: string) {
@@ -245,7 +278,13 @@ export class ClaimsController {
   }
 
   @Get(':claimId/evidence/latest')
-  @ApiOperation({ summary: 'Get latest evidence for a claim' })
+  @Header('Deprecation', LEGACY_READ_DEPRECATION.headerValue)
+  @Header('Link', LEGACY_READ_DEPRECATION.evidenceLink)
+  @ApiOperation({
+    summary: 'Get latest evidence for a claim (legacy, deprecated read model)',
+    description: LEGACY_READ_DEPRECATION.notice,
+    deprecated: true,
+  })
   @ApiParam({ name: 'claimId', description: 'Claim ID' })
   @ApiResponse({ status: 200, description: 'Latest evidence' })
   async getLatestEvidenceForClaim(@Param('claimId') claimId: string) {
@@ -253,7 +292,13 @@ export class ClaimsController {
   }
 
   @Get('evidence/:evidenceId')
-  @ApiOperation({ summary: 'Get a single evidence by ID' })
+  @Header('Deprecation', LEGACY_READ_DEPRECATION.headerValue)
+  @Header('Link', LEGACY_READ_DEPRECATION.evidenceLink)
+  @ApiOperation({
+    summary: 'Get a single evidence by ID (legacy, deprecated read model)',
+    description: LEGACY_READ_DEPRECATION.notice,
+    deprecated: true,
+  })
   @ApiParam({ name: 'evidenceId', description: 'Evidence ID' })
   @ApiResponse({ status: 200, description: 'Evidence details' })
   async getEvidence(@Param('evidenceId') evidenceId: string) {

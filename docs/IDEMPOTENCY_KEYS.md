@@ -72,9 +72,12 @@ Configuration options:
 #### Supported Endpoints
 
 Initially, we'll implement idempotency for:
-- POST /claims (create claim)
-- POST /claims/:claimId/evidence (add evidence)
 - POST /disputes (create dispute)
+
+PREWAVE-BE-132: the legacy `POST /claims` and `POST /claims/:claimId/evidence`
+idempotent write routes are retired (`410 Gone`); protocol mutation is by
+user-signed transaction and canonical event replay. Non-authoritative IPFS
+preparation is deterministic by content CID instead.
 
 ### Error Handling
 
