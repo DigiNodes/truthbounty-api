@@ -84,7 +84,7 @@ export class SmtpConfigService {
     }
 
     // Optional fields with defaults
-    const secure = this.configService.get<boolean>('SMTP_SECURE', false);
+    const secure = this.configService.get<string | boolean>('SMTP_SECURE', false);
     const fromName = this.configService.get<string>('SMTP_FROM_NAME', 'TruthBounty');
     const connectionTimeout = this.configService.get<number>('SMTP_CONNECTION_TIMEOUT', 10000);
     const greetingsTimeout = this.configService.get<number>('SMTP_GREETINGS_TIMEOUT', 5000);
@@ -92,7 +92,7 @@ export class SmtpConfigService {
     const config: SmtpConfig = {
       host: host!,
       port: port!,
-      secure,
+      secure: secure === true || secure === 'true',
       auth: {
         user: user!,
         pass: pass!,

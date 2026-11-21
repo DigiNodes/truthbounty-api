@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { AiBudgetError, AiBudgetErrorCode } from '../../ai-assistant/budgets/ai-budget.errors';
 import {
   PublicErrorCode,
   ERROR_CODE_DESCRIPTIONS,
@@ -26,8 +27,9 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const timestamp = new Date().toISOString();
 
     let status: number;
-    let publicCode: PublicErrorCode;
+    let publicCode: PublicErrorCode | AiBudgetErrorCode;
     let message: string;
+    const budget = exception instanceof AiBudgetError ? exception.getResponse() : null;
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
@@ -38,7 +40,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
           : (responsePayload as any).message || exception.message;
 
       // Map HTTP status to public error codes
-      publicCode = this.mapStatusToErrorCode(status);
+      publicCode = budget?.code ?? this.mapStatusToErrorCode(status);
     } else {
       status = HttpStatus.INTERNAL_SERVER_ERROR;
       publicCode = PublicErrorCode.INTERNAL_SERVER_ERROR;
@@ -62,8 +64,16 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       timestamp,
       requestId,
       path: request.url,
+      ...(budget ? {
+        state: budget.state,
+        resetAt: budget.resetAt,
+        retryAfterSeconds: budget.retryAfterSeconds,
+      } : {}),
     };
 
+    if (budget?.retryAfterSeconds !== null && budget?.retryAfterSeconds !== undefined) {
+      response.setHeader('Retry-After', String(budget.retryAfterSeconds));
+    }
     response.status(status).json(publicResponse);
   }
 

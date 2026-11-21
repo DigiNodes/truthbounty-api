@@ -1,4 +1,3 @@
-```js
 /** @type {import('jest').Config} */
 module.exports = {
   moduleFileExtensions: ['js', 'json', 'ts'],
@@ -16,4 +15,3 @@ module.exports = {
   ],
   testEnvironment: 'node',
 };
-```

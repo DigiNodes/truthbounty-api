@@ -9,6 +9,7 @@ export interface Field<T> {
   readonly aliases?: readonly string[];
   readonly productionRequired?: boolean;
   readonly secret?: boolean;
+  readonly allowEmpty?: boolean;
 }
 
 function text(
@@ -95,6 +96,27 @@ function list(): Field<readonly string[]> {
       const parts = value.split(',').map((part) => part.trim());
       if (parts.some((part) => !part) || new Set(parts).size !== parts.length)
         throw new Error('invalid list');
+      return Object.freeze(parts);
+    },
+  };
+}
+
+function uuidAllowlist(): Field<readonly string[]> {
+  const uuid =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return {
+    description: 'comma-separated distinct UUIDs (empty denies all operators)',
+    default: '',
+    allowEmpty: true,
+    parse(value) {
+      if (value.trim() === '') return Object.freeze([]);
+      const parts = value.split(',').map((part) => part.trim().toLowerCase());
+      if (
+        parts.some((part) => !uuid.test(part)) ||
+        new Set(parts).size !== parts.length
+      ) {
+        throw new Error('invalid operator UUID allowlist');
+      }
       return Object.freeze(parts);
     },
   };
@@ -325,17 +347,22 @@ export const runtimeSchema = {
   IPFS_API_URL: url(),
   SMTP_HOST: { ...hostname, productionRequired: true },
   SMTP_PORT: integer(587, 1, 65535),
+  SMTP_SECURE: boolean(false),
   SMTP_USER: secret(true),
   SMTP_PASSWORD: { ...secret(true), aliases: ['SMTP_PASS'] },
   SMTP_FROM: {
     ...text({ productionRequired: true }),
     aliases: ['EMAIL_FROM', 'NOTIFICATION_EMAIL_FROM'],
   },
+  SMTP_FROM_NAME: text({ default: 'TruthBounty' }),
+  SMTP_CONNECTION_TIMEOUT: integer(10000),
+  SMTP_GREETINGS_TIMEOUT: integer(5000),
   NOTIFICATION_QUEUE_DELAY: integer(0, 0),
   NOTIFICATION_MAX_RETRIES: integer(5, 0, 100),
   NOTIFICATION_RETRY_DELAY: integer(2000),
   AI_PROVIDER: choice(['openai', 'anthropic', 'mock'], 'mock'),
   DEFAULT_LLM_PROVIDER: choice(['openai', 'anthropic', 'mock'], 'mock'),
+  AI_BUDGET_OPERATOR_IDS: uuidAllowlist(),
   OPENAI_API_KEY: secret(),
   ANTHROPIC_API_KEY: secret(),
   OPENAI_BASE_URL: { ...url(), default: 'https://api.openai.com/v1' },
@@ -419,6 +446,14 @@ export const runtimeSchema = {
   CACHE_GOVERNANCE_TTL: integer(3600),
   CACHE_REPUTATION_TTL: integer(3600),
   CACHE_VERSION: text({ default: 'v1' }),
+  SUPPORT_ENCRYPTION_KEY: {
+    ...secret(),
+    description: '64 hexadecimal characters for support request encryption',
+    parse(value: string) {
+      if (!/^[0-9a-f]{64}$/i.test(value)) throw new Error('invalid key format');
+      return value;
+    },
+  },
   AUTH_NONCE_TTL_MS: integer(300000),
   SIWE_ORIGIN: url(),
   SERVICE_API_KEY: secret(),
@@ -447,6 +482,14 @@ export const runtimeSchema = {
   MAILGUN_DOMAIN: text(),
   FCM_PROJECT_ID: text(),
   FCM_SERVER_KEY: secret(),
+  FCM_SERVICE_ACCOUNT_PATH: {
+    ...text(),
+    description: 'path to the Firebase service account JSON file',
+  },
+  FCM_SERVICE_ACCOUNT_JSON: {
+    ...secret(),
+    description: 'inline Firebase service account JSON',
+  },
   WEBHOOK_REQUIRE_HTTPS: boolean(true),
   WEBHOOK_TIMEOUT_MS: integer(10000),
   WEBHOOK_SECRET_KEYS: {
@@ -537,7 +580,7 @@ export function parseRuntimeConfig(env: Environment): RuntimeConfig {
       result[key] = undefined;
       continue;
     }
-    if (raw.trim() === '') {
+    if (raw.trim() === '' && !field.allowEmpty) {
       errors.push(`${key}: must not be empty`);
       continue;
     }
