@@ -8,20 +8,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Evidence } from './entities/evidence.entity';
 import { EvidenceVersion } from './entities/evidence-version.entity';
-import {
-  AuditTrailService,
-  AuditLogInput,
-} from '../audit/services/audit-trail.service';
-import {
-  AuditActionType,
-  AuditEntityType,
-} from '../audit/entities/audit-log.entity';
+import { AuditTrailService } from '../audit/services/audit-trail.service';
 import { IpfsService } from '../ipfs/ipfs.service';
 import {
   EvidenceListQueryDto,
   EvidenceVersionQueryDto,
 } from './dto/evidence-query.dto';
 import { CidDigest, extractCidDigest } from './evidence-digest.util';
+import { assertLegacyProtocolWriteRetired } from './legacy-protocol-write-retirement';
 
 export interface PaginationMeta {
   total: number;
@@ -74,96 +68,34 @@ export class EvidenceService {
     private readonly ipfsService: IpfsService,
   ) {}
 
-  // ─── Write / mutate paths (unchanged behaviour, rebuilt cleanly) ──────────
+  // ─── Retired write / mutate paths (PREWAVE-BE-132) ────────────────────────
 
+  /**
+   * Retired: evidence registration is a protocol transition that originates
+   * from a user-signed EvidenceRegistered transaction and is materialised only
+   * by the V2 evidence projector from a finalized canonical event. The method
+   * remains as a fail-closed seam for legacy internal callers; it performs no
+   * repository, audit or cache write before throwing.
+   */
   async createEvidence(
-    claimId: string,
-    cid: string,
-    userId?: string,
-    hash?: string,
+    _claimId: string,
+    _cid: string,
+    _userId?: string,
+    _hash?: string,
   ): Promise<Evidence> {
-    // Check if evidence with the same CID already exists for this claim
-    // This helps prevent duplicates even without idempotency keys
-    const existingEvidence = await this.evidenceRepository.findOne({
-      where: { claimId },
-      relations: { versions: true },
-    });
-
-    if (existingEvidence) {
-      const latestVersion = existingEvidence.versions.find(
-        (v) => v.version === existingEvidence.latestVersion,
-      );
-      if (latestVersion && latestVersion.cid === cid) {
-        this.logger.log(
-          `Duplicate evidence detected for claim ${claimId} with CID: ${cid}, returning existing: ${existingEvidence.id}`,
-        );
-        return existingEvidence;
-      }
-    }
-
-    const evidence = this.evidenceRepository.create({
-      claimId,
-      latestVersion: 1,
-    });
-    const savedEvidence = await this.evidenceRepository.save(evidence);
-
-    const version = this.evidenceVersionRepository.create({
-      evidenceId: savedEvidence.id,
-      version: 1,
-      cid,
-      hash,
-      submittedBy: userId,
-    });
-    await this.evidenceVersionRepository.save(version);
-
-    await this.safeAudit({
-      actionType: AuditActionType.EVIDENCE_SUBMITTED,
-      entityType: AuditEntityType.EVIDENCE,
-      entityId: savedEvidence.id,
-      userId,
-      description: `Evidence submitted for claim ${claimId} with CID: ${cid}`,
-      afterState: { id: savedEvidence.id, claimId, version: 1, cid, hash },
-    });
-
-    return savedEvidence;
+    return assertLegacyProtocolWriteRetired('evidence.register');
   }
 
+  /**
+   * Retired: evidence replacement/removal is likewise chain-derived only.
+   */
   async addEvidenceVersion(
-    evidenceId: string,
-    cid: string,
-    userId?: string,
-    hash?: string,
+    _evidenceId: string,
+    _cid: string,
+    _userId?: string,
+    _hash?: string,
   ): Promise<EvidenceVersion> {
-    const evidence = await this.evidenceRepository.findOneBy({
-      id: evidenceId,
-    });
-    if (!evidence) {
-      throw new NotFoundException(`Evidence with ID ${evidenceId} not found`);
-    }
-
-    const newVersion = evidence.latestVersion + 1;
-    const version = this.evidenceVersionRepository.create({
-      evidenceId,
-      version: newVersion,
-      cid,
-      hash,
-      submittedBy: userId,
-    });
-    const savedVersion = await this.evidenceVersionRepository.save(version);
-
-    evidence.latestVersion = newVersion;
-    await this.evidenceRepository.save(evidence);
-
-    await this.safeAudit({
-      actionType: AuditActionType.EVIDENCE_UPDATED,
-      entityType: AuditEntityType.EVIDENCE,
-      entityId: evidenceId,
-      userId,
-      description: `Evidence updated to version ${newVersion} with CID: ${cid}`,
-      afterState: { id: evidenceId, version: newVersion, cid, hash },
-    });
-
-    return savedVersion;
+    return assertLegacyProtocolWriteRetired('evidence.replace');
   }
 
   // ─── Read paths (legacy shape) ────────────────────────────────────────────
@@ -418,13 +350,5 @@ export class EvidenceService {
       cid,
       gatewayUrl,
     };
-  }
-
-  private async safeAudit(input: AuditLogInput): Promise<void> {
-    try {
-      await this.auditTrailService.log(input);
-    } catch {
-      // Audit failures must never break the evidence write path.
-    }
   }
 }

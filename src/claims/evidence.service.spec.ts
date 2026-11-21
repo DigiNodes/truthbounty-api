@@ -1,6 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  GoneException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { EvidenceService, EvidenceAvailability } from './evidence.service';
 import { Evidence } from './entities/evidence.entity';
@@ -113,60 +117,29 @@ describe('EvidenceService', () => {
     cidParse.mockReset();
   });
 
-  describe('createEvidence', () => {
-    it('creates evidence with an initial version and audits', async () => {
-      const savedEvidence = makeEvidence({ id: 'ev-new' });
-      const savedVersion = makeVersion({ evidenceId: 'ev-new' });
-
-      evidenceRepo.create.mockReturnValue(makeEvidence());
-      evidenceRepo.save.mockResolvedValueOnce(savedEvidence);
-      versionRepo.create.mockReturnValue(savedVersion);
-      versionRepo.save.mockResolvedValue(savedVersion);
-
-      const result = await service.createEvidence('claim-1', 'QmCid', 'u1');
-
-      expect(versionRepo.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          evidenceId: 'ev-new',
-          version: 1,
-          cid: 'QmCid',
-          submittedBy: 'u1',
-        }),
-      );
-      expect(auditTrailService.log).toHaveBeenCalledTimes(1);
-      expect(result.id).toBe('ev-new');
+  describe('retired authoritative writes (PREWAVE-BE-132)', () => {
+    it('createEvidence cannot persist a protocol-shaped evidence row', async () => {
+      await expect(
+        service.createEvidence('claim-1', 'QmCid', 'u1'),
+      ).rejects.toThrow(GoneException);
+      expect(evidenceRepo.create).not.toHaveBeenCalled();
+      expect(evidenceRepo.save).not.toHaveBeenCalled();
+      expect(versionRepo.create).not.toHaveBeenCalled();
+      expect(versionRepo.save).not.toHaveBeenCalled();
+      expect(auditTrailService.log).not.toHaveBeenCalled();
     });
-  });
 
-  describe('addEvidenceVersion', () => {
-    it('increments the latest version and audits', async () => {
+    it('addEvidenceVersion cannot register or replace canonical evidence', async () => {
       const existing = makeEvidence({ latestVersion: 1 });
       evidenceRepo.findOneBy.mockResolvedValue(existing);
-      versionRepo.create.mockImplementation((v) => v as EvidenceVersion);
-      versionRepo.save.mockResolvedValue(makeVersion({ version: 2 }));
-      evidenceRepo.save.mockResolvedValue(makeEvidence({ latestVersion: 2 }));
 
-      const result = await service.addEvidenceVersion('ev-1', 'QmCid2', 'u1');
-
-      expect(versionRepo.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          evidenceId: 'ev-1',
-          version: 2,
-          cid: 'QmCid2',
-        }),
-      );
-      expect(evidenceRepo.save).toHaveBeenCalledWith(
-        expect.objectContaining({ latestVersion: 2 }),
-      );
-      expect(auditTrailService.log).toHaveBeenCalledTimes(1);
-      expect(result.version).toBe(2);
-    });
-
-    it('throws NotFoundException when evidence is missing', async () => {
-      evidenceRepo.findOneBy.mockResolvedValue(null);
-      await expect(service.addEvidenceVersion('nope', 'QmCid')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.addEvidenceVersion('ev-1', 'QmCid2', 'u1'),
+      ).rejects.toThrow(GoneException);
+      expect(evidenceRepo.save).not.toHaveBeenCalled();
+      expect(versionRepo.create).not.toHaveBeenCalled();
+      expect(versionRepo.save).not.toHaveBeenCalled();
+      expect(auditTrailService.log).not.toHaveBeenCalled();
     });
   });
 
