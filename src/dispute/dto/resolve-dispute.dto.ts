@@ -1,31 +1,20 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  IsEnum,
-  IsNumber,
-  IsObject,
-  IsOptional,
-  Max,
-  Min,
-} from 'class-validator';
-import { DisputeOutcome } from '../entities/dispute.entity';
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import { IsObject, IsOptional, IsString } from 'class-validator';
 
+/**
+ * Deprecated: the former resolve endpoint no longer accepts an outcome or a
+ * final confidence. Those are protocol-authoritative fields and can only be
+ * projected from a finalized canonical event. This DTO now records an
+ * explicitly non-authoritative triage note.
+ */
 export class ResolveDisputeDto {
-  @ApiProperty({ enum: DisputeOutcome, description: 'Final dispute outcome' })
-  @IsEnum(DisputeOutcome)
-  outcome: DisputeOutcome;
-
-  @ApiProperty({
-    description: 'Confidence score after dispute resolution',
-    minimum: 0,
-    maximum: 1,
-  })
-  @IsNumber()
-  @Min(0)
-  @Max(1)
-  finalConfidence: number;
+  @ApiPropertyOptional({ description: 'Non-authoritative triage note' })
+  @IsOptional()
+  @IsString()
+  note?: string;
 
   @ApiPropertyOptional({
-    description: 'Optional resolution metadata',
+    description: 'Additional non-authoritative triage metadata',
     type: 'object',
     additionalProperties: true,
   })

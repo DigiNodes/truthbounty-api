@@ -3,34 +3,23 @@ import { Reflector } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
 import { DisputeController } from './dispute.controller';
 import { DisputeService } from './dispute.service';
-import { DisputeTrigger, DisputeOutcome } from './entities/dispute.entity';
+import { DisputeTrigger } from './entities/dispute.entity';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { AuthenticatedRequest } from '../auth/types/authenticated-request';
 
-/**
- * Unit tests for DisputeController authorization (V2 API Authorization Matrix).
- *
- * Verifies:
- * - GET routes are accessible without a guard
- * - POST /disputes requires authentication (JwtAuthGuard)
- * - PATCH state-transition routes require ROLE(moderator|admin)
- * - Contributors are denied state-transition routes (fail-closed)
- * - Unauthenticated requests are denied on guarded routes (fail-closed)
- */
-describe('DisputeController — Authorization Matrix', () => {
+const PRINCIPAL = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+const requestWith = (address?: string): AuthenticatedRequest =>
+  ({ user: { address } }) as AuthenticatedRequest;
+
+describe('DisputeController — authorization and authority boundary', () => {
   let controller: DisputeController;
 
   const mockDisputeService: Partial<DisputeService> = {
     createDispute: jest.fn().mockResolvedValue({ id: 'dispute-1' }),
-    startReview: jest
-      .fn()
-      .mockResolvedValue({ id: 'dispute-1', status: 'reviewing' }),
-    resolveDispute: jest
-      .fn()
-      .mockResolvedValue({ id: 'dispute-1', status: 'resolved' }),
-    rejectDispute: jest
-      .fn()
-      .mockResolvedValue({ id: 'dispute-1', status: 'rejected' }),
+    startReview: jest.fn().mockResolvedValue({ id: 'dispute-1' }),
+    projectOutcome: jest.fn().mockResolvedValue({ id: 'dispute-1' }),
+    recordTriage: jest.fn().mockResolvedValue({ id: 'dispute-1' }),
     getDisputeByClaimId: jest.fn().mockResolvedValue(null),
     getExpiredDisputes: jest.fn().mockResolvedValue([]),
     findAll: jest
@@ -43,7 +32,6 @@ describe('DisputeController — Authorization Matrix', () => {
       controllers: [DisputeController],
       providers: [{ provide: DisputeService, useValue: mockDisputeService }],
     })
-      // Override guards so we can inject controlled user state
       .overrideGuard(JwtAuthGuard)
       .useValue({ canActivate: () => true })
       .overrideGuard(RolesGuard)
@@ -55,84 +43,110 @@ describe('DisputeController — Authorization Matrix', () => {
 
   afterEach(() => jest.clearAllMocks());
 
-  // ── Read routes are public ────────────────────────────────────────────────
-
-  it('findAll() calls service and returns results', async () => {
-    const result = await controller.findAll();
-    expect(mockDisputeService.findAll).toHaveBeenCalled();
-    expect(result).toEqual({ items: [], total: 0, limit: 50, offset: 0 });
-  });
-
-  it('getExpired() calls service and returns results', async () => {
-    const result = await controller.getExpired();
-    expect(mockDisputeService.getExpiredDisputes).toHaveBeenCalled();
-    expect(result).toEqual([]);
-  });
-
-  it('getByClaimId() calls service and returns dispute', async () => {
-    const result = await controller.getByClaimId('claim-abc');
+  it('findAll()/getExpired()/getByClaimId() delegate to the service', async () => {
+    expect(await controller.findAll()).toEqual({
+      items: [],
+      total: 0,
+      limit: 50,
+      offset: 0,
+    });
+    expect(await controller.getExpired()).toEqual([]);
+    await controller.getByClaimId('claim-abc');
     expect(mockDisputeService.getDisputeByClaimId).toHaveBeenCalledWith(
       'claim-abc',
     );
-    expect(result).toBeNull();
   });
 
-  // ── Create requires authentication ────────────────────────────────────────
-
-  it('create() calls service when guard allows', async () => {
+  it('create() derives the initiator from the verified principal only', async () => {
     const dto = {
       claimId: 'claim-1',
       trigger: DisputeTrigger.MANUAL,
       originalConfidence: 0.4,
+      initiatorId: '0xattacker',
+      canonicalEvent: {
+        chainId: 10,
+        txHash: '0x' + 'd'.repeat(64),
+        logIndex: 1,
+      },
     };
-    const result = await controller.create(dto as any);
-    expect(mockDisputeService.createDispute).toHaveBeenCalledWith(dto);
-    expect(result).toEqual({ id: 'dispute-1' });
-  });
-
-  // ── State transitions call service when guard allows ─────────────────────
-
-  it('startReview() calls service with dispute id', async () => {
-    const result = await controller.startReview('dispute-1');
-    expect(mockDisputeService.startReview).toHaveBeenCalledWith('dispute-1');
-    expect(result).toEqual({ id: 'dispute-1', status: 'reviewing' });
-  });
-
-  it('resolve() calls service with dispute id and dto', async () => {
-    const dto = { outcome: DisputeOutcome.CONFIRMED, finalConfidence: 0.8 };
-    const result = await controller.resolve('dispute-1', dto as any);
-    expect(mockDisputeService.resolveDispute).toHaveBeenCalledWith({
-      disputeId: 'dispute-1',
-      outcome: dto.outcome,
-      finalConfidence: dto.finalConfidence,
+    await controller.create(requestWith(PRINCIPAL), dto as any);
+    expect(mockDisputeService.createDispute).toHaveBeenCalledWith({
+      claimId: 'claim-1',
+      principal: PRINCIPAL,
+      canonicalEvent: dto.canonicalEvent,
       metadata: undefined,
     });
-    expect(result).toEqual({ id: 'dispute-1', status: 'resolved' });
   });
 
-  it('reject() calls service with dispute id and dto', async () => {
-    const dto = { reason: 'spam', rejectedBy: '0xmod' };
-    const result = await controller.reject('dispute-1', dto as any);
-    expect(mockDisputeService.rejectDispute).toHaveBeenCalledWith({
+  it('create() fails closed without a verified principal', async () => {
+    await expect(
+      controller.create(requestWith(undefined), {} as any),
+    ).rejects.toThrow(UnauthorizedException);
+    expect(mockDisputeService.createDispute).not.toHaveBeenCalled();
+  });
+
+  it('startReview() forwards the id', async () => {
+    await controller.startReview('dispute-1');
+    expect(mockDisputeService.startReview).toHaveBeenCalledWith('dispute-1');
+  });
+
+  it('projectOutcome() forwards only the canonical log pointer', async () => {
+    const dto = {
+      canonicalEvent: {
+        chainId: 10,
+        txHash: '0x' + 'f'.repeat(64),
+        logIndex: 3,
+      },
+      outcome: 'CONFIRMED',
+      finalConfidence: 0.99,
+    };
+    await controller.projectOutcome('dispute-1', dto as any);
+    expect(mockDisputeService.projectOutcome).toHaveBeenCalledWith({
       disputeId: 'dispute-1',
-      reason: dto.reason,
-      rejectedBy: dto.rejectedBy,
+      canonicalEvent: dto.canonicalEvent,
+      metadata: undefined,
     });
+    expect(mockDisputeService.recordTriage).not.toHaveBeenCalled();
+  });
+
+  it('deprecated resolve() records triage instead of a terminal outcome', async () => {
+    await controller.resolve('dispute-1', requestWith(PRINCIPAL), {
+      note: 'reviewed',
+    } as any);
+    expect(mockDisputeService.recordTriage).toHaveBeenCalledWith({
+      disputeId: 'dispute-1',
+      principal: PRINCIPAL,
+      note: 'reviewed',
+      metadata: undefined,
+    });
+    expect(mockDisputeService.projectOutcome).not.toHaveBeenCalled();
+  });
+
+  it('deprecated reject() records triage with the verified principal', async () => {
+    await controller.reject('dispute-1', requestWith(PRINCIPAL), {
+      reason: 'spam',
+      rejectedBy: '0xattacker',
+    } as any);
+    expect(mockDisputeService.recordTriage).toHaveBeenCalledWith({
+      disputeId: 'dispute-1',
+      principal: PRINCIPAL,
+      reason: 'spam',
+    });
+    expect(mockDisputeService.recordTriage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ rejectedBy: '0xattacker' }),
+    );
   });
 });
 
-/**
- * Guard enforcement tests — verify that RolesGuard correctly denies access
- * when executed against the controller's metadata.
- */
 describe('DisputeController — RolesGuard enforcement', () => {
   const buildContext = (role: string | undefined) => ({
     getHandler: () => ({}),
     getClass: () => ({}),
     switchToHttp: () => ({
-      getRequest: () => ({
-        user: role ? { user: { role } } : null,
-      }),
+      getRequest: () =>
+        role
+          ? { user: { address: PRINCIPAL, user: { role } } }
+          : { user: null },
     }),
   });
 
@@ -141,24 +155,20 @@ describe('DisputeController — RolesGuard enforcement', () => {
       getAllAndOverride: jest.fn().mockReturnValue(roles),
     }) as unknown as Reflector;
 
-  it('contributor is denied access to state-transition routes', () => {
+  it('contributor is denied state-transition routes', () => {
     const guard = new RolesGuard(buildReflector(['moderator', 'admin']));
     expect(() => guard.canActivate(buildContext('contributor') as any)).toThrow(
       ForbiddenException,
     );
   });
 
-  it('moderator is allowed on startReview / resolve / reject / cancel routes', () => {
+  it('moderator/admin are allowed on projection and workflow routes', () => {
     const guard = new RolesGuard(buildReflector(['moderator', 'admin']));
     expect(guard.canActivate(buildContext('moderator') as any)).toBe(true);
-  });
-
-  it('admin is allowed on all state-transition routes', () => {
-    const guard = new RolesGuard(buildReflector(['moderator', 'admin']));
     expect(guard.canActivate(buildContext('admin') as any)).toBe(true);
   });
 
-  it('unauthenticated request (null user) is denied', () => {
+  it('unauthenticated request is denied', () => {
     const guard = new RolesGuard(buildReflector(['moderator', 'admin']));
     expect(() => guard.canActivate(buildContext(undefined) as any)).toThrow(
       ForbiddenException,
