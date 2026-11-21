@@ -46,6 +46,9 @@ export class FeatureFlag {
   @Column({ type: 'boolean', default: false })
   isPermanent: boolean;
 
+  @Column({ type: 'boolean', default: false })
+  serverOnly: boolean;
+
   @Column({ type: 'json', nullable: true })
   metadata: Record<string, unknown>;
 

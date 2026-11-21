@@ -14,6 +14,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminGuard } from '../auth/guards/admin.guard';
 import { AdminOnly } from '../auth/decorators/admin-only.decorator';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { FeatureFlagsService } from './feature-flags.service';
 import { ConfigurationService } from './configuration.service';
 import { AuditTrailService } from '../audit/services/audit-trail.service';
@@ -25,10 +26,15 @@ import { FeatureFlag } from './entities/feature-flag.entity';
 import { ConfigurationValue } from './entities/configuration-value.entity';
 import {
   CreateFeatureFlagInput,
-  FeatureFlagContext,
-  FeatureFlagEvaluationResult,
   UpdateFeatureFlagInput,
 } from './feature-flags.types';
+import {
+  PublicFeatureFlagDto,
+  EvaluateFlagDto,
+  FeatureFlagEvaluationDto,
+  ListFlagsDto,
+} from './dto';
+import { AuthenticatedPrincipal } from '../auth/types/authenticated-request';
 
 interface RequestWithUser {
   user?: { userId?: string; id?: string };
@@ -44,32 +50,78 @@ export class FeatureFlagsController {
   ) {}
 
   @Get('feature-flags')
-  @ApiOperation({ summary: 'List feature flags' })
-  listFlags(
+  @ApiOperation({
+    summary: 'List public feature flags',
+    description:
+      'Returns only client-visible feature flags. Server-only flags and internal targeting rules are excluded.',
+  })
+  async listFlags(@Query() dto: ListFlagsDto): Promise<PublicFeatureFlagDto[]> {
+    const flags = await this.flagsService.findAllPublic(dto.environment);
+    return flags.map((flag) => PublicFeatureFlagDto.fromEntity(flag));
+  }
+
+  @Get('feature-flags/evaluate/:key')
+  @ApiOperation({
+    summary: 'Evaluate a feature flag',
+    description:
+      'Evaluates a feature flag using verified principal identity if authenticated, or anonymous context otherwise. Caller-supplied user/role parameters are not accepted.',
+  })
+  async evaluateFlag(
+    @Param('key') key: string,
+    @Query() dto: EvaluateFlagDto,
+    @CurrentUser() principal?: AuthenticatedPrincipal,
+  ): Promise<FeatureFlagEvaluationDto> {
+    const result = await this.flagsService.evaluateForPrincipal(
+      key,
+      principal ?? null,
+      dto.environment,
+    );
+    return FeatureFlagEvaluationDto.fromEvaluationResult(
+      result,
+      Boolean(principal),
+    );
+  }
+
+  @Get('feature-flags/:id')
+  @ApiOperation({
+    summary: 'Get a public feature flag by id',
+    description:
+      'Returns a sanitized feature flag without internal targeting rules or operational metadata.',
+  })
+  async getFlag(@Param('id') id: string): Promise<PublicFeatureFlagDto> {
+    const flag = await this.flagsService.findOne(id);
+    // Filter server-only flags from public access
+    if (flag.serverOnly) {
+      throw new Error('Feature flag not found');
+    }
+    return PublicFeatureFlagDto.fromEntity(flag);
+  }
+
+  @Get('admin/feature-flags')
+  @AdminOnly()
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'List all feature flags (admin)',
+    description:
+      'Returns complete feature flag records including server-only flags and internal configuration. Admin-only.',
+  })
+  async listFlagsAdmin(
     @Query('environment') environment?: string,
   ): Promise<FeatureFlag[]> {
     return this.flagsService.findAll(environment);
   }
 
-  @Get('feature-flags/evaluate/:key')
-  @ApiOperation({ summary: 'Evaluate a feature flag' })
-  async evaluateFlag(
-    @Param('key') key: string,
-    @Query('userId') userId?: string,
-    @Query('roles') roles?: string,
-    @Query('environment') environment?: string,
-  ): Promise<FeatureFlagEvaluationResult> {
-    const context: FeatureFlagContext = {
-      userId,
-      roles: roles ? roles.split(',') : undefined,
-      environment,
-    };
-    return this.flagsService.evaluate(key, context);
-  }
-
-  @Get('feature-flags/:id')
-  @ApiOperation({ summary: 'Get a feature flag by id' })
-  getFlag(@Param('id') id: string): Promise<FeatureFlag> {
+  @Get('admin/feature-flags/:id')
+  @AdminOnly()
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Get complete feature flag details (admin)',
+    description:
+      'Returns full feature flag entity including rules, targeting, and operational metadata. Admin-only.',
+  })
+  async getFlagAdmin(@Param('id') id: string): Promise<FeatureFlag> {
     return this.flagsService.findOne(id);
   }
 
