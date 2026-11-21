@@ -8,6 +8,44 @@ import {
 } from 'ethers';
 import * as crypto from 'crypto';
 
+const MAX_CALLDATA_BYTES = 1024 * 1024;
+const MAX_CALLDATA_HEX_CHARS = MAX_CALLDATA_BYTES * 2 + 2;
+const HEX_BODY_PATTERN = /^[0-9a-fA-F]*$/;
+
+type CalldataValidation =
+  | { ok: true }
+  | {
+      ok: false;
+      reason:
+        | 'non-string'
+        | 'missing-prefix'
+        | 'odd-length'
+        | 'non-hex'
+        | 'oversized';
+      length: number;
+    };
+
+function validateCalldata(calldata: unknown): CalldataValidation {
+  if (typeof calldata !== 'string') {
+    return { ok: false, reason: 'non-string', length: 0 };
+  }
+  const length = calldata.length;
+  if (!calldata.startsWith('0x')) {
+    return { ok: false, reason: 'missing-prefix', length };
+  }
+  if (length > MAX_CALLDATA_HEX_CHARS) {
+    return { ok: false, reason: 'oversized', length };
+  }
+  const body = calldata.slice(2);
+  if (body.length % 2 !== 0) {
+    return { ok: false, reason: 'odd-length', length };
+  }
+  if (!HEX_BODY_PATTERN.test(body)) {
+    return { ok: false, reason: 'non-hex', length };
+  }
+  return { ok: true };
+}
+
 /**
  * Decoded representation of a single call inside a proposal.
  * All hex values are normalised (addresses checksummed, calldata
@@ -21,6 +59,7 @@ export interface DecodedCall {
   functionSignature: string | null;
   selectorUnknown: boolean;
   decodedArgs: Record<string, unknown> | null;
+  /** sha256 of the raw calldata; empty when structural validation failed. */
   calldataChecksum: string;
 }
 
@@ -30,9 +69,14 @@ export interface DecodedCall {
  * Decodes a proposal's `calls[]` against an approved ABI. The decoder
  * fails closed:
  *   - Unknown selector  → `selectorUnknown: true`, no parsed args.
- *   - Malformed calldata → same, plus a warning.
+ *   - Malformed calldata → same, `selector: null` and an empty
+ *     `calldataChecksum` (no checksum is asserted for untrusted bytes).
  *   - Ambiguous/overloaded signature that does not uniquely resolve →
  *     same, but `functionSignature` is left null so callers can detect it.
+ *
+ * Calldata is validated as a 0x-prefixed, even-length hex byte string and
+ * bounded to 1 MiB before any selector is sliced. Warnings never include
+ * the calldata itself — only a failure reason and its length.
  *
  * Checksum rules (acceptance criterion: "Exact calls remain decodable and
  * checksummed"):
@@ -59,6 +103,29 @@ export class ProposalDecoderService {
     calldata: string,
     iface: Interface | null,
   ): DecodedCall {
+    const isEmptyCalldata =
+      typeof calldata === 'string' && (calldata === '' || calldata === '0x');
+
+    const validation = isEmptyCalldata
+      ? { ok: true as const }
+      : validateCalldata(calldata);
+    if (!validation.ok) {
+      this.logger.warn(
+        `Malformed proposal calldata rejected (${validation.reason}, ` +
+          `length=${validation.length}) — failing closed without decoding.`,
+      );
+      return {
+        target,
+        valueWei,
+        calldata: typeof calldata === 'string' ? calldata : '',
+        selector: null,
+        functionSignature: null,
+        selectorUnknown: true,
+        decodedArgs: null,
+        calldataChecksum: '',
+      };
+    }
+
     const calldataChecksum = crypto
       .createHash('sha256')
       .update(calldata)
@@ -87,7 +154,7 @@ export class ProposalDecoderService {
     }
 
     // Empty calldata means "plain ETH transfer" — a first-class case.
-    if (!calldata || calldata === '0x') {
+    if (isEmptyCalldata) {
       return {
         target: checksummedTarget,
         valueWei,
@@ -114,7 +181,25 @@ export class ProposalDecoderService {
       };
     }
 
-    const selector = dataSlice(calldata, 0, 4);
+    let selector: string;
+    try {
+      selector = dataSlice(calldata, 0, 4);
+    } catch (err) {
+      this.logger.warn(
+        `Selector extraction failed for proposal call on ${checksummedTarget}: ` +
+          `${String(err)} — failing closed.`,
+      );
+      return {
+        target: checksummedTarget,
+        valueWei,
+        calldata,
+        selector: null,
+        functionSignature: null,
+        selectorUnknown: true,
+        decodedArgs: null,
+        calldataChecksum,
+      };
+    }
 
     // No approved ABI for the target → fail closed.
     if (!iface) {
@@ -185,7 +270,26 @@ export class ProposalDecoderService {
     }
 
     // Decode the args; any failure is a fail-closed signal.
-    const functionSignature = fragment.format('sighash');
+    let functionSignature: string;
+    try {
+      functionSignature = fragment.format('sighash');
+    } catch (err) {
+      this.logger.warn(
+        `Function signature formatting failed for ${selector} on ` +
+          `${checksummedTarget}: ${String(err)} — failing closed.`,
+      );
+      return {
+        target: checksummedTarget,
+        valueWei,
+        calldata,
+        selector,
+        functionSignature: null,
+        selectorUnknown: true,
+        decodedArgs: null,
+        calldataChecksum,
+      };
+    }
+
     try {
       const decoded = iface.decodeFunctionData(fragment, calldata);
       const args: Record<string, unknown> = {};
