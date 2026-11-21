@@ -26,6 +26,35 @@ Each signal carries structured provenance metadata:
 - **Wallet Tenure:** Tracks account tenure, linked wallet count, and history.
 - **Accuracy:** Tracks claims evaluated and correct verdicts from canonical protocol history.
 
+#### Finalized-claim accuracy derivation (PREWAVE-BE-152)
+
+`ClaimAccuracyService` derives `claimsVotedOn` and `claimsCorrect` from the canonical
+event read model (`v2_canonical_events`) instead of hard-coded zeros. Only finalized
+events on the approved chain/release/deployment, bounded by `v2_event_checkpoints`,
+are eligible:
+
+- Evaluations are `VerificationRecorded` events emitted by the approved
+  verification engine from a wallet currently linked to the authority chain.
+  Multiple linked wallets are aggregated without double counting; unlinked,
+  wrong-chain and duplicate addresses never contribute.
+- The canonical outcome comes from a finalized `VerdictSettled` event. A later
+  `DisputeResolved` outcome (`upheld`, `overturned`, or an explicit final verdict)
+  is applied deterministically; an unresolved `DisputeRaised` makes a claim
+  ineligible until a terminal dispute event is finalized.
+- Claim authors come from `ClaimSubmitted`. Abstentions, evaluations of the
+  verifier's own claims, unknown authors, conflicting duplicate evaluations,
+  unsettled/reverted claims, unknown outcomes and events outside the finalized
+  checkpoint are excluded and counted in provenance.
+- Events are deduplicated by `(chainId, txHash, logIndex)` and ordered by
+  `(blockNumber, logIndex, txHash)`. Reorg rollback removes orphaned canonical
+  rows/checkpoints, so subsequent computations deterministically produce updated
+  counts. The projection is read-only and never writes verdicts or dispute states.
+- If the checkpoint or event history is unavailable, both counters stay zero but
+  provenance is `status: unavailable` with a reason, `observedAt: null`, and the
+  accuracy feature is reported as both missing and stale. `failClosedOnMissing`
+  and `failClosedOnStale` therefore reject the computation instead of treating
+  unavailable history as verified inactivity.
+
 ### Canonical Consensus Invariant:
 Canonical finalized contract events remain authoritative. Scoring services fail closed (`UnauthorizedProvenanceException`) if:
 - Chain ID, release ID, or contract address does not match canonical deployment manifest.

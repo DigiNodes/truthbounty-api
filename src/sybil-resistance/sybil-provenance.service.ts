@@ -301,9 +301,15 @@ export class SybilProvenanceService {
       now,
     );
     const isAccuracyMissing = signals.claimsVotedOn === 0;
+    const isAccuracyUnavailable =
+      signals.accuracyProvenance?.status === 'unavailable';
     if (isAccuracyMissing) missingFeatures.push('accuracy');
-    if (!isAccuracyMissing && accuracyFreshness.isStale)
+    if (
+      (isAccuracyMissing && isAccuracyUnavailable) ||
+      (!isAccuracyMissing && accuracyFreshness.isStale)
+    ) {
       staleFeatures.push('accuracy');
+    }
 
     provenanceMap.accuracy = {
       featureName: 'accuracy',
@@ -317,6 +323,7 @@ export class SybilProvenanceService {
       details: {
         claimsVotedOn: signals.claimsVotedOn,
         claimsCorrect: signals.claimsCorrect,
+        ...(signals.accuracyProvenance ?? {}),
       },
     };
 

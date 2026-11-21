@@ -11,15 +11,18 @@ import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { StakeEvent } from '../staking/entities/stake-event.entity';
 import { StakingEventType } from '../staking/types/staking-event.type';
+import { ClaimAccuracyService } from './claim-accuracy.service';
 import { SybilModelRegistry } from './sybil-model-registry';
 import { SybilProvenanceService } from './sybil-provenance.service';
 import {
   CalculationDetails,
   ChainArtifactAuthority,
+  ClaimAccuracyProvenance,
   InvalidFeatureBoundsException,
   MissingFeatureException,
   PublicSybilScoreView,
   RecomputeScoreOptions,
+  SybilModelConfig,
   StaleFeatureException,
   SybilAppealRecord,
   SybilAppealRequestDto,
@@ -34,6 +37,7 @@ export class SybilResistanceService {
   // Model and Provenance sub-services
   private readonly modelRegistry: SybilModelRegistry;
   private readonly provenanceService: SybilProvenanceService;
+  private readonly accuracyService?: ClaimAccuracyService;
 
   // In-memory appeals registry
   private readonly appeals = new Map<string, SybilAppealRecord[]>();
@@ -59,9 +63,12 @@ export class SybilResistanceService {
     modelRegistry?: SybilModelRegistry,
     @Optional()
     provenanceService?: SybilProvenanceService,
+    @Optional()
+    accuracyService?: ClaimAccuracyService,
   ) {
     this.modelRegistry = modelRegistry || new SybilModelRegistry();
     this.provenanceService = provenanceService || new SybilProvenanceService();
+    this.accuracyService = accuracyService;
 
     this.MIN_CLAIMS_FOR_ACCURACY_SCORE = this.configService.get<number>(
       'sybil.minClaimsForAccuracyScore',
@@ -131,6 +138,9 @@ export class SybilResistanceService {
 
     // 7. Normalize signals according to model version (calls this.normalizeSignals so test spies work)
     const normalized = this.normalizeSignals(signals, modelConfig);
+    for (const feature of normalized.missingFeatures ?? []) {
+      if (!missingFeatures.includes(feature)) missingFeatures.push(feature);
+    }
 
     // 8. Compute composite resistance score (calls this.weightedCombination and clampScore so test spies work)
     const compositeScore = this.clampScore(
@@ -406,8 +416,24 @@ export class SybilResistanceService {
       }
     }
 
-    const claimsVotedOn = 0;
-    const claimsCorrect = 0;
+    let claimsVotedOn = 0;
+    let claimsCorrect = 0;
+    let accuracyProvenance: ClaimAccuracyProvenance | undefined;
+    let accuracyObservedAt: Date | undefined;
+
+    if (this.accuracyService) {
+      const accuracy = await this.accuracyService.deriveAccuracy(
+        wallets,
+        authority,
+      );
+      claimsVotedOn = accuracy.claimsVotedOn;
+      claimsCorrect = accuracy.claimsCorrect;
+      accuracyProvenance = accuracy.provenance;
+      accuracyObservedAt =
+        accuracy.provenance.status === 'unavailable'
+          ? new Date(0)
+          : (accuracy.observedAt ?? undefined);
+    }
 
     return {
       worldcoinVerified,
@@ -422,6 +448,8 @@ export class SybilResistanceService {
       stakingFinalizedBlock: authority?.finalizedThroughBlock,
       claimsVotedOn,
       claimsCorrect,
+      accuracyProvenance,
+      featuresObservedAt: { accuracy: accuracyObservedAt },
     };
   }
 
@@ -436,6 +464,7 @@ export class SybilResistanceService {
     walletAge: number;
     staking: number;
     accuracy: number;
+    missingFeatures?: string[];
   } {
     const effectiveConfig = config || this.modelRegistry.getModel();
     const threshold =
@@ -448,7 +477,8 @@ export class SybilResistanceService {
         minClaimsForAccuracyScore: threshold,
       },
     };
-    return this.modelRegistry.normalizeSignals(signals, cfg).normalized;
+    const result = this.modelRegistry.normalizeSignals(signals, cfg);
+    return { ...result.normalized, missingFeatures: result.missingFeatures };
   }
 
   /**
