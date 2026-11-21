@@ -1,6 +1,9 @@
 # TruthBounty API Documentation
 
-This document provides a comprehensive reference for all API endpoints in the TruthBounty API. TruthBounty is a decentralized news verification infrastructure that allows users to submit claims, provide evidence, resolve disputes, and earn rewards.
+This document provides a reference for the TruthBounty API. TruthBounty is a
+decentralized news verification infrastructure. Claim and evidence protocol
+transitions are submitted by users through their wallets; the API indexes and
+serves finalized canonical projections.
 
 ## Base URL
 
@@ -26,47 +29,36 @@ http://localhost:3000/api
 
 ---
 
-### Claims
+### Claims and evidence
 
-Manage claims and their evidence.
+The protocol is chain-authoritative. The API does not create claims or register,
+replace, or remove evidence. Claims are submitted by the user's wallet; the API
+serves only event-derived projections. Legacy routes remain as migration
+stubs and return `410 Gone` with a canonical replacement path.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/claims/latest` | Get latest claims |
-| GET | `/claims/user/:wallet` | Get claims by user wallet |
-| GET | `/claims/:id` | Get a single claim by ID |
-| POST | `/claims` | Create a new claim |
-| POST | `/claims/:claimId/evidence` | Add evidence to a claim |
-| PUT | `/claims/evidence/:evidenceId` | Update evidence with new version |
-| GET | `/claims/:claimId/evidence` | Get all evidence for a claim |
-| GET | `/claims/:claimId/evidence/latest` | Get latest evidence for a claim |
-| GET | `/claims/evidence/:evidenceId` | Get a single evidence by ID |
+| GET | `/api/v2/claim-read-models` | Canonical, release-bound claim projection |
+| GET | `/api/v2/claim-read-models/:claimId` | Canonical projected claim detail |
+| GET | `/v2/claims/:claimId/evidence` | Canonical event-projected evidence |
+| GET | `/v2/claims/:claimId/evidence/versions` | Canonical projected evidence versions |
+| GET | `/api/v2/claims/*` (legacy feed) | Deprecated compatibility path; returns 410 |
+| GET | `/claims/*` (legacy) | Deprecated compatibility path; returns 410 |
+| POST | `/claims` (legacy) | Returns 410; submit via the user's wallet |
+| POST | `/claims/:claimId/evidence` (legacy) | Returns 410; registration requires wallet transaction |
+| PUT | `/claims/evidence/:evidenceId` (legacy) | Returns 410; replacement requires wallet transaction |
 
-**Query Parameters:**
-- "limit" (optional): Number of results to return (default: 10)
+#### Chain-first lifecycle
 
-**Path Parameters:**
-- `:wallet` - Wallet address
--  `:id` - Claim ID
-- `:claimId` - Claim ID
-- `:evidenceId` - Evidence ID
-
-**Request Body (POST /claims):**
-```json
-{
-  "title": "string",
-  "content": "string",
-  "category": "string",
-  "wallet": "string"
-}
-```
-
-**Request Body (POST /claims/:claimId/evidence):**
-```json
-{
-  "cid": "string"
-}
-```
+1. Prepare and validate any off-chain content; an IPFS CID alone is not
+   protocol registration. This API currently exposes no claim-evidence upload
+   route.
+2. The user's wallet submits the claim or evidence transaction directly to the
+   approved contract. The API never signs or relays it.
+3. Wait for the contract event to reach the configured finality threshold.
+4. Read the resulting state from the canonical projection endpoints above.
+   Until ingestion completes, the claim/evidence may be pending or not found;
+   never treat a submitted transaction or uploaded CID as projected state.
 
 ---
 

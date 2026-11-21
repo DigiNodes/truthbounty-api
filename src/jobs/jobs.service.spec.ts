@@ -4,7 +4,6 @@ import { JobsService } from './jobs.service';
 import { JobsProcessor } from './jobs.processor';
 import { Stake } from '../staking/entities/stake.entity';
 import { Wallet } from '../entities/wallet.entity';
-import { Claim } from '../claims/entities/claim.entity';
 import { User } from '../entities/user.entity';
 import { ClaimsCache } from '../cache/claims.cache';
 import { RedisService } from '../redis/redis.service';
@@ -91,10 +90,6 @@ describe('JobsService', () => {
         },
         {
           provide: getRepositoryToken(Wallet),
-          useClass: Repository,
-        },
-        {
-          provide: getRepositoryToken(Claim),
           useClass: Repository,
         },
         {

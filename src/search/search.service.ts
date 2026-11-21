@@ -8,7 +8,6 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder, Brackets } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
-import { Claim } from '../claims/entities/claim.entity';
 import { Dispute } from '../dispute/entities/dispute.entity';
 import { User } from '../entities/user.entity';
 import { RedisService } from '../redis/redis.service';
@@ -35,6 +34,7 @@ import {
   SanitizedQuery,
 } from './search.complexity';
 import { StableCursorUtil } from '../pagination/stable-cursor';
+import { rejectLegacyProtocolOperation } from '../claims/protocol-authority';
 
 const CACHE_TTL_SECONDS = 30;
 
@@ -44,8 +44,6 @@ export class SearchService {
   private readonly timeoutMs: number;
 
   constructor(
-    @InjectRepository(Claim)
-    private readonly claimRepo: Repository<Claim>,
     @InjectRepository(Dispute)
     private readonly disputeRepo: Repository<Dispute>,
     @InjectRepository(User)
@@ -97,17 +95,25 @@ export class SearchService {
       }
     }
 
-    const [claims, disputes, users] = await Promise.all([
-      this.searchClaims(sanitizedQuery, filters, pagination, sort),
+    const [disputes, users] = await Promise.all([
       this.searchDisputes(sanitizedQuery, filters, pagination, sort),
       this.searchUsers(sanitizedQuery, filters, pagination, sort),
     ]);
 
     const result: GlobalSearchResult = {
       query: sanitizedQuery.normalized,
-      claims,
+      claims: {
+        data: [],
+        total: 0,
+        page: pagination.page,
+        limit: pagination.limit,
+        totalPages: 0,
+      },
       disputes,
       users,
+      warnings: [
+        'Claim search is temporarily unavailable because legacy claim records are not canonical. Use /api/v2/claim-read-models.',
+      ],
     };
 
     await this.redisService.set(
@@ -143,6 +149,11 @@ export class SearchService {
     if (!['claims', 'disputes', 'users'].includes(entity)) {
       throw new BadRequestException(`Unknown entity: ${String(entity)}`);
     }
+    if (entity === 'claims') {
+      return rejectLegacyProtocolOperation(
+        'Claim text search over legacy records is retired. Use /api/v2/claim-read-models for canonical claim state.',
+      );
+    }
 
     const sanitizedQuery = validateAndSanitizeQuery(query, entity);
     validateFilters(entity, filters);
@@ -150,8 +161,6 @@ export class SearchService {
     validatePagination(pagination);
 
     switch (entity) {
-      case 'claims':
-        return this.searchClaims(sanitizedQuery, filters, pagination, sort);
       case 'disputes':
         return this.searchDisputes(sanitizedQuery, filters, pagination, sort);
       case 'users':
@@ -159,64 +168,6 @@ export class SearchService {
       default:
         throw new BadRequestException(`Unknown entity: ${String(entity)}`);
     }
-  }
-
-  private async searchClaims(
-    sanitizedQuery: SanitizedQuery,
-    filters: SearchFilter,
-    pagination: PaginationParams,
-    sort: SortField,
-  ): Promise<SearchResult<Claim>> {
-    const qb = this.claimRepo.createQueryBuilder('claim');
-
-    if (sanitizedQuery.terms.length > 0) {
-      for (let i = 0; i < sanitizedQuery.terms.length; i++) {
-        const term = sanitizedQuery.terms[i];
-        const escaped = escapeLike(term);
-        const param = `qc_${i}`;
-        qb.andWhere(
-          new Brackets((sub) => {
-            sub.where(`claim.title LIKE :${param} ESCAPE '\\'`, { [param]: `%${escaped}%` });
-            sub.orWhere(`claim.content LIKE :${param} ESCAPE '\\'`, { [param]: `%${escaped}%` });
-            sub.orWhere(`claim.source LIKE :${param} ESCAPE '\\'`, { [param]: `%${escaped}%` });
-          }),
-        );
-      }
-    }
-
-    // Handle field-specific terms (e.g. status:PENDING)
-    if (sanitizedQuery.fieldTerms.has('status')) {
-      qb.andWhere('claim.status = :claimStatusTerm', {
-        claimStatusTerm: sanitizedQuery.fieldTerms.get('status'),
-      });
-    }
-    if (sanitizedQuery.fieldTerms.has('finalized')) {
-      const val = sanitizedQuery.fieldTerms.get('finalized') === 'true';
-      qb.andWhere('claim.finalized = :claimFinalizedTerm', {
-        claimFinalizedTerm: val,
-      });
-    }
-
-    if (filters.finalized !== undefined) {
-      qb.andWhere('claim.finalized = :finalized', {
-        finalized: filters.finalized,
-      });
-    }
-
-    if (filters.fromDate) {
-      qb.andWhere('claim.createdAt >= :fromDate', {
-        fromDate: new Date(filters.fromDate),
-      });
-    }
-
-    if (filters.toDate) {
-      qb.andWhere('claim.createdAt <= :toDate', {
-        toDate: new Date(filters.toDate),
-      });
-    }
-
-    this.applySorting(qb, sort, 'claim');
-    return this.executePagination(qb, pagination, sort, 'claim', 'id');
   }
 
   private async searchDisputes(
@@ -511,6 +462,6 @@ export class SearchService {
     pagination: PaginationParams,
     sort: SortField,
   ): string {
-    return `search:global:${query}:${JSON.stringify(filters)}:${String(sort)}:${pagination.page}:${pagination.limit}`;
+    return `search:global:v2-claims-omitted:${query}:${JSON.stringify(filters)}:${String(sort)}:${pagination.page}:${pagination.limit}`;
   }
 }

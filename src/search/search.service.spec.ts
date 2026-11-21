@@ -1,22 +1,20 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { BadRequestException, RequestTimeoutException } from '@nestjs/common';
+import { BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 import { SearchService } from './search.service';
 import { PaginationType, SortField } from './search.types';
-import { Claim } from '../claims/entities/claim.entity';
 import { Dispute } from '../dispute/entities/dispute.entity';
 import { User } from '../entities/user.entity';
 import { RedisService } from '../redis/redis.service';
-import { StableCursorUtil } from '../pagination/stable-cursor';
 import { WalletRateLimiterService } from '../auth/wallet-rate-limiter.service';
 
 describe('SearchService (PREWAVE-BE-068 Harden Search Complexity & Stability)', () => {
   let service: SearchService;
-  let mockClaimQb: any;
   let mockDisputeQb: any;
   let mockUserQb: any;
+  let redisMock: { get: jest.Mock; set: jest.Mock };
 
   const createMockRepo = () => {
     const qb = {
@@ -45,21 +43,16 @@ describe('SearchService (PREWAVE-BE-068 Harden Search Complexity & Stability)', 
   });
 
   beforeEach(async () => {
-    const claimMock = createMockRepo();
     const disputeMock = createMockRepo();
     const userMock = createMockRepo();
 
-    mockClaimQb = claimMock.qb;
     mockDisputeQb = disputeMock.qb;
     mockUserQb = userMock.qb;
+    redisMock = mockRedis();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SearchService,
-        {
-          provide: getRepositoryToken(Claim),
-          useValue: claimMock.repo,
-        },
         {
           provide: getRepositoryToken(Dispute),
           useValue: disputeMock.repo,
@@ -70,7 +63,7 @@ describe('SearchService (PREWAVE-BE-068 Harden Search Complexity & Stability)', 
         },
         {
           provide: RedisService,
-          useFactory: mockRedis,
+          useValue: redisMock,
         },
         {
           provide: ConfigService,
@@ -101,9 +94,16 @@ describe('SearchService (PREWAVE-BE-068 Harden Search Complexity & Stability)', 
       expect(result.claims).toBeDefined();
       expect(result.disputes).toBeDefined();
       expect(result.users).toBeDefined();
+      expect(result.claims).toMatchObject({
+        data: [],
+        total: 0,
+        totalPages: 0,
+      });
+      expect(result.warnings.join(' ')).toContain('legacy claim records');
+      expect(redisMock.get).toHaveBeenCalledWith(
+        expect.stringMatching(/^search:global:v2-claims-omitted:/),
+      );
 
-      // Ensure no LIKE clauses were added for empty query
-      expect(mockClaimQb.where).not.toHaveBeenCalled();
     });
 
     it('should handle whitespace-only query gracefully', async () => {
@@ -195,34 +195,30 @@ describe('SearchService (PREWAVE-BE-068 Harden Search Complexity & Stability)', 
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('should escape wildcards in SQL LIKE parameters', async () => {
-      await service.searchEntity(
-        'claims',
-        '100% genuine',
-        {},
-        { page: 1, limit: 20, type: PaginationType.OFFSET },
-        SortField.NEWEST,
-      );
-
-      // Verify that LIKE used ESCAPE '\\' and escaped parameter
-      expect(mockClaimQb.andWhere).toHaveBeenCalledWith(
-        expect.any(Object), // Brackets
-      );
+    it('retires entity-specific legacy claim search', async () => {
+      await expect(
+        service.searchEntity(
+          'claims',
+          '100% genuine',
+          {},
+          { page: 1, limit: 20, type: PaginationType.OFFSET },
+          SortField.NEWEST,
+        ),
+      ).rejects.toMatchObject({ status: 410 });
     });
   });
 
   describe('3. Injection and Unapproved Fields Tests', () => {
-    it('should safely parameterize SQL injection attempts', async () => {
-      await service.searchEntity(
-        'claims',
-        "' OR '1'='1",
-        {},
-        { page: 1, limit: 20, type: PaginationType.OFFSET },
-        SortField.NEWEST,
-      );
-
-      // Should not throw and should use parameterized brackets
-      expect(mockClaimQb.andWhere).toHaveBeenCalled();
+    it('does not execute SQL for retired legacy claim search', async () => {
+      await expect(
+        service.searchEntity(
+          'claims',
+          "' OR '1'='1",
+          {},
+          { page: 1, limit: 20, type: PaginationType.OFFSET },
+          SortField.NEWEST,
+        ),
+      ).rejects.toMatchObject({ status: 410 });
     });
 
     it('should reject unapproved and private field search syntax (e.g. role:admin)', async () => {
@@ -269,7 +265,7 @@ describe('SearchService (PREWAVE-BE-068 Harden Search Complexity & Stability)', 
         ),
       ).rejects.toThrow(BadRequestException);
 
-      // Claims entity should not allow walletAddress filter
+      // Claims are unavailable through the legacy search surface.
       await expect(
         service.searchEntity(
           'claims',
@@ -278,7 +274,7 @@ describe('SearchService (PREWAVE-BE-068 Harden Search Complexity & Stability)', 
           { page: 1, limit: 20, type: PaginationType.OFFSET },
           SortField.NEWEST,
         ),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toMatchObject({ status: 410 });
     });
 
     it('should never expose private user fields (role, wallets) in user search results', async () => {
@@ -353,11 +349,7 @@ describe('SearchService (PREWAVE-BE-068 Harden Search Complexity & Stability)', 
   });
 
   describe('5. Timeout Tests', () => {
-    it('should throw RequestTimeoutException if query execution exceeds timeout', async () => {
-      mockClaimQb.getManyAndCount.mockImplementation(
-        () => new Promise((resolve) => setTimeout(resolve, 100)),
-      );
-
+    it('rejects legacy claims before attempting a timed query', async () => {
       await expect(
         service.searchEntity(
           'claims',
@@ -367,22 +359,21 @@ describe('SearchService (PREWAVE-BE-068 Harden Search Complexity & Stability)', 
           SortField.NEWEST,
           { timeoutMs: 10 },
         ),
-      ).rejects.toThrow(RequestTimeoutException);
+      ).rejects.toMatchObject({ status: 410 });
     });
   });
 
   describe('6. Canonical Tie-Break Order and Concurrent Inserts Tests', () => {
-    it('should include canonical tie-breaker (id) for claims ordering', async () => {
-      await service.searchEntity(
-        'claims',
-        'test',
-        {},
-        { page: 1, limit: 20, type: PaginationType.OFFSET },
-        SortField.NEWEST,
-      );
-
-      expect(mockClaimQb.orderBy).toHaveBeenCalledWith('claim.createdAt', 'DESC');
-      expect(mockClaimQb.addOrderBy).toHaveBeenCalledWith('claim.id', 'ASC');
+    it('does not query legacy claims for ordering', async () => {
+      await expect(
+        service.searchEntity(
+          'claims',
+          'test',
+          {},
+          { page: 1, limit: 20, type: PaginationType.OFFSET },
+          SortField.NEWEST,
+        ),
+      ).rejects.toMatchObject({ status: 410 });
     });
 
     it('should include canonical tie-breaker for user reputation sort', async () => {
@@ -452,28 +443,16 @@ describe('SearchService (PREWAVE-BE-068 Harden Search Complexity & Stability)', 
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('should support stable cursor-based pagination and issue nextCursor', async () => {
-      const now = new Date('2026-06-01T10:00:00.000Z');
-      mockClaimQb.getMany.mockResolvedValue([
-        { id: 'c1', title: 'Claim 1', createdAt: now },
-        { id: 'c2', title: 'Claim 2', createdAt: now },
-        { id: 'c3', title: 'Claim 3', createdAt: now }, // limit + 1 = hasMore
-      ]);
-
-      const result = await service.searchEntity(
-        'claims',
-        'test',
-        {},
-        { page: 1, limit: 2, type: PaginationType.CURSOR },
-        SortField.NEWEST,
-      );
-
-      expect(result.data).toHaveLength(2);
-      expect(result.nextCursor).toBeDefined();
-
-      const decoded = StableCursorUtil.decode(result.nextCursor!);
-      expect(decoded).not.toBeNull();
-      expect(decoded?.tieBreaker).toBe('c2');
+    it('does not paginate legacy claim rows', async () => {
+      await expect(
+        service.searchEntity(
+          'claims',
+          'test',
+          {},
+          { page: 1, limit: 2, type: PaginationType.CURSOR },
+          SortField.NEWEST,
+        ),
+      ).rejects.toMatchObject({ status: 410 });
     });
 
     it('should reject malformed or tampered cursor', async () => {
@@ -485,7 +464,7 @@ describe('SearchService (PREWAVE-BE-068 Harden Search Complexity & Stability)', 
           { page: 1, limit: 10, type: PaginationType.CURSOR, cursor: 'invalid-cursor-string' },
           SortField.NEWEST,
         ),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toMatchObject({ status: 410 });
     });
   });
 

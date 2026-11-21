@@ -20,7 +20,11 @@ export class SearchController {
   constructor(private readonly searchService: SearchService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Global search across claims, disputes, and users' })
+  @ApiOperation({
+    summary: 'Global search across disputes and users',
+    description:
+      'Claim results are intentionally empty and a warning is returned until search can use canonical claim projections.',
+  })
   async globalSearch(
     @Query(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }))
     query: SearchQueryDto,
