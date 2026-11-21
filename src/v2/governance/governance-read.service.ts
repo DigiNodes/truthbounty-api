@@ -80,6 +80,8 @@ export class GovernanceReadService {
       governorAddress: row.governorAddress,
       proposer: row.proposer,
       proposalHash: row.proposalHash,
+      descriptionHash: row.descriptionHash,
+      proposalHashScheme: row.proposalHashScheme,
       description: row.description,
       state: row.state,
       eta: row.eta,

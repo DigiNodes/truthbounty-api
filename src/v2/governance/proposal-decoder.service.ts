@@ -1,12 +1,34 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
+  AbiCoder,
   Interface,
   FunctionFragment,
   dataSlice,
   getAddress,
-  id as keccakId,
+  keccak256,
 } from 'ethers';
 import * as crypto from 'crypto';
+
+export const GOVERNOR_PROPOSAL_HASH_SCHEME = 'OZ_GOVERNOR_DESCRIPTION_HASH_V1';
+
+export interface ProposalHashInput {
+  targets: string[];
+  values: string[];
+  calldatas: string[];
+  descriptionHash: string;
+  expectedProposalId: string;
+  artifactVersion: string;
+}
+
+export type ProposalHashVerification =
+  | {
+      ok: true;
+      proposalHash: string;
+      descriptionHash: string;
+      scheme: string;
+      artifactVersion: string;
+    }
+  | { ok: false; reason: string };
 
 /**
  * Decoded representation of a single call inside a proposal.
@@ -221,23 +243,137 @@ export class ProposalDecoderService {
     }
   }
 
-  /**
-   * Compute the proposal hash a Governor would have emitted.
-   * Used only to cross-check `ProposalCreated` events; never fabricated
-   * as authoritative state.
-   */
   computeProposalHash(
     targets: string[],
     values: string[],
     calldatas: string[],
     descriptionHash: string,
   ): string {
-    const encoded = new (require('ethers').AbiCoder)().encode(
-      ['address[]', 'uint256[]', 'bytes[]', 'bytes32'],
-      [targets, values, calldatas, descriptionHash],
-    );
-    return keccakId(encoded);
+    const normalized = this.normalizeProposalHashInput({
+      targets,
+      values,
+      calldatas,
+      descriptionHash,
+    });
+    return this.hashCanonicalCallArrays(normalized);
   }
+
+  verifyProposalHash(input: ProposalHashInput): ProposalHashVerification {
+    if (
+      typeof input.artifactVersion !== 'string' ||
+      input.artifactVersion.trim() === ''
+    ) {
+      return { ok: false, reason: 'missing artifactVersion' };
+    }
+
+    let normalized: NormalizedProposalHashInput;
+    let expected: bigint;
+    try {
+      normalized = this.normalizeProposalHashInput(input);
+      expected = parseProposalId(input.expectedProposalId);
+    } catch (err) {
+      return { ok: false, reason: errorMessage(err) };
+    }
+
+    const proposalHash = this.hashCanonicalCallArrays(normalized);
+    if (BigInt(proposalHash) !== expected) {
+      return { ok: false, reason: 'computed hash does not match proposalId' };
+    }
+
+    return {
+      ok: true,
+      proposalHash,
+      descriptionHash: normalized.descriptionHash,
+      scheme: GOVERNOR_PROPOSAL_HASH_SCHEME,
+      artifactVersion: input.artifactVersion,
+    };
+  }
+
+  private hashCanonicalCallArrays(input: NormalizedProposalHashInput): string {
+    const encoded = AbiCoder.defaultAbiCoder().encode(
+      ['address[]', 'uint256[]', 'bytes[]', 'bytes32'],
+      [
+        input.targets,
+        input.values,
+        input.calldatas,
+        input.descriptionHash,
+      ],
+    );
+    return keccak256(encoded);
+  }
+
+  private normalizeProposalHashInput(input: {
+    targets: string[];
+    values: string[];
+    calldatas: string[];
+    descriptionHash: string;
+  }): NormalizedProposalHashInput {
+    const { targets, values, calldatas, descriptionHash } = input;
+    if (!Array.isArray(targets) || targets.length === 0) {
+      throw new Error('targets must be a non-empty array');
+    }
+    if (!Array.isArray(values) || values.length !== targets.length) {
+      throw new Error('values must be an array matching targets length');
+    }
+    if (!Array.isArray(calldatas) || calldatas.length !== targets.length) {
+      throw new Error('calldatas must be an array matching targets length');
+    }
+    if (
+      typeof descriptionHash !== 'string' ||
+      !/^0x[0-9a-fA-F]{64}$/.test(descriptionHash)
+    ) {
+      throw new Error('descriptionHash must be 32-byte hex');
+    }
+
+    const normalizedTargets = targets.map((target) => {
+      if (typeof target !== 'string' || !/^0x[0-9a-fA-F]{40}$/.test(target)) {
+        throw new Error('target must be a 20-byte hex address');
+      }
+      return getAddress(target);
+    });
+
+    const normalizedValues = values.map((value) => {
+      if (typeof value !== 'string' || !/^(0|[1-9][0-9]*)$/.test(value)) {
+        throw new Error('value must be a non-negative decimal string');
+      }
+      return BigInt(value).toString();
+    });
+
+    const normalizedCalldatas = calldatas.map((calldata) => {
+      if (typeof calldata !== 'string' || !/^0x(?:[0-9a-fA-F]{2})*$/.test(calldata)) {
+        throw new Error('calldata must be even-length 0x-prefixed hex');
+      }
+      return calldata.toLowerCase();
+    });
+
+    return {
+      targets: normalizedTargets,
+      values: normalizedValues,
+      calldatas: normalizedCalldatas,
+      descriptionHash: descriptionHash.toLowerCase(),
+    };
+  }
+}
+
+interface NormalizedProposalHashInput {
+  targets: string[];
+  values: string[];
+  calldatas: string[];
+  descriptionHash: string;
+}
+
+function parseProposalId(value: string): bigint {
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new Error('proposalId is missing');
+  }
+  if (/^0x[0-9a-fA-F]+$/.test(value) || /^(0|[1-9][0-9]*)$/.test(value)) {
+    return BigInt(value);
+  }
+  throw new Error('proposalId must be a uint256 decimal or 0x-prefixed hex string');
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 function toJsonSafe(value: unknown): unknown {

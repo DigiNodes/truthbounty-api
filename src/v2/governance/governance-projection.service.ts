@@ -149,17 +149,48 @@ export class GovernanceProjectionService {
     const targets = this.readStringArray(event, 'targets');
     const values = this.readStringArray(event, 'values');
     const calldatas = this.readStringArray(event, 'calldatas');
-    const descriptionHash = this.readString(event, 'descriptionHash');
     const description = this.readString(event, 'description');
     const proposer = this.readAddress(event, 'proposer') ?? '0x0';
 
-    // Decode every call against the approved ABI for its target.
+    const governorArtifact = await this.artifactRegistry.resolve(
+      event.chainId,
+      event.contractAddress,
+    );
+    if (
+      !governorArtifact ||
+      governorArtifact.artifactVersion !== event.artifactVersion
+    ) {
+      this.logger.warn(
+        `ProposalCreated event ${event.txHash}:${event.logIndex} has no approved ` +
+          `governor artifact matching ${event.artifactVersion} on chain ${event.chainId}`,
+      );
+      return 'stale_artifact';
+    }
+
+    const verification = this.decoder.verifyProposalHash({
+      targets,
+      values,
+      calldatas,
+      descriptionHash: this.readString(event, 'descriptionHash') ?? '',
+      expectedProposalId: proposalId,
+      artifactVersion: event.artifactVersion,
+    });
+    if (!verification.ok) {
+      this.logger.warn(
+        `ProposalCreated event ${event.txHash}:${event.logIndex} failed hash ` +
+          `verification: ${verification.reason}`,
+      );
+      return 'stale_artifact';
+    }
+
     const proposalRow = await this.upsertProposal({
       chainId: event.chainId,
       proposalId,
       governorAddress: event.contractAddress,
       proposer,
-      proposalHash: descriptionHash ?? '',
+      proposalHash: verification.proposalHash,
+      descriptionHash: verification.descriptionHash,
+      proposalHashScheme: verification.scheme,
       description,
       state: ProposalChainState.PENDING,
       eta: null,
