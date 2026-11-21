@@ -18,7 +18,31 @@ The authorization layer follows these invariants:
 
 ### App-User Plane (Prisma `UserRole`)
 
-Authenticated via wallet-signature → JWT. Role is stored in the Prisma `User.role` field.
+Authenticated via wallet-signature → JWT. The principal is attached by `JwtStrategy` to `request.user` and has the following canonical shape returned by `AuthService.validateToken`:
+
+```typescript
+interface AuthenticatedPrincipal {
+  address: string;              // Required: wallet address (lowercase)
+  userId: string | null;        // Prisma User.id if linked, else null
+  user: {                       // Prisma User record if linked, else null
+    id: string;
+    role: string;               // UserRole: 'contributor', 'moderator', 'admin'
+  } | null;
+  sub?: string;                 // JWT subject (may contain address or userId)
+  jti?: string;                 // JWT token ID for blacklist checks
+}
+```
+
+**Principal Resolution:**
+- `JwtStrategy.validate()` calls `AuthService.validateToken()` with the decoded JWT payload
+- `AuthService.validateToken()` returns the canonical `AuthenticatedPrincipal` shape
+- Passport attaches this principal to `request.user` (canonical field)
+- Guards read from `request.user` (with optional fallback to legacy `request.use` for compatibility)
+
+**Role Enforcement:**
+- `RolesGuard` (auth plane) reads `request.user.user.role` (nested Prisma role field)
+- Role is a string, not an array
+- Fail-closed: missing principal, null user record, missing role, or unrecognized role → ForbiddenException
 
 | Role | Description |
 |------|------------|
@@ -29,6 +53,12 @@ Authenticated via wallet-signature → JWT. Role is stored in the Prisma `User.r
 ### Admin-Operator Plane (TypeORM `AdminRole`)
 
 A separate DB-backed identity (`admin_users` table). Requires `AdminGuard` (DB lookup) + `RolesGuard` (hierarchy check). Roles are ordered numerically.
+
+**Principal Resolution:**
+- Admin-plane `AdminGuard` reads from the same `request.user` principal (attached by JwtStrategy)
+- Extracts `request.user.address` for DB lookup in `admin_users` table
+- Attaches the TypeORM `Admin` entity to `request.admin` for downstream use
+- Admin `RolesGuard` reads from `request.admin` (not `request.user`)
 
 | Role | Hierarchy Score | Capabilities |
 |------|---------------|------------|
@@ -52,19 +82,36 @@ Request
   |    Requires JWT for all POST/PATCH/PUT/DELETE
   |    GET methods public by default
   |    @Public() decorator bypasses this guard
+  |    Populates request.user via JwtStrategy if valid JWT present
   
   ├─ WalletThrottlerGuard (APP_GUARD)
       Rate-limits by wallet address
   
   ├─ [Route-level guards applied via @UseGuards()]
   |    ├─ JwtAuthGuard         — enforces valid JWT
+  |    |                           (Passport attaches principal to request.user)
   |    ├─ RolesGuard (auth/)   — enforces app-user Prisma role
+  |    |                           (reads request.user.user.role)
   |    ├─ AdminGuard (admin/)  — DB lookup in admin_users
+  |    |                           (reads request.user.address, attaches request.admin)
   |    ├─ RolesGuard (admin/)  — hierarchy check on request.admin
+  |    |                           (reads request.admin.role)
   |    └─ ServiceAuthGuard     — X-service-api-key header
   |
   └─ Controller handler
 ```
+
+**Principal Flow:**
+1. Valid JWT → `JwtStrategy.validate()` → `AuthService.validateToken()` → returns `AuthenticatedPrincipal`
+2. Passport attaches principal to `request.user` (canonical field)
+3. App-user `RolesGuard` reads `request.user.user.role` (Prisma UserRole)
+4. Admin-plane `AdminGuard` reads `request.user.address` for DB lookup, attaches `request.admin`
+5. Admin-plane `RolesGuard` reads `request.admin.role` (TypeORM AdminRole)
+
+**Compatibility Note:**
+- Legacy code may reference `request.use` as an alias for `request.user`
+- Guards support fallback to `request.use` when `request.user` is absent
+- New code should always use the canonical `request.user` field
 
 ---
 
@@ -241,6 +288,8 @@ Notation:
 | Invalid/missing service API key | 401 Unauthorized |
 | Prisma user record absent (no wallet linked) | 403 Forbidden on role-restricted routes |
 | Role field missing or unrecognised | 403 Forbidden |
+| Principal missing required address field | 403 Forbidden |
+| Principal attached to wrong field (not request.user/request.use) | 403 Forbidden (isAuthenticatedRequest returns false) |
 | JWT token blacklisted (jti in Redis) | 401 Unauthorized (via JwtStrategy) |
 | Challenge expired or nonce already used | 401 Unauthorized (via AuthService) |
 | Capability token audience mismatch | 403 Forbidden |
@@ -252,6 +301,12 @@ Notation:
 | Capability token signature invalid | 401 Unauthorized |
 
 All failure modes throw exceptions — no silent fallback to fabricated or permissive state.
+
+**Principal Validation:**
+- Guards validate that `request.user` (or fallback `request.use`) contains a valid `AuthenticatedPrincipal`
+- Required fields: `address` (string)
+- App-user role checks additionally require: `user.role` (string, not array)
+- No unverified request fields (e.g., injected `isAdmin`, `roles` array) can grant elevated access
 
 ---
 
@@ -304,10 +359,13 @@ Issuance and use are audited with audience, subject, capability, resource, nonce
 | File | Purpose |
 |------|---------|
 | `src/auth/authorization-matrix.ts` | Canonical machine-readable matrix + type helpers |
-| `src/auth/guards/roles.guard.ts` | App-user plane role enforcement |
-| `src/auth/guards/admin.guard.ts` | Env-list admin gate (used by auth controller) |
-| `src/admin/guards/admin.guard.ts` | DB-backed admin identity gate |
-| `src/admin/guards/roles.guard.ts` | Admin-plane hierarchy enforcement |
+| `src/auth/types/authenticated-request.ts` | AuthenticatedPrincipal and AuthenticatedRequest type definitions |
+| `src/auth/strategies/jwt.strategy.ts` | Passport JWT strategy (attaches principal to request.user) |
+| `src/auth/auth.service.ts` | Token validation, returns canonical AuthenticatedPrincipal |
+| `src/auth/guards/roles.guard.ts` | App-user plane role enforcement (reads request.user.user.role) |
+| `src/auth/guards/admin.guard.ts` | Env-list admin gate (reads request.user for role/wallet check) |
+| `src/admin/guards/admin.guard.ts` | DB-backed admin identity gate (reads request.user.address, attaches request.admin) |
+| `src/admin/guards/roles.guard.ts` | Admin-plane hierarchy enforcement (reads request.admin.role) |
 | `src/auth/global-auth.guard.ts` | Global JWT guard (APP_GUARD) |
 | `src/auth/guards/service-auth.guard.ts` | Service-to-service key guard |
 | `src/auth/capability/capability-token.service.ts` | Issue/verify/revoke short-lived capability tokens (JWS-signed, aud/sub/cap/resource/nonce/exp/iat/chain/release/deployment/artifact) |
