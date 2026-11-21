@@ -118,6 +118,12 @@ export interface IssueCapabilityOptions {
   release: string;
   deployment: string;
   artifact: string;
+  /**
+   * Requested capability lifetime in whole seconds. Omitted means the hard
+   * maximum (CAPABILITY_MAX_TTL_SECONDS); values are floored to whole seconds
+   * and clamped to [1, hard maximum]. Non-numeric, NaN, non-finite, zero and
+   * negative values are rejected (no token is issued).
+   */
   ttlSeconds?: number;
 }
 
@@ -170,6 +176,7 @@ export class TokenService {
   private readonly CAPABILITY_PREFIX = 'auth:capability:';
   private readonly CAPABILITY_NONCE_PREFIX = 'auth:capability_nonce:';
   private readonly CAPABILITY_MAX_TTL_SECONDS = 300; // 5 minutes hard cap
+  private readonly CAPABILITY_MIN_TTL_SECONDS = 1;
 
   constructor(
     private readonly jwtService: JwtService,
@@ -223,11 +230,7 @@ export class TokenService {
       throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
     }
 
-    const requestedTtl = options.ttdSeconds ??  this.CAPABILITY_MAX_TTL_SECONDS;
-    const ttdSeconds = Math.min(
-      Math.max(1, requestedTtl),
-      this.CAPABILITY_MAX_TTL_SECONDS,
-    );
+    const ttlSeconds = this.resolveCapabilityTtl(options.ttlSeconds);
 
     const nonce = randomBytes(16).toString('hex');
     const payload: Omit<CapabilityTokenPayload, 'iat' | 'exp'> = {
@@ -243,14 +246,9 @@ export class TokenService {
       type: 'capability',
     };
 
-    const token = this.jwtService.sign(payload, {
-      expiresIn: ttdSeconds,
-      audience,
-      subject: payload.sub,
-    });
-
-    // Record nonce so replay can be detected and fail closed.
-    await this.redisService.set(
+    // Persist the replay nonce before issuing a token, and fail closed if the
+    // record could not be stored: no token is returned without a nonce record.
+    const noncePersisted = await this.redisService.set(
       `${this.CAPABILITY_NONCE_PREFIX}${nonce}`,
       JSON.stringify({
         aud: audience,
@@ -263,8 +261,18 @@ export class TokenService {
         artifact,
         issuedAt: Date.now(),
       }),
-      ttdSeconds,
+      ttlSeconds,
     );
+    if (!noncePersisted) {
+      this.logger.warn('Capability issuance failed [nonce-persist]');
+      throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
+    }
+
+    const token = this.jwtService.sign(payload, {
+      expiresIn: ttlSeconds,
+      audience,
+      subject: payload.sub,
+    });
 
     // Audit issuance without logging token bytes.
     this.logger.log('Capability token issued', {
@@ -277,10 +285,32 @@ export class TokenService {
       deployment,
       artifact,
       nonce,
-      ttdSeconds,
+      ttlSeconds,
     });
 
-    return { token, expiresIn: ttdSeconds, nonce };
+    return { token, expiresIn: ttlSeconds, nonce };
+  }
+
+  /**
+   * Resolve the single effective TTL used for JWT exp, Redis nonce expiry,
+   * response expiresIn and audit metadata. Invalid inputs fail closed.
+   */
+  private resolveCapabilityTtl(ttlSeconds?: number): number {
+    if (ttlSeconds === undefined) {
+      return this.CAPABILITY_MAX_TTL_SECONDS;
+    }
+    if (
+      typeof ttlSeconds !== 'number' ||
+      !Number.isFinite(ttlSeconds) ||
+      ttlSeconds <= 0
+    ) {
+      this.logger.warn('Capability issuance failed [invalid-ttl]');
+      throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
+    }
+    return Math.min(
+      Math.max(this.CAPABILITY_MIN_TTL_SECONDS, Math.floor(ttlSeconds)),
+      this.CAPABILITY_MAX_TTL_SECONDS,
+    );
   }
 
   /**
