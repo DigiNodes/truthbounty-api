@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import {
   GovernanceProposal,
   ProposalChainState,
@@ -14,6 +14,27 @@ import { RoleChange, RoleChangeKind } from './entities/role-change.entity';
 import { CanonicalEvent } from '../events/entities/canonical-event.entity';
 import { ArtifactRegistryService } from '../events/artifact-registry.service';
 import { ProposalDecoderService } from './proposal-decoder.service';
+
+/**
+ * The only canonical event names that may determine a governance proposal's
+ * on-chain state. VoteCast and role events are separate projections and must
+ * never participate in state restoration during a reorg rollback.
+ */
+const PROPOSAL_LIFECYCLE_EVENTS = [
+  'ProposalCreated',
+  'ProposalQueued',
+  'ProposalExecuted',
+  'ProposalCanceled',
+  'ProposalExpired',
+] as const;
+
+interface ProjectionRepositories {
+  proposals: Repository<GovernanceProposal>;
+  actions: Repository<GovernanceAction>;
+  votes: Repository<ProposalVote>;
+  roleChanges: Repository<RoleChange>;
+  events: Repository<CanonicalEvent>;
+}
 
 /**
  * GovernanceProjectionService — V2-BE-067
@@ -63,11 +84,7 @@ export class GovernanceProjectionService {
       .createQueryBuilder('e')
       .where('e.eventName IN (:...names)', {
         names: [
-          'ProposalCreated',
-          'ProposalQueued',
-          'ProposalExecuted',
-          'ProposalCanceled',
-          'ProposalExpired',
+          ...PROPOSAL_LIFECYCLE_EVENTS,
           'VoteCast',
           'RoleGranted',
           'RoleRevoked',
@@ -129,6 +146,7 @@ export class GovernanceProjectionService {
 
   private async projectProposalCreated(
     event: CanonicalEvent,
+    repos: ProjectionRepositories = this.repositories,
   ): Promise<'applied' | 'duplicate' | 'stale_artifact'> {
     const proposalId = this.readBigInt(event, 'proposalId');
     if (proposalId === null) {
@@ -138,7 +156,7 @@ export class GovernanceProjectionService {
       return 'skipped' as never;
     }
 
-    const existing = await this.proposals.findOne({
+    const existing = await repos.proposals.findOne({
       where: { chainId: event.chainId, proposalId },
     });
     if (existing && existing.lastEventTxHash === event.txHash &&
@@ -146,32 +164,57 @@ export class GovernanceProjectionService {
       return 'duplicate';
     }
 
-    const targets = this.readStringArray(event, 'targets');
-    const values = this.readStringArray(event, 'values');
-    const calldatas = this.readStringArray(event, 'calldatas');
     const descriptionHash = this.readString(event, 'descriptionHash');
     const description = this.readString(event, 'description');
     const proposer = this.readAddress(event, 'proposer') ?? '0x0';
 
     // Decode every call against the approved ABI for its target.
-    const proposalRow = await this.upsertProposal({
-      chainId: event.chainId,
-      proposalId,
-      governorAddress: event.contractAddress,
-      proposer,
-      proposalHash: descriptionHash ?? '',
-      description,
-      state: ProposalChainState.PENDING,
-      eta: null,
-      stateChangedAtBlock: event.blockNumber,
-      stateChangedAt: event.blockTimestamp,
-      artifactVersion: event.artifactVersion,
-      lastEventTxHash: event.txHash,
-      lastEventLogIndex: event.logIndex,
-    });
+    const proposalRow = await this.upsertProposal(
+      {
+        chainId: event.chainId,
+        proposalId,
+        governorAddress: event.contractAddress,
+        proposer,
+        proposalHash: descriptionHash ?? '',
+        description,
+        state: ProposalChainState.PENDING,
+        eta: null,
+        stateChangedAtBlock: event.blockNumber,
+        stateChangedAt: event.blockTimestamp,
+        artifactVersion: event.artifactVersion,
+        lastEventTxHash: event.txHash,
+        lastEventLogIndex: event.logIndex,
+      },
+      repos,
+    );
 
-    // Replace actions atomically for this proposal version.
-    await this.actions.delete({
+    const actionCount = await this.rebuildProposalActions(
+      event,
+      proposalId,
+      repos,
+    );
+
+    this.logger.log(
+      `Projected ProposalCreated ${proposalId} (${proposalRow.id}) with ${actionCount} call(s)`,
+    );
+    return 'applied';
+  }
+
+  /**
+   * Rebuild the action rows from a canonical ProposalCreated event. Used both
+   * on forward projection and during rollback so proposal state and actions
+   * are always derived from the same event inside one transaction.
+   */
+  private async rebuildProposalActions(
+    event: CanonicalEvent,
+    proposalId: string,
+    repos: ProjectionRepositories,
+  ): Promise<number> {
+    const targets = this.readStringArray(event, 'targets');
+    const values = this.readStringArray(event, 'values');
+    const calldatas = this.readStringArray(event, 'calldatas');
+
+    await repos.actions.delete({
       chainId: event.chainId,
       proposalId,
     });
@@ -187,8 +230,8 @@ export class GovernanceProjectionService {
         calldatas[i] ?? '0x',
         artifact?.iface ?? null,
       );
-      await this.actions.save(
-        this.actions.create({
+      await repos.actions.save(
+        repos.actions.create({
           chainId: event.chainId,
           proposalId,
           actionIndex: i,
@@ -204,11 +247,7 @@ export class GovernanceProjectionService {
         }),
       );
     }
-
-    this.logger.log(
-      `Projected ProposalCreated ${proposalId} (${proposalRow.id}) with ${targets.length} call(s)`,
-    );
-    return 'applied';
+    return targets.length;
   }
 
   // ── State transitions ───────────────────────────────────────────────────
@@ -276,7 +315,7 @@ export class GovernanceProjectionService {
     const voter = this.readAddress(event, 'voter');
     const supportNum = this.readBigInt(event, 'support');
     if (proposalId === null || !voter || supportNum === null) {
-      return 'duplicate' as never;
+      return 'duplicate';
     }
 
     const existing = await this.votes.findOne({
@@ -325,7 +364,7 @@ export class GovernanceProjectionService {
     const role = this.readString(event, 'role');
     const account = this.readAddress(event, 'account');
     const sender = this.readAddress(event, 'sender');
-    if (!role || !account) return 'duplicate' as never;
+    if (!role || !account) return 'duplicate';
 
     await this.roleChanges.save(
       this.roleChanges.create({
@@ -349,95 +388,222 @@ export class GovernanceProjectionService {
 
   /**
    * Remove every governance row whose (txHash, logIndex) is no longer
-   * canonical. Called by the reorg rollback orchestrator after it purges
-   * CanonicalEvent rows.
+   * canonical and restore proposal state from canonical lifecycle events at
+   * or below the rollback checkpoint. Votes and role changes are separate
+   * projections: they are deleted by block but never determine state.
+   *
+   * The whole operation runs in one transaction so a proposal's state and its
+   * action rows cannot diverge if any step fails.
    */
   async rollbackAboveBlock(
     chainId: number,
     rollbackToBlock: bigint,
   ): Promise<void> {
     const rollbackBlockStr = rollbackToBlock.toString();
+    let rolledBack = 0;
 
-    // Votes and role changes are pure log-scoped rows: delete directly.
-    await this.votes
-      .createQueryBuilder()
-      .delete()
-      .where('chainId = :chainId', { chainId })
-      .andWhere('CAST(blockNumber AS NUMERIC) > :rollbackToBlock', {
-        rollbackToBlock: rollbackBlockStr,
-      })
-      .execute();
-
-    await this.roleChanges
-      .createQueryBuilder()
-      .delete()
-      .where('chainId = :chainId', { chainId })
-      .andWhere('CAST(blockNumber AS NUMERIC) > :rollbackToBlock', {
-        rollbackToBlock: rollbackBlockStr,
-      })
-      .execute();
-
-    // Proposals: reset state to the last known good canonical event.
-    const staleProposals = await this.proposals
-      .createQueryBuilder('p')
-      .where('p.chainId = :chainId', { chainId })
-      .andWhere('CAST(p.stateChangedAtBlock AS NUMERIC) > :rollbackToBlock', {
-        rollbackToBlock: rollbackBlockStr,
-      })
-      .getMany();
-
-    for (const proposal of staleProposals) {
-      const lastValidEvent = await this.events
-        .createQueryBuilder('e')
-        .where('e.chainId = :chainId', { chainId })
-        .andWhere('CAST(e.blockNumber AS NUMERIC) <= :rollbackToBlock', {
+    await this.runInTransaction(async (repos) => {
+      // Votes and role changes are pure log-scoped rows: delete directly.
+      await repos.votes
+        .createQueryBuilder()
+        .delete()
+        .where('chainId = :chainId', { chainId })
+        .andWhere('CAST(blockNumber AS NUMERIC) > :rollbackToBlock', {
           rollbackToBlock: rollbackBlockStr,
         })
-        .andWhere('e.payload LIKE :propId', {
-          propId: `%"proposalId":"${proposal.proposalId}"%`,
+        .execute();
+
+      await repos.roleChanges
+        .createQueryBuilder()
+        .delete()
+        .where('chainId = :chainId', { chainId })
+        .andWhere('CAST(blockNumber AS NUMERIC) > :rollbackToBlock', {
+          rollbackToBlock: rollbackBlockStr,
         })
-        .orderBy('e.blockNumber', 'DESC')
-        .addOrderBy('e.logIndex', 'DESC')
-        .getOne();
+        .execute();
 
-      if (!lastValidEvent) {
-        await this.proposals.delete({ id: proposal.id });
-        await this.actions.delete({
-          chainId: proposal.chainId,
-          proposalId: proposal.proposalId,
-        });
-        continue;
+      const staleProposals = await repos.proposals
+        .createQueryBuilder('p')
+        .where('p.chainId = :chainId', { chainId })
+        .andWhere('CAST(p.stateChangedAtBlock AS NUMERIC) > :rollbackToBlock', {
+          rollbackToBlock: rollbackBlockStr,
+        })
+        .getMany();
+
+      for (const proposal of staleProposals) {
+        const lifecycleEvents = await this.findLifecycleEvents(
+          repos.events,
+          chainId,
+          proposal,
+          rollbackBlockStr,
+        );
+
+        // A proposal without its canonical creation event has no valid
+        // lifecycle: drop it together with every projected action.
+        const creationEvent = lifecycleEvents
+          .slice()
+          .reverse()
+          .find((event) => event.eventName === 'ProposalCreated');
+        if (!creationEvent) {
+          await repos.proposals.delete({ id: proposal.id });
+          await repos.actions.delete({
+            chainId: proposal.chainId,
+            proposalId: proposal.proposalId,
+          });
+          continue;
+        }
+
+        const latestEvent = lifecycleEvents[lifecycleEvents.length - 1];
+        const nextState = this.mapEventToState(latestEvent.eventName);
+        if (nextState === null) continue;
+
+        proposal.state = nextState;
+        proposal.stateChangedAtBlock = latestEvent.blockNumber;
+        proposal.stateChangedAt = latestEvent.blockTimestamp;
+        proposal.lastEventTxHash = latestEvent.txHash;
+        proposal.lastEventLogIndex = latestEvent.logIndex;
+        proposal.artifactVersion = latestEvent.artifactVersion;
+        await repos.proposals.save(proposal);
+
+        // Rebuild actions from the canonical creation event in the same
+        // transaction, so ABI changes cannot leave state/actions out of sync.
+        await this.rebuildProposalActions(
+          creationEvent,
+          proposal.proposalId,
+          repos,
+        );
+        rolledBack++;
       }
-
-      proposal.state = this.mapEventToState(lastValidEvent.eventName);
-      proposal.stateChangedAtBlock = lastValidEvent.blockNumber;
-      proposal.stateChangedAt = lastValidEvent.blockTimestamp;
-      proposal.lastEventTxHash = lastValidEvent.txHash;
-      proposal.lastEventLogIndex = lastValidEvent.logIndex;
-      proposal.artifactVersion = lastValidEvent.artifactVersion;
-      await this.proposals.save(proposal);
-
-      // Recompute actions in case the abi-version changed.
-      if (lastValidEvent.eventName === 'ProposalCreated') {
-        await this.actions.delete({
-          chainId: proposal.chainId,
-          proposalId: proposal.proposalId,
-        });
-        await this.projectProposalCreated(lastValidEvent);
-      }
-    }
+    });
 
     this.logger.log(
-      `Rolled back ${staleProposals.length} governance proposal(s) above block ${rollbackBlockStr}`,
+      `Rolled back ${rolledBack} governance proposal(s) above block ${rollbackBlockStr}`,
+    );
+  }
+
+  /**
+   * Fetch the canonical lifecycle events for one proposal at or below the
+   * checkpoint. The database query uses a typed JSON predicate for proposalId
+   * (and is always chain/governor scoped); the in-memory filters keep the
+   * result deterministic even for drivers without JSON operators and for
+   * mock repositories used in unit tests.
+   */
+  private async findLifecycleEvents(
+    events: Repository<CanonicalEvent>,
+    chainId: number,
+    proposal: GovernanceProposal,
+    rollbackBlockStr: string,
+  ): Promise<CanonicalEvent[]> {
+    const query = events
+      .createQueryBuilder('e')
+      .where('e.chainId = :chainId', { chainId })
+      .andWhere('e.eventName IN (:...eventNames)', {
+        eventNames: [...PROPOSAL_LIFECYCLE_EVENTS],
+      })
+      .andWhere('CAST(e.blockNumber AS NUMERIC) <= :rollbackToBlock', {
+        rollbackToBlock: rollbackBlockStr,
+      });
+
+    if (proposal.governorAddress) {
+      query.andWhere('e.contractAddress = :governorAddress', {
+        governorAddress: proposal.governorAddress,
+      });
+    }
+
+    const proposalIdClause = this.proposalIdPredicate(events);
+    if (proposalIdClause) {
+      query.andWhere(proposalIdClause, { proposalId: proposal.proposalId });
+    }
+
+    query
+      .orderBy('CAST(e.blockNumber AS NUMERIC)', 'ASC')
+      .addOrderBy('e.logIndex', 'ASC')
+      .addOrderBy('e.txHash', 'ASC');
+
+    const rows = await query.getMany();
+
+    return rows
+      .filter((event) => this.isLifecycleEvent(event.eventName))
+      .filter((event) => this.readBigInt(event, 'proposalId') === proposal.proposalId)
+      .filter((event) => event.chainId === chainId)
+      .filter((event) =>
+        !proposal.governorAddress ||
+        event.contractAddress === proposal.governorAddress,
+      )
+      .filter((event) => {
+        try {
+          return BigInt(event.blockNumber) <= BigInt(rollbackBlockStr);
+        } catch {
+          return false;
+        }
+      })
+      .sort((a, b) => this.compareCanonicalEvents(a, b));
+  }
+
+  private proposalIdPredicate(events: Repository<CanonicalEvent>): string | null {
+    const dbType = (
+      events.metadata?.connection?.options as { type?: string } | undefined
+    )?.type;
+    if (dbType === 'postgres' || dbType === 'postgresql') {
+      return "(e.payload->>'proposalId') = :proposalId";
+    }
+    if (dbType === 'better-sqlite3' || dbType === 'sqlite') {
+      return "CAST(json_extract(e.payload, '$.proposalId') AS TEXT) = :proposalId";
+    }
+    return null;
+  }
+
+  private isLifecycleEvent(eventName: string): boolean {
+    return (PROPOSAL_LIFECYCLE_EVENTS as readonly string[]).includes(eventName);
+  }
+
+  private compareCanonicalEvents(
+    a: CanonicalEvent,
+    b: CanonicalEvent,
+  ): number {
+    const aBlock = BigInt(a.blockNumber ?? '0');
+    const bBlock = BigInt(b.blockNumber ?? '0');
+    if (aBlock !== bBlock) return aBlock < bBlock ? -1 : 1;
+    if (a.logIndex !== b.logIndex) return a.logIndex - b.logIndex;
+    return String(a.txHash).localeCompare(String(b.txHash));
+  }
+
+  private async runInTransaction<T>(
+    work: (repos: ProjectionRepositories) => Promise<T>,
+  ): Promise<T> {
+    const manager: EntityManager | undefined = this.proposals.manager;
+    if (!manager || typeof manager.transaction !== 'function') {
+      return work(this.repositories);
+    }
+
+    return manager.transaction(async (tx: EntityManager) =>
+      work({
+        proposals: tx.getRepository(GovernanceProposal),
+        actions: tx.getRepository(GovernanceAction),
+        votes: tx.getRepository(ProposalVote),
+        roleChanges: tx.getRepository(RoleChange),
+        events: tx.getRepository(CanonicalEvent),
+      }),
     );
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────────
 
+  private get repositories(): ProjectionRepositories {
+    return {
+      proposals: this.proposals,
+      actions: this.actions,
+      votes: this.votes,
+      roleChanges: this.roleChanges,
+      events: this.events,
+    };
+  }
+
   private async upsertProposal(
     partial: Partial<GovernanceProposal>,
+    repos: ProjectionRepositories = this.repositories,
   ): Promise<GovernanceProposal> {
-    const existing = await this.proposals.findOne({
+    const existing = await repos.proposals.findOne({
       where: {
         chainId: partial.chainId!,
         proposalId: partial.proposalId!,
@@ -445,9 +611,9 @@ export class GovernanceProjectionService {
     });
     if (existing) {
       Object.assign(existing, partial);
-      return this.proposals.save(existing);
+      return repos.proposals.save(existing);
     }
-    return this.proposals.save(this.proposals.create(partial));
+    return repos.proposals.save(repos.proposals.create(partial));
   }
 
   private readBigInt(event: CanonicalEvent, key: string): string | null {
@@ -480,7 +646,7 @@ export class GovernanceProjectionService {
     return VoteSupport.ABSTAIN;
   }
 
-  private mapEventToState(eventName: string): ProposalChainState {
+  private mapEventToState(eventName: string): ProposalChainState | null {
     switch (eventName) {
       case 'ProposalCreated':
         return ProposalChainState.PENDING;
@@ -493,7 +659,7 @@ export class GovernanceProjectionService {
       case 'ProposalExpired':
         return ProposalChainState.EXPIRED;
       default:
-        return ProposalChainState.PENDING;
+        return null;
     }
   }
 }
