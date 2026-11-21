@@ -10,7 +10,6 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Stake } from '../staking/entities/stake.entity';
 import { Wallet } from '../entities/wallet.entity';
-import { Claim } from '../claims/entities/claim.entity';
 import { User } from '../entities/user.entity';
 import { AggregationService } from '../aggregation/aggregation.service';
 import { VerificationVerdict } from '../aggregation/aggregation.types';
@@ -67,8 +66,6 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
     private readonly stakeRepo: Repository<Stake>,
     @InjectRepository(Wallet)
     private readonly walletRepo: Repository<Wallet>,
-    @InjectRepository(Claim)
-    private readonly claimRepo: Repository<Claim>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly claimsCache: ClaimsCache,

@@ -5,7 +5,7 @@ import { Admin } from './entities/admin.entity';
 import { Incident } from './entities/incident.entity';
 import { ModerationReport } from './entities/moderation-report.entity';
 import { AuditLog } from '../audit/entities/audit-log.entity';
-import { Claim } from '../claims/entities/claim.entity';
+import { ClaimReadModel } from '../claims/entities/claim-read-model.entity';
 import { AdminService } from './admin.service';
 import { AdminController } from './admin.controller';
 import { ModerationService } from './moderation/moderation.service';
@@ -34,7 +34,7 @@ import { PublicIncidentsModule } from '../health/public-incidents/public-inciden
       Incident,
       ModerationReport,
       AuditLog,
-      Claim,
+      ClaimReadModel,
     ]),
     PublicIncidentsModule,
     FeatureFlagsModule,

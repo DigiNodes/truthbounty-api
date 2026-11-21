@@ -332,8 +332,8 @@ describe('Authentication Gateway E2E (auth.e2e-spec.ts)', () => {
         .expect(403);
     });
 
-    it('should allow GET /claims/latest without auth', () => {
-      return request(app.getHttpServer()).get('/claims/latest').expect(200);
+    it('should deprecate GET /claims/latest without requiring auth', () => {
+      return request(app.getHttpServer()).get('/claims/latest').expect(410);
     });
   });
 

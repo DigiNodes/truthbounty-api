@@ -13,14 +13,9 @@ config:
     # or just send static JSON
   processor: "./artillery-processor.js"
 scenarios:
-  - name: "Submit claim"
+  - name: "Read canonical claims"
     flow:
-      - function: "generatePayload"
-      - post:
-          url: "/claims"
-          json:
-            claimId: "{{ claimId }}"
-            data: "Test Claim Data for Load Testing"
-            source: "artillery-load-test"
+      - get:
+          url: "/api/v2/claim-read-models?limit=20"
           expect:
-            - statusCode: 201
+            - statusCode: 200
