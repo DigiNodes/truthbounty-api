@@ -25,6 +25,7 @@ export interface CreateFeatureFlagInput {
   description?: string;
   expiresAt?: Date;
   createdBy?: string;
+  serverOnly?: boolean;
 }
 
 export interface UpdateFeatureFlagInput {
@@ -33,6 +34,7 @@ export interface UpdateFeatureFlagInput {
   rules?: FeatureFlagRuleSet;
   description?: string;
   expiresAt?: Date | null;
+  serverOnly?: boolean;
 }
 
 export interface FeatureFlagEvaluationResult {
