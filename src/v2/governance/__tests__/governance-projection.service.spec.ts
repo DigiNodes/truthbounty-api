@@ -1,7 +1,42 @@
+import { Interface } from 'ethers';
 import { GovernanceProjectionService } from '../governance-projection.service';
 import { ProposalChainState } from '../entities/governance-proposal.entity';
 import { RoleChangeKind } from '../entities/role-change.entity';
 import { CanonicalEvent } from '../../events/entities/canonical-event.entity';
+import {
+  GOVERNOR_PROPOSAL_HASH_SCHEME,
+  ProposalDecoderService,
+} from '../proposal-decoder.service';
+
+const GOLDEN = {
+  targets: [
+    '0x1111111111111111111111111111111111111111',
+    '0x2222222222222222222222222222222222222222',
+  ],
+  values: ['0', '1000000000000000000'],
+  calldatas: [
+    '0x',
+    '0xa9059cbb00000000000000000000000033333333333333333333333333333333333333330000000000000000000000000000000000000000000000000000000000000064',
+  ],
+  descriptionHash: '0x' + 'ab'.repeat(32),
+  proposalId:
+    '47304621222589775597545673957876819276100891336367114045365864267709555846115',
+  expectedHash:
+    '0x6895777ff29ba155114db677f30190d21212a7c0bc8454c022c61179309eabe3',
+};
+
+function proposalCreatedPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    proposalId: GOLDEN.proposalId,
+    targets: GOLDEN.targets,
+    values: GOLDEN.values,
+    calldatas: GOLDEN.calldatas,
+    descriptionHash: GOLDEN.descriptionHash,
+    description: 'test proposal',
+    proposer: '0x1111111111111111111111111111111111111111',
+    ...overrides,
+  } as any;
+}
 
 /**
  * Unit coverage for GovernanceProjectionService — V2-BE-067.
@@ -127,7 +162,13 @@ describe('GovernanceProjectionService', () => {
     votes = makeRepo();
     roleChanges = makeRepo();
     events = makeRepo();
-    artifactRegistry = { resolve: jest.fn(async () => null) };
+    artifactRegistry = {
+      resolve: jest.fn(async () => ({
+        artifactVersion: 'v1',
+        iface: new Interface([]),
+      })),
+    };
+    const realDecoder = new ProposalDecoderService();
     decoder = {
       decodeCall: jest.fn((target, value, calldata) => ({
         target,
@@ -139,6 +180,7 @@ describe('GovernanceProjectionService', () => {
         decodedArgs: { to: '0x0', amount: '1' },
         calldataChecksum: 'a'.repeat(64),
       })),
+      verifyProposalHash: realDecoder.verifyProposalHash.bind(realDecoder),
     };
 
     service = new GovernanceProjectionService(
@@ -152,13 +194,84 @@ describe('GovernanceProjectionService', () => {
     );
   });
 
+  it('stores the computed proposal hash separately from the description hash', async () => {
+    const event = makeEvent({ payload: proposalCreatedPayload() });
+
+    const outcome = await (service as any).projectEvent(event);
+
+    expect(outcome).toBe('applied');
+    expect(proposals._store).toHaveLength(1);
+    const row = proposals._store[0] as any;
+    expect(row.proposalHash).toBe(GOLDEN.expectedHash);
+    expect(row.descriptionHash).toBe(GOLDEN.descriptionHash);
+    expect(row.proposalHash).not.toBe(row.descriptionHash);
+    expect(row.proposalHashScheme).toBe(GOVERNOR_PROPOSAL_HASH_SCHEME);
+    expect(row.chainId).toBe(11155420);
+    expect(row.governorAddress).toBe(event.contractAddress);
+    expect(row.artifactVersion).toBe('v1');
+    expect(row.lastEventTxHash).toBe(event.txHash);
+    expect(row.lastEventLogIndex).toBe(event.logIndex);
+  });
+
+  it('fails closed when call arrays are missing or inconsistent', async () => {
+    const missing = makeEvent({
+      payload: proposalCreatedPayload({ targets: undefined }),
+    });
+    const mismatched = makeEvent({
+      payload: proposalCreatedPayload({ values: ['0'] }),
+      txHash: '0xother',
+    });
+
+    expect(await (service as any).projectEvent(missing)).toBe('stale_artifact');
+    expect(await (service as any).projectEvent(mismatched)).toBe(
+      'stale_artifact',
+    );
+    expect(proposals._store).toHaveLength(0);
+  });
+
+  it('fails closed when the computed hash does not match the emitted proposalId', async () => {
+    const event = makeEvent({
+      payload: proposalCreatedPayload({ proposalId: '1' }),
+    });
+
+    expect(await (service as any).projectEvent(event)).toBe('stale_artifact');
+    expect(proposals._store).toHaveLength(0);
+  });
+
+  it('fails closed when the governor deployment has no matching approved artifact', async () => {
+    const event = makeEvent({ payload: proposalCreatedPayload() });
+    (artifactRegistry.resolve as jest.Mock).mockResolvedValueOnce(null);
+
+    expect(await (service as any).projectEvent(event)).toBe('stale_artifact');
+    expect(proposals._store).toHaveLength(0);
+
+    const drift = makeEvent({
+      payload: proposalCreatedPayload(),
+      artifactVersion: 'v2',
+      txHash: '0xdrift',
+    });
+    expect(await (service as any).projectEvent(drift)).toBe('stale_artifact');
+    expect(proposals._store).toHaveLength(0);
+  });
+
+  it('is idempotent for ProposalCreated with a valid hash', async () => {
+    const event = makeEvent({ payload: proposalCreatedPayload() });
+
+    expect(await (service as any).projectEvent(event)).toBe('applied');
+    expect(await (service as any).projectEvent(event)).toBe('duplicate');
+    expect(proposals._store).toHaveLength(1);
+  });
+
   // ─── State transitions ──────────────────────────────────────────────────
 
-  async function seedProposal(state = ProposalChainState.PENDING) {
+  async function seedProposal(
+    state = ProposalChainState.PENDING,
+    proposalId = '1',
+  ) {
     proposals._store.push({
       id: 'p-1',
       chainId: 11155420,
-      proposalId: '1',
+      proposalId,
       governorAddress: '0x0000000000000000000000000000000000001001',
       proposer: '0x1111111111111111111111111111111111111111',
       proposalHash: '0xdeadbeef',
@@ -282,7 +395,7 @@ describe('GovernanceProjectionService', () => {
   // ─── Reorg ──────────────────────────────────────────────────────────────
 
   it('rollbackAboveBlock resets a stale proposal to the last canonical event', async () => {
-    await seedProposal(ProposalChainState.QUEUED);
+    await seedProposal(ProposalChainState.QUEUED, GOLDEN.proposalId);
     (proposals._store[0] as any).stateChangedAtBlock = '300';
     (proposals._store[0] as any).lastEventTxHash = '0xqueue';
     (proposals._store[0] as any).lastEventLogIndex = 1;
@@ -294,7 +407,7 @@ describe('GovernanceProjectionService', () => {
       txHash: '0xabc',
       logIndex: 0,
       blockNumber: '100',
-      payload: { proposalId: '1', descriptionHash: '0xdeadbeef' } as any,
+      payload: proposalCreatedPayload(),
     });
     events._store.push(lastValid);
 

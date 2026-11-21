@@ -15,6 +15,8 @@ export interface GovernanceProposalReadModel {
   governorAddress: string;
   proposer: string;
   proposalHash: string;
+  descriptionHash: string | null;
+  proposalHashScheme: string | null;
   description: string | null;
   state: ProposalChainState;
   eta: string | null;

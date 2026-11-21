@@ -1,5 +1,25 @@
 import { Interface } from 'ethers';
-import { ProposalDecoderService } from '../proposal-decoder.service';
+import {
+  GOVERNOR_PROPOSAL_HASH_SCHEME,
+  ProposalDecoderService,
+} from '../proposal-decoder.service';
+
+const GOLDEN = {
+  targets: [
+    '0x1111111111111111111111111111111111111111',
+    '0x2222222222222222222222222222222222222222',
+  ],
+  values: ['0', '1000000000000000000'],
+  calldatas: [
+    '0x',
+    '0xa9059cbb00000000000000000000000033333333333333333333333333333333333333330000000000000000000000000000000000000000000000000000000000000064',
+  ],
+  descriptionHash: '0x' + 'ab'.repeat(32),
+  proposalId:
+    '47304621222589775597545673957876819276100891336367114045365864267709555846115',
+  expectedHash:
+    '0x6895777ff29ba155114db677f30190d21212a7c0bc8454c022c61179309eabe3',
+};
 
 /**
  * Unit coverage for ProposalDecoderService — V2-BE-067.
@@ -215,5 +235,141 @@ describe('ProposalDecoderService', () => {
     );
     expect(decoded.selectorUnknown).toBe(true);
     expect(decoded.target).toBe('not-an-address');
+  });
+
+  describe('computeProposalHash', () => {
+    it('matches the golden on-chain ProposalCreated fixture', () => {
+      const hash = decoder.computeProposalHash(
+        GOLDEN.targets,
+        GOLDEN.values,
+        GOLDEN.calldatas,
+        GOLDEN.descriptionHash,
+      );
+
+      expect(hash).toBe(GOLDEN.expectedHash);
+      expect(hash).not.toBe(GOLDEN.descriptionHash);
+    });
+
+    it('rejects missing or inconsistent call arrays', () => {
+      expect(() =>
+        decoder.computeProposalHash([], [], [], GOLDEN.descriptionHash),
+      ).toThrow(/targets/);
+      expect(() =>
+        decoder.computeProposalHash(
+          GOLDEN.targets,
+          ['0'],
+          GOLDEN.calldatas,
+          GOLDEN.descriptionHash,
+        ),
+      ).toThrow(/values/);
+      expect(() =>
+        decoder.computeProposalHash(
+          GOLDEN.targets,
+          GOLDEN.values,
+          ['0x'],
+          GOLDEN.descriptionHash,
+        ),
+      ).toThrow(/calldatas/);
+    });
+
+    it('rejects malformed targets, values, calldatas and description hash', () => {
+      const invalid = {
+        target: ['not-an-address', ...GOLDEN.targets.slice(1)],
+        value: ['-1', ...GOLDEN.values.slice(1)],
+        calldata: ['0x1', ...GOLDEN.calldatas.slice(1)],
+        descriptionHash: '0xdeadbeef',
+      };
+
+      expect(() =>
+        decoder.computeProposalHash(
+          invalid.target,
+          GOLDEN.values,
+          GOLDEN.calldatas,
+          GOLDEN.descriptionHash,
+        ),
+      ).toThrow(/target/);
+      expect(() =>
+        decoder.computeProposalHash(
+          GOLDEN.targets,
+          invalid.value,
+          GOLDEN.calldatas,
+          GOLDEN.descriptionHash,
+        ),
+      ).toThrow(/value/);
+      expect(() =>
+        decoder.computeProposalHash(
+          GOLDEN.targets,
+          GOLDEN.values,
+          invalid.calldata,
+          GOLDEN.descriptionHash,
+        ),
+      ).toThrow(/calldata/);
+      expect(() =>
+        decoder.computeProposalHash(
+          GOLDEN.targets,
+          GOLDEN.values,
+          GOLDEN.calldatas,
+          invalid.descriptionHash,
+        ),
+      ).toThrow(/descriptionHash/);
+    });
+  });
+
+  describe('verifyProposalHash', () => {
+    const baseInput = {
+      targets: GOLDEN.targets,
+      values: GOLDEN.values,
+      calldatas: GOLDEN.calldatas,
+      descriptionHash: GOLDEN.descriptionHash.toUpperCase().replace('0X', '0x'),
+      expectedProposalId: GOLDEN.proposalId,
+      artifactVersion: 'governor-v1',
+    };
+
+    it('accepts a matching proposalId and returns the hash with provenance', () => {
+      const result = decoder.verifyProposalHash(baseInput);
+
+      expect(result).toEqual({
+        ok: true,
+        proposalHash: GOLDEN.expectedHash,
+        descriptionHash: GOLDEN.descriptionHash,
+        scheme: GOVERNOR_PROPOSAL_HASH_SCHEME,
+        artifactVersion: 'governor-v1',
+      });
+    });
+
+    it('accepts a 0x-prefixed uint256 proposalId', () => {
+      const result = decoder.verifyProposalHash({
+        ...baseInput,
+        expectedProposalId: GOLDEN.expectedHash,
+      });
+      expect(result.ok).toBe(true);
+    });
+
+    it('fails closed when the hash does not match the emitted proposalId', () => {
+      const result = decoder.verifyProposalHash({
+        ...baseInput,
+        expectedProposalId: '1',
+      });
+      expect(result).toEqual({
+        ok: false,
+        reason: 'computed hash does not match proposalId',
+      });
+    });
+
+    it('fails closed when the artifact version/release is unknown', () => {
+      const result = decoder.verifyProposalHash({
+        ...baseInput,
+        artifactVersion: '',
+      });
+      expect(result).toEqual({ ok: false, reason: 'missing artifactVersion' });
+    });
+
+    it('fails closed on malformed event fields instead of fabricating a hash', () => {
+      const result = decoder.verifyProposalHash({
+        ...baseInput,
+        values: [],
+      });
+      expect(result.ok).toBe(false);
+    });
   });
 });

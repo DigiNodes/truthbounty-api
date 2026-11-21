@@ -62,6 +62,12 @@ export class GovernanceProposal {
   @Column({ type: 'varchar', length: 66 })
   proposalHash: string;
 
+  @Column({ type: 'varchar', length: 66, nullable: true })
+  descriptionHash: string | null;
+
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  proposalHashScheme: string | null;
+
   /**
    * Human-readable description as emitted on-chain.
    * Nullable because some Governors emit only the description hash.
