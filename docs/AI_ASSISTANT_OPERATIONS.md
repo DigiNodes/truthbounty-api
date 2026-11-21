@@ -1,5 +1,149 @@
 # AI Assistant Backend API — Operations Guide
 
+## Durable paid-provider budgets
+
+These controls apply to the currently wired `services/` path at
+`/ai/conversations` and the new `/ai/budgets` routes. Paid calls reserve durable
+allowance before dispatch. The provider/router fallback guidance in older
+sections below does not describe this active path.
+
+`AI_BUDGET_OPERATOR_IDS` is a comma-separated, distinct UUID allowlist of app
+users permitted to mutate budgets. The default empty value denies all budget
+operators. Each operator must also have the verified linked app role `admin`.
+Neither role nor permission can be supplied in a request body.
+
+| Route | Authenticated access | Body |
+| --- | --- | --- |
+| `GET /ai/budgets/me` | Current user only | None |
+| `POST /ai/budgets/admin/prices` | Budget operator | Provider/model and integer nano-USD rates, `changeReference` |
+| `POST /ai/budgets/admin/policies` | Budget operator | `rules`, `changeReference` |
+| `POST /ai/budgets/admin/coverage` | Budget operator | `changeReference` |
+| `POST /ai/budgets/admin/overrides` | Budget operator | User/window, finite token/spend bonuses, expiry, `changeReference` |
+| `POST /ai/budgets/admin/overrides/:id/revoke` | Budget operator | `changeReference` |
+
+Change references are reviewed ticket codes such as `OPS-818`, matching
+`[A-Z][A-Z0-9]{1,15}-[1-9][0-9]{0,11}`. Free-form reasons, prompts, payloads,
+tokens and secrets are excluded from these bodies and audit records. UUID audit
+references identify the operator, operation and result.
+
+Prices use unsigned decimal strings `inputNanos`, `outputNanos`,
+`cachedInputNanos`:1 USD=1000000000 nano-USD. Operators verify provider rates
+before inserting a revision. New revisions select the current tariff; existing
+attempts retain their original `priceVersion`. Revisions are append-only.
+Embedding output rates must be zero; chat output rates must be positive; the
+cached input rate cannot exceed the ordinary input rate. There are no shipped
+production prices.
+
+Each policy has at most32 rules:
+`{scope, subject, window, tokenLimit, spendLimitUsdNanos}`. Amounts are canonical
+unsigned decimal strings up to9000000000000000000. Windows are fixed UTC
+`day` or `month`; zero limits deny paid requests. A default `user` rule with
+subject `*`, a `global` rule with subject `*` and explicit `provider` rules
+for `openai`/`anthropic` are required. Optional UUID user rules apply in addition
+to the default. A provider missing an applicable rule fails closed. Token and
+spend limits are checked together for every applicable rule; policy changes count
+earlier revisions' usage rather than starting fresh counters.
+
+The preflight token bound intentionally reserves the full input ceiling, plus
+the output allowance:144384 for `gpt-4o-mini`,201024 for
+`claude-3-haiku-20240307`,8192 for `text-embedding-3-small`.
+Anthropic spend also reserves2x ordinary input pricing to cover unknown
+cache-creation premiums. Set finite policy ceilings large enough for the supported
+request bound. Complete actual usage releases the proven unused amount; unknown
+usage retains its conservative quota charge. These amounts enforce internal
+allowances and do not charge end users.
+
+Overrides add at most1000000 tokens and100000000000 nano-USD ($100) to one user's
+current day/month window. At least one bonus must be positive; at most one override
+may be active for that user/window. Expiry must have an explicit timezone, be
+after database time, and be within both24 hours and the current window end.
+Bonuses apply only to user limits. Provider/global ceilings, missing prices,
+coverage barriers and violation halts remain enforced. Expiry/revocation affects
+new admissions; already dispatched consumption remains charged.
+
+### Historical cutover and migration
+
+Before enabling paid traffic, complete the maintainer's PostgreSQL/persistence
+recovery (#896/#831) and canonical-path consolidation (#817). The baseline has
+an invalid package manifest, transitional Prisma/LibSQL configuration and legacy
+SQLite migration SQL; this contribution does not repair that separate history.
+
+Apply the existing `PersistAdministrativeAudit1792200000000` and new
+`DurableAiBudgets1795300000000` through the approved TypeORM datasource.
+The new migration provisions a native PostgreSQL usage table if absent, preserves
+existing IDs/dates/counts and leaves historical price/cost fields NULL. Runtime
+and legacy CLI discovery use a re-export of the same migration class: execute
+one discovery path once. The current `npm run migration:run` maps to Prisma and
+does not apply these budget tables. After baseline recovery, the TypeORM CLI uses
+`src/config/data-source.ts`; do not use automatic schema synchronization or
+reset a production database.
+
+1. Quiesce paid provider dispatch across every old replica and drain in-flight work.
+   Preserve a read-only legacy usage snapshot with source identity, checksum and
+   high-water mark. Keep earlier records; do not reprice them at today's tariff.
+2. Deploy the version with the single forward TypeORM usage writer while paid
+   admission is closed. Create verified price revisions and a finite policy.
+3. Call the guarded coverage route with a reviewed change reference. It records
+   locked database time once; repeated initialization is rejected.
+4. Keep old replicas stopped. Wait until every applicable policy window starts
+   at or after the recorded checkpoint. A monthly rule can require the next UTC
+   month; a daily rule requires the next UTC day. Overrides cannot shorten this
+   barrier. There is no historical-import bypass in this implementation.
+5. Verify the migrated PostgreSQL runtime and enable paid traffic after the
+   window drain. Relevant unknown/unpriced legacy PostgreSQL usage still fails
+   admission rather than counting as zero.
+
+A policy that later adds a longer window is subject to the same persisted coverage
+checkpoint. Restarts, policy/price revisions and cache outages cannot create a
+new baseline or discard charged attempts.
+
+### Exhaustion, uncertainty and outage responses
+
+Budget errors use the existing public error fields plus `state`, `resetAt` and
+`retryAfterSeconds`. Only trusted budget exceptions pass this metadata.
+
+| HTTP | Error code | Meaning |
+| --- | --- | --- |
+|429 | `AI_BUDGET_EXHAUSTED` | An allowance is exhausted; no provider request occurred. |
+|422 | `AI_REQUEST_EXCEEDS_BUDGET` | The bound cannot fit an empty effective allowance; reset/retry fields are NULL. |
+|503 | `AI_BUDGET_UNAVAILABLE` | PostgreSQL/schema/accounting unavailable; paid admission closed. |
+|503 | `AI_BUDGET_POLICY_MISSING` / `AI_BUDGET_PRICE_MISSING` | Required operator configuration missing or invalid. |
+|503 | `AI_BUDGET_ACCOUNTING_NOT_READY` | Coverage or longest-window drain incomplete. |
+|503 | `AI_BUDGET_USAGE_UNPRICED` | Relevant historical usage has no reproducible price/actual usage. |
+|503 | `AI_BUDGET_USAGE_BOUND_VIOLATED` | New paid admission halted following a provider-bound violation. |
+
+For429, `resetAt` is the latest blocking UTC boundary across all scopes, calculated
+using database time after the authority lock. A safe delay also appears in the
+`Retry-After` header. The response contains no other user's or global/provider
+remaining counters. A safe coverage reset may be returned for503.
+
+Successful paid responses include `metadata.usageState`, `chargedTokens`,
+`chargedSpendUsdNanos` and `priceVersion`. Missing/partial usage has
+`tokens:null`, `usageState:held` and the retained bound. Local mock usage is
+explicitly `mock` with NULL paid charges. Provider errors and process interruption
+retain durable holds; no TTL or restart refunds them. Accounting failure never
+retries or falls back to another provider.
+
+On a violation or store outage, stop paid dispatch and investigate through
+reviewed ledger/audit references. Policy activation cannot clear a violation halt.
+Operational rollback keeps the ledger and disables dispatch. Reverting to an
+older unbudgeted binary would resume untracked paid usage. The new migration
+refuses destructive reversal once policies, prices, coverage, attempts, overrides
+or priced usage exist.
+
+### Maintainer verification
+
+Regression specs cover policy/price/config validation, actual/unknown usage,
+denial with zero SDK calls, expiry/revocation/audit rollback, canonical-route
+HTTP responses, migration preservation and two-datasource PostgreSQL races,
+restarts and settlement failures. Project tests/builds were not executed locally.
+Run the budget PostgreSQL suite only against a disposable database using
+`AI_BUDGET_POSTGRES_TEST_URL`. The existing administrative-audit PostgreSQL suite
+uses `ADMIN_AUDIT_TEST_DATABASE_URL`. Both use random isolated schemas. A skipped
+suite without its own explicit database URL is unverified. CI approval, runtime/coverage
+and migration-history gates remain maintainer-owned.
+
+
 ## Environment variables
 
 | Variable | Default | Purpose |

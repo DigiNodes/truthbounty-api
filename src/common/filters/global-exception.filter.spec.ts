@@ -1,3 +1,4 @@
+import { AiBudgetError } from '../../ai-assistant/budgets/ai-budget.errors';
 import { Test, TestingModule } from '@nestjs/testing';
 import { HttpStatus } from '@nestjs/common';
 import { HttpException } from '@nestjs/common';
@@ -146,5 +147,92 @@ describe('GlobalExceptionFilter', () => {
       expect(calledWith.requestId).toBeDefined();
       expect(calledWith.timestamp).toBeDefined();
     });
+  });
+});
+
+describe('AI budget public errors', () => {
+  const hostFor = (response: any): ArgumentsHost =>
+    ({
+      switchToHttp: () => ({
+        getResponse: () => response,
+        getRequest: () => ({ url: '/ai/conversations/thread/messages' }),
+      }),
+    }) as ArgumentsHost;
+
+  it('keeps the budget code and database reset without exposing scope counters', () => {
+    const response = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
+      setHeader: jest.fn(),
+    };
+    const error = new AiBudgetError(
+      'AI_BUDGET_EXHAUSTED',
+      new Date('2026-12-01T00:00:00.000Z'),
+      new Date('2026-11-30T23:59:00.000Z'),
+    );
+
+    new GlobalExceptionFilter().catch(error, hostFor(response));
+
+    expect(response.status).toHaveBeenCalledWith(429);
+    expect(response.setHeader).toHaveBeenCalledWith('Retry-After', '60');
+    expect(response.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        errorCode: 'AI_BUDGET_EXHAUSTED',
+        state: 'exhausted',
+        resetAt: '2026-12-01T00:00:00.000Z',
+        retryAfterSeconds: 60,
+      }),
+    );
+    expect(response.json.mock.calls[0][0]).not.toHaveProperty('remainingTokens');
+    expect(response.json.mock.calls[0][0]).not.toHaveProperty('userId');
+  });
+
+  it('does not copy budget-looking fields from an unrelated HttpException', () => {
+    const response = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
+      setHeader: jest.fn(),
+    };
+    new GlobalExceptionFilter().catch(
+      new HttpException(
+        {
+          message: 'Too many requests',
+          code: 'AI_BUDGET_EXHAUSTED',
+          resetAt: '2099-01-01T00:00:00.000Z',
+          retryAfterSeconds: 9999999,
+          remainingTokens: 123,
+        },
+        429,
+      ),
+      hostFor(response),
+    );
+
+    expect(response.json.mock.calls[0][0].errorCode).toBe('RATE_LIMITED');
+    expect(response.json.mock.calls[0][0]).not.toHaveProperty('resetAt');
+    expect(response.json.mock.calls[0][0]).not.toHaveProperty('retryAfterSeconds');
+    expect(response.setHeader).not.toHaveBeenCalled();
+  });
+
+  it('distinguishes a request too large for an empty allowance', () => {
+    const response = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
+      setHeader: jest.fn(),
+    };
+    new GlobalExceptionFilter().catch(
+      new AiBudgetError('AI_REQUEST_EXCEEDS_BUDGET'),
+      hostFor(response),
+    );
+
+    expect(response.status).toHaveBeenCalledWith(422);
+    expect(response.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        errorCode: 'AI_REQUEST_EXCEEDS_BUDGET',
+        state: 'request_too_large',
+        resetAt: null,
+        retryAfterSeconds: null,
+      }),
+    );
+    expect(response.setHeader).not.toHaveBeenCalled();
   });
 });

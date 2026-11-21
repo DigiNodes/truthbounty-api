@@ -6,6 +6,7 @@ import {
   Param,
   Delete,
   UseGuards,
+  UseFilters,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -14,6 +15,7 @@ import {
   ApiBearerAuth,
 } from '@nestjs/swagger';
 import { AiAssistantService } from './services/ai-assistant.service';
+import { AiBudgetExceptionFilter } from './budgets/ai-budget-exception.filter';
 import { CreateConversationDto, SendMessageDto } from './dto/ai-assistant.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -22,6 +24,7 @@ import { ThrottleByWallet } from '../common/decorators/throttle-by-wallet.decora
 @ApiTags('AI Assistant')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
+@UseFilters(AiBudgetExceptionFilter)
 @Controller('ai/conversations')
 export class AiAssistantController {
   constructor(private readonly aiAssistantService: AiAssistantService) {}
@@ -70,6 +73,9 @@ export class AiAssistantController {
   @Post(':id/messages')
   @ApiOperation({ summary: 'Send a message to the AI Assistant' })
   @ApiResponse({ status: 201, description: 'AI Assistant response.' })
+  @ApiResponse({ status: 429, description: 'AI budget exhausted; resetAt and Retry-After identify the safe retry window.' })
+  @ApiResponse({ status: 422, description: 'Request does not fit an empty configured AI allowance.' })
+  @ApiResponse({ status: 503, description: 'Budget accounting, prices or historical coverage are unavailable.' })
   @ThrottleByWallet('ai')
   async sendMessage(
     @CurrentUser() user: any,

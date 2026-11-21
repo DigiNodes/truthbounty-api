@@ -365,3 +365,48 @@ describe('startup snapshot', () => {
     ).toThrow('malformed');
   });
 });
+
+describe('AI budget operator runtime allowlist', () => {
+  const first = 'abcdefab-cdef-4abc-8abc-abcdefabcdef';
+  const second = '11111111-1111-4111-8111-111111111111';
+
+  it('defaults to an immutable empty grant and preserves empty compatibility config', () => {
+    const config = parseRuntimeConfig({});
+    expect(config.AI_BUDGET_OPERATOR_IDS).toEqual([]);
+    expect(Object.isFrozen(config.AI_BUDGET_OPERATOR_IDS)).toBe(true);
+    expect(compatibilityEnvironment(config).AI_BUDGET_OPERATOR_IDS).toBe('');
+  });
+
+  it.each(['', ' ', '  \t '])('accepts explicitly empty %j as no operator grants', (value) => {
+    expect(parseRuntimeConfig({ AI_BUDGET_OPERATOR_IDS: value }).AI_BUDGET_OPERATOR_IDS)
+      .toEqual([]);
+  });
+
+  it('normalizes comma-separated UUIDs without mutating operator input', () => {
+    const environment = { AI_BUDGET_OPERATOR_IDS: ' ' + first.toUpperCase() + ', ' + second + ' ' };
+    const config = parseRuntimeConfig(environment);
+    expect(config.AI_BUDGET_OPERATOR_IDS).toEqual([first, second]);
+    expect(Object.isFrozen(config.AI_BUDGET_OPERATOR_IDS)).toBe(true);
+    expect(environment.AI_BUDGET_OPERATOR_IDS).toBe(' ' + first.toUpperCase() + ', ' + second + ' ');
+    expect(compatibilityEnvironment(config).AI_BUDGET_OPERATOR_IDS).toBe(first + ',' + second);
+  });
+
+  it.each([
+    'not-a-uuid', '*', 'admin', first + ',', ',' + first, first + ',,' + second,
+    first + ',' + first.toUpperCase(), '00000000-0000-0000-0000-000000000000',
+    'abcdefab-cdef-0abc-8abc-abcdefabcdef', 'abcdefab-cdef-4abc-0abc-abcdefabcdef',
+  ])('rejects malformed or ambiguous allowlist %j without echoing it', (value) => {
+    try {
+      parseRuntimeConfig({ AI_BUDGET_OPERATOR_IDS: value });
+      throw new Error('Expected invalid operator configuration');
+    } catch (error) {
+      expect(String(error)).toContain('AI_BUDGET_OPERATOR_IDS');
+      expect(String(error)).not.toContain(value);
+    }
+  });
+
+  it('preserves the nonempty requirement for unrelated configuration', () => {
+    expect(() => parseRuntimeConfig({ PORT: '', ALLOWED_ORIGINS: '' })).toThrow('PORT');
+    expect(() => parseRuntimeConfig({ ALLOWED_ORIGINS: '' })).toThrow('ALLOWED_ORIGINS');
+  });
+});

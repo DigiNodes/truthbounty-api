@@ -8,6 +8,7 @@ export interface Field<T> {
   readonly aliases?: readonly string[];
   readonly productionRequired?: boolean;
   readonly secret?: boolean;
+  readonly allowEmpty?: boolean;
 }
 
 function text(
@@ -94,6 +95,23 @@ function list(): Field<readonly string[]> {
       const parts = value.split(',').map((part) => part.trim());
       if (parts.some((part) => !part) || new Set(parts).size !== parts.length)
         throw new Error('invalid list');
+      return Object.freeze(parts);
+    },
+  };
+}
+
+function uuidAllowlist(): Field<readonly string[]> {
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return {
+    description: 'comma-separated distinct UUIDs; empty denies all operators',
+    default: '',
+    allowEmpty: true,
+    parse(value) {
+      if (value.trim() === '') return Object.freeze([]);
+      const parts = value.split(',').map((part) => part.trim().toLowerCase());
+      if (parts.some((part) => !uuid.test(part)) || new Set(parts).size !== parts.length) {
+        throw new Error('invalid operator UUID allowlist');
+      }
       return Object.freeze(parts);
     },
   };
@@ -335,6 +353,7 @@ export const runtimeSchema = {
   NOTIFICATION_RETRY_DELAY: integer(2000),
   AI_PROVIDER: choice(['openai', 'mock'], 'mock'),
   DEFAULT_LLM_PROVIDER: choice(['openai', 'anthropic'], 'openai'),
+  AI_BUDGET_OPERATOR_IDS: uuidAllowlist(),
   OPENAI_API_KEY: secret(),
   ANTHROPIC_API_KEY: secret(),
   OPENAI_BASE_URL: { ...url(), default: 'https://api.openai.com/v1' },
@@ -513,7 +532,7 @@ export function parseRuntimeConfig(env: Environment): RuntimeConfig {
       result[key] = undefined;
       continue;
     }
-    if (raw.trim() === '') {
+    if (raw.trim() === '' && !field.allowEmpty) {
       errors.push(`${key}: must not be empty`);
       continue;
     }

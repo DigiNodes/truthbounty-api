@@ -495,19 +495,40 @@ export class AdminAuditService {
     input: AdminAuditLogInput,
     manager: EntityManager,
   ): Promise<string> {
-    const head = await manager.findOneOrFail(AdminAuditHead, { id: 1 });
+    const head = await manager.findOneOrFail(AdminAuditHead, {
+      where: { id: 1 },
+      lock: { mode: 'pessimistic_write' },
+    });
+    const [clock] = await manager.query('SELECT clock_timestamp() AS timestamp');
+    const timestamp = clock?.timestamp instanceof Date ?
+      new Date(clock.timestamp.getTime()) : new Date(clock?.timestamp);
+    if (!Number.isFinite(timestamp.getTime())) {
+      throw new Error('Invalid administrative audit database clock');
+    }
+    const days = Number(this.config.get<number | string>('ADMIN_AUDIT_RETENTION_DAYS') ?? 365);
+    if (!Number.isInteger(days) || days < 1 || days > 3650) {
+      throw new Error('Invalid administrative audit retention configuration');
+    }
     const sequence = BigInt(head.lastSequence) + 1n;
-    const row = manager.create(AdminAuditLog, {
+    const unsigned = manager.create(AdminAuditLog, {
       ...input,
-      eventId: input.eventId ?? randomUUID(),
+      eventId: randomUUID(),
+      timestamp,
+      retentionUntil: new Date(timestamp.getTime() + days * 86400000),
+      severity: input.severity ?? AdminAuditSeverity.MEDIUM,
       chainSequence: sequence.toString(),
       previousHash: head.lastHash,
     });
-    row.integrityHash = this.hash(row);
+    const row = manager.create(AdminAuditLog, {
+      ...unsigned,
+      integrityHash: this.hash(unsigned),
+    });
     await manager.save(row);
-    head.lastSequence = sequence.toString();
-    head.lastHash = row.integrityHash;
-    await manager.save(head);
+    await manager.save(manager.create(AdminAuditHead, {
+      ...head,
+      lastSequence: sequence.toString(),
+      lastHash: row.integrityHash,
+    }));
     return row.eventId;
   }
 }
