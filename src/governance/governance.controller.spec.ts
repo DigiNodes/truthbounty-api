@@ -1,4 +1,4 @@
-import { ForbiddenException } from '@nestjs/common';
+import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
 import { GovernanceController } from './governance.controller';
@@ -7,19 +7,25 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 /**
- * Unit tests for GovernanceController authorization (V2 API Authorization Matrix).
+ * Unit tests for GovernanceController identity binding and authorization.
  *
  * Verifies:
+ * - proposer/voter come from the verified JWT principal, never the body
+ * - client weight is not forwarded at all
  * - GET routes are public
  * - POST proposal / POST vote require AUTHN only
  * - PATCH activate / cancel require ROLE(moderator|admin)
  * - PATCH execute requires ROLE(admin) only
- * - Contributors are denied state-transition routes (fail-closed)
- * - Moderators are denied execute (fail-closed)
- * - Unauthenticated requests are denied on guarded routes (fail-closed)
+ * - contributors/moderators are denied the higher role transitions
+ * - unauthenticated requests are denied on guarded routes (fail-closed)
  */
-describe('GovernanceController — Authorization Matrix', () => {
+const PRINCIPAL = '0x1111111111111111111111111111111111111111';
+
+describe('GovernanceController — identity binding & Authorization Matrix', () => {
   let controller: GovernanceController;
+
+  const request = (address: string | null = PRINCIPAL) =>
+    ({ user: address ? { address } : null }) as any;
 
   const mockService = {
     findAll: jest.fn().mockResolvedValue([]),
@@ -59,63 +65,90 @@ describe('GovernanceController — Authorization Matrix', () => {
   });
 
   it('findActive() delegates to service', async () => {
-    const result = await controller.findActive();
+    await controller.findActive();
     expect(mockService.findActive).toHaveBeenCalled();
   });
 
   it('findOne() delegates to service', async () => {
-    const result = await controller.findOne('prop-1');
+    await controller.findOne('prop-1');
     expect(mockService.findOne).toHaveBeenCalledWith('prop-1');
   });
 
   it('getVotes() delegates to service', async () => {
-    const result = await controller.getVotes('prop-1');
+    await controller.getVotes('prop-1');
     expect(mockService.getVotesForProposal).toHaveBeenCalledWith('prop-1');
   });
 
   it('getStats() delegates to service', async () => {
-    const result = await controller.getStats();
+    await controller.getStats();
     expect(mockService.getStats).toHaveBeenCalled();
   });
 
-  // ── Write routes ──────────────────────────────────────────────────────────
+  // ── Identity binding ──────────────────────────────────────────────────────
 
-  it('create() delegates to service', async () => {
+  it('create() cannot attribute a proposal to another wallet via dto.proposer', async () => {
     const dto = {
       title: 'Test proposal',
       description: 'desc',
-      proposer: '0xabc',
-      category: 'PROTOCOL_UPGRADE' as any,
-    };
-    const result = await controller.create(dto as any);
-    expect(mockService.create).toHaveBeenCalled();
-    expect(result).toEqual({ id: 'prop-1' });
+      proposer: '0x2222222222222222222222222222222222222222',
+      blockchainTxHash: '0x' + 'f'.repeat(64),
+      category: 'GOVERNANCE' as any,
+    } as any;
+
+    await controller.create(request(), dto);
+
+    const forwarded = mockService.create.mock.calls[0][0];
+    expect(forwarded.proposer).toBe(PRINCIPAL);
+    expect(forwarded.proposer).not.toBe(dto.proposer);
+    expect(forwarded.blockchainTxHash).toBeUndefined();
+    expect(forwarded.title).toBe(dto.title);
   });
 
-  it('castVote() delegates to service', async () => {
-    const dto = { voter: '0xabc', support: true, weight: 1 };
-    const result = await controller.castVote('prop-1', dto as any);
+  it('create() fails closed without a verified principal', async () => {
+    await expect(
+      controller.create(request(null), { title: 'x', description: 'y' } as any),
+    ).rejects.toThrow(UnauthorizedException);
+    expect(mockService.create).not.toHaveBeenCalled();
+  });
+
+  it('castVote() cannot vote for another wallet or inject a client weight', async () => {
+    const canonicalEvent = {
+      chainId: 10,
+      txHash: '0x' + 'a'.repeat(64),
+      logIndex: 3,
+    };
+    const dto = {
+      voter: '0x2222222222222222222222222222222222222222',
+      support: true,
+      weight: 1000000,
+      canonicalEvent,
+    } as any;
+
+    await controller.castVote('prop-1', request(), dto);
+
     expect(mockService.castVote).toHaveBeenCalledWith(
       'prop-1',
-      '0xabc',
-      true,
-      1,
+      PRINCIPAL,
+      canonicalEvent,
       undefined,
     );
+    const args = mockService.castVote.mock.calls[0];
+    expect(args).toHaveLength(4);
   });
 
-  it('activate() delegates to service', async () => {
-    const result = await controller.activate('prop-1');
+  it('castVote() fails closed without a verified principal', async () => {
+    await expect(
+      controller.castVote('prop-1', request(null), {} as any),
+    ).rejects.toThrow(UnauthorizedException);
+    expect(mockService.castVote).not.toHaveBeenCalled();
+  });
+
+  it('activate/execute/cancel() delegate to service', async () => {
+    await controller.activate('prop-1');
+    await controller.execute('prop-1');
+    await controller.cancel('prop-1');
     expect(mockService.activate).toHaveBeenCalledWith('prop-1');
-  });
-
-  it('execute() delegates to service', async () => {
-    const result = await controller.execute('prop-1');
     expect(mockService.execute).toHaveBeenCalledWith('prop-1');
-  });
-
-  it('cancel() delegates to service', async () => {
-    const result = await controller.cancel('prop-1');
     expect(mockService.cancel).toHaveBeenCalledWith('prop-1');
   });
 });
@@ -129,7 +162,7 @@ describe('GovernanceController — RolesGuard hierarchy enforcement', () => {
     getClass: () => ({}),
     switchToHttp: () => ({
       getRequest: () => ({
-        user: role ? { user: { role } } : null,
+        user: role ? { address: PRINCIPAL, user: { role } } : null,
       }),
     }),
   });
