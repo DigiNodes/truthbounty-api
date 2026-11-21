@@ -210,7 +210,7 @@ Notation:
 
 | Method | Route | Authorization |
 |-------|-------|--------------|
-| POST | `/admin/auth/login` | PUBLIC (identity lookup only) |
+| POST | `/admin/auth/login` | AUTHN (verified JWT principal only; body address, if retained for compatibility, must exactly match the verified principal address before any admin lookup or mutation; non-admin identities receive a uniform non-enumerating response; `lastLoginAt` updates only after successful identity binding and session operation) |
 | GET | `/admin/auth/profile` | ADMIN(auditor) |
 | POST | `/admin/admins` | ADMIN(administrator) |
 | GET | `/admin/admins` | ADMIN(auditor) |

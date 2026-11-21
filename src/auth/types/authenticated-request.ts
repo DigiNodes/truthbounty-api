@@ -23,6 +23,21 @@ export function isAuthenticatedRequest(req: any): req is AuthenticatedRequest {
   return (
     principal !== null &&
     typeof principal === 'object' &&
-    typeof principal.address === 'string'
+    typeof principal.address === 'string' &&
+    principal.address.trim().length > 0
   );
+}
+
+/**
+ * Returns the verified principal wallet address from an authenticated request,
+ * normalized to lowercase. Returns null when no verified principal is present.
+ * Callers must derive identity exclusively from this value, never from request
+ * body, query, or headers.
+ */
+export function getVerifiedPrincipalAddress(req: any): string | null {
+  if (!isAuthenticatedRequest(req)) {
+    return null;
+  }
+  const principal = req.user || req.use;
+  return principal.address.trim().toLowerCase();
 }
