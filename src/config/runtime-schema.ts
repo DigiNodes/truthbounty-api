@@ -364,6 +364,8 @@ export const runtimeSchema = {
   LOG_REDACT_RPC_URLS: boolean(true),
   JWT_SECRET: secret(true),
   JWT_EXPIRATION: { ...duration, default: '15m' },
+  JWT_ACCESS_AUDIENCE: text({ default: 'truthbounty-api' }),
+  JWT_ISSUER: text({ default: 'truthbounty-api' }),
   REFRESH_TOKEN_EXPIRATION: { ...duration, default: '7d' },
   SIWE_DOMAIN: text({ productionRequired: true }),
   IDEMPOTENCY_ENABLED: boolean(true),
