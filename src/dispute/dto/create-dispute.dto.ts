@@ -1,49 +1,42 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
-  IsEnum,
   IsNotEmpty,
-  IsNumber,
   IsObject,
   IsOptional,
   IsString,
-  Max,
-  Min,
+  ValidateNested,
 } from 'class-validator';
-import { DisputeTrigger } from '../entities/dispute.entity';
+import { Type } from 'class-transformer';
+import { CanonicalEventEvidenceDto } from './canonical-event-evidence.dto';
 
+/**
+ * Legacy dispute intake. The actor is always the verified JWT principal, and
+ * trigger/confidence are never accepted as trusted protocol signals: callers
+ * may only point at a canonical DisputeRaised log, from which the server
+ * re-derives those values. Without such evidence the record is explicitly
+ * non-authoritative workflow metadata.
+ *
+ * Deprecated fields (`trigger`, `originalConfidence`, `initiatorId`) are
+ * ignored if present and are kept out of the schema on purpose.
+ */
 export class CreateDisputeDto {
   @ApiProperty({ description: 'Claim identifier' })
   @IsString()
   @IsNotEmpty()
   claimId: string;
 
-  @ApiProperty({
-    enum: DisputeTrigger,
-    description: 'Reason the dispute was triggered',
-  })
-  @IsEnum(DisputeTrigger)
-  trigger: DisputeTrigger;
-
-  @ApiProperty({
-    description: 'Confidence score before dispute resolution',
-    minimum: 0,
-    maximum: 1,
-  })
-  @IsNumber()
-  @Min(0)
-  @Max(1)
-  originalConfidence: number;
-
   @ApiPropertyOptional({
-    description: 'Optional user identifier for the dispute initiator',
+    description:
+      'Canonical DisputeRaised log. Omit for an off-chain workflow record.',
+    type: CanonicalEventEvidenceDto,
   })
   @IsOptional()
-  @IsString()
-  @IsNotEmpty()
-  initiatorId?: string;
+  @ValidateNested()
+  @Type(() => CanonicalEventEvidenceDto)
+  canonicalEvent?: CanonicalEventEvidenceDto;
 
   @ApiPropertyOptional({
-    description: 'Optional dispute metadata',
+    description: 'Non-authoritative workflow metadata',
     type: 'object',
     additionalProperties: true,
   })
