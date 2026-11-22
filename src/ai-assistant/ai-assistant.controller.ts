@@ -75,13 +75,17 @@ export class AiAssistantController {
     @CurrentUser() user: any,
     @Param('id') conversationId: string,
     @Body() dto: SendMessageDto,
+    @Headers('idempotency-key') idempotencyKey: string,
   ) {
     return this.aiAssistantService.sendMessage(
       user.id || user.userId || user.sub,
       conversationId,
       dto,
+      idempotencyKey,
     );
   }
+
+
 
   @Delete(':id')
   @ApiOperation({ summary: 'Delete a conversation' })
