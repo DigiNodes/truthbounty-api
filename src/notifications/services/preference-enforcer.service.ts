@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { NotificationPreference } from '../entities/notification-preference.entity';
 import { DeliveryChannel } from '../interfaces/notification.types';
 import { EventType } from '../enums/event-type.enum';
+import { UpdatePreferenceSettingsDto } from '../dto/update-preference-settings.dto';
 
 const QUIET_HOURS_TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
@@ -203,16 +204,42 @@ export class PreferenceEnforcer {
    */
   async updatePreferences(
     userId: string,
-    updates: Partial<NotificationPreference>,
+    updates: UpdatePreferenceSettingsDto,
   ): Promise<NotificationPreference> {
-    const pref = await this.getPreferences(userId);
-    if (updates.channels) {
-      updates.channels = normalizeChannelPreferences(updates.channels);
-    }
-    Object.assign(pref, updates);
-    pref.channels = normalizeChannelPreferences(pref.channels);
-    pref.lastModifiedAt = new Date();
-    return this.preferenceRepository.save(pref);
+  const pref = await this.getPreferences(userId);
+
+  if (updates.channels !== undefined) {
+    pref.channels = normalizeChannelPreferences(updates.channels);
+  }
+
+  if (updates.categorySubscriptions !== undefined) {
+    pref.categorySubscriptions = updates.categorySubscriptions;
+  }
+
+  if (updates.quietHours !== undefined) {
+    pref.quietHours = updates.quietHours;
+  }
+
+  if (updates.digestPreferences !== undefined) {
+    pref.digestPreferences = updates.digestPreferences;
+  }
+
+  if (updates.language !== undefined) {
+    pref.language = updates.language;
+  }
+
+  if (updates.webhookConfig !== undefined) {
+    pref.webhookConfig = updates.webhookConfig;
+  }
+
+  if (updates.pushConfig !== undefined) {
+    pref.pushConfig = updates.pushConfig;
+  }
+
+  pref.channels = normalizeChannelPreferences(pref.channels);
+  pref.lastModifiedAt = new Date();
+
+  return this.preferenceRepository.save(pref);
   }
 
   /**

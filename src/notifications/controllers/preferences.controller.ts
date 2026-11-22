@@ -16,6 +16,7 @@ import { PreferenceEnforcer } from '../services/preference-enforcer.service';
 import { NotificationPreference } from '../entities/notification-preference.entity';
 import { DeliveryChannel } from '../interfaces/notification.types';
 import { requireDeliveryChannel } from '../delivery/delivery-channel';
+import { UpdatePreferenceSettingsDto } from '../dto/update-preference-settings.dto';
 
 @ApiTags('Notifications - Preferences')
 @Controller('api/v2/notifications/preferences')
@@ -53,7 +54,7 @@ export class PreferencesController {
   })
   async updatePreferences(
     @CurrentUser('id') userId: string,
-    @Body() updates: Partial<NotificationPreference>,
+    @Body() updates: UpdatePreferenceSettingsDto,
   ): Promise<NotificationPreference> {
     this.logger.debug(`Updating preferences for user ${userId}`, updates);
     return this.preferenceEnforcer.updatePreferences(userId, updates);
