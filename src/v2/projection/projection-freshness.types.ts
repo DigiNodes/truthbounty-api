@@ -39,6 +39,28 @@ export interface ProjectionFreshnessList {
   items: ProjectionFreshness[];
 }
 
+/** Why a projector blocks the readiness gate. */
+export interface ProjectionReadinessBlocker {
+  projectorName: string;
+  status: ProjectionStatus;
+  dataState: DataState;
+  /** Machine-readable reason from the freshness report, or null. */
+  reason: string | null;
+}
+
+/**
+ * Fail-closed Projection Readiness Gate (#453).
+ *
+ * `ready` is true only when every tracked projector is `healthy`. Degraded,
+ * unhealthy, stale or unknown projections block readiness — the gate never
+ * falls back to a fabricated or optimistic state.
+ */
+export interface ProjectionReadinessGate {
+  ready: boolean;
+  timestamp: string;
+  blockers: ProjectionReadinessBlocker[];
+}
+
 /** Projectors that consume the V2 canonical event stream. */
 export const KNOWN_PROJECTORS = [
   'v2-evidence',
