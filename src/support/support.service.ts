@@ -4,7 +4,7 @@ import {
   Injectable,
   Logger,
 } from '@nestjs/common';
-import { randomUUID } from 'crypto';
+import { randomUUID, randomBytes, createHmac } from 'crypto';
 import { CreateSupportRequestDto } from './dto/create-support-request.dto';
 
 export interface SupportRequestRecord {
@@ -46,7 +46,11 @@ export class SupportRequestService {
   private readonly maxRequestsPerContact = 5;
   private readonly duplicateWindowMs = 24 * 60 * 60 * 1000;
   private readonly requests = new Map<string, SupportRequestRecord>();
-  private readonly fingerprints = new Map<string, SupportRequestRecord>();
+  private readonly fingerprintSecret = randomBytes(32);
+private readonly fingerprints = new Map<
+  string,
+  { id: string; reference: string; createdAt: string; expiresAt: string }
+>();
 
   createSupportRequest(input: CreateSupportRequestDto): SupportRequestSubmission {
     const normalized = this.normalizeRequest(input);
@@ -86,7 +90,12 @@ export class SupportRequestService {
     };
 
     this.requests.set(record.id, record);
-    this.fingerprints.set(fingerprint, record);
+    this.fingerprints.set(fingerprint, {
+  id: record.id,
+  reference: record.reference,
+  createdAt: record.createdAt,
+  expiresAt: record.expiresAt,
+});
     return {
       reference: record.reference,
       status: 'submitted',
@@ -126,19 +135,26 @@ export class SupportRequestService {
     return true;
   }
 
-  cleanupExpiredSupportRequests(): string[] {
-    const expiredIds: string[] = [];
-    const now = Date.now();
+cleanupExpiredSupportRequests(): string[] {
+  const expiredIds: string[] = [];
+  const now = Date.now();
 
-    for (const [id, record] of this.requests.entries()) {
-      if (new Date(record.expiresAt).getTime() <= now) {
-        expiredIds.push(id);
-        this.requests.delete(id);
-      }
+  for (const [id, record] of this.requests.entries()) {
+    if (new Date(record.expiresAt).getTime() <= now) {
+      expiredIds.push(id);
+      this.requests.delete(id);
     }
-
-    return expiredIds;
   }
+
+  for (const [fingerprint, record] of this.fingerprints.entries()) {
+    if (new Date(record.expiresAt).getTime() <= now) {
+      this.fingerprints.delete(fingerprint);
+    }
+  }
+
+  this.logger.log(`Expired support records cleaned: ${expiredIds.length}`);
+  return expiredIds;
+}
 
   private normalizeRequest(input: CreateSupportRequestDto): Required<Pick<CreateSupportRequestDto, 'category' | 'contact' | 'description' | 'release'>> & {
       diagnostics: string[];
