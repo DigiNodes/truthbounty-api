@@ -7,10 +7,9 @@ import {
   ConflictException,
   BadRequestException,
   ForbiddenException,
-  OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, EntityManager } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 
@@ -24,6 +23,33 @@ import { QueueName } from '../../jobs/jobs.types';
 import { RedisService } from '../../redis/redis.service';
 import { OperationalControl } from '../entities/operational-control.entity';
 import { OperationalControlEvent } from '../entities/operational-control-event.entity';
+import { IndexedEvent } from '../../entities/indexed-event.entity';
+import { OperationalControlReconciler } from './operational-control-reconciler';
+import {
+  advanceScheduleStatus,
+  computeEffectiveMaintenance,
+  computeEffectiveServices,
+  EmergencyState,
+  hasOwnEntry,
+  isActiveEmergency,
+  isApiThrottlingActive,
+  isCanonicalRequiredAction,
+  isEmergencyAction,
+  MaintenanceSchedule,
+  normalizeInstant,
+  toIsoString,
+} from './operational-control-state';
+import {
+  getLockedControl,
+  recordControlEvent,
+} from './operational-control-store';
+import {
+  CanonicalEvidence,
+  CanonicalEvidenceInput,
+  findFinalizedEvidence,
+} from './canonical-evidence';
+
+export type { MaintenanceSchedule } from './operational-control-state';
 
 import {
   ServiceType,
@@ -54,26 +80,15 @@ import {
   AuditCategory,
 } from '../../audit/entities/audit-log.entity';
 
-interface EmergencyState {
-  action: EmergencyAction;
-  reason: string;
-  timestamp: string;
-  expiresAt?: number;
-}
-
-export interface MaintenanceSchedule {
-  id: string;
-  description: string;
-  startTime: string;
-  endTime?: string;
-  status: 'scheduled' | 'active' | 'completed' | 'cancelled';
-  affectedServices?: string[];
-  createdAt: string;
-  createdBy?: string;
+interface PendingCanonicalEntry {
+  action?: string;
+  requestId?: string;
+  status?: string;
+  [key: string]: unknown;
 }
 
 @Injectable()
-export class ProtocolAdminService implements OnModuleInit {
+export class ProtocolAdminService {
   private readonly logger = new Logger(ProtocolAdminService.name);
 
   private maintenanceActive = false;
@@ -83,6 +98,7 @@ export class ProtocolAdminService implements OnModuleInit {
   private scheduledMaintenance: MaintenanceSchedule[] = [];
   private emergencyStates = new Map<string, EmergencyState>();
   private serviceStates = new Map<string, boolean>();
+  private lastControl: OperationalControl | null = null;
   private readonly startTime = Date.now();
 
   constructor(
@@ -94,7 +110,10 @@ export class ProtocolAdminService implements OnModuleInit {
     private readonly controlRepo: Repository<OperationalControl>,
     @InjectRepository(OperationalControlEvent)
     private readonly controlEventRepo: Repository<OperationalControlEvent>,
+    @InjectRepository(IndexedEvent)
+    private readonly indexedEventRepo: Repository<IndexedEvent>,
     private readonly dataSource: DataSource,
+    private readonly reconciler: OperationalControlReconciler,
     private readonly auditTrailService: AuditTrailService,
     private readonly featureFlagsService: FeatureFlagsService,
     private readonly configService: ConfigurationService,
@@ -113,142 +132,102 @@ export class ProtocolAdminService implements OnModuleInit {
     this.serviceStates.set('queues_operational', true);
   }
 
-  async onModuleInit(): Promise<void> {
-    await this.reconcilePersistedState();
-  }
-
-  private async reconcilePersistedState(): Promise<void> {
-    await this.dataSource.transaction(async (manager) => {
-      const repo = manager.getRepository(OperationalControl);
-      let control = await repo.findOne({
-        where: { id: 'system' },
-        lock: { mode: 'pessimistic_write' },
-      });
-
-      let created = false;
-      if (!control) {
-        created = true;
-        control = repo.create({
-          id: 'system',
-          maintenanceActive: false,
-          maintenanceReason: null,
-          maintenanceStartedAt: null,
-          maintenanceScheduledEnd: null,
-          schedules: [],
-          emergencies: {},
-          services: {},
-          pendingCanonicalActions: {},
-          updatedBy: null,
-        });
-      }
-
-      const now = Date.now();
-      let dirty = created;
-
-      const emergencies = { ...(control.emergencies ?? {}) } as Record<
-        string,
-        EmergencyState & { expiresAt?: number }
-      >;
-      for (const [action, state] of Object.entries(emergencies)) {
-        if (state.expiresAt && state.expiresAt <= now) {
-          delete emergencies[action];
-          dirty = true;
-        }
-      }
-
-      const schedules = (control.schedules ??
-        []) as unknown as MaintenanceSchedule[];
-      for (const schedule of schedules) {
-        let nextStatus = schedule.status;
-        if (
-          schedule.status === 'scheduled' &&
-          Date.parse(schedule.startTime) <= now
-        ) {
-          nextStatus =
-            !schedule.endTime || Date.parse(schedule.endTime) > now
-              ? 'active'
-              : 'completed';
-        } else if (
-          (schedule.status === 'active' || schedule.status === 'scheduled') &&
-          schedule.endTime &&
-          Date.parse(schedule.endTime) <= now
-        ) {
-          nextStatus = 'completed';
-        }
-        if (nextStatus !== schedule.status) {
-          schedule.status = nextStatus;
-          dirty = true;
-        }
-      }
-
-      const pendingCanonical = {
-        ...(control.pendingCanonicalActions ?? {}),
-      } as Record<string, { status?: string }>;
-      for (const [action, pending] of Object.entries(pendingCanonical)) {
-        if (pending.status === 'resolved') {
-          delete pendingCanonical[action];
-          dirty = true;
-        }
-      }
-
-      if (dirty) {
-        control.emergencies = emergencies;
-        control.schedules = schedules as unknown as Record<string, unknown>[];
-        control.pendingCanonicalActions = pendingCanonical;
-        control.updatedAt = new Date();
-        await repo.save(control);
-      }
-      this.loadControlCache(control);
-    });
+  private async loadPersistedState(): Promise<void> {
+    const control = await this.reconciler.reconcile();
+    if (control) this.loadControlCache(control);
   }
 
   private loadControlCache(control: OperationalControl): void {
-    this.maintenanceActive = control.maintenanceActive;
-    this.maintenanceReason = control.maintenanceReason ?? '';
-    this.maintenanceStartedAt =
-      control.maintenanceStartedAt?.toISOString() ?? null;
-    this.maintenanceScheduledEnd =
-      control.maintenanceScheduledEnd?.toISOString() ?? null;
+    const now = Date.now();
+    const maintenance = computeEffectiveMaintenance(control, now);
+    this.lastControl = control;
+    this.maintenanceActive = maintenance.active;
+    this.maintenanceReason = maintenance.reason ?? '';
+    this.maintenanceStartedAt = maintenance.startedAt;
+    this.maintenanceScheduledEnd = toIsoString(control.maintenanceScheduledEnd);
     this.scheduledMaintenance = (control.schedules ??
       []) as unknown as MaintenanceSchedule[];
     this.emergencyStates = new Map(
       Object.entries(control.emergencies ?? {}) as [string, EmergencyState][],
     );
-
-    const services = {
-      notifications: true,
-      integrations: true,
-      queues_operational: true,
-      ...(control.services ?? {}),
-    } as Record<string, boolean>;
-    const now = Date.now();
-    for (const state of this.emergencyStates.values()) {
-      if (state.expiresAt && state.expiresAt <= now) continue;
-      for (const key of this.emergencyServiceKeys(state.action)) {
-        services[key] = false;
-      }
-    }
-    this.serviceStates = new Map(Object.entries(services));
+    this.serviceStates = new Map(
+      Object.entries(computeEffectiveServices(control, now)),
+    );
   }
 
-  private emergencyServiceKeys(action: EmergencyAction): string[] {
-    switch (action) {
-      case EmergencyAction.SUSPEND_ALL_SERVICES:
-      case EmergencyAction.EMERGENCY_SHUTDOWN:
-        return ['notifications', 'integrations', 'queues_operational'];
-      case EmergencyAction.DISABLE_NOTIFICATIONS:
-        return ['notifications'];
-      case EmergencyAction.PAUSE_ALL_QUEUES:
-        return ['queues_operational'];
-      case EmergencyAction.SUSPEND_INTEGRATIONS:
-        return ['integrations'];
+  private serviceKeyFor(serviceType: ServiceType): string {
+    switch (serviceType) {
+      case ServiceType.NOTIFICATION:
+        return 'notifications';
+      case ServiceType.WEBHOOK:
+        return 'integrations';
+      case ServiceType.QUEUE:
+        return 'queues_operational';
       default:
-        return [];
+        return serviceType;
     }
+  }
+
+  private effectiveServiceValue(serviceKey: string): boolean {
+    return this.serviceStates.get(serviceKey) ?? true;
+  }
+
+  private hasActiveEmergency(action: EmergencyAction): boolean {
+    const state = this.emergencyStates.get(action);
+    return isActiveEmergency(state, Date.now());
+  }
+
+  private suppressionSuffix(serviceKey: string, saved: boolean): string {
+    return saved && !this.effectiveServiceValue(serviceKey)
+      ? '; still suppressed by an active emergency'
+      : '';
+  }
+
+  private serviceStateResponse(
+    serviceType: ServiceType,
+    action: string,
+    saved: boolean,
+    message: string,
+    beforeState?: Record<string, unknown>,
+  ): ServiceControlResponse {
+    return {
+      serviceType,
+      action,
+      success: true,
+      message,
+      previousState: beforeState ? JSON.stringify(beforeState) : undefined,
+      currentState: JSON.stringify({
+        operational: this.effectiveServiceValue(
+          this.serviceKeyFor(serviceType),
+        ),
+      }),
+      savedState: JSON.stringify({ operational: saved }),
+    };
+  }
+
+  private toMaintenanceStatus(
+    control: OperationalControl,
+  ): MaintenanceStatusResponse {
+    const maintenance = computeEffectiveMaintenance(control, Date.now());
+    return {
+      active: maintenance.active,
+      reason: maintenance.reason ?? undefined,
+      startedAt: maintenance.startedAt ?? undefined,
+      scheduledEnd: toIsoString(control.maintenanceScheduledEnd) ?? undefined,
+      scheduledMaintenance: (
+        (control.schedules ?? []) as unknown as MaintenanceSchedule[]
+      ).filter((schedule) => {
+        const status = advanceScheduleStatus(schedule);
+        return status === 'scheduled' || status === 'active';
+      }),
+    };
   }
 
   private async assertControlAdmin(adminId: string): Promise<void> {
-    const admin = await this.adminRepo.findOneBy({ id: adminId });
+    const admin = await this.adminRepo.findOneBy({
+      id: adminId,
+      isActive: true,
+    });
     if (!admin) {
       throw new ForbiddenException('Administrative principal not found');
     }
@@ -262,73 +241,29 @@ export class ProtocolAdminService implements OnModuleInit {
     }
   }
 
-  private async getLockedControl(
-    manager: EntityManager,
-  ): Promise<OperationalControl> {
-    const repo = manager.getRepository(OperationalControl);
-    const existing = await repo.findOne({
-      where: { id: 'system' },
-      lock: { mode: 'pessimistic_write' },
-    });
-    if (existing) return existing;
-    return repo.create({
-      id: 'system',
-      maintenanceActive: false,
-      maintenanceReason: null,
-      maintenanceStartedAt: null,
-      maintenanceScheduledEnd: null,
-      schedules: [],
-      emergencies: {},
-      services: {},
-      pendingCanonicalActions: {},
-      updatedBy: null,
-    });
-  }
-
-  private async recordControlEvent(
-    manager: EntityManager,
-    control: OperationalControl,
-    operation: string,
-    actorId: string,
-    reason: string,
-    beforeState: Record<string, unknown>,
-    afterState: Record<string, unknown>,
-    targetId = 'system',
-  ): Promise<string> {
-    const id = randomUUID();
-    const auditReference = `oce-${id}`;
-    const repo = manager.getRepository(OperationalControlEvent);
-    await repo.save(
-      repo.create({
-        id,
-        controlId: targetId,
-        operation,
-        actorId: actorId.slice(0, 64),
-        reason: (reason || 'unspecified').slice(0, 255),
-        beforeState,
-        afterState,
-        auditReference,
-        controlVersion: control.version ?? 0,
-      }),
-    );
-    return auditReference;
-  }
-
   private async persistServiceState(
     serviceKey: string,
     operational: boolean,
     adminId?: string,
     reason?: string,
-  ): Promise<void> {
-    await this.dataSource.transaction(async (manager) => {
-      const control = await this.getLockedControl(manager);
+  ): Promise<{
+    previous: boolean;
+    previousEffective: boolean;
+    operational: boolean;
+    effective: boolean;
+    auditReference: string;
+  }> {
+    const result = await this.dataSource.transaction(async (manager) => {
+      const control = await getLockedControl(manager);
       const services = { ...(control.services ?? {}) };
       const previous = services[serviceKey] ?? true;
+      const previousEffective =
+        computeEffectiveServices(control, Date.now())[serviceKey] ?? previous;
       services[serviceKey] = operational;
       control.services = services;
       if (adminId) control.updatedBy = adminId;
       await manager.getRepository(OperationalControl).save(control);
-      await this.recordControlEvent(
+      const auditReference = await recordControlEvent(
         manager,
         control,
         operational ? 'service_restore' : 'service_suspend',
@@ -338,8 +273,17 @@ export class ProtocolAdminService implements OnModuleInit {
         { operational },
         serviceKey,
       );
-      this.loadControlCache(control);
+      return { control, previous, previousEffective, auditReference };
     });
+
+    this.loadControlCache(result.control);
+    return {
+      previous: result.previous,
+      previousEffective: result.previousEffective,
+      operational,
+      effective: this.effectiveServiceValue(serviceKey),
+      auditReference: result.auditReference,
+    };
   }
 
   // ──────────────────────────────────────────────
@@ -347,7 +291,7 @@ export class ProtocolAdminService implements OnModuleInit {
   // ──────────────────────────────────────────────
 
   async getSystemStatus(): Promise<SystemStatusResponse> {
-    await this.reconcilePersistedState();
+    await this.loadPersistedState();
 
     const now = Date.now();
     const activeEmergencies: string[] = [];
@@ -408,7 +352,7 @@ export class ProtocolAdminService implements OnModuleInit {
   }
 
   async getDetailedOperationalStats(): Promise<Record<string, unknown>> {
-    await this.reconcilePersistedState();
+    await this.loadPersistedState();
     const allMetrics = await this.jobsService.getAllQueueMetrics();
     const queueMetrics = allMetrics.reduce(
       (acc, m) => {
@@ -429,11 +373,11 @@ export class ProtocolAdminService implements OnModuleInit {
       queues: queueMetrics,
       services: {
         maintenanceMode: this.maintenanceActive,
-        notificationsEnabled: this.serviceStates.get('notifications') ?? true,
-        integrationsOperational: this.serviceStates.get('integrations') ?? true,
-        apiThrottlingActive: this.emergencyStates.has(
-          EmergencyAction.ENABLE_API_THROTTLING,
-        ),
+        notificationsEnabled: this.effectiveServiceValue('notifications'),
+        integrationsOperational: this.effectiveServiceValue('integrations'),
+        apiThrottlingActive: this.lastControl
+          ? isApiThrottlingActive(this.lastControl, Date.now())
+          : this.hasActiveEmergency(EmergencyAction.ENABLE_API_THROTTLING),
       },
       system: {
         uptime: this.getUptime(),
@@ -453,9 +397,9 @@ export class ProtocolAdminService implements OnModuleInit {
     adminId: string,
   ): Promise<MaintenanceStatusResponse> {
     await this.assertControlAdmin(adminId);
-    let auditReference = '';
-    await this.dataSource.transaction(async (manager) => {
-      const control = await this.getLockedControl(manager);
+    const scheduledEnd = normalizeInstant(dto.scheduledEnd, true);
+    const committed = await this.dataSource.transaction(async (manager) => {
+      const control = await getLockedControl(manager);
       const before = {
         maintenanceActive: control.maintenanceActive,
         reason: control.maintenanceReason,
@@ -463,22 +407,28 @@ export class ProtocolAdminService implements OnModuleInit {
       control.maintenanceActive = dto.enabled;
       control.maintenanceReason = dto.reason ?? null;
       control.maintenanceStartedAt = dto.enabled ? new Date() : null;
-      control.maintenanceScheduledEnd = dto.scheduledEnd
-        ? new Date(dto.scheduledEnd)
+      control.maintenanceScheduledEnd = scheduledEnd
+        ? new Date(scheduledEnd)
         : null;
       control.updatedBy = adminId;
       await manager.getRepository(OperationalControl).save(control);
-      auditReference = await this.recordControlEvent(
+      const auditReference = await recordControlEvent(
         manager,
         control,
         dto.enabled ? 'maintenance_enable' : 'maintenance_disable',
         adminId,
         dto.reason ?? 'maintenance state change',
         before,
-        { maintenanceActive: dto.enabled, reason: dto.reason ?? null },
+        {
+          maintenanceActive: dto.enabled,
+          reason: dto.reason ?? null,
+          scheduledEnd,
+        },
       );
-      this.loadControlCache(control);
+      return { control, before, auditReference };
     });
+
+    this.loadControlCache(committed.control);
 
     await this.auditTrailService.log({
       actionType: dto.enabled
@@ -492,15 +442,15 @@ export class ProtocolAdminService implements OnModuleInit {
       description: dto.enabled
         ? `Maintenance mode enabled${dto.reason ? `: ${dto.reason}` : ''}`
         : 'Maintenance mode disabled',
-      beforeState: { maintenanceActive: this.maintenanceActive },
+      beforeState: { maintenanceActive: committed.before.maintenanceActive },
       afterState: { maintenanceActive: dto.enabled, reason: dto.reason },
-      metadata: { auditReference },
+      metadata: { auditReference: committed.auditReference },
     });
 
     this.logger.log(
       `Maintenance mode ${dto.enabled ? 'enabled' : 'disabled'} by admin ${adminId}`,
     );
-    return this.getMaintenanceStatus();
+    return this.toMaintenanceStatus(committed.control);
   }
 
   async scheduleMaintenance(
@@ -509,23 +459,28 @@ export class ProtocolAdminService implements OnModuleInit {
   ): Promise<MaintenanceSchedule> {
     await this.assertControlAdmin(adminId);
 
-    if (dto.endTime && Date.parse(dto.endTime) <= Date.parse(dto.startTime)) {
+    const startTime = normalizeInstant(dto.startTime, true);
+    const endTime = normalizeInstant(dto.endTime, true);
+    if (!startTime) {
+      throw new BadRequestException('startTime must be a valid instant');
+    }
+    if (endTime && Date.parse(endTime) <= Date.parse(startTime)) {
       throw new BadRequestException('endTime must be after startTime');
     }
 
     const schedule: MaintenanceSchedule = {
       id: `mnt-${Date.now()}-${randomUUID().slice(0, 8)}`,
       description: dto.description,
-      startTime: dto.startTime,
-      endTime: dto.endTime,
+      startTime,
+      endTime: endTime ?? undefined,
       status: 'scheduled',
       affectedServices: dto.affectedServices,
       createdAt: new Date().toISOString(),
       createdBy: adminId,
     };
 
-    await this.dataSource.transaction(async (manager) => {
-      const control = await this.getLockedControl(manager);
+    const committed = await this.dataSource.transaction(async (manager) => {
+      const control = await getLockedControl(manager);
       const schedules = [
         ...((control.schedules ?? []) as unknown as MaintenanceSchedule[]),
       ];
@@ -538,7 +493,7 @@ export class ProtocolAdminService implements OnModuleInit {
       control.schedules = schedules as unknown as Record<string, unknown>[];
       control.updatedBy = adminId;
       await manager.getRepository(OperationalControl).save(control);
-      await this.recordControlEvent(
+      const auditReference = await recordControlEvent(
         manager,
         control,
         'maintenance_schedule',
@@ -548,8 +503,9 @@ export class ProtocolAdminService implements OnModuleInit {
         { schedule },
         schedule.id,
       );
-      this.loadControlCache(control);
+      return { control, auditReference };
     });
+    this.loadControlCache(committed.control);
 
     await this.auditTrailService.log({
       actionType: AuditActionType.MAINTENANCE_SCHEDULED,
@@ -560,6 +516,7 @@ export class ProtocolAdminService implements OnModuleInit {
       category: AuditCategory.MAINTENANCE,
       description: `Scheduled maintenance: ${dto.description}`,
       afterState: schedule,
+      metadata: { auditReference: committed.auditReference },
     });
 
     this.logger.log(
@@ -572,8 +529,8 @@ export class ProtocolAdminService implements OnModuleInit {
   async cancelMaintenance(scheduleId: string, adminId: string): Promise<void> {
     await this.assertControlAdmin(adminId);
 
-    await this.dataSource.transaction(async (manager) => {
-      const control = await this.getLockedControl(manager);
+    const committed = await this.dataSource.transaction(async (manager) => {
+      const control = await getLockedControl(manager);
       const schedules = [
         ...((control.schedules ?? []) as unknown as MaintenanceSchedule[]),
       ];
@@ -584,16 +541,17 @@ export class ProtocolAdminService implements OnModuleInit {
         );
       }
       const persistedSchedule = schedules[index];
-      if (persistedSchedule.status !== 'scheduled') {
+      const effectiveStatus = advanceScheduleStatus(persistedSchedule);
+      if (effectiveStatus !== 'scheduled') {
         throw new ConflictException(
-          `Cannot cancel maintenance with status '${persistedSchedule.status}'`,
+          `Cannot cancel maintenance with status '${effectiveStatus}'`,
         );
       }
       schedules[index] = { ...persistedSchedule, status: 'cancelled' };
       control.schedules = schedules as unknown as Record<string, unknown>[];
       control.updatedBy = adminId;
       await manager.getRepository(OperationalControl).save(control);
-      await this.recordControlEvent(
+      const auditReference = await recordControlEvent(
         manager,
         control,
         'maintenance_cancel',
@@ -603,8 +561,9 @@ export class ProtocolAdminService implements OnModuleInit {
         { status: 'cancelled' },
         scheduleId,
       );
-      this.loadControlCache(control);
+      return { control, auditReference };
     });
+    this.loadControlCache(committed.control);
 
     await this.auditTrailService.log({
       actionType: AuditActionType.MAINTENANCE_CANCELLED,
@@ -615,21 +574,23 @@ export class ProtocolAdminService implements OnModuleInit {
       category: AuditCategory.MAINTENANCE,
       description: `Cancelled maintenance schedule ${scheduleId}`,
       afterState: { status: 'cancelled' },
+      metadata: { auditReference: committed.auditReference },
     });
 
     this.logger.log(`Maintenance schedule cancelled: ${scheduleId}`);
   }
 
   async getMaintenanceStatus(): Promise<MaintenanceStatusResponse> {
-    await this.reconcilePersistedState();
+    await this.loadPersistedState();
     return {
       active: this.maintenanceActive,
       reason: this.maintenanceReason || undefined,
       startedAt: this.maintenanceStartedAt ?? undefined,
       scheduledEnd: this.maintenanceScheduledEnd ?? undefined,
-      scheduledMaintenance: this.scheduledMaintenance.filter(
-        (s) => s.status === 'scheduled' || s.status === 'active',
-      ),
+      scheduledMaintenance: this.scheduledMaintenance.filter((schedule) => {
+        const status = advanceScheduleStatus(schedule);
+        return status === 'scheduled' || status === 'active';
+      }),
     };
   }
 
@@ -644,7 +605,7 @@ export class ProtocolAdminService implements OnModuleInit {
     await this.assertControlAdmin(adminId);
     const { serviceType, action, queueName, reason } = dto;
     const beforeState = {
-      operational: this.serviceStates.get(serviceType) ?? true,
+      operational: this.effectiveServiceValue(this.serviceKeyFor(serviceType)),
     };
 
     try {
@@ -662,14 +623,12 @@ export class ProtocolAdminService implements OnModuleInit {
             action as ServiceAction,
             adminId,
             reason,
-            beforeState,
           );
         case ServiceType.WEBHOOK:
           return await this.handleWebhookAction(
             action as ServiceAction,
             adminId,
             reason,
-            beforeState,
           );
         case ServiceType.CACHE:
           return await this.handleCacheAction(
@@ -685,7 +644,6 @@ export class ProtocolAdminService implements OnModuleInit {
             action as ServiceAction,
             adminId,
             reason,
-            beforeState,
           );
         default:
           throw new BadRequestException(
@@ -702,9 +660,6 @@ export class ProtocolAdminService implements OnModuleInit {
         success: false,
         message: (error as Error).message,
         previousState: JSON.stringify(beforeState),
-        currentState: JSON.stringify({
-          operational: this.serviceStates.get(serviceType) ?? true,
-        }),
       };
     }
   }
@@ -780,10 +735,9 @@ export class ProtocolAdminService implements OnModuleInit {
     action: ServiceAction,
     adminId?: string,
     reason?: string,
-    beforeState?: Record<string, unknown>,
   ): Promise<ServiceControlResponse> {
     const isSuspending = action === ServiceAction.SUSPEND;
-    await this.persistServiceState(
+    const persisted = await this.persistServiceState(
       'notifications',
       !isSuspending,
       adminId,
@@ -802,32 +756,36 @@ export class ProtocolAdminService implements OnModuleInit {
         userId: adminId,
         severity: AuditSeverity.HIGH,
         category: AuditCategory.SERVICE_CONTROL,
-        description: `${isSuspending ? 'Suspended' : 'Restored'} notification service${reason ? `: ${reason}` : ''}`,
-        beforeState,
+        description: `${isSuspending ? 'Suspended' : 'Restored'} notification preference${reason ? `: ${reason}` : ''}`,
+        beforeState: {
+          operational: persisted.previous,
+          effective: persisted.previousEffective,
+        },
         afterState: {
-          notificationsEnabled: !isSuspending,
+          notificationsEnabled: persisted.effective,
+          savedNotificationsEnabled: persisted.operational,
           reason,
         },
+        metadata: { auditReference: persisted.auditReference },
       });
     }
 
-    return {
-      serviceType: ServiceType.NOTIFICATION,
+    return this.serviceStateResponse(
+      ServiceType.NOTIFICATION,
       action,
-      success: true,
-      message: `Notification service ${isSuspending ? 'suspended' : 'restored'} successfully`,
-      previousState: beforeState ? JSON.stringify(beforeState) : undefined,
-    };
+      persisted.operational,
+      `Notification preference ${isSuspending ? 'suspended' : 'restored'} successfully${this.suppressionSuffix('notifications', persisted.operational)}`,
+      { operational: persisted.previous },
+    );
   }
 
   private async handleWebhookAction(
     action: ServiceAction,
     adminId?: string,
     reason?: string,
-    beforeState?: Record<string, unknown>,
   ): Promise<ServiceControlResponse> {
     const isSuspending = action === ServiceAction.SUSPEND;
-    await this.persistServiceState(
+    const persisted = await this.persistServiceState(
       'integrations',
       !isSuspending,
       adminId,
@@ -846,22 +804,27 @@ export class ProtocolAdminService implements OnModuleInit {
         userId: adminId,
         severity: AuditSeverity.HIGH,
         category: AuditCategory.SERVICE_CONTROL,
-        description: `${isSuspending ? 'Suspended' : 'Restored'} webhook service${reason ? `: ${reason}` : ''}`,
-        beforeState,
+        description: `${isSuspending ? 'Suspended' : 'Restored'} webhook preference${reason ? `: ${reason}` : ''}`,
+        beforeState: {
+          operational: persisted.previous,
+          effective: persisted.previousEffective,
+        },
         afterState: {
-          integrationsOperational: !isSuspending,
+          integrationsOperational: persisted.effective,
+          savedIntegrationsOperational: persisted.operational,
           reason,
         },
+        metadata: { auditReference: persisted.auditReference },
       });
     }
 
-    return {
-      serviceType: ServiceType.WEBHOOK,
+    return this.serviceStateResponse(
+      ServiceType.WEBHOOK,
       action,
-      success: true,
-      message: `Webhook service ${isSuspending ? 'suspended' : 'restored'} successfully`,
-      previousState: beforeState ? JSON.stringify(beforeState) : undefined,
-    };
+      persisted.operational,
+      `Webhook preference ${isSuspending ? 'suspended' : 'restored'} successfully${this.suppressionSuffix('integrations', persisted.operational)}`,
+      { operational: persisted.previous },
+    );
   }
 
   private async handleCacheAction(
@@ -906,11 +869,15 @@ export class ProtocolAdminService implements OnModuleInit {
     action: ServiceAction,
     adminId?: string,
     reason?: string,
-    beforeState?: Record<string, unknown>,
   ): Promise<ServiceControlResponse> {
     const serviceKey = serviceType;
     const isSuspending = action === ServiceAction.SUSPEND;
-    await this.persistServiceState(serviceKey, !isSuspending, adminId, reason);
+    const persisted = await this.persistServiceState(
+      serviceKey,
+      !isSuspending,
+      adminId,
+      reason,
+    );
 
     const auditActionType = isSuspending
       ? AuditActionType.SERVICE_SUSPENDED
@@ -925,18 +892,26 @@ export class ProtocolAdminService implements OnModuleInit {
         severity: AuditSeverity.MEDIUM,
         category: AuditCategory.SERVICE_CONTROL,
         description: `${isSuspending ? 'Suspended' : 'Restored'} ${serviceType}${reason ? `: ${reason}` : ''}`,
-        beforeState,
-        afterState: { operational: !isSuspending, reason },
+        beforeState: {
+          operational: persisted.previous,
+          effective: persisted.previousEffective,
+        },
+        afterState: {
+          operational: persisted.effective,
+          savedOperational: persisted.operational,
+          reason,
+        },
+        metadata: { auditReference: persisted.auditReference },
       });
     }
 
-    return {
+    return this.serviceStateResponse(
       serviceType,
       action,
-      success: true,
-      message: `${serviceType} ${isSuspending ? 'suspended' : 'restored'} successfully`,
-      previousState: beforeState ? JSON.stringify(beforeState) : undefined,
-    };
+      persisted.operational,
+      `${serviceType} ${isSuspending ? 'suspended' : 'restored'} successfully${this.suppressionSuffix(serviceKey, persisted.operational)}`,
+      { operational: persisted.previous },
+    );
   }
 
   async getQueueMetrics(): Promise<AllQueueMetricsResponse> {
@@ -1006,9 +981,15 @@ export class ProtocolAdminService implements OnModuleInit {
   ): Promise<EmergencyActionResponse> {
     await this.assertControlAdmin(adminId);
     const { action, reason, durationMinutes } = dto;
+    if (!isEmergencyAction(String(action))) {
+      throw new BadRequestException(
+        `Unknown emergency action: ${String(action)}`,
+      );
+    }
     const expiresAt = durationMinutes
       ? Date.now() + durationMinutes * 60 * 1000
       : undefined;
+    const requestId = randomUUID();
 
     const emergency: EmergencyState = {
       action,
@@ -1018,44 +999,53 @@ export class ProtocolAdminService implements OnModuleInit {
     };
 
     const affectedServices = this.getAffectedServices(action);
-    let auditReference = '';
+    const canonicalRequired = isCanonicalRequiredAction(String(action));
 
-    await this.dataSource.transaction(async (manager) => {
-      const control = await this.getLockedControl(manager);
+    const committed = await this.dataSource.transaction(async (manager) => {
+      const control = await getLockedControl(manager);
       const emergencies = {
         ...((control.emergencies ?? {}) as Record<string, EmergencyState>),
       };
       emergencies[action] = emergency;
       control.emergencies = emergencies;
-      if (
-        action === EmergencyAction.EMERGENCY_SHUTDOWN ||
-        action === EmergencyAction.PAUSE_ALL_QUEUES
-      ) {
-        control.pendingCanonicalActions = {
-          ...(control.pendingCanonicalActions ?? {}),
-          [action]: {
+      if (canonicalRequired) {
+        const pendingCanonical = {
+          ...((control.pendingCanonicalActions ?? {}) as Record<
+            string,
+            PendingCanonicalEntry
+          >),
+          [requestId]: {
+            action,
+            requestId,
             status: 'pending',
             reason,
             requestedBy: adminId,
             requestedAt: emergency.timestamp,
             canonicalEvidenceRequired: true,
-          },
+          } satisfies PendingCanonicalEntry,
         };
+        control.pendingCanonicalActions = pendingCanonical;
       }
       control.updatedBy = adminId;
       await manager.getRepository(OperationalControl).save(control);
-      auditReference = await this.recordControlEvent(
+      const auditReference = await recordControlEvent(
         manager,
         control,
         'emergency_execute',
         adminId,
         reason,
         {},
-        { action, expiresAt: emergency.expiresAt, affectedServices },
+        {
+          action,
+          requestId: canonicalRequired ? requestId : undefined,
+          expiresAt: emergency.expiresAt,
+          affectedServices,
+        },
         `emergency-${action}`,
       );
-      this.loadControlCache(control);
+      return { control, auditReference };
     });
+    this.loadControlCache(committed.control);
 
     await this.auditTrailService.log({
       actionType: AuditActionType.EMERGENCY_ACTION_EXECUTED,
@@ -1068,10 +1058,12 @@ export class ProtocolAdminService implements OnModuleInit {
       afterState: {
         action,
         reason,
+        requestId: canonicalRequired ? requestId : undefined,
+        canonicalStatus: canonicalRequired ? 'pending' : undefined,
         expiresAt: expiresAt ? new Date(expiresAt).toISOString() : undefined,
         affectedServices,
       },
-      metadata: { auditReference },
+      metadata: { auditReference: committed.auditReference },
     });
 
     this.logger.warn(
@@ -1082,8 +1074,13 @@ export class ProtocolAdminService implements OnModuleInit {
       action,
       success: true,
       timestamp: emergency.timestamp,
-      message: `Emergency action '${action}' executed successfully. Reason: ${reason}`,
+      message: canonicalRequired
+        ? `Local effect of '${action}' applied; canonical protocol action remains pending. Reason: ${reason}`
+        : `Emergency action '${action}' executed successfully. Reason: ${reason}`,
       affectedServices,
+      ...(canonicalRequired
+        ? { canonicalStatus: 'pending' as const, canonicalRequestId: requestId }
+        : {}),
     };
   }
 
@@ -1092,14 +1089,19 @@ export class ProtocolAdminService implements OnModuleInit {
     adminId: string,
   ): Promise<void> {
     await this.assertControlAdmin(adminId);
+    if (!isEmergencyAction(String(action))) {
+      throw new NotFoundException(`No active emergency action: ${action}`);
+    }
 
     let resolved: EmergencyState | undefined;
-    await this.dataSource.transaction(async (manager) => {
-      const control = await this.getLockedControl(manager);
+    const committed = await this.dataSource.transaction(async (manager) => {
+      const control = await getLockedControl(manager);
       const emergencies = {
         ...((control.emergencies ?? {}) as Record<string, EmergencyState>),
       };
-      resolved = emergencies[action];
+      resolved = hasOwnEntry(emergencies, String(action))
+        ? emergencies[action]
+        : undefined;
       if (!resolved) {
         throw new NotFoundException(`No active emergency action: ${action}`);
       }
@@ -1107,7 +1109,7 @@ export class ProtocolAdminService implements OnModuleInit {
       control.emergencies = emergencies;
       control.updatedBy = adminId;
       await manager.getRepository(OperationalControl).save(control);
-      await this.recordControlEvent(
+      const auditReference = await recordControlEvent(
         manager,
         control,
         'emergency_resolve',
@@ -1117,8 +1119,9 @@ export class ProtocolAdminService implements OnModuleInit {
         { resolved: true },
         `emergency-${action}`,
       );
-      this.loadControlCache(control);
+      return { control, auditReference };
     });
+    this.loadControlCache(committed.control);
 
     await this.auditTrailService.log({
       actionType: AuditActionType.SERVICE_RESTORED,
@@ -1130,6 +1133,7 @@ export class ProtocolAdminService implements OnModuleInit {
       description: `Resolved emergency action: ${action}`,
       beforeState: resolved,
       afterState: { resolved: true, resolvedAt: new Date().toISOString() },
+      metadata: { auditReference: committed.auditReference },
     });
 
     this.logger.log(`Emergency action resolved: ${action} by admin ${adminId}`);
@@ -1137,49 +1141,74 @@ export class ProtocolAdminService implements OnModuleInit {
 
   async resolveCanonicalAction(
     action: string,
-    evidence: {
-      transactionHash?: string;
-      ledger?: number;
-      eventId?: string;
-    },
+    evidence: CanonicalEvidenceInput,
     actorId: string,
-  ): Promise<void> {
+  ): Promise<CanonicalEvidence> {
     await this.assertControlAdmin(actorId);
+    if (!isEmergencyAction(String(action))) {
+      throw new NotFoundException(`No pending canonical action: ${action}`);
+    }
+    if (!evidence?.requestId || !evidence.transactionHash) {
+      throw new BadRequestException(
+        'requestId and finalized transactionHash are required',
+      );
+    }
 
-    await this.dataSource.transaction(async (manager) => {
-      const control = await this.getLockedControl(manager);
+    const committed = await this.dataSource.transaction(async (manager) => {
+      const control = await getLockedControl(manager);
       const pendingCanonical = {
         ...((control.pendingCanonicalActions ?? {}) as Record<
           string,
-          Record<string, unknown>
+          PendingCanonicalEntry
         >),
       };
-      const entry = pendingCanonical[action];
-      if (!entry || entry.status !== 'pending') {
+      const entry = hasOwnEntry(pendingCanonical, evidence.requestId)
+        ? pendingCanonical[evidence.requestId]
+        : undefined;
+      if (!entry || entry.status !== 'pending' || entry.action !== action) {
         throw new NotFoundException(`No pending canonical action: ${action}`);
       }
-      pendingCanonical[action] = {
+
+      const eventRepo =
+        manager.getRepository(IndexedEvent) ?? this.indexedEventRepo;
+      const canonicalEvidence = await findFinalizedEvidence(
+        eventRepo,
+        String(action),
+        evidence,
+      );
+      if (!canonicalEvidence) {
+        throw new BadRequestException(
+          'No finalized canonical event matches this pending request',
+        );
+      }
+
+      pendingCanonical[evidence.requestId] = {
         ...entry,
         status: 'resolved',
         resolvedAt: new Date().toISOString(),
         resolvedBy: actorId,
-        canonicalEvidence: evidence,
+        canonicalEvidence,
       };
       control.pendingCanonicalActions = pendingCanonical;
       control.updatedBy = actorId;
       await manager.getRepository(OperationalControl).save(control);
-      await this.recordControlEvent(
+      const auditReference = await recordControlEvent(
         manager,
         control,
         'canonical_action_resolved',
         actorId,
         `Canonical evidence confirmed for ${action}`,
-        { status: 'pending' },
-        { status: 'resolved', evidence },
-        action,
+        { requestId: evidence.requestId, status: 'pending' },
+        {
+          requestId: evidence.requestId,
+          status: 'resolved',
+          canonicalEvidence,
+        },
+        String(action),
       );
-      this.loadControlCache(control);
+      return { control, canonicalEvidence, auditReference };
     });
+    this.loadControlCache(committed.control);
 
     await this.auditTrailService.log({
       actionType: AuditActionType.EMERGENCY_ACTION_EXECUTED,
@@ -1189,8 +1218,14 @@ export class ProtocolAdminService implements OnModuleInit {
       severity: AuditSeverity.HIGH,
       category: AuditCategory.EMERGENCY,
       description: `Canonical evidence confirmed for pending action: ${action}`,
-      afterState: { action, evidence },
+      afterState: {
+        action,
+        evidence: committed.canonicalEvidence,
+      },
+      metadata: { auditReference: committed.auditReference },
     });
+
+    return committed.canonicalEvidence;
   }
 
   private getAffectedServices(action: EmergencyAction): string[] {

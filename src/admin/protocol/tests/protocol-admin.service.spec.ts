@@ -1,13 +1,19 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { getQueueToken } from '@nestjs/bullmq';
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { Admin } from '../../entities/admin.entity';
 import { AuditLog } from '../../../audit/entities/audit-log.entity';
 import { OperationalControl } from '../../entities/operational-control.entity';
 import { OperationalControlEvent } from '../../entities/operational-control-event.entity';
+import { IndexedEvent } from '../../../entities/indexed-event.entity';
 import { ProtocolAdminService } from '../protocol-admin.service';
+import { OperationalControlReconciler } from '../operational-control-reconciler';
 import { AuditTrailService } from '../../../audit/services/audit-trail.service';
 import { FeatureFlagsService } from '../../../feature-flags/feature-flags.service';
 import { ConfigurationService } from '../../../feature-flags/configuration.service';
@@ -27,6 +33,7 @@ import { SetMaintenanceModeDto } from '../dto/maintenance.dto';
 
 describe('ProtocolAdminService', () => {
   let service: ProtocolAdminService;
+  let reconciler: OperationalControlReconciler;
 
   const mockAdminRepo = {
     findOne: jest.fn(),
@@ -105,9 +112,11 @@ describe('ProtocolAdminService', () => {
   const mockControlRepo = {
     findOne: jest.fn(async () => storedControl),
     create: jest.fn((entity) => entity),
-    save: jest.fn(async (entity) => {
-      storedControl = { ...entity, version: (entity.version ?? 0) + 1 };
-      return storedControl;
+    save: jest.fn(async (entity: any) => {
+      const persisted = { ...entity, version: (entity.version ?? 0) + 1 };
+      Object.assign(entity, persisted);
+      storedControl = persisted;
+      return persisted;
     }),
   };
 
@@ -116,10 +125,20 @@ describe('ProtocolAdminService', () => {
     save: jest.fn(async (entity) => entity),
   };
 
+  const mockIndexedEventRepo = {
+    find: jest.fn().mockResolvedValue([]),
+    manager: {
+      query: jest.fn().mockResolvedValue([]),
+    },
+  };
+
   const mockEntityManager = {
-    getRepository: jest.fn((entity) =>
-      entity === OperationalControl ? mockControlRepo : mockControlEventRepo,
-    ),
+    query: jest.fn().mockResolvedValue([]),
+    getRepository: jest.fn((entity) => {
+      if (entity === OperationalControl) return mockControlRepo;
+      if (entity === IndexedEvent) return mockIndexedEventRepo;
+      return mockControlEventRepo;
+    }),
   };
 
   const mockDefaultQueue = { drain: jest.fn().mockResolvedValue(undefined) };
@@ -134,6 +153,7 @@ describe('ProtocolAdminService', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     storedControl = null;
+    mockIndexedEventRepo.find.mockResolvedValue([]);
     mockAdminRepo.findOneBy.mockResolvedValue({
       id: 'admin-1',
       role: 'administrator',
@@ -152,6 +172,11 @@ describe('ProtocolAdminService', () => {
           provide: getRepositoryToken(OperationalControlEvent),
           useValue: mockControlEventRepo,
         },
+        {
+          provide: getRepositoryToken(IndexedEvent),
+          useValue: mockIndexedEventRepo,
+        },
+        OperationalControlReconciler,
         { provide: DataSource, useValue: mockDataSource },
         { provide: AuditTrailService, useValue: mockAuditTrailService },
         { provide: FeatureFlagsService, useValue: mockFeatureFlagsService },
@@ -178,6 +203,9 @@ describe('ProtocolAdminService', () => {
     }).compile();
 
     service = module.get<ProtocolAdminService>(ProtocolAdminService);
+    reconciler = module.get<OperationalControlReconciler>(
+      OperationalControlReconciler,
+    );
   });
 
   it('should be defined', () => {
@@ -285,7 +313,7 @@ describe('ProtocolAdminService', () => {
     it('should create a maintenance schedule', async () => {
       const schedule = await service.scheduleMaintenance(
         {
-          startTime: '2026-08-01T02:00:00Z',
+          startTime: '2027-08-01T02:00:00Z',
           description: 'Database upgrade',
           affectedServices: ['database', 'api'],
         },
@@ -304,7 +332,7 @@ describe('ProtocolAdminService', () => {
     it('should cancel a scheduled maintenance', async () => {
       const schedule = await service.scheduleMaintenance(
         {
-          startTime: '2026-08-01T02:00:00Z',
+          startTime: '2027-08-01T02:00:00Z',
           description: 'Database upgrade',
         },
         'admin-1',
@@ -624,7 +652,7 @@ describe('ProtocolAdminService', () => {
     it('should include scheduled maintenance', async () => {
       await service.scheduleMaintenance(
         {
-          startTime: '2026-08-01T02:00:00Z',
+          startTime: '2027-08-01T02:00:00Z',
           description: 'Scheduled maintenance',
         },
         'admin-1',
@@ -684,7 +712,7 @@ describe('ProtocolAdminService', () => {
       expect(storedControl.updatedBy).toBe('admin-1');
     });
 
-    it('reconstructs active state from the persisted row on startup', async () => {
+    it('reconciles pre-existing overdue state from the singleton startup hook without a status read', async () => {
       storedControl = {
         id: 'system',
         maintenanceActive: true,
@@ -692,18 +720,30 @@ describe('ProtocolAdminService', () => {
         maintenanceStartedAt: new Date('2026-01-01T00:00:00Z'),
         maintenanceScheduledEnd: null,
         schedules: [],
-        emergencies: {},
+        emergencies: {
+          disable_notifications: {
+            action: EmergencyAction.DISABLE_NOTIFICATIONS,
+            reason: 'expired before restart',
+            timestamp: new Date(Date.now() - 7200_000).toISOString(),
+            expiresAt: Date.now() - 1000,
+          },
+        },
         services: { notifications: false },
         pendingCanonicalActions: {},
         updatedBy: 'admin-9',
         version: 3,
       };
 
-      const status = await service.getSystemStatus();
+      await reconciler.onModuleInit();
 
-      expect(status.maintenanceMode).toBe(true);
-      expect(status.notificationsEnabled).toBe(false);
-      expect(status.integrationsOperational).toBe(true);
+      expect(storedControl.emergencies).toEqual({});
+      const events = mockControlEventRepo.save.mock.calls.map((c) => c[0]);
+      expect(events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ operation: 'emergency_expire' }),
+        ]),
+      );
+      expect(mockAdminRepo.count).not.toHaveBeenCalled();
     });
 
     it('expires emergency actions deterministically during reconcile', async () => {
@@ -815,13 +855,13 @@ describe('ProtocolAdminService', () => {
       expect(event.operation).toBe('maintenance_enable');
       expect(event.actorId).toBe('admin-1');
       expect(event.auditReference).toMatch(/^oce-/);
-      expect(event.controlVersion).toBeGreaterThanOrEqual(0);
+      expect(event.controlVersion).toBe(storedControl.version);
       expect(event.beforeState).toBeDefined();
       expect(event.afterState).toBeDefined();
     });
 
-    it('marks on-chain-required emergency actions as pending canonical work', async () => {
-      await service.executeEmergencyAction(
+    it('marks on-chain-required emergency actions as request-bound pending canonical work', async () => {
+      const result = await service.executeEmergencyAction(
         {
           action: EmergencyAction.EMERGENCY_SHUTDOWN,
           reason: 'chain pause required',
@@ -829,11 +869,12 @@ describe('ProtocolAdminService', () => {
         'admin-1',
       );
 
+      expect(result.canonicalStatus).toBe('pending');
+      expect(result.canonicalRequestId).toBeDefined();
       const pending =
-        storedControl.pendingCanonicalActions[
-          EmergencyAction.EMERGENCY_SHUTDOWN
-        ];
+        storedControl.pendingCanonicalActions[result.canonicalRequestId!];
       expect(pending).toMatchObject({
+        action: EmergencyAction.EMERGENCY_SHUTDOWN,
         status: 'pending',
         requestedBy: 'admin-1',
         canonicalEvidenceRequired: true,
@@ -878,34 +919,123 @@ describe('ProtocolAdminService', () => {
       expect(status.notificationsEnabled).toBe(false);
     });
 
-    it('resolves pending canonical actions only with recorded evidence', async () => {
-      await service.executeEmergencyAction(
+    it('resolves pending canonical actions only with finalized evidence bound to the request', async () => {
+      const result = await service.executeEmergencyAction(
         {
           action: EmergencyAction.PAUSE_ALL_QUEUES,
           reason: 'chain pause',
         },
         'admin-1',
       );
+      const requestId = result.canonicalRequestId!;
 
-      await service.resolveCanonicalAction(
-        EmergencyAction.PAUSE_ALL_QUEUES,
-        { transactionHash: 'abc123', ledger: 42 },
-        'admin-1',
-      );
-
-      expect(
-        storedControl.pendingCanonicalActions[EmergencyAction.PAUSE_ALL_QUEUES]
-          .status,
-      ).toBe('resolved');
-
-      // A second resolve must fail — the action is no longer pending.
       await expect(
         service.resolveCanonicalAction(
           EmergencyAction.PAUSE_ALL_QUEUES,
-          { transactionHash: 'abc123' },
+          { requestId, transactionHash: 'abc123' },
+          'admin-1',
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(storedControl.pendingCanonicalActions[requestId].status).toBe(
+        'pending',
+      );
+
+      mockIndexedEventRepo.find.mockResolvedValueOnce([
+        {
+          id: 'event-1',
+          transactionHash: 'abc123',
+          chainId: 42,
+          logIndex: 0,
+          blockNumber: '100',
+          eventType: 'EmergencyPaused',
+          isFinalized: true,
+          eventData: { requestId },
+          parsedData: { action: EmergencyAction.PAUSE_ALL_QUEUES, requestId },
+        },
+      ] as any);
+
+      await service.resolveCanonicalAction(
+        EmergencyAction.PAUSE_ALL_QUEUES,
+        { requestId, transactionHash: 'abc123', ledger: 42 },
+        'admin-1',
+      );
+
+      expect(storedControl.pendingCanonicalActions[requestId].status).toBe(
+        'resolved',
+      );
+
+      // A second resolve must fail — the request is no longer pending.
+      await expect(
+        service.resolveCanonicalAction(
+          EmergencyAction.PAUSE_ALL_QUEUES,
+          { requestId, transactionHash: 'abc123' },
           'admin-1',
         ),
       ).rejects.toThrow(NotFoundException);
+    });
+
+    it('rejects finalized evidence whose action does not match the pending request', async () => {
+      const result = await service.executeEmergencyAction(
+        {
+          action: EmergencyAction.EMERGENCY_SHUTDOWN,
+          reason: 'chain halt',
+        },
+        'admin-1',
+      );
+      const requestId = result.canonicalRequestId!;
+
+      mockIndexedEventRepo.find.mockResolvedValueOnce([
+        {
+          id: 'event-wrong-action',
+          transactionHash: 'abc123',
+          chainId: 42,
+          logIndex: 0,
+          blockNumber: '100',
+          eventType: 'EmergencyPaused',
+          isFinalized: true,
+          eventData: { requestId },
+          parsedData: {
+            action: EmergencyAction.DISABLE_NOTIFICATIONS,
+            requestId,
+          },
+        } as any,
+      ]);
+
+      await expect(
+        service.resolveCanonicalAction(
+          EmergencyAction.EMERGENCY_SHUTDOWN,
+          { requestId, transactionHash: 'abc123', ledger: 42 },
+          'admin-1',
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(storedControl.pendingCanonicalActions[requestId].status).toBe(
+        'pending',
+      );
+    });
+
+    it('rejects schedule boundaries without an explicit UTC offset', async () => {
+      await expect(
+        service.scheduleMaintenance(
+          {
+            description: 'ambiguous boundary',
+            startTime: '2027-01-10T10:00:00',
+          },
+          'admin-1',
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rechecks that the administrator is still active', async () => {
+      mockAdminRepo.findOneBy.mockResolvedValue(null);
+
+      await expect(
+        service.setMaintenanceMode({ enabled: true }, 'admin-1'),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockAdminRepo.findOneBy).toHaveBeenCalledWith({
+        id: 'admin-1',
+        isActive: true,
+      });
+      expect(storedControl).toBeNull();
     });
 
     it('serializes mutations through a pessimistic row lock', async () => {

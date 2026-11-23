@@ -1,4 +1,14 @@
-import { IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, MinLength, Matches, MaxLength, Min } from 'class-validator';
+import {
+  IsEnum,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MinLength,
+  Matches,
+  MaxLength,
+  Min,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export enum EmergencyAction {
@@ -66,7 +76,8 @@ export class RollbackTargetDto {
   targetId: string;
 
   @ApiProperty({
-    description: 'Version the client expects to roll back from (optimistic concurrency)',
+    description:
+      'Version the client expects to roll back from (optimistic concurrency)',
   })
   @IsInt()
   @Min(0)
@@ -113,6 +124,39 @@ export class RollbackTargetDto {
   approvalRef?: string;
 }
 
+export class ResolveCanonicalActionDto {
+  @ApiProperty({ enum: EmergencyAction })
+  @IsEnum(EmergencyAction)
+  @IsNotEmpty()
+  action: EmergencyAction;
+
+  @ApiProperty({
+    description: 'Immutable request id returned by the emergency action',
+  })
+  @IsString()
+  @IsNotEmpty()
+  @Matches(/^[a-zA-Z0-9_-]{1,64}$/)
+  requestId: string;
+
+  @ApiProperty({
+    description: 'Transaction hash of the finalized canonical event',
+  })
+  @IsString()
+  @Matches(/^0x[a-fA-F0-9]{64}$/)
+  transactionHash: string;
+
+  @ApiProperty({ description: 'Chain id of the finalized canonical event' })
+  @IsInt()
+  @Min(0)
+  ledger: number;
+
+  @ApiPropertyOptional({ description: 'Canonical event id or log index' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^[a-zA-Z0-9_-]{1,64}$/)
+  eventId?: string;
+}
+
 export class EmergencyActionResponse {
   @ApiProperty()
   action: EmergencyAction;
@@ -128,6 +172,18 @@ export class EmergencyActionResponse {
 
   @ApiProperty({ type: [Object] })
   affectedServices: string[];
+
+  @ApiPropertyOptional({
+    description:
+      'Canonical protocol completion state for on-chain-required actions',
+    enum: ['pending'],
+  })
+  canonicalStatus?: 'pending';
+
+  @ApiPropertyOptional({
+    description: 'Id used to bind finalized canonical evidence',
+  })
+  canonicalRequestId?: string;
 }
 
 export class RollbackResultResponse {

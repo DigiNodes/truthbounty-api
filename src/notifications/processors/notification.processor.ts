@@ -14,6 +14,8 @@ import { DeliveryChannel } from '../interfaces/notification.types';
 import { parseDeliveryChannel } from '../delivery/delivery-channel';
 import { UnknownDeliveryChannelError } from '../delivery/delivery-error';
 import { toRenderedNotificationPayload } from '../delivery/rendered-notification-payload';
+import { NotificationDispatchControlGuard } from '../services/notification-dispatch-control.guard';
+import { NotificationStatus } from '../enums/notification-status.enum';
 
 interface NotificationJobData {
   notificationId: string;
@@ -26,7 +28,8 @@ export class NotificationProcessor extends WorkerHost {
   private readonly logger = new Logger(NotificationProcessor.name);
 
   // Canonical channel → provider. Untrusted values are never used as keys.
-  private readonly channelMap: Map<DeliveryChannel, NotificationChannel> = new Map();
+  private readonly channelMap: Map<DeliveryChannel, NotificationChannel> =
+    new Map();
 
   constructor(
     @InjectRepository(Notification)
@@ -35,6 +38,7 @@ export class NotificationProcessor extends WorkerHost {
     private readonly deliveryHistoryRepository: Repository<NotificationDeliveryHistory>,
     // Inject all channel implementations
     private readonly channels: NotificationChannel[],
+    private readonly dispatchControlGuard: NotificationDispatchControlGuard,
   ) {
     super();
     // Build the channel map keyed by the canonical channel identifier.
@@ -86,6 +90,15 @@ export class NotificationProcessor extends WorkerHost {
     if (!notification) {
       this.logger.error(`Notification ${notificationId} not found`);
       throw new Error(`Notification not found: ${notificationId}`);
+    }
+
+    if (!(await this.dispatchControlGuard.isNotificationsEnabled())) {
+      this.logger.warn(
+        `Notification ${notificationId} dismissed: notifications disabled by operational control`,
+      );
+      notification.status = NotificationStatus.DISMISSED;
+      await this.notificationRepository.save(notification);
+      return;
     }
 
     // Create or update delivery history

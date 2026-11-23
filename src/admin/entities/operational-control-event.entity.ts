@@ -36,6 +36,6 @@ export class OperationalControlEvent {
   @Column({ type: 'int' })
   controlVersion: number;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 }

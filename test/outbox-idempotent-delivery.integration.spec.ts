@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { OutboxService } from '../src/outbox/outbox.service';
 import { NotificationProcessor } from '../src/notifications/services/notification.processor';
+import { NotificationDispatchControlGuard } from '../src/notifications/services/notification-dispatch-control.guard';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { RedisService } from '../src/redis/redis.service';
 import { DeliveryHistoryService } from '../src/notifications/services/delivery-history.service';
@@ -11,10 +12,7 @@ import { WebSocketService } from '../src/notifications/services/websocket.servic
 import { EmailService } from '../src/notifications/services/email.service';
 import { WebhookService } from '../src/notifications/services/webhook.service';
 import { getQueueToken } from '@nestjs/bullmq';
-import {
-  DeliveryChannel,
-  DeliveryStatus,
-} from '../src/notifications/interfaces/notification.types';
+import { DeliveryStatus } from '../src/notifications/interfaces/notification.types';
 
 // The real PrismaService pulls in the @libsql native driver adapter, which is not
 // loadable on every developer machine/CI image. This flow is a deterministic
@@ -138,6 +136,12 @@ describe('Outbox & Idempotent Delivery Integration Flow', () => {
         {
           provide: WebhookService,
           useValue: { getUserWebhooks: jest.fn().mockResolvedValue([]) },
+        },
+        {
+          provide: NotificationDispatchControlGuard,
+          useValue: {
+            isNotificationsEnabled: jest.fn().mockResolvedValue(true),
+          },
         },
       ],
     }).compile();

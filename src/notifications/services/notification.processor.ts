@@ -4,6 +4,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Notification } from '../entities/notification.entity';
+import { NotificationDispatchControlGuard } from './notification-dispatch-control.guard';
 import { WebSocketService } from './websocket.service';
 import { EmailService } from './email.service';
 import { WebhookService } from './webhook.service';
@@ -39,6 +40,7 @@ export class NotificationProcessor extends WorkerHost {
     private readonly deliveryHistoryService: DeliveryHistoryService,
     private readonly preferencesService: NotificationPreferencesService,
     private readonly redisService: RedisService,
+    private readonly dispatchControlGuard: NotificationDispatchControlGuard,
   ) {
     super();
   }
@@ -51,7 +53,31 @@ export class NotificationProcessor extends WorkerHost {
       `Processing notification delivery: ${notificationId} via ${channel} (attempt ${job.attemptsMade + 1})`,
     );
 
-    // 1. Fast-path Redis SETNX guard for idempotency
+    let deliveryRecord =
+      await this.deliveryHistoryService.findPendingDeliveryByNotificationAndChannel(
+        notificationId,
+        channel,
+      );
+
+    if (!(await this.dispatchControlGuard.isNotificationsEnabled())) {
+      const error = 'Notifications disabled by operational control';
+      this.logger.warn(
+        `[Dispatch Guard] Suppressed notification ${notificationId} via ${channel}: ${error}`,
+      );
+      if (deliveryRecord) {
+        await this.deliveryHistoryService.updateDeliveryStatus(
+          deliveryRecord.id,
+          DeliveryStatus.PERMANENT_FAILURE,
+          error,
+        );
+      }
+      return {
+        success: true,
+        status: DeliveryStatus.PERMANENT_FAILURE,
+        suppressed: true,
+      };
+    }
+
     if (idempotencyKey) {
       const redisKey = `idempotency:notification:${idempotencyKey}`;
       const acquiredLock = await this.redisService.setnx(redisKey, '1', 86400); // 24h TTL
@@ -66,7 +92,6 @@ export class NotificationProcessor extends WorkerHost {
         };
       }
 
-      // 2. DB fallback guard (in case Redis was evicted or restarted)
       const existingHistory =
         await this.deliveryHistoryService.findByIdempotencyKey(idempotencyKey);
       if (
@@ -83,12 +108,6 @@ export class NotificationProcessor extends WorkerHost {
         };
       }
     }
-
-    let deliveryRecord =
-      await this.deliveryHistoryService.findPendingDeliveryByNotificationAndChannel(
-        notificationId,
-        channel,
-      );
 
     if (!deliveryRecord) {
       // Auto-create delivery record if dispatched via Outbox pattern
@@ -167,7 +186,7 @@ export class NotificationProcessor extends WorkerHost {
         );
       }
 
-      case DeliveryChannel.WEBHOOK:
+      case DeliveryChannel.WEBHOOK: {
         const userWebhooks = await this.webhookService.getUserWebhooks(
           notification.userId,
         );
@@ -197,6 +216,7 @@ export class NotificationProcessor extends WorkerHost {
           status: DeliveryStatus.FAILED,
           error: 'No webhooks configured for user',
         };
+      }
 
       case DeliveryChannel.IN_APP:
         return {
