@@ -28,6 +28,8 @@ import {
 } from './entities/projection-rebuild-run.entity';
 import { CanonicalEvent } from '../events/entities/canonical-event.entity';
 import { ProjectorCursor } from '../common/entities/projector-cursor.entity';
+import { scopedProjectorName } from '../events/canonical-event-scope';
+import { getCanonicalEventScope } from '../events/canonical-event-scope';
 
 /** Default event batch handed to each projector per drain iteration. */
 const DEFAULT_EVENT_BATCH = 500;
@@ -133,6 +135,11 @@ export class ProjectionRebuildService {
    */
   async rebuild(options: ProjectionRebuildOptions): Promise<RebuildCheckpoint> {
     const eventBatchSize = options.eventBatchSize ?? DEFAULT_EVENT_BATCH;
+    if (options.chainId !== getCanonicalEventScope().chainId) {
+      throw new BadRequestException(
+        'Rebuild chainId must match the configured canonical event chain',
+      );
+    }
     this.assertParsableDeploymentBlock(options.deploymentBlock);
     this.assertShadowTarget(options);
 
@@ -168,9 +175,9 @@ export class ProjectionRebuildService {
         );
       } else {
         if (options.resetProjections) {
-          await this.resetProjections();
+          await this.resetProjections(options.chainId);
         }
-        await this.seedCursor(options.deploymentBlock);
+        await this.seedCursor(options.deploymentBlock, options.chainId);
       }
 
       const checkpoint = await this.drain(run, options, eventBatchSize);
@@ -258,7 +265,7 @@ export class ProjectionRebuildService {
       }
 
       const drained = summaries.every((summary) => summary.processed === 0);
-      const cursor = await this.highestCursor();
+      const cursor = await this.highestCursor(options.chainId);
 
       if (cursor) {
         // Fold the newly covered range exactly once. The projectors consume in
@@ -415,13 +422,18 @@ export class ProjectionRebuildService {
    * Only reachable against a shadow target unless `allowInPlace` was set — the
    * guard above runs first.
    */
-  private async resetProjections(): Promise<void> {
+  private async resetProjections(chainId: number): Promise<void> {
     for (const projection of this.registry) {
       await projection.reset();
     }
-    await this.dataSource.getRepository(ProjectorCursor).clear();
+    const cursorRepo = this.dataSource.getRepository(ProjectorCursor);
+    for (const projection of this.registry) {
+      await cursorRepo.delete({
+        projectorName: scopedProjectorName(projection.projectorName, chainId),
+      });
+    }
     this.logger.log(
-      `Reset ${this.registry.length} projections and the shared projector cursor`,
+      `Reset ${this.registry.length} projections and their chain-scoped cursors`,
     );
   }
 
@@ -442,17 +454,14 @@ export class ProjectionRebuildService {
    * the deployment block. Simply updating existing rows would therefore leave a
    * fresh or reset schema scanning the entire chain.
    */
-  private async seedCursor(deploymentBlock: string): Promise<void> {
+  private async seedCursor(deploymentBlock: string, chainId: number): Promise<void> {
     const cursorRepo = this.dataSource.getRepository(ProjectorCursor);
-    // Drop any cursor left behind by a projector that is no longer registered,
-    // so a stale row cannot make the drain think it is already past a block.
-    await cursorRepo.clear();
 
     const preceding = (BigInt(deploymentBlock) - 1n).toString();
     for (const projection of this.registry) {
       await cursorRepo.upsert(
         {
-          projectorName: projection.projectorName,
+          projectorName: scopedProjectorName(projection.projectorName, chainId),
           lastBlockNumber: preceding,
           lastLogIndex: -1,
         },
@@ -469,11 +478,16 @@ export class ProjectionRebuildService {
    * `(blockNumber, logIndex)` pair so a resumed run can pick up from precisely
    * where this one stopped rather than re-scanning the block.
    */
-  private async highestCursor(): Promise<{
+  private async highestCursor(chainId: number): Promise<{
     blockNumber: bigint;
     logIndex: number;
   } | null> {
-    const cursors = await this.dataSource.getRepository(ProjectorCursor).find();
+    const projectorNames = this.registry.map((projection) =>
+      scopedProjectorName(projection.projectorName, chainId),
+    );
+    const cursors = await this.dataSource
+      .getRepository(ProjectorCursor)
+      .findBy(projectorNames.map((projectorName) => ({ projectorName })));
     let highest: { blockNumber: bigint; logIndex: number } | null = null;
     for (const cursor of cursors) {
       const blockNumber = BigInt(cursor.lastBlockNumber);

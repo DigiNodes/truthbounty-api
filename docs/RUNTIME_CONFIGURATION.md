@@ -116,10 +116,15 @@ Legacy `RELEASE_MANIFEST_MAX_AGE_MS` must migrate to `CONTRACT_RELEASE_MAX_AGE_D
 | CONTRACT_RELEASE_DEPLOYMENT_BLOCK | integer 0..9007199254740991 | 0 | yes | DEPLOYMENT_BLOCK |
 | CONTRACT_RELEASE_MAX_AGE_DAYS | integer 1..365 | 90 | no | MANIFEST_MAX_AGE_DAYS |
 | CONTRACT_RELEASE_STRICT | true or false | true | no | - |
-| IPFS_PROVIDER | local / pinata / web3storage | local | no | - |
+| IPFS_PROVIDER | local | local | no | - |
 | IPFS_LOCAL_STORAGE_PATH | non-empty string | data/ipfs | no | - |
-| IPFS_GATEWAY_URL | URL (https:, http:) | (unset) | yes | - |
-| IPFS_API_URL | URL (https:, http:) | (unset) | yes | - |
+| IPFS_GATEWAY_URL | URL (https:, http:) | (unset) | no | - |
+| IPFS_API_URL | URL (https:, http:) | (unset) | no | - |
+
+`IPFS_PROVIDER=local` stores evidence on the local filesystem and emits a valid
+CIDv1 (raw codec, SHA-256). It is development/test-only and is rejected in
+staging/production. Pinata and Web3.Storage are not currently implemented;
+their settings are not accepted as provider choices.
 | SMTP_HOST | hostname or IP address (without scheme, credentials or port) | (unset) | yes | - |
 | SMTP_PORT | integer 1..65535 | 587 | no | - |
 | SMTP_USER | non-empty string | (unset) | yes | - |

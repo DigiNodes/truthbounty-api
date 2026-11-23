@@ -35,7 +35,7 @@ const production = {
   CAPABILITY_TOKEN_SIGNING_KEY: 'a-distinct-capability-key-for-this-unit-test',
   SIWE_DOMAIN: 'truthbounty.internal',
   ALLOWED_ORIGINS: 'https://app.internal',
-  IPFS_PROVIDER: 'pinata',
+  IPFS_PROVIDER: 'local',
   IPFS_GATEWAY_URL: 'https://ipfs.internal',
   IPFS_API_URL: 'https://ipfs.internal/api',
   SMTP_HOST: 'smtp.internal',
@@ -227,7 +227,7 @@ describe('runtime schema', () => {
     expect(() => parseRuntimeConfig({ NODE_ENV: 'staging' })).toThrow(
       'CHAIN_ID: required explicitly',
     );
-    expect(() => parseRuntimeConfig(production)).not.toThrow();
+    expect(() => parseRuntimeConfig(production)).toThrow('IPFS_PROVIDER');
   });
   it.each([
     ['LOCAL_DEV_MODE', 'true'],
@@ -250,6 +250,14 @@ describe('runtime schema', () => {
     expect(() => parseRuntimeConfig({ ...production, [key]: value })).toThrow(
       key,
     );
+  });
+  it('rejects unimplemented IPFS providers during runtime validation', () => {
+    expect(() =>
+      parseRuntimeConfig({ IPFS_PROVIDER: 'pinata' }),
+    ).toThrow('IPFS_PROVIDER');
+    expect(() =>
+      parseRuntimeConfig({ IPFS_PROVIDER: 'web3storage' }),
+    ).toThrow('IPFS_PROVIDER');
   });
   it.each(['1', '137', '10oops'])(
     'rejects wrong or malformed chain %s',
