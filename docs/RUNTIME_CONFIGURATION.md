@@ -227,6 +227,9 @@ their settings are not accepted as provider choices.
 | FCM_SERVER_KEY | non-empty string | (unset) | no | - |
 | WEBHOOK_REQUIRE_HTTPS | true or false | true | no | - |
 | WEBHOOK_TIMEOUT_MS | integer 1..9007199254740991 | 10000 | no | - |
+| WEBHOOK_SECRET_KEYS | JSON object mapping webhook secret key IDs to base64url-encoded 32-byte AES-GCM keys | (unset) | no | - |
+| WEBHOOK_SECRET_ACTIVE_KEY_ID | key ID used to encrypt newly configured webhook secrets | (unset) | no | - |
+| WEBHOOK_SECRET_KEY | base64url-encoded 32-byte AES-GCM key for single-key deployments | (unset) | no | - |
 | AUDIT_HASH_SECRET | non-empty string | (unset) | yes | - |
 | AUDIT_ARCHIVAL_BUCKET | non-empty string | audit-archive | no | - |
 | AUDIT_ARCHIVAL_ENABLED | true or false | false | no | - |
