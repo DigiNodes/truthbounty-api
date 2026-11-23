@@ -296,7 +296,6 @@ model BlockCursor {
   projection      String @default("")
   deploymentBlock BigInt @default(0)
   artifactChecksum String @default("")
-  artifactChecksum String @default("")
   checkpointSource String @default("")
 
   createdAt DateTime @default(now())

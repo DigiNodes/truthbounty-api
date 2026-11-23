@@ -50,7 +50,11 @@ populated first.** Procedure:
    `finalizedBlock` (see `indexer-runbook.md`).
 2. Confirm the log: `SELECT COUNT(*), MIN("blockNumber"), MAX("blockNumber")
    FROM v2_canonical_events WHERE "chainId" = <chainId>;`
-3. Only then run the rebuild.
+3. Configure `CHAIN_ID` for the same Optimism network before running any
+   projector or replay. Incremental projector event reads and cursors are
+   scoped to that configured chain; quarantine replay refuses rows from other
+   chains. Rebuild remains explicitly selected with `--chain-id`.
+4. Only then run the rebuild.
 
 ### Projections in scope
 
