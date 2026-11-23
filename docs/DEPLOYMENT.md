@@ -63,8 +63,8 @@ The canonical environment keys are:
 | `JWT_EXPIRATION` | yes | Access token lifetime |
 | `REFRESH_TOKEN_EXPIRATION` | yes | Refresh token lifetime |
 | `SIWE_DOMAIN` | yes | Domain used for Sign-In with Ethereum |
-| `IPFS_GATEWAY_URL` | yes | IPFS gateway endpoint |
-| `IPFS_API_URL` | yes | IPFS API endpoint |
+| `IPFS_GATEWAY_URL` | no | Optional gateway URL; local storage does not expose a public gateway |
+| `IPFS_API_URL` | no | No remote IPFS adapter is currently supported |
 | `CHAIN_ID` | yes | EVM chain ID; must match the release manifest |
 | `RPC_URL` | yes | JSON-RPC endpoint; redacted in logs |
 | `CONTRACT_RELEASE_MANIFEST_PATH` | yes | Path to the versioned canonical release manifest |
@@ -75,6 +75,10 @@ The canonical environment keys are:
 | `LOCAL_DEV_MODE` | no | Must be `true` to allow an empty indexer configuration |
 | `CONTRACT_RELEASE_MAX_AGE_DAYS` | no | Maximum manifest age in days (default 90) |
 | `LOG_REDACT_KEYS` | no | Extra keys to redact in logs; RPC URLs and secrets are always redacted |
+
+`IPFS_PROVIDER=local` is development/test-only and is rejected in staging and
+production. Pinata and Web3.Storage are not accepted until their adapters are
+implemented; do not configure these modes as if they were supported.
 
 
 ### Contract Release Manifest

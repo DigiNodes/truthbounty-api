@@ -46,10 +46,14 @@
     "audit:export": "ts-node src/scripts/audit-chain.ts export",
     "audit:corruption-report": "ts-node src/scripts/audit-chain.ts corruption-report",
     "projection:rebuild": "ts-node src/scripts/projection-rebuild.ts",
-    "projection:compare": "ts-node src/scripts/projection-compare.ts"
+    "projection:compare": "ts-node src/scripts/projection-compare.ts",
+    "openapi:publish": "node scripts/publish-openapi-artifacts.mjs",
+    "openapi:regenerate": "node scripts/publish-openapi-artifacts.mjs --regenerate",
+    "openapi:check": "node scripts/publish-openapi-artifacts.mjs --check"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",
+    "@prisma/adapter-pg": "^7.10.0",
     "@bull-board/api": "^9.10.1",
     "@bull-board/express": "^9.10.1",
     "@bull-board/nestjs": "^9.10.1",

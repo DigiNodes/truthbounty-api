@@ -3,10 +3,12 @@ import { TokenService } from './token.service';
 // Mock crypto to avoid real randomness in tests (for deterministic output)
 jest.mock('crypto', () => {
   const actual = jest.requireActual('crypto');
+  let seed = 0;
   return {
     ...actual,
     randomBytes: jest.fn((size: number) => {
-      return Buffer.from('a'.repeat(size));
+      seed = (seed % 250) + 1;
+      return Buffer.alloc(size, seed);
     }),
   };
 });
@@ -32,6 +34,7 @@ describe('TokenService', () => {
       set: jest.fn().mockResolvedValue(true),
       get: jest.fn().mockResolvedValue(null),
       del: jest.fn().mockResolvedValue(true),
+      eval: jest.fn().mockResolvedValue(1),
     };
 
     service = new TokenService(jwtService, configService, redisService);
@@ -48,19 +51,23 @@ describe('TokenService', () => {
       const result = await service.generateTokenPair('0xAbCd', 'user-1');
 
       expect(result.accessToken).toBe('mock-access-token');
-      expect(result.refreshToken).toMatch(/^[a-f0-9]+\.[A-Za-z0-9_-]+$/);
+      expect(result.refreshToken).toMatch(/^[a-f0-9]{32}\.[A-Za-z0-9_-]{64}$/);
       expect(result.expiresIn).toBeGreaterThan(0);
 
-      // Should store refresh token in Redis
-      expect(redisService.set).toHaveBeenCalledWith(
-        expect.stringMatching(/^auth:refresh:/),
-        expect.any(String),
-        expect.any(Number),
+      const [sessionKey, rawSession] = redisService.set.mock.calls[0];
+      expect(sessionKey).toMatch(/^auth:session:/);
+      const session = JSON.parse(rawSession);
+      expect(session.tokenHash).toBe(
+        require('crypto')
+          .createHash('sha256')
+          .update(result.refreshToken)
+          .digest('hex'),
       );
-
-      // Should store user refresh list in Redis
-      expect(redisService.set).toHaveBeenCalledWith(
-        'auth:user_refresh:0xabcd',
+      expect(session.tokenHash).not.toBe(result.refreshToken);
+      expect(redisService.eval).toHaveBeenCalledWith(
+        expect.stringContaining('table.insert'),
+        1,
+        'auth:user_sessions:0xabcd',
         expect.any(String),
         expect.any(Number),
       );
@@ -78,14 +85,36 @@ describe('TokenService', () => {
       expect(jwtService.sign).toHaveBeenCalledWith(
         expect.objectContaining({
           sub: 'user-1',
-          address: '0xabcd',
+          address: `0x${'a'.repeat(40)}`,
           userId: 'user-1',
           type: 'access',
           jti: expect.any(String),
         }),
         expect.objectContaining({
           expiresIn: expect.any(Number),
+          audience: 'truthbounty-api',
+          issuer: 'truthbounty-api',
         }),
+      );
+    });
+
+    it('does not return a pair if session metadata cannot be persisted', async () => {
+      redisService.set.mockResolvedValueOnce(false);
+
+      await expect(
+        service.generateTokenPair('0xAbCd', 'user-1'),
+      ).rejects.toThrow('Unable to persist authentication session');
+      expect(redisService.eval).not.toHaveBeenCalled();
+    });
+
+    it('rolls back session metadata when the user index write fails', async () => {
+      redisService.eval.mockRejectedValueOnce(new Error('Redis unavailable'));
+
+      await expect(
+        service.generateTokenPair('0xAbCd', 'user-1'),
+      ).rejects.toThrow('Unable to persist authentication session');
+      expect(redisService.del).toHaveBeenCalledWith(
+        expect.stringMatching(/^auth:session:/),
       );
     });
   });
@@ -97,9 +126,9 @@ describe('TokenService', () => {
       const { createHash } = require('crypto');
 
       // Simulate a stored refresh token
-      const tokenValue = 'aaaa'.repeat(12); // 48 chars base64url
-      const tokenHash = createHash('sha256').update(tokenValue).digest('hex');
       const refreshJti = 'a'.repeat(32); // 16 bytes hex
+      const tokenValue = `${refreshJti}.${Buffer.alloc(48, 1).toString('base64url')}`;
+      const tokenHash = createHash('sha256').update(tokenValue).digest('hex');
 
       redisService.get
         .mockResolvedValueOnce(null) // blacklist check
@@ -114,16 +143,17 @@ describe('TokenService', () => {
           }),
         );
 
-      const result = await service.refreshAccessToken(
-        `${refreshJti}.${tokenValue}`,
-      );
+      const result = await service.refreshAccessToken(tokenValue);
 
       expect(result.accessToken).toBe('mock-access-token');
       expect(result.refreshToken).toBeDefined();
 
       // Old refresh token should be deleted and blacklisted
-      expect(redisService.del).toHaveBeenCalledWith(
-        `auth:refresh:${refreshJti}`,
+      expect(redisService.eval).toHaveBeenCalledWith(
+        expect.stringContaining("redis.call('DEL', KEYS[1])"),
+        1,
+        `auth:session:${refreshJti}`,
+        expect.any(String),
       );
       expect(redisService.set).toHaveBeenCalledWith(
         expect.stringMatching(/^auth:blacklist:/),
@@ -140,9 +170,11 @@ describe('TokenService', () => {
     });
 
     it('should reject a blacklisted refresh token', async () => {
+      const token =
+        `${'a'.repeat(32)}.${Buffer.alloc(48, 1).toString('base64url')}`;
       redisService.get.mockResolvedValueOnce('1'); // blacklist hit
 
-      await expect(service.refreshAccessToken('abc.def')).rejects.toThrow(
+      await expect(service.refreshAccessToken(token)).rejects.toThrow(
         'Invalid credentials',
       );
     });
@@ -152,7 +184,11 @@ describe('TokenService', () => {
         .mockResolvedValueOnce(null) // not blacklisted
         .mockResolvedValueOnce(null); // not found in storage
 
-      await expect(service.refreshAccessToken('abc.def')).rejects.toThrow(
+      await expect(
+        service.refreshAccessToken(
+          `${'a'.repeat(32)}.${Buffer.alloc(48, 1).toString('base64url')}`,
+        ),
+      ).rejects.toThrow(
         'Invalid credentials',
       );
     });
@@ -203,10 +239,12 @@ describe('TokenService', () => {
 
       const result = await service.validateAccessToken({
         sub: 'user-1',
-        address: '0xabcd',
+        address: `0x${'a'.repeat(40)}`,
         userId: 'user-1',
         jti: 'test-jti',
         type: 'access',
+        aud: 'truthbounty-api',
+        iss: 'truthbounty-api',
       });
 
       expect(result).toBe(true);
@@ -217,10 +255,12 @@ describe('TokenService', () => {
 
       const result = await service.validateAccessToken({
         sub: 'user-1',
-        address: '0xabcd',
+        address: `0x${'a'.repeat(40)}`,
         userId: 'user-1',
         jti: 'test-jti',
         type: 'access',
+        aud: 'truthbounty-api',
+        iss: 'truthbounty-api',
       });
 
       expect(result).toBe(false);
@@ -231,10 +271,12 @@ describe('TokenService', () => {
 
       const result = await service.validateAccessToken({
         sub: 'user-1',
-        address: '0xabcd',
+        address: `0x${'a'.repeat(40)}`,
         userId: 'user-1',
         jti: 'test-jti',
         type: 'refresh',
+        aud: 'truthbounty-api',
+        iss: 'truthbounty-api',
       });
 
       expect(result).toBe(false);
@@ -245,10 +287,20 @@ describe('TokenService', () => {
 
   describe('logout', () => {
     it('should blacklist access token and revoke refresh tokens', async () => {
-      // revokeAllUserTokens calls get() to fetch user's refresh token list
-      redisService.get.mockResolvedValueOnce(
-        JSON.stringify(['refresh-jti-1', 'refresh-jti-2']),
-      );
+      redisService.get
+        .mockResolvedValueOnce(JSON.stringify(['refresh-jti-1', 'refresh-jti-2']))
+        .mockResolvedValueOnce(
+          JSON.stringify({
+            jti: 'refresh-jti-1',
+            accessJti: 'access-jti-1',
+          }),
+        )
+        .mockResolvedValueOnce(
+          JSON.stringify({
+            jti: 'refresh-jti-2',
+            accessJti: 'access-jti-2',
+          }),
+        );
 
       await service.logout({
         sub: 'user-1',
@@ -268,14 +320,16 @@ describe('TokenService', () => {
 
       // Refresh tokens revoked
       expect(redisService.del).toHaveBeenCalledWith(
-        'auth:refresh:refresh-jti-1',
+        'auth:session:refresh-jti-1',
       );
       expect(redisService.del).toHaveBeenCalledWith(
-        'auth:refresh:refresh-jti-2',
+        'auth:session:refresh-jti-2',
       );
 
       // User refresh list deleted
-      expect(redisService.del).toHaveBeenCalledWith('auth:user_refresh:0xabcd');
+      expect(redisService.del).toHaveBeenCalledWith(
+        'auth:user_sessions:0xabcd',
+      );
     });
   });
 
@@ -283,16 +337,24 @@ describe('TokenService', () => {
 
   describe('revokeAllUserTokens', () => {
     it('should revoke all refresh tokens for a user', async () => {
-      redisService.get.mockResolvedValueOnce(
-        JSON.stringify(['jti-1', 'jti-2', 'jti-3']),
-      );
+      redisService.get
+        .mockResolvedValueOnce(JSON.stringify(['jti-1', 'jti-2', 'jti-3']))
+        .mockResolvedValueOnce(
+          JSON.stringify({ jti: 'jti-1', accessJti: 'access-1' }),
+        )
+        .mockResolvedValueOnce(
+          JSON.stringify({ jti: 'jti-2', accessJti: 'access-2' }),
+        )
+        .mockResolvedValueOnce(
+          JSON.stringify({ jti: 'jti-3', accessJti: 'access-3' }),
+        );
 
       await service.revokeAllUserTokens('0xAbCd');
 
       // All refresh tokens deleted
-      expect(redisService.del).toHaveBeenCalledWith('auth:refresh:jti-1');
-      expect(redisService.del).toHaveBeenCalledWith('auth:refresh:jti-2');
-      expect(redisService.del).toHaveBeenCalledWith('auth:refresh:jti-3');
+      expect(redisService.del).toHaveBeenCalledWith('auth:session:jti-1');
+      expect(redisService.del).toHaveBeenCalledWith('auth:session:jti-2');
+      expect(redisService.del).toHaveBeenCalledWith('auth:session:jti-3');
 
       // Blacklisted
       expect(redisService.set).toHaveBeenCalledWith(
@@ -302,7 +364,9 @@ describe('TokenService', () => {
       );
 
       // User list deleted
-      expect(redisService.del).toHaveBeenCalledWith('auth:user_refresh:0xabcd');
+      expect(redisService.del).toHaveBeenCalledWith(
+        'auth:user_sessions:0xabcd',
+      );
     });
 
     it('should handle no existing refresh tokens', async () => {
@@ -310,8 +374,7 @@ describe('TokenService', () => {
 
       await service.revokeAllUserTokens('0xAbCd');
 
-      // Should still clean up the user list key
-      expect(redisService.del).toHaveBeenCalledWith('auth:user_refresh:0xabcd');
+      expect(redisService.del).not.toHaveBeenCalled();
     });
   });
 
@@ -328,6 +391,92 @@ describe('TokenService', () => {
       redisService.get.mockResolvedValueOnce(null);
       const result = await service.isBlacklisted('some-jti');
       expect(result).toBe(false);
+    });
+
+    describe('capability token validation', () => {
+      it('consumes an exact scoped capability only through its dedicated validator', async () => {
+        const binding = {
+          audience: 'claims-service',
+          subject: '0xActor',
+          capability: 'claim:update',
+          resource: 'claim:123',
+          chain: '10',
+          release: 'release-1',
+          deployment: 'deployment-1',
+          artifact: 'artifact-1',
+        };
+        const issued = await service.issueCapabilityToken(binding);
+        const payload = {
+          aud: binding.audience,
+          sub: binding.subject.toLowerCase(),
+          capability: binding.capability,
+          resource: binding.resource,
+          chain: binding.chain,
+          release: binding.release,
+          deployment: binding.deployment,
+          artifact: binding.artifact,
+          nonce: issued.nonce,
+          type: 'capability' as const,
+          iat: Math.floor(Date.now() / 1000),
+          exp: Math.floor(Date.now() / 1000) + issued.expiresIn,
+        };
+        jwtService.verify.mockReturnValueOnce(payload);
+        redisService.get
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce(
+            JSON.stringify({
+              aud: payload.aud,
+              sub: payload.sub,
+              capability: payload.capability,
+              resource: payload.resource,
+              chain: payload.chain,
+              release: payload.release,
+              deployment: payload.deployment,
+              artifact: payload.artifact,
+            }),
+          );
+
+        await expect(
+          service.validateAndConsumeCapabilityToken(issued.token, binding),
+        ).resolves.toEqual(payload);
+        expect(redisService.eval).toHaveBeenCalledWith(
+          expect.stringContaining("redis.call('DEL', KEYS[1])"),
+          1,
+          `auth:capability_nonce:${issued.nonce}`,
+          expect.any(String),
+        );
+      });
+
+      it('rejects a capability with any mismatched binding', async () => {
+        jwtService.verify.mockReturnValueOnce({
+          aud: 'claims-service',
+          sub: '0xactor',
+          capability: 'claim:update',
+          resource: 'claim:other',
+          nonce: 'nonce',
+          chain: '10',
+          release: 'release-1',
+          deployment: 'deployment-1',
+          artifact: 'artifact-1',
+          type: 'capability',
+          iat: Math.floor(Date.now() / 1000),
+          exp: Math.floor(Date.now() / 1000) + 60,
+        });
+
+        await expect(
+          service.validateAndConsumeCapabilityToken('capability-jwt', {
+            audience: 'claims-service',
+            subject: '0xActor',
+            capability: 'claim:update',
+            resource: 'claim:123',
+            chain: '10',
+            release: 'release-1',
+            deployment: 'deployment-1',
+            artifact: 'artifact-1',
+          }),
+        ).rejects.toThrow('Invalid credentials');
+        expect(redisService.get).not.toHaveBeenCalled();
+      });
     });
   });
 });
