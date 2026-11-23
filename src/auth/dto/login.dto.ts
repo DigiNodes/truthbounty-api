@@ -19,7 +19,8 @@ export class LoginDto {
   signature: string;
 
   @ApiProperty({
-    description: 'Original message that was signed',
+    description:
+      'Original SIWE (EIP-4361) or backward-compatible legacy challenge message that was signed',
     example: 'Sign in to TruthBounty: abc123...',
   })
   @IsString()

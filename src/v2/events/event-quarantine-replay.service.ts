@@ -19,6 +19,7 @@ import { ArtifactRegistryService } from './artifact-registry.service';
 import { CanonicalEventsService } from './canonical-events.service';
 import { EventQuarantineService } from './event-quarantine.service';
 import { QuarantineStatus } from './entities/event-quarantine.entity';
+import { getCanonicalEventScope } from './canonical-event-scope';
 
 export interface ReplayQuarantineInput {
   actorId: string;
@@ -70,6 +71,14 @@ export class EventQuarantineReplayService {
         quarantineId: row.id,
         artifactVersion: row.artifactVersion ?? '',
       };
+    }
+
+    if (row.chainId !== getCanonicalEventScope().chainId) {
+      await this.auditReject(id, input, 'chain_scope_mismatch');
+      throw new ConflictException({
+        errorCode: 'CHAIN_SCOPE_MISMATCH',
+        message: 'The quarantined event is outside the configured chain scope.',
+      });
     }
 
     const raw = row.rawLog as {
@@ -139,7 +148,7 @@ export class EventQuarantineReplayService {
       });
     }
 
-    await this.rewindProjectors(row.blockNumber, row.logIndex);
+    await this.rewindProjectors(row.chainId, row.blockNumber, row.logIndex);
 
     const retentionDays = this.retentionDays();
     await this.quarantine.markReplayed(id, {
@@ -195,14 +204,17 @@ export class EventQuarantineReplayService {
    * back to just before it, so the event is re-consumed (idempotently).
    */
   private async rewindProjectors(
+    chainId: number,
     blockNumber: string,
     logIndex: number,
   ): Promise<void> {
     const repo = this.dataSource.getRepository(ProjectorCursor);
     const cursors = await repo.find();
     const targetBlock = BigInt(blockNumber);
+    const scopeSuffix = `:${chainId}`;
 
     for (const cursor of cursors) {
+      if (!cursor.projectorName.endsWith(scopeSuffix)) continue;
       const cursorBlock = BigInt(cursor.lastBlockNumber);
       const passed =
         cursorBlock > targetBlock ||
