@@ -6,10 +6,12 @@ import crypto from 'crypto';
 import { Readable, Transform } from 'stream';
 import { CID } from 'multiformats/cid';
 import { Digest } from 'multiformats/hashes/digest';
+import {
+  EVIDENCE_CID_RAW_CODEC,
+  EVIDENCE_CID_SHA256_MULTIHASH_CODE,
+} from '../storage/evidence-cid.constants';
 import { IpfsProvider, IpfsAddResult, IPFS_PROVIDER } from './interfaces';
 import { IpfsConfigService } from './ipfs.config';
-
-const RAW_CODEC = 0x55;
 
 export class LocalFsIpfsProvider implements IpfsProvider {
   constructor(private storagePath: string) {}
@@ -47,8 +49,11 @@ export class LocalFsIpfsProvider implements IpfsProvider {
 
       const digest = hash.digest();
       const cid = CID.createV1(
-        RAW_CODEC,
-        Digest.create(0x12, new Uint8Array(digest)),
+        EVIDENCE_CID_RAW_CODEC,
+        Digest.create(
+          EVIDENCE_CID_SHA256_MULTIHASH_CODE,
+          new Uint8Array(digest),
+        ),
       ).toString();
       const finalPath = path.join(this.storagePath, digest.toString('hex'));
 
