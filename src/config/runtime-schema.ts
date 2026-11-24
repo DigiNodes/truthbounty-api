@@ -441,6 +441,19 @@ export const runtimeSchema = {
   FCM_SERVER_KEY: secret(),
   WEBHOOK_REQUIRE_HTTPS: boolean(true),
   WEBHOOK_TIMEOUT_MS: integer(10000),
+  WEBHOOK_SECRET_KEYS: {
+    ...secret(),
+    description:
+      'JSON object mapping webhook secret key IDs to base64url-encoded 32-byte AES-GCM keys',
+  },
+  WEBHOOK_SECRET_ACTIVE_KEY_ID: {
+    ...text(),
+    description: 'key ID used to encrypt newly configured webhook secrets',
+  },
+  WEBHOOK_SECRET_KEY: {
+    ...secret(),
+    description: 'base64url-encoded 32-byte AES-GCM key for single-key deployments',
+  },
   AUDIT_HASH_SECRET: secret(true),
   AUDIT_ARCHIVAL_BUCKET: text({ default: 'audit-archive' }),
   AUDIT_ARCHIVAL_ENABLED: boolean(false),

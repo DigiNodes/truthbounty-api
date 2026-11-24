@@ -229,6 +229,21 @@ model Message {
   @@index([conversationId])
 }
 
+model AiMessageOperation {
+  id             String   @id @default(uuid())
+  userId         String
+  conversationId  String
+  idempotencyKey String
+  requestHash    String
+  status         String   @default("PENDING")
+  response       Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([userId, conversationId, idempotencyKey])
+  @@index([status])
+}
+
 model ContextDocument {
   id        String   @id @default(uuid())
   title     String

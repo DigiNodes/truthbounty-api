@@ -17,6 +17,26 @@ import {
 const QUIET_HOURS_TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
 /**
+ * Fields ordinary preference updates may change.
+ *
+ * `webhookConfig`, `userId`, `id`, `unsubscribeToken` and timestamps are
+ * deliberately excluded: webhook secrets are write-only and handled by
+ * WebhookPreferencesService, and the remaining fields are server-owned
+ * (PREWAVE-BE-149/#849).
+ */
+const UPDATABLE_PREFERENCE_FIELDS = [
+  'channels',
+  'categorySubscriptions',
+  'quietHours',
+  'digestPreferences',
+  'language',
+  'maxNotificationsPerDay',
+  'maxEmailsPerDay',
+  'emailAddress',
+  'pushConfig',
+] as const;
+
+/**
  * EMAIL channels eligible for the email-specific cap.
  */
 const EMAIL_CHANNELS: ReadonlySet<DeliveryChannel> = new Set([DeliveryChannel.EMAIL]);
@@ -456,7 +476,11 @@ export class PreferenceEnforcer {
   }
 
   /**
-   * Update user preferences
+   * Update user preferences using an explicit allow-list.
+   *
+   * Never assigns caller-provided `webhookConfig`: a signing secret can only
+   * be changed through the dedicated webhook configuration service, and
+   * unrelated updates preserve the existing encrypted secret.
    */
   async updatePreferences(
     userId: string,
