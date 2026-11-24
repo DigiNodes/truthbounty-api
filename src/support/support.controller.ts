@@ -34,7 +34,7 @@ export class SupportController {
       'Accepts minimal support data while rejecting secrets, private keys, and non-public evidence before storage.',
   })
   @ApiResponse({ status: 201, description: 'Support request accepted' })
-  createSupportRequest(@Body() dto: CreateSupportRequestDto) {
+  async createSupportRequest(@Body() dto: CreateSupportRequestDto) {
     return this.supportService.createSupportRequest(dto);
   }
 
@@ -47,7 +47,7 @@ export class SupportController {
   })
   @ApiResponse({ status: 401, description: 'Authentication required' })
   @ApiResponse({ status: 403, description: 'Support staff role required' })
-  listSupportRequests(@Request() request) {
+  async listSupportRequests(@Request() request) {
     return this.supportService.listSupportRequests(request.user);
   }
 
@@ -60,7 +60,7 @@ export class SupportController {
   })
   @ApiResponse({ status: 401, description: 'Authentication required' })
   @ApiResponse({ status: 403, description: 'Support staff role required' })
-  getSupportRequest(@Param('id') id: string, @Request() request) {
+  async getSupportRequest(@Param('id') id: string, @Request() request) {
     return this.supportService.getSupportRequest(id, request.user);
   }
 
@@ -71,7 +71,10 @@ export class SupportController {
   @ApiOperation({ summary: 'Delete a support request (support staff only)' })
   @ApiResponse({ status: 401, description: 'Authentication required' })
   @ApiResponse({ status: 403, description: 'Support staff role required' })
-  deleteSupportRequest(@Param('id') id: string, @Request() request) {
-    return { deleted: this.supportService.deleteSupportRequest(id, request.user), id };
+  async deleteSupportRequest(@Param('id') id: string, @Request() request) {
+    return {
+      deleted: await this.supportService.deleteSupportRequest(id, request.user),
+      id,
+    };
   }
 }
