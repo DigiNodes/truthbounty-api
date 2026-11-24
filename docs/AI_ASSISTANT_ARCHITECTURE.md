@@ -40,7 +40,7 @@ TypeORM entities, matching the repo's dominant storage pattern (most feature mod
 
 `AiProvider` (`providers/ai-provider.interface.ts`) is a minimal contract — `chat()`, `stream()`, `isAvailable()` — implemented by:
 
-- **`MockProvider`** — deterministic, zero-network. Default provider (`AI_PROVIDER=mock`) so the app and its full test suite never require a real AI API key.
+- **`MockProvider`** — deterministic, zero-network. Allowed only in local/test or explicitly authorized development tooling; staging/production reject `mock` and never substitute mock output for a real model response.
 - **`OpenAiProvider`** — wraps the `openai` SDK, reading both `OPENAI_API_KEY` and `OPENAI_BASE_URL`, so it also works unmodified against local OpenAI-compatible servers (Ollama, vLLM, LM Studio).
 
 `AiProviderRouterService` is the *sole* consumer of provider implementations — nothing else in the module calls a provider directly. It resolves the configured default (or an admin-only per-request override), checks a Redis-cached availability probe, and falls back to the other provider if the primary is unavailable or its call throws. Fallback responses carry `meta.fallback: true` in the response envelope.
