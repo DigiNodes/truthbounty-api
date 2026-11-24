@@ -11,8 +11,12 @@ import { AuthModule } from '../auth/auth.module';
 import { OutboxModule } from '../outbox/outbox.module';
 import { NotificationsController } from './controllers/notifications.controller';
 import { InternalNotificationController } from './controllers/internal-notification.controller';
+import { PreferencesController } from './controllers/preferences.controller';
 import { NotificationsService } from './services/notifications.service';
 import { NotificationPreferencesService } from './services/notification-preferences.service';
+import { PreferenceEnforcer } from './services/preference-enforcer.service';
+import { WebhookPreferencesService } from './services/webhook-preferences.service';
+import { WebhookSecretCipher } from './services/webhook-secret-cipher.service';
 import { DeliveryHistoryService } from './services/delivery-history.service';
 import { WebSocketService } from './services/websocket.service';
 import { NotificationGateway } from './websockets/websocket.gateway';
@@ -56,10 +60,17 @@ import { DeliveryHistory } from './entities/delivery-history.entity';
     AuthModule,
     OutboxModule,
   ],
-  controllers: [NotificationsController, InternalNotificationController],
+  controllers: [
+    NotificationsController,
+    InternalNotificationController,
+    PreferencesController,
+  ],
   providers: [
     NotificationsService,
     NotificationPreferencesService,
+    PreferenceEnforcer,
+    WebhookPreferencesService,
+    WebhookSecretCipher,
     DeliveryHistoryService,
     WebSocketService,
     EmailService,
@@ -70,6 +81,9 @@ import { DeliveryHistory } from './entities/delivery-history.entity';
   exports: [
     NotificationsService,
     NotificationPreferencesService,
+    PreferenceEnforcer,
+    WebhookPreferencesService,
+    WebhookSecretCipher,
     DeliveryHistoryService,
     NotificationGateway,
   ],
