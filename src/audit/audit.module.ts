@@ -12,6 +12,7 @@ import { AuditMetricsService } from './services/audit-metrics.service';
 import { AuditController } from './controllers/audit-log.controller';
 import { AuditLoggingInterceptor } from './interceptors/audit-logging.interceptor';
 import { AuditLogProcessor } from './processors/audit-log.processor';
+import { AuditStreamModule } from './stream/audit-stream.module';
 
 @Global()
 @Module({
@@ -27,6 +28,7 @@ import { AuditLogProcessor } from './processors/audit-log.processor';
         removeOnFail: false,
       },
     }),
+    AuditStreamModule,
   ],
   providers: [
     AuditTrailService,
@@ -46,6 +48,7 @@ import { AuditLogProcessor } from './processors/audit-log.processor';
     ComplianceService,
     SecurityMonitoringService,
     AuditMetricsService,
+    AuditStreamModule,
   ],
 })
 export class AuditModule {}
