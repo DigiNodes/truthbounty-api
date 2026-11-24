@@ -347,6 +347,14 @@ export const runtimeSchema = {
   AI_CONVO_WINDOW_CACHE_TTL: integer(120),
   AI_PROVIDER_AVAILABILITY_CACHE_TTL: integer(30),
   AI_REDACT_BEFORE_STORE: boolean(true),
+  ANALYTICS_CONSENT_SUBJECT_KEY: {
+    ...secret(),
+    description: 'secret of at least 32 characters',
+    parse(value: string) {
+      if (value.trim().length < 32) throw new Error('short secret');
+      return value;
+    },
+  },
   LOG_LEVEL: choice(
     ['trace', 'debug', 'info', 'warn', 'error', 'fatal', 'silent'],
     'info',

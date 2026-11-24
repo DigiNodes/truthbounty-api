@@ -185,6 +185,11 @@ model AnalyticsEvent {
   @@index([userId])
 }
 
+// analytics_consent_current and analytics_consent_history are managed by
+// parameterized Prisma raw queries and the corresponding Prisma SQL migration.
+// They intentionally remain outside the generated client to avoid exposing
+// pseudonymous subject keys through general-purpose generated CRUD methods.
+
 model MetricAggregate {
   id         String   @id @default(uuid())
   metricKey  String // e.g., "total_claims", "active_verifiers"

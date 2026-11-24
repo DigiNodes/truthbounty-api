@@ -147,6 +147,7 @@ their settings are not accepted as provider choices.
 | AI_CONVO_WINDOW_CACHE_TTL | integer 1..9007199254740991 | 120 | no | - |
 | AI_PROVIDER_AVAILABILITY_CACHE_TTL | integer 1..9007199254740991 | 30 | no | - |
 | AI_REDACT_BEFORE_STORE | true or false | true | no | - |
+| ANALYTICS_CONSENT_SUBJECT_KEY | secret of at least 32 characters | (unset) | no | - |
 | LOG_LEVEL | trace / debug / info / warn / error / fatal / silent | info | no | - |
 | METRICS_TOKEN | non-empty string | (unset) | yes | - |
 | METRICS_ENABLED | true or false | true | no | - |

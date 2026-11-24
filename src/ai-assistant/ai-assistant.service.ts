@@ -5,6 +5,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { AnalyticsConsentService } from '../analytics/analytics-consent.service';
 import { LlmProviderService } from './llm-provider.service';
 import { RagService } from './rag.service';
 import { CreateConversationDto, SendMessageDto } from './dto/ai-assistant.dto';
@@ -17,12 +18,13 @@ export class AiAssistantService {
     private prisma: PrismaService,
     private llmProvider: LlmProviderService,
     private ragService: RagService,
+    private readonly analyticsConsent: AnalyticsConsentService,
   ) {}
 
   async createConversation(userId: string, dto: CreateConversationDto) {
     return this.prisma.conversation.create({
       data: {
-        userId,
+        userId: this.analyticsConsent.getSubjectKey(userId),
         title: dto.title || 'New Conversation',
       },
     });
@@ -136,18 +138,26 @@ ${context}
       data: { updatedAt: new Date() },
     });
 
-    // 8. Track Usage Metrics
-    await this.prisma.aiUsageMetric.create({
-      data: {
-        userId,
-        provider: llmResponse.provider,
-        model: llmResponse.model,
-        promptTokens: llmResponse.usage?.prompt_tokens || 0,
-        completionTokens: llmResponse.usage?.completion_tokens || 0,
-        totalTokens: llmResponse.usage?.total_tokens || 0,
-        latencyMs,
-      },
-    });
+    try {
+      await this.analyticsConsent.collectIfValid(userId, (tx) =>
+        tx.aiUsageMetric.create({
+          data: {
+            userId,
+            provider: llmResponse.provider,
+            model: llmResponse.model,
+            promptTokens: llmResponse.usage?.prompt_tokens || 0,
+            completionTokens: llmResponse.usage?.completion_tokens || 0,
+            totalTokens: llmResponse.usage?.total_tokens || 0,
+            latencyMs,
+          },
+        }),
+      );
+    } catch (error) {
+      this.logger.error(
+        'Optional AI usage metric was skipped because consent or persistence could not be verified',
+        error instanceof Error ? error.name : 'Unknown error',
+      );
+    }
 
     // Standardized API response
     return {
