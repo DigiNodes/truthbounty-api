@@ -22,6 +22,9 @@ import { ExportCursorService } from './services/export-cursor.service';
 import { AuditController } from './controllers/audit-log.controller';
 import { AuditLoggingInterceptor } from './interceptors/audit-logging.interceptor';
 import { AuditLogProcessor } from './processors/audit-log.processor';
+
+import { AuditStreamModule } from './stream/audit-stream.module';
+
 import { AuditExportCapabilityGuard } from './guards/audit-export-capability.guard';
 
 @Global()
@@ -45,6 +48,7 @@ import { AuditExportCapabilityGuard } from './guards/audit-export-capability.gua
         removeOnFail: false,
       },
     }),
+    AuditStreamModule,
   ],
   providers: [
     AuditTrailService,
@@ -69,6 +73,8 @@ import { AuditExportCapabilityGuard } from './guards/audit-export-capability.gua
     AuditMetricsService,
     AdminAuditService,
     ExportCursorService,
+    AuditStreamModule,
+
   ],
 })
 export class AuditModule {}
