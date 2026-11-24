@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { BaseDeliveryService, DeliveryResult } from './base-delivery.service';
-import { DeliveryChannel } from '../../enums/notification-type.enum';
-import { NotificationDelivery } from '../../entities/notification-delivery.entity';
+import { DeliveryChannel } from '../../interfaces/notification.types';
+import type { RenderedNotificationPayload } from '../../delivery/rendered-notification-payload';
 
 @Injectable()
 export class EmailDeliveryService extends BaseDeliveryService {
@@ -28,37 +28,43 @@ export class EmailDeliveryService extends BaseDeliveryService {
     };
   }
 
-  async deliver(delivery: NotificationDelivery): Promise<DeliveryResult> {
-    const destination = delivery.destination;
+  deliver(payload: RenderedNotificationPayload): Promise<DeliveryResult> {
+    const destination = this.resolveDestination(payload);
     if (!destination) {
-      return { success: false, failureReason: 'No email destination configured' };
+      return Promise.resolve({
+        success: false,
+        failureReason: 'No email destination configured',
+      });
     }
 
     try {
-      this.logger.debug(`Email delivery to ${destination} for notification ${delivery.notificationId}`);
+      this.logger.debug(
+        `Email delivery for notification ${payload.notificationId ?? 'unknown'}`,
+      );
 
-      const smtpConfigured = this.transportConfig.host !== 'localhost' || this.transportConfig.user;
+      const smtpConfigured =
+        this.transportConfig.host !== 'localhost' ||
+        Boolean(this.transportConfig.user);
       if (!smtpConfigured) {
-        this.logger.warn('SMTP not configured, logging email instead');
-        this.logger.log(`EMAIL TO: ${destination} | Subject: ${delivery.responseData?.subject || 'Notification'} | Body: ${delivery.responseData?.body || ''}`);
-        return {
+        // Placeholder transport: never log the destination or rendered body.
+        this.logger.warn('SMTP not configured, recording email delivery');
+        return Promise.resolve({
           success: true,
           deliveredAt: new Date(),
-          responseData: { logged: true, destination },
-        };
+          responseData: { logged: true },
+        });
       }
 
-      return {
+      return Promise.resolve({
         success: true,
         deliveredAt: new Date(),
-        responseData: { destination },
-      };
+        responseData: { provider: this.transportConfig.host },
+      });
     } catch (error) {
-      this.logger.error(`Email delivery failed to ${destination}: ${error.message}`);
-      return {
-        success: false,
-        failureReason: error.message,
-      };
+      this.logger.error(
+        `Email delivery failed for notification ${payload.notificationId ?? 'unknown'}`,
+      );
+      return Promise.resolve(this.failure(error));
     }
   }
 }

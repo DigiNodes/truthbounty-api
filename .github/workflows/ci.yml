@@ -1,5 +1,17 @@
 name: Backend CI Security and Quality Gates
 
+# ── Fork workflow authorization ──────────────────────────────────────────────
+# PRs from forks run this file on the safe `pull_request` event with a
+# read-only GITHUB_TOKEN: no repository write access and no secrets are ever
+# exposed to unreviewed head commits. Every gate below executes against the
+# proposed head commit; the final `merge-gate` aggregates them into one status
+# that branch protection may require. See docs/CI_APPROVAL.md for details.
+#
+# All first-party and third-party actions are pinned to immutable commit SHAs
+# (never a moving `@main`/`@master` tag). No required job uses
+# `continue-on-error: true`, and nothing under a required gate is skippable
+# based on the branch that opened the PR.
+
 on:
   push:
     branches:
@@ -8,25 +20,47 @@ on:
     branches:
       - main
 
+concurrency:
+  group: ci-api-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
+  security-events: write
 
 jobs:
   build-and-test:
-    name: Build, Lint, and Test
+    name: Build, TypeCheck, Lint, and Test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: '20'
+          node-version: '22.22.3'
           cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Generate prerequisites
+        run: npm run generate:prerequisites
+
+      - name: Verify toolchain and compiler parity
+        run: npm run parity:check
+
+      - name: Runtime configuration documentation drift
+        run: npm run config:check
+
+      - name: Runtime configuration regression tests
+        run: npm test -- --runInBand src/config/runtime-config.spec.ts src/config/runtime-drift.spec.ts src/config/runtime-nest.spec.ts
+
+      - name: Type check
+        run: npm run type-check
 
       - name: Check generated artifact drift
         run: |
@@ -37,15 +71,22 @@ jobs:
             exit 1
           fi
 
+      - name: Verify published OpenAPI artifact checksums
+        run: npm run openapi:check
+
       - name: Run linter without modifying the checkout
         run: npx eslint "{src,apps,libs,test}/**/*.ts"
 
       - name: Run unit and integration tests
+        continue-on-error: false
         run: npm run test:cov
 
-      - name: Run migration tests
+      - name: Run migration validation
+        continue-on-error: false
         run: |
-          # Simulates a fresh db migration and rollback
+          # Simulates a fresh db migration and rollback from the committed
+          # migrations alone; any drift between schema and migrations fails the
+          # gate instead of deploying.
           npx prisma migrate reset --force
           npx prisma migrate deploy
 
@@ -57,69 +98,211 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
 
-      - name: Dependency audit
-        run: npm audit --audit-level=high
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '22.22.3'
+          cache: 'npm'
+
+      # Installed from the lockfile so the audit is evaluated against the exact
+      # tree that ships, and so this job installs deterministically like the rest.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test security evidence generation
+        run: npm run test:security-evidence
+
+      - name: Build image for security evidence
+        run: |
+          metadata_file="$(mktemp)"
+          trap 'rm -f "$metadata_file"' EXIT
+          docker buildx build --load --metadata-file "$metadata_file" \
+            -t truthbounty-api:security-evidence .
+          image_digest="$(jq -er '."containerimage.digest" | select(test("^sha256:[a-f0-9]{64}$"))' "$metadata_file")"
+          if [[ ! "$image_digest" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo "::error::Could not determine the reviewed container image digest."
+            exit 1
+          fi
+          echo "CONTAINER_IMAGE_DIGEST=$image_digest" >> "$GITHUB_ENV"
+
+      # SBOM and audit execute in the same script, but neither result masks the
+      # other. The script exits non-zero for audit findings only after evidence
+      # and checksums have been written.
+      - name: Generate SBOM and run dependency audit
+        run: npm run security:dependencies
+
+      - name: Upload immutable dependency security evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dependency-security-evidence-${{ github.sha }}
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 90
 
       - name: Secret scanning (TruffleHog)
-        uses: trufflesecurity/trufflehog@main
+        if: always()
+        uses: trufflesecurity/trufflehog@4dd8831c5f12599465d4d45c3c447b4018a34c85 # v3.97.9
         with:
           path: ./
           base: ${{ github.event.repository.default_branch }}
           head: HEAD
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4
+        if: always()
+        uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
         with:
-          languages: javascript, typescript
+          languages: javascript-typescript
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v4
+        if: always()
+        uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
         with:
           category: "/language:javascript-typescript"
 
   container-scan:
     name: Container Vulnerability Scan
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '22.22.3'
 
       - name: Build Docker image
-        run: docker build -t truthbounty-api:test .
+        continue-on-error: false
+        run: |
+          metadata_file="$(mktemp)"
+          trap 'rm -f "$metadata_file"' EXIT
+          docker buildx build --load --metadata-file "$metadata_file" \
+            -t truthbounty-api:test .
+          image_digest="$(jq -er '."containerimage.digest" | select(test("^sha256:[a-f0-9]{64}$"))' "$metadata_file")"
+          echo "CONTAINER_IMAGE_DIGEST=$image_digest" >> "$GITHUB_ENV"
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
           image-ref: 'truthbounty-api:test'
-          format: 'table'
+          format: 'json'
+          output: 'trivy-results.json'
           exit-code: '1'
           ignore-unfixed: true
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'
 
-  sensitive-changes-check:
+      - name: Create container scan attestation
+        if: always()
+        run: |
+          node_version="$(node --version)"
+          npm_version="$(npm --version)"
+          lockfile_sha256="$(sha256sum package-lock.json | cut -d ' ' -f 1)"
+          report_sha256="$(sha256sum trivy-results.json | cut -d ' ' -f 1)"
+          jq -n \
+            --arg commit "$GITHUB_SHA" \
+            --arg lockfileSha256 "$lockfile_sha256" \
+            --arg nodeVersion "$node_version" \
+            --arg npmVersion "$npm_version" \
+            --arg containerImageDigest "$CONTAINER_IMAGE_DIGEST" \
+            --arg trivyReportSha256 "$report_sha256" \
+            '{commit:$commit, lockfileSha256:$lockfileSha256, nodeVersion:$nodeVersion, npmVersion:$npmVersion, containerImageDigest:$containerImageDigest, trivyReportSha256:$trivyReportSha256}' \
+            > container-scan-metadata.json
+
+      - name: Upload immutable container scan evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: container-scan-evidence-${{ github.sha }}
+          path: |
+            trivy-results.json
+            container-scan-metadata.json
+          if-no-files-found: error
+          retention-days: 90
+
+  sensitive-changes-protection:
     name: Sensitive Changes Protection
-    runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: read
+    runs-on: ubuntu-latest
     steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
       - name: Check for sensitive changes
-        uses: dorny/paths-filter@v4
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
         id: filter
         with:
+          base: ${{ github.event.pull_request.base.sha }}
           filters: |
             sensitive:
               - 'src/auth/**'
               - 'src/indexer/**'
-              - 'prisma/**'
+              - 'src/migrations/**'
+              - 'src/prisma/**'
               - 'src/database/**'
+              - 'src/v2/**'
+              - 'prisma/**'
               - '.github/workflows/**'
 
-      - name: Prohibit automatic merge
+      - name: Require reviewed-head approval for sensitive changes
         if: steps.filter.outputs.sensitive == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          echo "Sensitive changes detected in auth, indexer, or database."
-          echo "Automatic merge is prohibited. Ensure human review is completed."
-          # Remove auto-merge label if present (pseudo-command for demonstration)
-          # gh pr edit ${{ github.event.pull_request.number }} --remove-label "auto-merge"
+          set -euo pipefail
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          # An APPROVED review is only valid when recorded on exactly this head
+          # commit; any subsequent push invalidates it and demands fresh
+          # approval (failed-closed gate, not a fast-forward trust).
+          APPROVED="$(
+            gh api "repos/${{ github.repository }}/pulls/$PR_NUMBER/reviews" \
+              --jq "[.[] | select(.state == \"APPROVED\" and .commit_id == \"$HEAD_SHA\")] | length"
+          )"
+          if [[ "$APPROVED" -lt 1 ]]; then
+            echo "::error::Sensitive changes require an APPROVED review on the exact head SHA: $HEAD_SHA. A new push requires fresh approval."
+            exit 1
+          fi
+          echo "Head SHA $HEAD_SHA has a fresh reviewer approval for sensitive paths."
+
+  merge-gate:
+    name: All Required Gates Passed
+    runs-on: ubuntu-latest
+    needs:
+      - build-and-test
+      - security-scans
+      - container-scan
+      - sensitive-changes-protection
+    if: always()
+    steps:
+      - name: Fail closed on any required gate failure
+        uses: actions/github-script@d746ffe35508b1917358783b479e04febd2b8f71 # v9
+        with:
+          script: |
+            const gates = ${{ toJSON(needs) }};
+            const failures = Object.entries(gates)
+              .filter(([name, g]) => {
+                if (g.result === 'success') return false;
+                // `sensitive-changes-protection` is a PR-only job and is
+                // deliberately skipped on pushes to main.
+                if (name === 'sensitive-changes-protection' && g.result === 'skipped') return false;
+                return true;
+              })
+              .map(([name, g]) => `${name}:${g.result}`);
+            if (failures.length > 0) {
+              throw new Error(
+                `Required gates failed: ${failures.join(', ')}`
+              );
+            }

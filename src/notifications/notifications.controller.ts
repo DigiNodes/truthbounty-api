@@ -1,8 +1,24 @@
-import { Controller, Post, Body, Get, Param, Patch, Query, UseGuards, Request } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  Get,
+  Param,
+  Patch,
+  Query,
+  UseGuards,
+  Request,
+} from '@nestjs/common';
 import { NotificationsService } from './notifications.service';
 import { CreateNotificationDto } from './dto/create-notification.dto';
 import { UpdatePreferenceDto } from './dto/update-preference.dto';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiQuery,
+} from '@nestjs/swagger';
 import { GlobalAuthGuard } from '../auth/global-auth.guard';
 
 @ApiTags('notifications')
@@ -14,7 +30,10 @@ export class NotificationsController {
 
   @Post('event')
   @ApiOperation({ summary: 'Queue a new protocol event notification' })
-  @ApiResponse({ status: 201, description: 'The notification has been queued.' })
+  @ApiResponse({
+    status: 201,
+    description: 'The notification has been queued.',
+  })
   async queueEvent(@Body() createDto: CreateNotificationDto) {
     return this.notificationsService.queueNotification(createDto);
   }
@@ -28,7 +47,10 @@ export class NotificationsController {
 
   @Patch('preferences')
   @ApiOperation({ summary: 'Update user notification preferences' })
-  async updatePreferences(@Request() req, @Body() updateDto: UpdatePreferenceDto) {
+  async updatePreferences(
+    @Request() req,
+    @Body() updateDto: UpdatePreferenceDto,
+  ) {
     const userId = req.user?.id || req.user?.walletAddress || 'anonymous';
     return this.notificationsService.updateUserPreferences(userId, updateDto);
   }

@@ -1,6 +1,5 @@
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { ThrottlerException } from '@nestjs/throttler';
-import { ConfigService } from '@nestjs/config';
 import { AiExceptionFilter } from './ai-exception.filter';
 import { AiMetricsService } from '../../metrics/ai-metrics.service';
 import { SafetyGuardrailService } from '../../services/safety-guardrail.service';
@@ -24,13 +23,7 @@ describe('AiExceptionFilter', () => {
 
   beforeEach(() => {
     metrics = { recordRateLimited: jest.fn() };
-    const safetyGuardrailService = new SafetyGuardrailService({
-      get: jest.fn().mockReturnValue({
-        maxPromptLength: 4000,
-        blockedTerms: [],
-        promptLeakHeuristics: [],
-      }),
-    } as unknown as ConfigService);
+    const safetyGuardrailService = new SafetyGuardrailService();
     filter = new AiExceptionFilter(
       metrics as unknown as AiMetricsService,
       safetyGuardrailService,

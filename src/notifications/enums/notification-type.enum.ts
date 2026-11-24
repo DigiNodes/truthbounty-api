@@ -15,13 +15,7 @@ export enum NotificationType {
   SYSTEM_MAINTENANCE = 'SYSTEM_MAINTENANCE',
 }
 
-export enum DeliveryChannel {
-  IN_APP = 'IN_APP',
-  EMAIL = 'EMAIL',
-  WEBHOOK = 'WEBHOOK',
-  PUSH = 'PUSH',
-  SMS = 'SMS',
-}
+export { DeliveryChannel } from '../interfaces/notification.types';
 
 export enum DeliveryStatus {
   PENDING = 'PENDING',

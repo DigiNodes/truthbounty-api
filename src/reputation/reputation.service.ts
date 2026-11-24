@@ -158,7 +158,11 @@ export class ReputationService {
 
   async getEvents(
     wallet: string,
-    options?: { limit?: number; offset?: number; eventType?: ReputationEventType },
+    options?: {
+      limit?: number;
+      offset?: number;
+      eventType?: ReputationEventType;
+    },
   ): Promise<ReputationEvent[]> {
     const cached = await this.reputationCache.getEvents(wallet);
     if (cached && !options?.eventType) return cached;
@@ -191,7 +195,11 @@ export class ReputationService {
   // ─── Leaderboards ─────────────────────────────────────────────────────
 
   async getLeaderboard(
-    type: 'highest' | 'fastest_growing' | 'most_active' | 'highest_rewards' = 'highest',
+    type:
+      | 'highest'
+      | 'fastest_growing'
+      | 'most_active'
+      | 'highest_rewards' = 'highest',
     limit: number = 20,
   ): Promise<LeaderboardEntry[]> {
     const cacheKey = `${type}:${limit}`;
@@ -247,9 +255,7 @@ export class ReputationService {
         ? allRecords.reduce((sum, r) => sum + r.score, 0) / allRecords.length
         : 0;
     const highestScore =
-      allRecords.length > 0
-        ? Math.max(...allRecords.map((r) => r.score))
-        : 0;
+      allRecords.length > 0 ? Math.max(...allRecords.map((r) => r.score)) : 0;
     const totalVerifications = allRecords.reduce(
       (sum, r) => sum + r.verificationCount,
       0,
@@ -273,10 +279,7 @@ export class ReputationService {
 
   // ─── Search ───────────────────────────────────────────────────────────
 
-  async search(
-    query: string,
-    limit: number = 20,
-  ): Promise<ReputationRecord[]> {
+  async search(query: string, limit: number = 20): Promise<ReputationRecord[]> {
     if (!query?.trim()) {
       throw new BadRequestException('Search query is required');
     }

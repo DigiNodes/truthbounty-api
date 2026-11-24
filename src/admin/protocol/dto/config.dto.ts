@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsNotEmpty, IsObject } from 'class-validator';
+import { IsString, IsOptional, IsNotEmpty, IsObject, IsInt, Min, ValidateNested } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class ProtocolConfigDto {
@@ -47,6 +47,86 @@ export class ProtocolConfigResponse {
 
   @ApiProperty()
   updatedAt: Date;
+}
+
+export class RollbackChainContextDto {
+  @ApiProperty()
+  @IsInt()
+  chainId: number;
+
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  releaseId: string;
+
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  deploymentBlock: string;
+
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  artifactChecksum: string;
+}
+
+/**
+ * Rollback target descriptor. The target version is mandatory and is
+ * validated against the current version using compare-and-swap semantics.
+ */
+export class RollbackTargetDto {
+  @ApiProperty({ description: 'Target configuration key' })
+  @IsString()
+  @IsNotEmpty()
+  key: string;
+
+  @ApiProperty({ description: 'Target version to roll back to' })
+  @IsInt()
+  @Min(1)
+  targetVersion: number;
+
+  @ApiProperty({
+    description:
+      'Current version the caller observed (optimistic concurrency token)',
+  })
+  @IsInt()
+  @Min(1)
+  expectedVersion: number;
+
+  @ApiPropertyOptional({ description: 'Environment scope' })
+  @IsString()
+  @IsOptional()
+  environment?: string;
+
+  @ApiProperty({ description: 'Reason for rollback' })
+  @IsString()
+  @IsNotEmpty()
+  reason: string;
+
+  @ApiPropertyOptional({ description: 'Chain context for audit binding' })
+  @IsOptional()
+  @ValidateNested()
+  chainContext?: RollbackChainContextDto;
+}
+
+export class RollbackResultResponse {
+  @ApiProperty()
+  key: string;
+
+  @ApiProperty()
+  fromVersion: number;
+
+  @ApiProperty()
+  toVersion: number;
+
+  @ApiProperty()
+  newVersion: number;
+
+  @ApiProperty()
+  auditId: string;
+
+  @ApiProperty()
+  timestamp: string;
 }
 
 export class OperationalStatsResponse {

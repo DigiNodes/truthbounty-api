@@ -1,11 +1,11 @@
+import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
 import {
-  Controller,
-  Get,
-  Param,
-  Query,
-  UseGuards,
-} from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery } from '@nestjs/swagger';
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiParam,
+  ApiQuery,
+} from '@nestjs/swagger';
 import { ReputationService } from './reputation.service';
 import { QueryReputationDto } from './dto/query-reputation.dto';
 import { ReputationEventType } from './entities/reputation.entity';
@@ -31,7 +31,11 @@ export class ReputationController {
   @Get('users')
   @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({ summary: 'Get reputation for multiple wallets' })
-  @ApiQuery({ name: 'wallets', description: 'Comma-separated wallet addresses', type: String })
+  @ApiQuery({
+    name: 'wallets',
+    description: 'Comma-separated wallet addresses',
+    type: String,
+  })
   @ApiResponse({ status: 200, description: 'List of reputation records' })
   async getMany(@Query('wallets') wallets: string) {
     const walletList = wallets?.split(',').map((w) => w.trim()) ?? [];
@@ -52,9 +56,7 @@ export class ReputationController {
     enum: ['highest', 'newest', 'most_active', 'highest_rewards'],
   })
   @ApiResponse({ status: 200, description: 'Paginated reputation records' })
-  async findAll(
-    @Query() query: QueryReputationDto,
-  ) {
+  async findAll(@Query() query: QueryReputationDto) {
     return this.reputationService.findAll(query);
   }
 
@@ -98,7 +100,8 @@ export class ReputationController {
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiResponse({ status: 200, description: 'Leaderboard entries' })
   async getLeaderboard(
-    @Query('type') type?: 'highest' | 'fastest_growing' | 'most_active' | 'highest_rewards',
+    @Query('type')
+    type?: 'highest' | 'fastest_growing' | 'most_active' | 'highest_rewards',
     @Query('limit') limit?: number,
   ) {
     return this.reputationService.getLeaderboard(
@@ -125,10 +128,7 @@ export class ReputationController {
   @ApiQuery({ name: 'q', description: 'Search query', type: String })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiResponse({ status: 200, description: 'Search results' })
-  async search(
-    @Query('q') q: string,
-    @Query('limit') limit?: number,
-  ) {
+  async search(@Query('q') q: string, @Query('limit') limit?: number) {
     return this.reputationService.search(q, limit ? +limit : undefined);
   }
 }

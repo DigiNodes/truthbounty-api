@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
-import * as request from 'supertest';
+import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { AdminRole } from '../src/admin/entities/admin.entity';
 import { getRepositoryToken } from '@nestjs/typeorm';
@@ -19,7 +19,13 @@ describe('Admin & Moderation API (e2e)', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    );
     await app.init();
 
     adminRepo = app.get(getRepositoryToken(Admin));
@@ -59,9 +65,7 @@ describe('Admin & Moderation API (e2e)', () => {
 
   describe('Admin Profile', () => {
     it('GET /admin/auth/profile should require auth', async () => {
-      await request(app.getHttpServer())
-        .get('/admin/auth/profile')
-        .expect(401);
+      await request(app.getHttpServer()).get('/admin/auth/profile').expect(401);
     });
   });
 
@@ -128,9 +132,7 @@ describe('Admin & Moderation API (e2e)', () => {
     });
 
     it('GET /admin/incidents should require auth', async () => {
-      await request(app.getHttpServer())
-        .get('/admin/incidents')
-        .expect(401);
+      await request(app.getHttpServer()).get('/admin/incidents').expect(401);
     });
 
     it('GET /admin/incidents/stats/summary should require auth', async () => {

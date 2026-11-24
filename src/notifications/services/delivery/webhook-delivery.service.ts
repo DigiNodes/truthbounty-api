@@ -1,21 +1,24 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { BaseDeliveryService, DeliveryResult } from './base-delivery.service';
-import { DeliveryChannel } from '../../enums/notification-type.enum';
-import { NotificationDelivery } from '../../entities/notification-delivery.entity';
+import { DeliveryChannel } from '../../interfaces/notification.types';
+import { narrowDeliveryError } from '../../delivery/delivery-error';
+import type { RenderedNotificationPayload } from '../../delivery/rendered-notification-payload';
 
 @Injectable()
 export class WebhookDeliveryService extends BaseDeliveryService {
   protected readonly logger = new Logger(WebhookDeliveryService.name);
   readonly channel = DeliveryChannel.WEBHOOK;
 
-  async deliver(delivery: NotificationDelivery): Promise<DeliveryResult> {
-    const webhookUrl = delivery.destination;
+  async deliver(payload: RenderedNotificationPayload): Promise<DeliveryResult> {
+    const webhookUrl = this.resolveDestination(payload);
     if (!webhookUrl) {
       return { success: false, failureReason: 'No webhook URL configured' };
     }
 
     try {
-      this.logger.debug(`Webhook delivery to ${webhookUrl} for notification ${delivery.notificationId}`);
+      this.logger.debug(
+        `Webhook delivery for notification ${payload.notificationId ?? 'unknown'}`,
+      );
 
       const response = await fetch(webhookUrl, {
         method: 'POST',
@@ -24,37 +27,46 @@ export class WebhookDeliveryService extends BaseDeliveryService {
           'User-Agent': 'TruthBounty-Notification/1.0',
         },
         body: JSON.stringify({
-          notificationId: delivery.notificationId,
-          type: delivery.responseData?.type,
-          title: delivery.responseData?.title,
-          body: delivery.responseData?.body,
-          data: delivery.responseData?.data,
+          notificationId: payload.notificationId,
+          type: payload.eventType,
+          title: payload.rendered.title,
+          body: payload.rendered.body,
+          data: payload.metadata,
           timestamp: new Date().toISOString(),
         }),
         signal: AbortSignal.timeout(10000),
       });
 
       if (!response.ok) {
-        const responseText = await response.text().catch(() => 'unknown');
+        // Narrow the provider status before reading it back.
+        const narrowed = narrowDeliveryError(
+          {
+            statusCode: response.status,
+            message: `Webhook returned ${response.status}`,
+          },
+          { channel: this.channel },
+        );
         return {
           success: false,
-          failureReason: `Webhook returned ${response.status}: ${responseText}`,
-          responseData: { statusCode: response.status, body: responseText },
+          failureReason: narrowed.message,
+          responseData: {
+            statusCode: response.status,
+            kind: narrowed.kind,
+            retryable: narrowed.retryable,
+          },
         };
       }
 
-      const responseBody = await response.text().catch(() => '');
       return {
         success: true,
         deliveredAt: new Date(),
-        responseData: { statusCode: response.status, body: responseBody },
+        responseData: { statusCode: response.status },
       };
     } catch (error) {
-      this.logger.error(`Webhook delivery failed to ${webhookUrl}: ${error.message}`);
-      return {
-        success: false,
-        failureReason: error.message,
-      };
+      this.logger.error(
+        `Webhook delivery failed for notification ${payload.notificationId ?? 'unknown'}`,
+      );
+      return this.failure(error);
     }
   }
 }

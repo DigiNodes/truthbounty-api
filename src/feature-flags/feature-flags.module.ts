@@ -12,18 +12,22 @@ import { FeatureFlagsMetricsService } from './metrics/feature-flag.metrics';
 @Module({
   imports: [
     TypeOrmModule.forFeature([
-      FeatureFlag, 
+      FeatureFlag,
       ConfigurationValue,
       ConfigurationHistory,
     ]),
     RedisModule,
   ],
   providers: [
-    FeatureFlagsService, 
+    FeatureFlagsService,
     ConfigurationService,
     FeatureFlagsMetricsService,
   ],
   controllers: [FeatureFlagsController],
-  exports: [FeatureFlagsService, ConfigurationService, FeatureFlagsMetricsService],
+  exports: [
+    FeatureFlagsService,
+    ConfigurationService,
+    FeatureFlagsMetricsService,
+  ],
 })
 export class FeatureFlagsModule {}

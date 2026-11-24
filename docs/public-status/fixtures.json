@@ -1,0 +1,684 @@
+{
+  "schemaVersion": "public-status.v1",
+  "scenarios": {
+    "allOperational": {
+      "schemaVersion": "public-status.v1",
+      "generatedAt": "2026-10-16T12:00:00.000Z",
+      "overall": "operational",
+      "components": [
+        {
+          "id": "web",
+          "state": "operational",
+          "observation": {
+            "source": "web_probe",
+            "observedAt": "2026-10-16T11:59:57.000Z",
+            "ageSeconds": 3,
+            "freshness": "fresh"
+          }
+        },
+        {
+          "id": "api",
+          "state": "operational",
+          "observation": {
+            "source": "api_self",
+            "observedAt": "2026-10-16T12:00:00.000Z",
+            "ageSeconds": 0,
+            "freshness": "fresh"
+          }
+        },
+        {
+          "id": "rpc",
+          "state": "operational",
+          "observation": {
+            "source": "finalized_cursor",
+            "observedAt": "2026-10-16T11:59:52.000Z",
+            "ageSeconds": 8,
+            "freshness": "fresh"
+          }
+        },
+        {
+          "id": "indexer",
+          "state": "operational",
+          "observation": {
+            "source": "finalized_cursor",
+            "observedAt": "2026-10-16T11:59:52.000Z",
+            "ageSeconds": 8,
+            "freshness": "fresh"
+          }
+        },
+        {
+          "id": "database",
+          "state": "operational",
+          "observation": {
+            "source": "dependency_probe",
+            "observedAt": "2026-10-16T11:59:55.000Z",
+            "ageSeconds": 5,
+            "freshness": "fresh"
+          }
+        },
+        {
+          "id": "evidence_gateway",
+          "state": "operational",
+          "observation": {
+            "source": "dependency_probe",
+            "observedAt": "2026-10-16T11:59:55.000Z",
+            "ageSeconds": 5,
+            "freshness": "fresh"
+          }
+        }
+      ],
+      "release": {
+        "releaseId": "v2.0.0-sepolia",
+        "chainId": 11155420,
+        "deploymentBlock": 18450000,
+        "artifactChecksum": "3f1c9a0b7e5d2c4f6a8b0d1e3f5a7c9e1b3d5f7a9c1e3b5d7f9a1c3e5b7d9f1a",
+        "state": "operational",
+        "observation": {
+          "source": "release_config",
+          "observedAt": "2026-10-16T12:00:00.000Z",
+          "ageSeconds": 0,
+          "freshness": "fresh"
+        }
+      },
+      "chain": {
+        "finalizedBlock": 18450100,
+        "indexedBlock": 18450098,
+        "lagBlocks": 2,
+        "state": "operational",
+        "observation": {
+          "source": "finalized_cursor",
+          "observedAt": "2026-10-16T11:59:52.000Z",
+          "ageSeconds": 8,
+          "freshness": "fresh"
+        }
+      },
+      "cache": {
+        "maxAgeSeconds": 15,
+        "staleAfterSeconds": 120,
+        "expiresAt": "2026-10-16T12:00:15.000Z"
+      }
+    },
+    "evidenceGatewayUnavailable": {
+      "schemaVersion": "public-status.v1",
+      "generatedAt": "2026-10-16T12:00:00.000Z",
+      "overall": "unavailable",
+      "components": [
+        {
+          "id": "web",
+          "state": "operational",
+          "observation": {
+            "source": "web_probe",
+            "observedAt": "2026-10-16T11:59:57.000Z",
+            "ageSeconds": 3,
+            "freshness": "fresh"
+          }
+        },
+        {
+          "id": "api",
+          "state": "operational",
+          "observation": {
+            "source": "api_self",
+            "observedAt": "2026-10-16T12:00:00.000Z",
+            "ageSeconds": 0,
+            "freshness": "fresh"
+          }
+        },
+        {
+          "id": "rpc",
+          "state": "operational",
+          "observation": {
+            "source": "finalized_cursor",
+            "observedAt": "2026-10-16T11:59:52.000Z",
+            "ageSeconds": 8,
+            "freshness": "fresh"
+          }
+        },
+        {
+          "id": "indexer",
+          "state": "operational",
+          "observation": {
+            "source": "finalized_cursor",
+            "observedAt": "2026-10-16T11:59:52.000Z",
+            "ageSeconds": 8,
+            "freshness": "fresh"
+          }
+        },
+        {
+          "id": "database",
+          "state": "operational",
+          "observation": {
+            "source": "dependency_probe",
+            "observedAt": "2026-10-16T11:59:55.000Z",
+            "ageSeconds": 5,
+            "freshness": "fresh"
+          }
+        },
+        {
+          "id": "evidence_gateway",
+          "state": "unavailable",
+          "observation": {
+            "source": "dependency_probe",
+            "observedAt": "2026-10-16T11:59:55.000Z",
+            "ageSeconds": 5,
+            "freshness": "fresh"
+          }
+        }
+      ],
+      "release": {
+        "releaseId": "v2.0.0-sepolia",
+        "chainId": 11155420,
+        "deploymentBlock": 18450000,
+        "artifactChecksum": "3f1c9a0b7e5d2c4f6a8b0d1e3f5a7c9e1b3d5f7a9c1e3b5d7f9a1c3e5b7d9f1a",
+        "state": "operational",
+        "observation": {
+          "source": "release_config",
+          "observedAt": "2026-10-16T12:00:00.000Z",
+          "ageSeconds": 0,
+          "freshness": "fresh"
+        }
+      },
+      "chain": {
+        "finalizedBlock": 18450100,
+        "indexedBlock": 18450098,
+        "lagBlocks": 2,
+        "state": "operational",
+        "observation": {
+          "source": "finalized_cursor",
+          "observedAt": "2026-10-16T11:59:52.000Z",
+          "ageSeconds": 8,
+          "freshness": "fresh"
+        }
+      },
+      "cache": {
+        "maxAgeSeconds": 15,
+        "staleAfterSeconds": 120,
+        "expiresAt": "2026-10-16T12:00:15.000Z"
+      }
+    },
+    "databaseUnavailable": {
+      "schemaVersion": "public-status.v1",
+      "generatedAt": "2026-10-16T12:00:00.000Z",
+      "overall": "unavailable",
+      "components": [
+        {
+          "id": "web",
+          "state": "operational",
+          "observation": {
+            "source": "web_probe",
+            "observedAt": "2026-10-16T11:59:57.000Z",
+            "ageSeconds": 3,
+            "freshness": "fresh"
+          }
+        },
+        {
+          "id": "api",
+          "state": "operational",
+          "observation": {
+            "source": "api_self",
+            "observedAt": "2026-10-16T12:00:00.000Z",
+            "ageSeconds": 0,
+            "freshness": "fresh"
+          }
+        },
+        {
+          "id": "rpc",
+          "state": "operational",
+          "observation": {
+            "source": "finalized_cursor",
+            "observedAt": "2026-10-16T11:59:52.000Z",
+            "ageSeconds": 8,
+            "freshness": "fresh"
+          }
+        },
+        {
+          "id": "indexer",
+          "state": "operational",
+          "observation": {
+            "source": "finalized_cursor",
+            "observedAt": "2026-10-16T11:59:52.000Z",
+            "ageSeconds": 8,
+            "freshness": "fresh"
+          }
+        },
+        {
+          "id": "database",
+          "state": "unavailable",
+          "observation": {
+            "source": "dependency_probe",
+            "observedAt": "2026-10-16T11:59:55.000Z",
+            "ageSeconds": 5,
+            "freshness": "fresh"
+          }
+        },
+        {
+          "id": "evidence_gateway",
+          "state": "operational",
+          "observation": {
+            "source": "dependency_probe",
+            "observedAt": "2026-10-16T11:59:55.000Z",
+            "ageSeconds": 5,
+            "freshness": "fresh"
+          }
+        }
+      ],
+      "release": {
+        "releaseId": "v2.0.0-sepolia",
+        "chainId": 11155420,
+        "deploymentBlock": 18450000,
+        "artifactChecksum": "3f1c9a0b7e5d2c4f6a8b0d1e3f5a7c9e1b3d5f7a9c1e3b5d7f9a1c3e5b7d9f1a",
+        "state": "operational",
+        "observation": {
+          "source": "release_config",
+          "observedAt": "2026-10-16T12:00:00.000Z",
+          "ageSeconds": 0,
+          "freshness": "fresh"
+        }
+      },
+      "chain": {
+        "finalizedBlock": 18450100,
+        "indexedBlock": 18450098,
+        "lagBlocks": 2,
+        "state": "operational",
+        "observation": {
+          "source": "finalized_cursor",
+          "observedAt": "2026-10-16T11:59:52.000Z",
+          "ageSeconds": 8,
+          "freshness": "fresh"
+        }
+      },
+      "cache": {
+        "maxAgeSeconds": 15,
+        "staleAfterSeconds": 120,
+        "expiresAt": "2026-10-16T12:00:15.000Z"
+      }
+    },
+    "indexerDelayed": {
+      "schemaVersion": "public-status.v1",
+      "generatedAt": "2026-10-16T12:00:00.000Z",
+      "overall": "delayed",
+      "components": [
+        {
+          "id": "web",
+          "state": "operational",
+          "observation": {
+            "source": "web_probe",
+            "observedAt": "2026-10-16T11:59:57.000Z",
+            "ageSeconds": 3,
+            "freshness": "fresh"
+          }
+        },
+        {
+          "id": "api",
+          "state": "operational",
+          "observation": {
+            "source": "api_self",
+            "observedAt": "2026-10-16T12:00:00.000Z",
+            "ageSeconds": 0,
+            "freshness": "fresh"
+          }
+        },
+        {
+          "id": "rpc",
+          "state": "operational",
+          "observation": {
+            "source": "finalized_cursor",
+            "observedAt": "2026-10-16T11:59:52.000Z",
+            "ageSeconds": 8,
+            "freshness": "fresh"
+          }
+        },
+        {
+          "id": "indexer",
+          "state": "delayed",
+          "observation": {
+            "source": "finalized_cursor",
+            "observedAt": "2026-10-16T11:59:52.000Z",
+            "ageSeconds": 8,
+            "freshness": "fresh"
+          }
+        },
+        {
+          "id": "database",
+          "state": "operational",
+          "observation": {
+            "source": "dependency_probe",
+            "observedAt": "2026-10-16T11:59:55.000Z",
+            "ageSeconds": 5,
+            "freshness": "fresh"
+          }
+        },
+        {
+          "id": "evidence_gateway",
+          "state": "operational",
+          "observation": {
+            "source": "dependency_probe",
+            "observedAt": "2026-10-16T11:59:55.000Z",
+            "ageSeconds": 5,
+            "freshness": "fresh"
+          }
+        }
+      ],
+      "release": {
+        "releaseId": "v2.0.0-sepolia",
+        "chainId": 11155420,
+        "deploymentBlock": 18450000,
+        "artifactChecksum": "3f1c9a0b7e5d2c4f6a8b0d1e3f5a7c9e1b3d5f7a9c1e3b5d7f9a1c3e5b7d9f1a",
+        "state": "operational",
+        "observation": {
+          "source": "release_config",
+          "observedAt": "2026-10-16T12:00:00.000Z",
+          "ageSeconds": 0,
+          "freshness": "fresh"
+        }
+      },
+      "chain": {
+        "finalizedBlock": 18450100,
+        "indexedBlock": 18449800,
+        "lagBlocks": 300,
+        "state": "delayed",
+        "observation": {
+          "source": "finalized_cursor",
+          "observedAt": "2026-10-16T11:59:52.000Z",
+          "ageSeconds": 8,
+          "freshness": "fresh"
+        }
+      },
+      "cache": {
+        "maxAgeSeconds": 15,
+        "staleAfterSeconds": 120,
+        "expiresAt": "2026-10-16T12:00:15.000Z"
+      }
+    },
+    "chainDataStale": {
+      "schemaVersion": "public-status.v1",
+      "generatedAt": "2026-10-16T12:00:00.000Z",
+      "overall": "stale",
+      "components": [
+        {
+          "id": "web",
+          "state": "operational",
+          "observation": {
+            "source": "web_probe",
+            "observedAt": "2026-10-16T11:59:57.000Z",
+            "ageSeconds": 3,
+            "freshness": "fresh"
+          }
+        },
+        {
+          "id": "api",
+          "state": "operational",
+          "observation": {
+            "source": "api_self",
+            "observedAt": "2026-10-16T12:00:00.000Z",
+            "ageSeconds": 0,
+            "freshness": "fresh"
+          }
+        },
+        {
+          "id": "rpc",
+          "state": "stale",
+          "observation": {
+            "source": "finalized_cursor",
+            "observedAt": "2026-10-16T11:45:00.000Z",
+            "ageSeconds": 900,
+            "freshness": "stale"
+          }
+        },
+        {
+          "id": "indexer",
+          "state": "stale",
+          "observation": {
+            "source": "finalized_cursor",
+            "observedAt": "2026-10-16T11:45:00.000Z",
+            "ageSeconds": 900,
+            "freshness": "stale"
+          }
+        },
+        {
+          "id": "database",
+          "state": "operational",
+          "observation": {
+            "source": "dependency_probe",
+            "observedAt": "2026-10-16T11:59:55.000Z",
+            "ageSeconds": 5,
+            "freshness": "fresh"
+          }
+        },
+        {
+          "id": "evidence_gateway",
+          "state": "operational",
+          "observation": {
+            "source": "dependency_probe",
+            "observedAt": "2026-10-16T11:59:55.000Z",
+            "ageSeconds": 5,
+            "freshness": "fresh"
+          }
+        }
+      ],
+      "release": {
+        "releaseId": "v2.0.0-sepolia",
+        "chainId": 11155420,
+        "deploymentBlock": 18450000,
+        "artifactChecksum": "3f1c9a0b7e5d2c4f6a8b0d1e3f5a7c9e1b3d5f7a9c1e3b5d7f9a1c3e5b7d9f1a",
+        "state": "operational",
+        "observation": {
+          "source": "release_config",
+          "observedAt": "2026-10-16T12:00:00.000Z",
+          "ageSeconds": 0,
+          "freshness": "fresh"
+        }
+      },
+      "chain": {
+        "finalizedBlock": 18450100,
+        "indexedBlock": 18450098,
+        "lagBlocks": 2,
+        "state": "stale",
+        "observation": {
+          "source": "finalized_cursor",
+          "observedAt": "2026-10-16T11:45:00.000Z",
+          "ageSeconds": 900,
+          "freshness": "stale"
+        }
+      },
+      "cache": {
+        "maxAgeSeconds": 15,
+        "staleAfterSeconds": 120,
+        "expiresAt": "2026-10-16T12:00:15.000Z"
+      }
+    },
+    "wrongRelease": {
+      "schemaVersion": "public-status.v1",
+      "generatedAt": "2026-10-16T12:00:00.000Z",
+      "overall": "unavailable",
+      "components": [
+        {
+          "id": "web",
+          "state": "operational",
+          "observation": {
+            "source": "web_probe",
+            "observedAt": "2026-10-16T11:59:57.000Z",
+            "ageSeconds": 3,
+            "freshness": "fresh"
+          }
+        },
+        {
+          "id": "api",
+          "state": "operational",
+          "observation": {
+            "source": "api_self",
+            "observedAt": "2026-10-16T12:00:00.000Z",
+            "ageSeconds": 0,
+            "freshness": "fresh"
+          }
+        },
+        {
+          "id": "rpc",
+          "state": "operational",
+          "observation": {
+            "source": "finalized_cursor",
+            "observedAt": "2026-10-16T11:59:52.000Z",
+            "ageSeconds": 8,
+            "freshness": "fresh"
+          }
+        },
+        {
+          "id": "indexer",
+          "state": "unavailable",
+          "observation": {
+            "source": "finalized_cursor",
+            "observedAt": "2026-10-16T11:59:52.000Z",
+            "ageSeconds": 8,
+            "freshness": "fresh"
+          }
+        },
+        {
+          "id": "database",
+          "state": "operational",
+          "observation": {
+            "source": "dependency_probe",
+            "observedAt": "2026-10-16T11:59:55.000Z",
+            "ageSeconds": 5,
+            "freshness": "fresh"
+          }
+        },
+        {
+          "id": "evidence_gateway",
+          "state": "operational",
+          "observation": {
+            "source": "dependency_probe",
+            "observedAt": "2026-10-16T11:59:55.000Z",
+            "ageSeconds": 5,
+            "freshness": "fresh"
+          }
+        }
+      ],
+      "release": {
+        "releaseId": "v2.0.0-sepolia",
+        "chainId": 11155420,
+        "deploymentBlock": 18450000,
+        "artifactChecksum": "3f1c9a0b7e5d2c4f6a8b0d1e3f5a7c9e1b3d5f7a9c1e3b5d7f9a1c3e5b7d9f1a",
+        "state": "operational",
+        "observation": {
+          "source": "release_config",
+          "observedAt": "2026-10-16T12:00:00.000Z",
+          "ageSeconds": 0,
+          "freshness": "fresh"
+        }
+      },
+      "chain": {
+        "finalizedBlock": null,
+        "indexedBlock": null,
+        "lagBlocks": null,
+        "state": "unavailable",
+        "observation": {
+          "source": "finalized_cursor",
+          "observedAt": "2026-10-16T11:59:52.000Z",
+          "ageSeconds": 8,
+          "freshness": "fresh"
+        }
+      },
+      "cache": {
+        "maxAgeSeconds": 15,
+        "staleAfterSeconds": 120,
+        "expiresAt": "2026-10-16T12:00:15.000Z"
+      }
+    },
+    "notConfigured": {
+      "schemaVersion": "public-status.v1",
+      "generatedAt": "2026-10-16T12:00:00.000Z",
+      "overall": "unknown",
+      "components": [
+        {
+          "id": "web",
+          "state": "unknown",
+          "observation": {
+            "source": "not_observed",
+            "observedAt": null,
+            "ageSeconds": null,
+            "freshness": "unknown"
+          }
+        },
+        {
+          "id": "api",
+          "state": "operational",
+          "observation": {
+            "source": "api_self",
+            "observedAt": "2026-10-16T12:00:00.000Z",
+            "ageSeconds": 0,
+            "freshness": "fresh"
+          }
+        },
+        {
+          "id": "rpc",
+          "state": "unknown",
+          "observation": {
+            "source": "not_observed",
+            "observedAt": null,
+            "ageSeconds": null,
+            "freshness": "unknown"
+          }
+        },
+        {
+          "id": "indexer",
+          "state": "unknown",
+          "observation": {
+            "source": "not_observed",
+            "observedAt": null,
+            "ageSeconds": null,
+            "freshness": "unknown"
+          }
+        },
+        {
+          "id": "database",
+          "state": "unknown",
+          "observation": {
+            "source": "not_observed",
+            "observedAt": null,
+            "ageSeconds": null,
+            "freshness": "unknown"
+          }
+        },
+        {
+          "id": "evidence_gateway",
+          "state": "unknown",
+          "observation": {
+            "source": "not_observed",
+            "observedAt": null,
+            "ageSeconds": null,
+            "freshness": "unknown"
+          }
+        }
+      ],
+      "release": {
+        "releaseId": null,
+        "chainId": null,
+        "deploymentBlock": null,
+        "artifactChecksum": null,
+        "state": "unknown",
+        "observation": {
+          "source": "not_observed",
+          "observedAt": null,
+          "ageSeconds": null,
+          "freshness": "unknown"
+        }
+      },
+      "chain": {
+        "finalizedBlock": null,
+        "indexedBlock": null,
+        "lagBlocks": null,
+        "state": "unknown",
+        "observation": {
+          "source": "not_observed",
+          "observedAt": null,
+          "ageSeconds": null,
+          "freshness": "unknown"
+        }
+      },
+      "cache": {
+        "maxAgeSeconds": 15,
+        "staleAfterSeconds": 120,
+        "expiresAt": "2026-10-16T12:00:15.000Z"
+      }
+    }
+  }
+}

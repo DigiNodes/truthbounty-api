@@ -58,7 +58,9 @@ describe('RolesGuard', () => {
     reflector.getAllAndOverride.mockReturnValue([AdminRole.ADMINISTRATOR]);
 
     expect(() =>
-      guard.canActivate(mockContext({ role: AdminRole.AUDITOR, isActive: true })),
+      guard.canActivate(
+        mockContext({ role: AdminRole.AUDITOR, isActive: true }),
+      ),
     ).toThrow(ForbiddenException);
   });
 
@@ -66,14 +68,18 @@ describe('RolesGuard', () => {
     reflector.getAllAndOverride.mockReturnValue([AdminRole.AUDITOR]);
 
     expect(() =>
-      guard.canActivate(mockContext({ role: AdminRole.AUDITOR, isActive: false })),
+      guard.canActivate(
+        mockContext({ role: AdminRole.AUDITOR, isActive: false }),
+      ),
     ).toThrow(ForbiddenException);
   });
 
   it('should deny access if no admin in request', () => {
     reflector.getAllAndOverride.mockReturnValue([AdminRole.AUDITOR]);
 
-    expect(() => guard.canActivate(mockContext(undefined))).toThrow(ForbiddenException);
+    expect(() => guard.canActivate(mockContext(undefined))).toThrow(
+      ForbiddenException,
+    );
   });
 
   it('should allow equal role level access', () => {

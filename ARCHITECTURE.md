@@ -1,7 +1,7 @@
 # Event Indexer Architecture
 
 ## High-Level System Diagram
-
+test in webdev
 ```
 ┌────────────────────────────────────────────────────────────────────┐
 │                        TRUTHBOUNTY API                             │
@@ -328,3 +328,51 @@
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## Transactional Outbox Pattern & Idempotent Delivery Architecture (V2-BE-048 & V2-BE-076)
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                       TRANSACTIONAL OUTBOX FLOW                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│ 1. Domain Action (Prisma Transaction)                                       │
+│    └─→ Write Projection Data                                                │
+│    └─→ Write OutboxEvent (status = 'PENDING', idempotencyKey = sha256(...)) │
+│        ↓ (Atomic Commit)                                                    │
+│ 2. OutboxScheduler (Cron Poller every 5s)                                   │
+│    └─→ Claims PENDING OutboxEvents                                          │
+│    └─→ Relays job to BullMQ 'notifications' queue                           │
+│    └─→ Updates OutboxEvent status to 'DISPATCHED'                           │
+│        ↓                                                                    │
+│ 3. NotificationProcessor (Worker)                                           │
+│    └─→ Step 3a: Redis SETNX Guard (key = idempotency:notification:${key})   │
+│        • Lock acquired  → proceed to delivery                               │
+│        • Lock exists    → suppress duplicate execution                      │
+│    └─→ Step 3b: DB Fallback Guard (DeliveryHistory.findByIdempotencyKey)    │
+│        • Status DELIVERED → suppress duplicate                              │
+│    └─→ Step 3c: Deliver via Channel (WebSocket / Email / Webhook / InApp)   │
+│    └─→ Update DeliveryHistory status                                        │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Security & Protocol Constraints
+- **Zero PII & Settlement Data**: `OutboxEvent.payload` contains opaque routing identifiers only (`notificationId`, `channel`, `recipientIds`). No claim body, settlement calculations, private keys, or credentials are path-logged or queued.
+- **Protocol Boundary**: API layer indexes, validates, and relays user-signed intent; it is never authoritative for settlement, rewards, or governance.
+- **EVM Semantics**: Full compatibility with Optimism/EVM chain rules.
+
+## Persistence Boundary: TypeORM-Only for New Code (V2-BE-111)
+
+TypeORM/PostgreSQL is the persistence path for all new backend code. `src/database/transaction.runner.ts` is the shared transaction helper; use it rather than reaching for a raw `DataSource` or a second transaction abstraction.
+
+Prisma (`src/prisma/`, `prisma/schema.prisma`) has pre-existing, real usage in a specific, closed list of modules: `auth`, `notifications`, `outbox` (see above), `sybil-resistance`, `analytics`, `ai-assistant`, and `identity`/`worldcoin`. That usage is grandfathered, not sanctioned for new work: it predates this boundary and migrating it off Prisma is a separate, larger effort, not part of this change.
+
+Two things enforce the boundary going forward:
+- `eslint.config.mjs` restricts importing `@prisma/client` or `prisma.service` outside the grandfathered file list; new files hit this at lint time.
+- `src/architecture.spec.ts` asserts the same thing at test time, independent of whether lint runs.
+
+Adding a file to either allowlist is a signal that the "TypeORM-only" boundary is being widened, not narrowed, so it should be treated the same as adding a new ORM: reviewed deliberately, not done to silence a lint error.
+

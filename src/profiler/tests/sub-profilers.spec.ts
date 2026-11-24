@@ -33,7 +33,8 @@ describe('Sub-profilers Tests', () => {
     redisProfiler = module.get<RedisProfiler>(RedisProfiler);
     blockchainProfiler = module.get<BlockchainProfiler>(BlockchainProfiler);
     jobProfiler = module.get<JobProfiler>(JobProfiler);
-    notificationProfiler = module.get<NotificationProfiler>(NotificationProfiler);
+    notificationProfiler =
+      module.get<NotificationProfiler>(NotificationProfiler);
   });
 
   afterEach(() => {

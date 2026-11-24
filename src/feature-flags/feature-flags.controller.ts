@@ -93,7 +93,7 @@ export class FeatureFlagsController {
       entityId: flag.id,
       userId,
       description: `Created feature flag ${flag.key}`,
-      afterState: flag as unknown as Record<string, any>,
+      afterState: flag,
     });
     return flag;
   }
@@ -117,8 +117,8 @@ export class FeatureFlagsController {
       entityId: flag.id,
       userId,
       description: `Updated feature flag ${flag.key}`,
-      beforeState: before as unknown as Record<string, any>,
-      afterState: flag as unknown as Record<string, any>,
+      beforeState: before,
+      afterState: flag,
     });
     return flag;
   }
@@ -245,7 +245,7 @@ export class FeatureFlagsController {
       entityId: id,
       userId,
       description: `Deleted configuration ${before.key}`,
-      beforeState: before as unknown as Record<string, any>,
+      beforeState: before,
     });
   }
 
@@ -287,11 +287,19 @@ export class FeatureFlagsController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Promote a configuration to another environment' })
   async promoteConfig(
-    @Body() input: { key: string; sourceEnvironment: string; targetEnvironment: string },
+    @Body()
+    input: {
+      key: string;
+      sourceEnvironment: string;
+      targetEnvironment: string;
+    },
     @Request() req: RequestWithUser,
   ): Promise<ConfigurationValue> {
     const userId = this.userIdFrom(req);
-    const sourceValue = await this.configService.getRequired(input.key, input.sourceEnvironment);
+    const sourceValue = await this.configService.getRequired(
+      input.key,
+      input.sourceEnvironment,
+    );
     const saved = await this.configService.set(
       input.key,
       sourceValue,

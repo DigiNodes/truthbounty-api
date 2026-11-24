@@ -2,12 +2,9 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsEnum,
   IsNotEmpty,
-  IsNumber,
   IsObject,
   IsOptional,
   IsString,
-  Max,
-  Min,
 } from 'class-validator';
 import { ProposalCategory } from '../entities/proposal.entity';
 

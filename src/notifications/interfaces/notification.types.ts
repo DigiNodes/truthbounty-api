@@ -21,12 +21,21 @@ export enum NotificationPriority {
   CRITICAL = 'critical',
 }
 
+/**
+ * Canonical delivery-channel identifiers.
+ *
+ * The persisted and wire representation is the lower_snake_case value; every
+ * delivery worker, publisher, and queue payload must use this enum (or
+ * `parseDeliveryChannel`, for untrusted input) instead of ad-hoc string
+ * literals. This is the single source of truth referenced by PREWAVE-BE-027.
+ */
 export enum DeliveryChannel {
   IN_APP = 'in_app',
   WEBSOCKET = 'websocket',
   PUSH = 'push',
   EMAIL = 'email',
   WEBHOOK = 'webhook',
+  SMS = 'sms',
 }
 
 export enum DeliveryStatus {

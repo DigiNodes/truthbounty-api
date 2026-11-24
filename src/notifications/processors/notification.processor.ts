@@ -1,4 +1,4 @@
-import { Process, Processor } from '@nestjs/bullmq';
+import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -10,7 +10,10 @@ import {
   NotificationChannel as ChannelType,
 } from '../entities/notification.entity';
 import { NotificationChannel } from '../channels/channel.interface';
-import { Inject } from '@nestjs/common';
+import { DeliveryChannel } from '../interfaces/notification.types';
+import { parseDeliveryChannel } from '../delivery/delivery-channel';
+import { UnknownDeliveryChannelError } from '../delivery/delivery-error';
+import { toRenderedNotificationPayload } from '../delivery/rendered-notification-payload';
 
 interface NotificationJobData {
   notificationId: string;
@@ -19,11 +22,11 @@ interface NotificationJobData {
 }
 
 @Processor('notifications')
-export class NotificationProcessor {
+export class NotificationProcessor extends WorkerHost {
   private readonly logger = new Logger(NotificationProcessor.name);
-  
-  // Map of channel types to their implementations
-  private readonly channelMap: Map<string, NotificationChannel> = new Map();
+
+  // Canonical channel → provider. Untrusted values are never used as keys.
+  private readonly channelMap: Map<DeliveryChannel, NotificationChannel> = new Map();
 
   constructor(
     @InjectRepository(Notification)
@@ -33,25 +36,46 @@ export class NotificationProcessor {
     // Inject all channel implementations
     private readonly channels: NotificationChannel[],
   ) {
-    // Build the channel map for quick lookup
+    super();
+    // Build the channel map keyed by the canonical channel identifier.
     this.channels.forEach((channel) => {
-      this.channelMap.set(channel.channelType, channel);
+      const canonical = parseDeliveryChannel(channel.channelType);
+      if (canonical) {
+        this.channelMap.set(canonical, channel);
+      }
     });
   }
 
-  @Process('deliver')
+  async process(job: Job<NotificationJobData>): Promise<void> {
+    if (job.name === 'dead-letter') {
+      await this.processDeadLetter(job);
+      return;
+    }
+    await this.processDelivery(job);
+  }
+
   async processDelivery(job: Job<NotificationJobData>) {
     const { notificationId, channel: channelType, retryCount } = job.data;
-    
+
     this.logger.debug(
       `Processing delivery job for notification ${notificationId} via ${channelType}, attempt ${retryCount + 1}`,
     );
 
-    // Get the channel implementation
-    const channel = this.channelMap.get(channelType);
+    // Canonicalize the channel before it can reach a provider. Null/unknown
+    // channels fail closed here instead of being coerced downstream.
+    const canonicalChannel = parseDeliveryChannel(channelType);
+    if (canonicalChannel === null) {
+      throw new UnknownDeliveryChannelError(
+        `Unknown or missing delivery channel: ${String(channelType)}`,
+      );
+    }
+
+    const channel = this.channelMap.get(canonicalChannel);
     if (!channel) {
       this.logger.error(`Unknown channel type: ${channelType}`);
-      throw new Error(`Unknown channel: ${channelType}`);
+      throw new UnknownDeliveryChannelError(
+        `No provider registered for channel: ${canonicalChannel}`,
+      );
     }
 
     // Get the notification
@@ -68,7 +92,7 @@ export class NotificationProcessor {
     let deliveryHistory = await this.deliveryHistoryRepository.findOne({
       where: {
         notificationId,
-        channel: channelType as ChannelType,
+        channel: canonicalChannel as ChannelType,
       },
     });
 
@@ -76,7 +100,7 @@ export class NotificationProcessor {
       deliveryHistory = this.deliveryHistoryRepository.create({
         notificationId,
         recipientId: notification.recipientId,
-        channel: channelType as ChannelType,
+        channel: canonicalChannel as ChannelType,
         status: DeliveryStatus.RETRYING,
         retryAttempts: retryCount,
       });
@@ -88,7 +112,9 @@ export class NotificationProcessor {
 
     try {
       // Check if channel is enabled for this user
-      const isEnabled = await channel.isEnabled(notification.recipientId);
+      const isEnabled = await channel.isEnabled(
+        notification.recipientId ?? notification.userId,
+      );
       if (!isEnabled) {
         this.logger.debug(
           `Channel ${channelType} is disabled for user ${notification.recipientId}, skipping delivery`,
@@ -98,8 +124,12 @@ export class NotificationProcessor {
         return;
       }
 
-      // Send the notification
-      const result = await channel.send(notification);
+      // Send the notification through the single canonical payload type.
+      const payload = toRenderedNotificationPayload(
+        notification,
+        canonicalChannel,
+      );
+      const result = await channel.send(payload);
 
       if (result.success) {
         this.logger.debug(
@@ -129,10 +159,9 @@ export class NotificationProcessor {
     }
   }
 
-  @Process('dead-letter')
   async processDeadLetter(job: Job<NotificationJobData>) {
     const { notificationId, channel: channelType } = job.data;
-    
+
     this.logger.warn(
       `Moving notification ${notificationId} to dead letter queue for channel ${channelType}`,
     );

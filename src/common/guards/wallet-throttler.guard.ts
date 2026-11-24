@@ -1,90 +1,57 @@
-import { Injectable, ExecutionContext, Inject } from '@nestjs/common';
-import {
-    ThrottlerGuard,
-    ThrottlerException,
-    ThrottlerStorage,
-    ThrottlerModuleOptions,
-} from '@nestjs/throttler';
-import { ConfigService } from '@nestjs/config';
+import { Injectable, ExecutionContext, Logger, Optional } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { ThrottlerConfig } from '../../config/throttler.config';
-
-export const THROTTLE_TYPE_KEY = 'throttle_type';
+import { ThrottlerException } from '@nestjs/throttler';
+import { WalletRateLimiterService } from '../../auth/wallet-rate-limiter.service';
 
 @Injectable()
-export class WalletThrottlerGuard extends ThrottlerGuard {
-    constructor(
-        @Inject('THROTTLER:MODULE_OPTIONS')
-        protected readonly options: ThrottlerModuleOptions,
-        @Inject(ThrottlerStorage)
-        protected readonly storageService: ThrottlerStorage,
-        protected readonly reflector: Reflector,
-        private readonly configService: ConfigService,
-    ) {
-        super(options, storageService, reflector);
+export class WalletThrottlerGuard {
+  private readonly logger = new Logger(WalletThrottlerGuard.name);
+
+  constructor(
+    @Optional()
+    private readonly walletRateLimiterService?: WalletRateLimiterService,
+    protected readonly reflector?: Reflector,
+  ) {}
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    const skipThrottle = this.reflector?.getAllAndOverride<boolean>(
+      'skipThrottle',
+      [context.getHandler(), context.getClass()],
+    );
+    if (skipThrottle) {
+      return true;
     }
 
-    protected async getTracker(req: Record<string, any>): Promise<string> {
-        // Extract wallet address from various sources
-        const walletAddress =
-            req.headers?.['x-wallet-address'] ||
-            req.body?.walletAddress ||
-            req.body?.wallet ||
-            req.query?.walletAddress ||
-            req.query?.wallet ||
-            req.ip; // Fallback to IP if no wallet provided
+    const request = context.switchToHttp().getRequest();
+    const response = context.switchToHttp().getResponse();
 
-        return walletAddress;
+    if (!this.walletRateLimiterService) {
+      return true;
     }
 
-    async canActivate(context: ExecutionContext): Promise<boolean> {
-        const request = context.switchToHttp().getRequest();
-        const tracker = await this.getTracker(request);
+    try {
+      const result = await this.walletRateLimiterService.checkRateLimit(request);
 
-        // Get throttle type from metadata if set
-        const throttleType = this.reflector.get<string>(
-            THROTTLE_TYPE_KEY,
-            context.getHandler(),
+      const headers = this.walletRateLimiterService.getRateLimitHeaders(result);
+      if (response && typeof response.setHeader === 'function') {
+        for (const [key, value] of Object.entries(headers)) {
+          response.setHeader(key, value);
+        }
+      }
+
+      if (!result.allowed) {
+        throw new ThrottlerException(
+          `Rate limit exceeded. Try again in ${Math.ceil((result.retryAfterMs || 60000) / 1000)} seconds.`,
         );
+      }
 
-        // Get config based on type
-        const config = this.configService.get<ThrottlerConfig>('throttler');
-        let limit = config?.default?.limit ?? 10;
-        let ttl = config?.default?.ttl ?? 60000;
-
-        let blockDuration = ttl;
-        if (config && throttleType) {
-            const typeConfig = config[throttleType as keyof ThrottlerConfig];
-            if (
-                typeConfig &&
-                typeof typeConfig === 'object' &&
-                'limit' in typeConfig
-            ) {
-                limit = typeConfig.limit;
-                ttl = typeConfig.ttl;
-                blockDuration = typeConfig.blockDuration ?? ttl;
-            }
-        }
-
-        if (config && !throttleType) {
-            blockDuration = config.default.blockDuration ?? ttl;
-        }
-
-        const key = `${tracker}:${throttleType || 'default'}`;
-        const { totalHits, isBlocked, timeToBlockExpire } = await this.storageService.increment(
-            key,
-            ttl,
-            limit,
-            blockDuration,
-            'default',
-        );
-
-        if (isBlocked || totalHits > limit) {
-            throw new ThrottlerException(
-                `Rate limit exceeded for wallet: ${tracker}. Try again in ${Math.ceil(timeToBlockExpire / 1000)} seconds.`,
-            );
-        }
-
-        return true;
+      return true;
+    } catch (error) {
+      if (error instanceof ThrottlerException) {
+        throw error;
+      }
+      this.logger.error(`WalletThrottlerGuard security check failed: ${error.message}. Failing closed.`);
+      throw new ThrottlerException('Rate limit security check failed. Access denied (Fail Closed).');
     }
+  }
 }

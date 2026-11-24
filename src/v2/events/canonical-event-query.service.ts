@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CanonicalEvent } from './entities/canonical-event.entity';
+import { CanonicalEventScope } from './canonical-event-scope';
 
 /**
  * Read-only access to canonical events for downstream V2 projectors
@@ -16,27 +17,65 @@ export class CanonicalEventQueryService {
     private readonly events: Repository<CanonicalEvent>,
   ) {}
 
+  private normalizeBlockNumber(value: unknown): string | null {
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!/^\d+$/.test(trimmed)) return null;
+      return trimmed;
+    }
+    if (typeof value === 'number') {
+      if (!Number.isInteger(value) || value < 0) return null;
+      return String(value);
+    }
+    if (typeof value === 'bigint') {
+      if (value < 0n) return null;
+      return value.toString();
+    }
+    return null;
+  }
+
   /**
    * Fetch events by name, strictly after the given (blockNumber, logIndex)
    * order key, in ascending protocol order. Pass `null` to start from genesis.
    */
   async findAfter(
     eventNames: string[],
-    after: { blockNumber: string; logIndex: number } | null,
+    scope: CanonicalEventScope,
+    after: { blockNumber: string | number | bigint; logIndex: number } | null,
     limit: number,
   ): Promise<CanonicalEvent[]> {
+    if (
+      !scope ||
+      (scope.chainId !== 10 && scope.chainId !== 11155420)
+    ) {
+      throw new Error('A supported canonical event chain scope is required');
+    }
+    if (!Array.isArray(eventNames) || eventNames.length === 0) return [];
+    if (!Number.isInteger(limit) || limit <= 0) return [];
+
+    const normalizedBlockNumber =
+      after !== null && after !== undefined
+        ? this.normalizeBlockNumber(after.blockNumber)
+        : null;
+    const hasCursor =
+      after !== null &&
+      after !== undefined &&
+      normalizedBlockNumber !== null &&
+      Number.isInteger(after.logIndex);
+
     const qb = this.events
       .createQueryBuilder('e')
-      .where('e.eventName IN (:...eventNames)', { eventNames })
+      .where('e.chainId = :chainId', { chainId: scope.chainId })
+      .andWhere('e.eventName IN (:...eventNames)', { eventNames })
       .orderBy('e.blockNumber', 'ASC')
       .addOrderBy('e.logIndex', 'ASC')
       .limit(limit);
 
-    if (after) {
+    if (hasCursor) {
       qb.andWhere(
         '(e.blockNumber > :blockNumber OR (e.blockNumber = :blockNumber AND e.logIndex > :logIndex))',
         {
-          blockNumber: after.blockNumber,
+          blockNumber: normalizedBlockNumber,
           logIndex: after.logIndex,
         },
       );

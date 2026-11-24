@@ -47,7 +47,7 @@ export class HealthController {
 
   @Get('dependencies')
   @ApiOperation({ summary: 'Dependency health report' })
-  dependencies(): DependencyHealthResult {
+  async dependencies(): Promise<DependencyHealthResult> {
     return this.healthService.getDependencyHealth();
   }
 

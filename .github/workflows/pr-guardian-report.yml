@@ -26,7 +26,7 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           ISSUE_PREFIX: V2-BE
         run: node .github/scripts/pr-guardian.mjs
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@v7.0.1
         with:
           name: pr-guardian-report
           path: reports/

@@ -18,7 +18,7 @@ The seed script (`src/scripts/seed.ts`) populates the TruthBounty API database w
 
 ### 2. **Wallets** (11 total wallets)
 - Multi-chain wallet assignments
-- Chains: Ethereum, Optimism, Polygon, Stellar
+- Chains: Ethereum, Optimism, Polygon (sample data labels only; Optimism/EVM is the only runtime authority)
 - Multiple wallets per user to test:
   - Cross-chain scenarios
   - Multiple wallet linking
@@ -162,7 +162,7 @@ The seed script automatically creates these tables (if synchronize: true):
 ### 1. **Local Development**
 ```bash
 npm run seed
-npm run start:dev
+npx nest start --watch
 ```
 Start development with pre-populated test data ready for testing API endpoints.
 
@@ -176,7 +176,7 @@ Fresh data for each test run ensures isolated test environments.
 ### 3. **Demo/Presentation**
 ```bash
 npm run seed -- --clear
-npm run start:prod
+npm run build && node dist/main
 # Shows UI with realistic data patterns
 ```
 
@@ -191,7 +191,7 @@ Seed provides baseline data for testing:
 Seeded data allows testing all API endpoints:
 ```bash
 npm run seed
-npm run start:dev
+npx nest start --watch
 # Visit http://localhost:3000/api (Swagger UI)
 ```
 
@@ -234,7 +234,7 @@ TypeError: Cannot read property 'save' of undefined
 **Solution:**
 1. Run `npm install` to update dependencies
 2. Verify TypeORM is properly installed
-3. Check Node.js version (requires Node 14+)
+3. Check Node.js version (requires Node 20; see docs/DEPLOYMENT.md)
 
 ### Issue: Port Already in Use
 
@@ -282,10 +282,10 @@ npm run seed -- --clear
 
 ```bash
 # Run the application
-npm run start
+npx nest start
 
 # Watch mode for development
-npm run start:dev
+npx nest start --watch
 
 # Run tests
 npm run test

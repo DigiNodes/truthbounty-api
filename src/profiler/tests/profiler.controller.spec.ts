@@ -54,7 +54,9 @@ describe('ProfilerController', () => {
     const retrieved = controller.getTraceById(trace.id);
     expect(retrieved.id).toEqual(trace.id);
 
-    expect(() => controller.getTraceById('invalid-id')).toThrow(NotFoundException);
+    expect(() => controller.getTraceById('invalid-id')).toThrow(
+      NotFoundException,
+    );
   });
 
   it('should return flame graph by ID or throw NotFoundException', () => {
@@ -65,7 +67,9 @@ describe('ProfilerController', () => {
     expect(result.traceId).toEqual(trace.id);
     expect(result.flameGraph).toBeDefined();
 
-    expect(() => controller.getFlameGraph('non-existent')).toThrow(NotFoundException);
+    expect(() => controller.getFlameGraph('non-existent')).toThrow(
+      NotFoundException,
+    );
   });
 
   it('should return bottleneck report', () => {
@@ -94,8 +98,12 @@ describe('ProfilerController', () => {
     const reg = controller.detectRegressions(s1.id, s2.id, '20');
     expect(reg.status).toBeDefined();
 
-    expect(() => controller.compareSnapshots('', '')).toThrow(BadRequestException);
-    expect(() => controller.detectRegressions('', '')).toThrow(BadRequestException);
+    expect(() => controller.compareSnapshots('', '')).toThrow(
+      BadRequestException,
+    );
+    expect(() => controller.detectRegressions('', '')).toThrow(
+      BadRequestException,
+    );
   });
 
   it('should get and update sampling config', () => {

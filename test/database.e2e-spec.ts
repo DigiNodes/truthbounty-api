@@ -36,8 +36,12 @@ describe('Database Connectivity (e2e)', () => {
     app = moduleFixture.createNestApplication();
     await app.init();
 
-    userRepository = moduleFixture.get<Repository<User>>(getRepositoryToken(User));
-    walletRepository = moduleFixture.get<Repository<Wallet>>(getRepositoryToken(Wallet));
+    userRepository = moduleFixture.get<Repository<User>>(
+      getRepositoryToken(User),
+    );
+    walletRepository = moduleFixture.get<Repository<Wallet>>(
+      getRepositoryToken(Wallet),
+    );
   });
 
   afterAll(async () => {
@@ -68,7 +72,9 @@ describe('Database Connectivity (e2e)', () => {
       const savedUser = await userRepository.save(user);
 
       expect(savedUser.id).toBeDefined();
-      expect(savedUser.walletAddress).toBe('0x1234567890123456789012345678901234567890');
+      expect(savedUser.walletAddress).toBe(
+        '0x1234567890123456789012345678901234567890',
+      );
       expect(savedUser.reputation).toBe(50);
       expect(savedUser.createdAt).toBeDefined();
       expect(savedUser.updatedAt).toBeDefined();
@@ -85,7 +91,9 @@ describe('Database Connectivity (e2e)', () => {
       });
 
       expect(foundUser).toBeDefined();
-      expect(foundUser?.walletAddress).toBe('0xabcdefabcdefabcdefabcdefabcdefabcdefabcd');
+      expect(foundUser?.walletAddress).toBe(
+        '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd',
+      );
     });
 
     it('should update a user', async () => {
@@ -98,7 +106,9 @@ describe('Database Connectivity (e2e)', () => {
       const updatedUser = await userRepository.save(user);
 
       expect(updatedUser.reputation).toBe(60);
-      expect(updatedUser.updatedAt.getTime()).toBeGreaterThan(updatedUser.createdAt.getTime());
+      expect(updatedUser.updatedAt.getTime()).toBeGreaterThan(
+        updatedUser.createdAt.getTime(),
+      );
     });
 
     it('should delete a user', async () => {
@@ -151,7 +161,9 @@ describe('Database Connectivity (e2e)', () => {
       const savedWallet = await walletRepository.save(wallet);
 
       expect(savedWallet.id).toBeDefined();
-      expect(savedWallet.address).toBe('0x4444444444444444444444444444444444444444');
+      expect(savedWallet.address).toBe(
+        '0x4444444444444444444444444444444444444444',
+      );
       expect(savedWallet.chain).toBe('ethereum');
       expect(savedWallet.userId).toBe(testUser.id);
       expect(savedWallet.linkedAt).toBeDefined();
@@ -212,7 +224,7 @@ describe('Database Connectivity (e2e)', () => {
 
       const userWithWallets = await userRepository.findOne({
         where: { id: user.id },
-        relations: ['wallets'],
+        relations: { wallets: true },
       });
 
       expect(userWithWallets?.wallets).toHaveLength(2);

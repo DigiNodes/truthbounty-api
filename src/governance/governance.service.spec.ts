@@ -3,7 +3,12 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { GovernanceService } from './governance.service';
 import { GovernanceCache } from './governance.cache';
-import { Proposal, ProposalStatus, ProposalCategory, Vote } from './entities/proposal.entity';
+import {
+  Proposal,
+  ProposalStatus,
+  ProposalCategory,
+  Vote,
+} from './entities/proposal.entity';
 
 describe('GovernanceService', () => {
   let service: GovernanceService;
@@ -137,9 +142,9 @@ describe('GovernanceService', () => {
       proposalRepo.findOneBy.mockResolvedValue(mockProposal);
       voteRepo.findOne.mockResolvedValue({} as Vote);
 
-      await expect(
-        service.castVote('1', '0x123', true),
-      ).rejects.toThrow('already voted');
+      await expect(service.castVote('1', '0x123', true)).rejects.toThrow(
+        'already voted',
+      );
     });
   });
 });

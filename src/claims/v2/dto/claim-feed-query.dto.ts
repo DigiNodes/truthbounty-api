@@ -1,5 +1,14 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsInt, Min, Max, IsIn, IsDateString } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  IsInt,
+  Min,
+  Max,
+  IsIn,
+  IsDateString,
+  IsEthereumAddress,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export const CLAIM_FEED_MAX_LIMIT = 100;
@@ -35,7 +44,7 @@ export class ClaimFeedQueryDto {
 
   @ApiPropertyOptional({ description: 'Filter by creator wallet address' })
   @IsOptional()
-  @IsString()
+  @IsEthereumAddress()
   creator?: string;
 
   @ApiPropertyOptional({

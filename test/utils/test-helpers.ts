@@ -1,9 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { PrismaModule } from '../../src/prisma/prisma.module';
-import { createMockStake, createMockStakes } from '../fixtures/contracts/staking.fixture';
-import { createMockReward, createMockRewards } from '../fixtures/contracts/rewards.fixture';
-import { createMockDispute, createMockDisputes } from '../fixtures/contracts/dispute.fixture';
+import { createMockStakes } from '../fixtures/contracts/staking.fixture';
+import { createMockRewards } from '../fixtures/contracts/rewards.fixture';
+import { createMockDisputes } from '../fixtures/contracts/dispute.fixture';
 import { Stake } from '../../src/staking/entities/stake.entity';
 import { Reward } from '../../src/rewards/entities/reward.entity';
 import { Dispute } from '../../src/dispute/entities/dispute.entity';
@@ -37,7 +37,9 @@ export async function clearDatabase(prisma: PrismaService): Promise<void> {
     .join(', ');
 
   try {
-    await prisma.$executeRawUnsafe(`TRUNCATE TABLE ${tables} RESTART IDENTITY CASCADE;`);
+    await prisma.$executeRawUnsafe(
+      `TRUNCATE TABLE ${tables} RESTART IDENTITY CASCADE;`,
+    );
   } catch (error) {
     console.error('Error clearing database:', error);
   }
@@ -52,14 +54,14 @@ export async function seedTestData(
     stakes?: number;
     rewards?: number;
     disputes?: number;
-  } = {}
+  } = {},
 ): Promise<{
   stakes: Stake[];
   rewards: Reward[];
   disputes: Dispute[];
 }> {
   const { stakes = 5, rewards = 3, disputes = 2 } = options;
-  
+
   // Create mock data
   const mockStakes = createMockStakes(stakes);
   const mockRewards = createMockRewards(rewards);
@@ -67,58 +69,58 @@ export async function seedTestData(
 
   // Insert into database
   const createdStakes = await Promise.all(
-    mockStakes.map(stake => 
-      prisma.stake.create({
+    mockStakes.map((stake) =>
+      (prisma as any).stake.create({
         data: {
-          userId: stake.userId,
+          userId: (stake as any).userId,
           walletAddress: stake.walletAddress,
           amount: stake.amount,
-          stakedAt: stake.stakedAt,
-          unstakedAt: stake.unstakedAt,
-          isActive: stake.isActive,
-          totalRewards: stake.totalRewards,
+          stakedAt: (stake as any).stakedAt,
+          unstakedAt: (stake as any).unstakedAt,
+          isActive: (stake as any).isActive,
+          totalRewards: (stake as any).totalRewards,
         },
-      })
-    )
+      }),
+    ),
   );
 
   const createdRewards = await Promise.all(
-    mockRewards.map(reward => 
-      prisma.reward.create({
+    mockRewards.map((reward) =>
+      (prisma as any).reward.create({
         data: {
-          title: reward.title,
-          description: reward.description,
-          totalAmount: reward.totalAmount,
-          tokenAddress: reward.tokenAddress,
-          creatorAddress: reward.creatorAddress,
-          createdAt: reward.createdAt,
-          expiresAt: reward.expiresAt,
-          isActive: reward.isActive,
+          title: (reward as any).title,
+          description: (reward as any).description,
+          totalAmount: (reward as any).totalAmount,
+          tokenAddress: (reward as any).tokenAddress,
+          creatorAddress: (reward as any).creatorAddress,
+          createdAt: (reward as any).createdAt,
+          expiresAt: (reward as any).expiresAt,
+          isActive: (reward as any).isActive,
         },
-      })
-    )
+      }),
+    ),
   );
 
   const createdDisputes = await Promise.all(
-    mockDisputes.map(dispute => 
-      prisma.dispute.create({
+    mockDisputes.map((dispute) =>
+      (prisma as any).dispute.create({
         data: {
           claimId: dispute.claimId,
-          creatorAddress: dispute.creatorAddress,
-          evidenceCID: dispute.evidenceCID,
-          description: dispute.description,
+          creatorAddress: (dispute as any).creatorAddress,
+          evidenceCID: (dispute as any).evidenceCID,
+          description: (dispute as any).description,
           createdAt: dispute.createdAt,
-          expiresAt: dispute.expiresAt,
-          totalVotesFor: dispute.totalVotesFor,
-          totalVotesAgainst: dispute.totalVotesAgainst,
-          totalStakeFor: dispute.totalStakeFor,
-          totalStakeAgainst: dispute.totalStakeAgainst,
+          expiresAt: (dispute as any).expiresAt,
+          totalVotesFor: (dispute as any).totalVotesFor,
+          totalVotesAgainst: (dispute as any).totalVotesAgainst,
+          totalStakeFor: (dispute as any).totalStakeFor,
+          totalStakeAgainst: (dispute as any).totalStakeAgainst,
           outcome: dispute.outcome,
           resolvedAt: dispute.resolvedAt,
-          resolutionBlock: dispute.resolutionBlock,
+          resolutionBlock: (dispute as any).resolutionBlock,
         },
-      })
-    )
+      }),
+    ),
   );
 
   return {
@@ -132,25 +134,31 @@ export async function seedTestData(
  * Wait for a specified time
  */
 export function waitFor(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
  * Generate random hex string
  */
 export function randomHex(length: number = 32): string {
-  return '0x' + Array.from({ length }, () => 
-    Math.floor(Math.random() * 16).toString(16)
-  ).join('');
+  return (
+    '0x' +
+    Array.from({ length }, () =>
+      Math.floor(Math.random() * 16).toString(16),
+    ).join('')
+  );
 }
 
 /**
  * Generate random address
  */
 export function randomAddress(): string {
-  return '0x' + Array.from({ length: 40 }, () => 
-    Math.floor(Math.random() * 16).toString(16)
-  ).join('');
+  return (
+    '0x' +
+    Array.from({ length: 40 }, () =>
+      Math.floor(Math.random() * 16).toString(16),
+    ).join('')
+  );
 }
 
 /**

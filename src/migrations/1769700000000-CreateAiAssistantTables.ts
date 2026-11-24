@@ -18,8 +18,12 @@ export class CreateAiAssistantTables1769700000000 implements MigrationInterface 
         "updatedAt" datetime NOT NULL DEFAULT (datetime('now'))
       )
     `);
-    await queryRunner.query(`CREATE INDEX "IDX_conversations_userId" ON "conversations" ("userId")`);
-    await queryRunner.query(`CREATE INDEX "IDX_conversations_userId_status" ON "conversations" ("userId", "status")`);
+    await queryRunner.query(
+      `CREATE INDEX "IDX_conversations_userId" ON "conversations" ("userId")`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_conversations_userId_status" ON "conversations" ("userId", "status")`,
+    );
     await queryRunner.query(
       `CREATE INDEX "IDX_conversations_userId_createdAt" ON "conversations" ("userId", "createdAt")`,
     );
@@ -45,7 +49,9 @@ export class CreateAiAssistantTables1769700000000 implements MigrationInterface 
           REFERENCES "conversations" ("id") ON DELETE CASCADE
       )
     `);
-    await queryRunner.query(`CREATE INDEX "IDX_ai_messages_conversationId" ON "ai_messages" ("conversationId")`);
+    await queryRunner.query(
+      `CREATE INDEX "IDX_ai_messages_conversationId" ON "ai_messages" ("conversationId")`,
+    );
     await queryRunner.query(
       `CREATE INDEX "IDX_ai_messages_conversationId_createdAt" ON "ai_messages" ("conversationId", "createdAt")`,
     );
@@ -64,8 +70,12 @@ export class CreateAiAssistantTables1769700000000 implements MigrationInterface 
         "updatedAt" datetime NOT NULL DEFAULT (datetime('now'))
       )
     `);
-    await queryRunner.query(`CREATE INDEX "IDX_ai_context_documents_category" ON "ai_context_documents" ("category")`);
-    await queryRunner.query(`CREATE INDEX "IDX_ai_context_documents_isActive" ON "ai_context_documents" ("isActive")`);
+    await queryRunner.query(
+      `CREATE INDEX "IDX_ai_context_documents_category" ON "ai_context_documents" ("category")`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_ai_context_documents_isActive" ON "ai_context_documents" ("isActive")`,
+    );
 
     await queryRunner.query(`
       CREATE TABLE "ai_usage_logs" (
@@ -86,17 +96,25 @@ export class CreateAiAssistantTables1769700000000 implements MigrationInterface 
         "createdAt" datetime NOT NULL DEFAULT (datetime('now'))
       )
     `);
-    await queryRunner.query(`CREATE INDEX "IDX_ai_usage_logs_userId" ON "ai_usage_logs" ("userId")`);
-    await queryRunner.query(`CREATE INDEX "IDX_ai_usage_logs_userId_createdAt" ON "ai_usage_logs" ("userId", "createdAt")`);
+    await queryRunner.query(
+      `CREATE INDEX "IDX_ai_usage_logs_userId" ON "ai_usage_logs" ("userId")`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "IDX_ai_usage_logs_userId_createdAt" ON "ai_usage_logs" ("userId", "createdAt")`,
+    );
     await queryRunner.query(
       `CREATE INDEX "IDX_ai_usage_logs_provider_createdAt" ON "ai_usage_logs" ("provider", "createdAt")`,
     );
-    await queryRunner.query(`CREATE INDEX "IDX_ai_usage_logs_status" ON "ai_usage_logs" ("status")`);
+    await queryRunner.query(
+      `CREATE INDEX "IDX_ai_usage_logs_status" ON "ai_usage_logs" ("status")`,
+    );
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`DROP INDEX "IDX_ai_usage_logs_status"`);
-    await queryRunner.query(`DROP INDEX "IDX_ai_usage_logs_provider_createdAt"`);
+    await queryRunner.query(
+      `DROP INDEX "IDX_ai_usage_logs_provider_createdAt"`,
+    );
     await queryRunner.query(`DROP INDEX "IDX_ai_usage_logs_userId_createdAt"`);
     await queryRunner.query(`DROP INDEX "IDX_ai_usage_logs_userId"`);
     await queryRunner.query(`DROP TABLE "ai_usage_logs"`);
@@ -105,7 +123,9 @@ export class CreateAiAssistantTables1769700000000 implements MigrationInterface 
     await queryRunner.query(`DROP INDEX "IDX_ai_context_documents_category"`);
     await queryRunner.query(`DROP TABLE "ai_context_documents"`);
 
-    await queryRunner.query(`DROP INDEX "IDX_ai_messages_conversationId_createdAt"`);
+    await queryRunner.query(
+      `DROP INDEX "IDX_ai_messages_conversationId_createdAt"`,
+    );
     await queryRunner.query(`DROP INDEX "IDX_ai_messages_conversationId"`);
     await queryRunner.query(`DROP TABLE "ai_messages"`);
 

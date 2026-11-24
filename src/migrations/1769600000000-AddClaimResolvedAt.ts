@@ -34,11 +34,7 @@ export class AddClaimResolvedAt1769600000000 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(
-      `DROP INDEX "public"."IDX_claims_resolved_at"`,
-    );
-    await queryRunner.query(
-      `ALTER TABLE "claims" DROP COLUMN "resolvedAt"`,
-    );
+    await queryRunner.query(`DROP INDEX "public"."IDX_claims_resolved_at"`);
+    await queryRunner.query(`ALTER TABLE "claims" DROP COLUMN "resolvedAt"`);
   }
 }

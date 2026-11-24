@@ -23,7 +23,7 @@ export class InternalNotificationController {
   @HttpCode(HttpStatus.ACCEPTED)
   async processProtocolEvent(@Body() event: NotificationEvent) {
     await this.notificationsService.processIncomingEvent(event);
-    
+
     return {
       success: true,
       message: 'Event processing queued',

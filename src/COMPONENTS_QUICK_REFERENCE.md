@@ -449,7 +449,7 @@ interface AuditEvent {
 - [Full Component Documentation](./COMPONENTS.md)
 - [Database Schema](../prisma/schema.prisma)
 - [API Documentation](../docs/API_REFERENCE.md)
-- [Architecture Overview](../../ARCHITECTURE.md)
+- [Architecture Overview](../ARCHITECTURE.md)
 
 ---
 

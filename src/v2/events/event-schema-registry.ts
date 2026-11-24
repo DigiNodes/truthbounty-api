@@ -17,8 +17,11 @@
  * common across event types) carry the same flagged assumption:
  * VerificationRoundOpened.{roundType, roundNumber, deadline},
  * PositionCommitted.{stake, reputationInput, effectiveWeight, verdict},
- * DisputeRaised.{deadline, appealRoundId}, DisputeResolved.{outcome}. See
- * verification-projector.service.ts and disputes-projector.service.ts.
+ * DisputeRaised.{deadline, appealRoundId}, DisputeResolved.{outcome},
+ * RewardPoolSettled.{poolId}, RewardAllocated.{kind, beneficiary,
+ * sourcePoolId, allocationId}, RewardClaimed.{allocationId, kind,
+ * beneficiary}. See verification-projector.service.ts,
+ * disputes-projector.service.ts and rewards-projector.service.ts.
  */
 export interface EventFieldMapping {
   actor?: string;
@@ -52,6 +55,26 @@ export const EVENT_SCHEMA_REGISTRY: Record<string, EventFieldMapping> = {
   },
   DisputeResolved: { claimId: 'claimId', roundId: 'roundId' },
   DisputeExpired: { claimId: 'claimId', roundId: 'roundId' },
+
+  // Reward allocations and claim progress (V2-BE-017)
+  RewardPoolSettled: {
+    claimId: 'claimId',
+    asset: 'asset',
+    amount: 'amount',
+  },
+  RewardAllocated: {
+    actor: 'beneficiary',
+    claimId: 'claimId',
+    roundId: 'roundId',
+    asset: 'asset',
+    amount: 'amount',
+  },
+  RewardClaimed: {
+    actor: 'beneficiary',
+    claimId: 'claimId',
+    asset: 'asset',
+    amount: 'amount',
+  },
 };
 
 /** Every event name this pipeline currently knows how to normalize. */

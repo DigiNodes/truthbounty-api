@@ -1,3 +1,4 @@
+import { getRuntimeEnvironment } from '../config/runtime-config';
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -80,7 +81,7 @@ export class ConfigurationService {
       await this.historyRepo.insert({
         configurationId: existing.id,
         key,
-        value: value as unknown,
+        value: value as any,
         environment: env,
         version: nextVersion,
         createdBy,
@@ -93,7 +94,7 @@ export class ConfigurationService {
 
     const record = this.configRepo.create({
       key,
-      value: value as any,
+      value: value,
       environment: env,
       version: 1,
       createdBy,
@@ -103,7 +104,7 @@ export class ConfigurationService {
     await this.historyRepo.insert({
       configurationId: saved.id,
       key,
-      value: value as unknown,
+      value: value as any,
       environment: env,
       version: 1,
       createdBy,
@@ -156,7 +157,11 @@ export class ConfigurationService {
     }));
   }
 
-  async rollback(id: string, targetVersion: number, rolledBackBy?: string): Promise<ConfigurationValue> {
+  async rollback(
+    id: string,
+    targetVersion: number,
+    rolledBackBy?: string,
+  ): Promise<ConfigurationValue> {
     const current = await this.findOne(id);
     if (targetVersion >= current.version || targetVersion < 1) {
       throw new Error('Invalid rollback target version');
@@ -167,7 +172,9 @@ export class ConfigurationService {
     });
 
     if (!historyRecord) {
-      throw new NotFoundException(`History record for version ${targetVersion} not found`);
+      throw new NotFoundException(
+        `History record for version ${targetVersion} not found`,
+      );
     }
 
     return this.set(
@@ -191,6 +198,6 @@ export class ConfigurationService {
   }
 
   private getDefaultEnvironment(): string {
-    return process.env.NODE_ENV ?? 'development';
+    return getRuntimeEnvironment().NODE_ENV ?? 'development';
   }
 }

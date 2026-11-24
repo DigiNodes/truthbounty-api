@@ -16,6 +16,7 @@ export class CreateV2CanonicalEventTables1769800000000 implements MigrationInter
         "chainId" integer NOT NULL,
         "contractAddress" varchar(42) NOT NULL,
         "artifactVersion" varchar(64) NOT NULL,
+        "abiChecksum" varchar(64) NOT NULL,
         "abi" json NOT NULL,
         "isApproved" boolean NOT NULL DEFAULT false,
         "registeredAt" TIMESTAMP NOT NULL DEFAULT now(),
@@ -66,8 +67,12 @@ export class CreateV2CanonicalEventTables1769800000000 implements MigrationInter
     await queryRunner.query(
       `CREATE INDEX "idx_v2_canonical_events_name_block" ON "v2_canonical_events" ("eventName", "blockNumber")`,
     );
-    await queryRunner.query(`CREATE INDEX "idx_v2_canonical_events_claim_id" ON "v2_canonical_events" ("claimId")`);
-    await queryRunner.query(`CREATE INDEX "idx_v2_canonical_events_round_id" ON "v2_canonical_events" ("roundId")`);
+    await queryRunner.query(
+      `CREATE INDEX "idx_v2_canonical_events_claim_id" ON "v2_canonical_events" ("claimId")`,
+    );
+    await queryRunner.query(
+      `CREATE INDEX "idx_v2_canonical_events_round_id" ON "v2_canonical_events" ("roundId")`,
+    );
 
     await queryRunner.query(`
       CREATE TABLE "v2_event_quarantine" (
@@ -85,7 +90,9 @@ export class CreateV2CanonicalEventTables1769800000000 implements MigrationInter
         CONSTRAINT "uq_v2_quarantine_identity" UNIQUE ("chainId", "txHash", "logIndex")
       )
     `);
-    await queryRunner.query(`CREATE INDEX "idx_v2_event_quarantine_reason" ON "v2_event_quarantine" ("reason")`);
+    await queryRunner.query(
+      `CREATE INDEX "idx_v2_event_quarantine_reason" ON "v2_event_quarantine" ("reason")`,
+    );
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {

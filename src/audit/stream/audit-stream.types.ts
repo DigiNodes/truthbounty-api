@@ -2,6 +2,7 @@
  * Security and Administrative Audit Stream Chaining Types.
  * Production-readiness boundary for canonical serialization and per-stream hash chaining.
  */
+
 export interface AuditStreamBinding {
   /** Authoritative chain ID (e.g. 10 for Optimism, 11155420 for OP Sepolia). */
   chainId: number;
@@ -60,6 +61,7 @@ export interface AuditStreamCheckpoint {
   checkpointHash: string;
 }
 
+
 export interface AuditAppendResult {
   streamId: string;
   sequence: number;
@@ -67,6 +69,7 @@ export interface AuditAppendResult {
 }
 
 export interface AuditStreamAppendResult extends AuditAppendResult {}
+
 
 export interface AuditVerificationOptions {
   fromSequence?: number;
@@ -145,7 +148,7 @@ export const AUDIT_STREAM_DISCLAIMER =
   'Hash-chaining guarantees tamper-evidence and detectability of unauthorized mutations ' +
   'within an append-only audit stream; it does NOT claim decentralized blockchain consensus immutability.';
 
-// Validation utilities
+
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CODE_RE = /^[a-z][a-z0-9_.:-]{0,95}$/i;
@@ -165,10 +168,19 @@ export function validateAuditStreamBinding(
     throw new Error(`Invalid audit chainId: ${b.chainId}`);
   }
 
+
   if (!b.releaseId || !UUID_RE.test(b.releaseId)) {
     throw new Error(`Invalid audit releaseId: ${b.releaseId}`);
   }
 
+  if (!b.deploymentBlock || !BLOCK_RE.test(b.deploymentBlock)) {
+    throw new Error(`Invalid audit deploymentBlock: ${b.deploymentBlock}`);
+  }
+
+
+  if (!b.releaseId || !UUID_RE.test(b.releaseId)) {
+    throw new Error(`Invalid audit releaseId: ${b.releaseId}`);
+  }
   if (!b.deploymentBlock || !BLOCK_RE.test(b.deploymentBlock)) {
     throw new Error(`Invalid audit deploymentBlock: ${b.deploymentBlock}`);
   }
@@ -240,6 +252,7 @@ export function validateRecordPayload(
     chainContext: validBinding,
   };
 }
+
 
 // Legacy type compatibility
 export interface AuditStreamVerifyResult {

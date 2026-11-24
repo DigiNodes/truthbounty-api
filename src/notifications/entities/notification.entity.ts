@@ -23,13 +23,8 @@ export enum NotificationType {
   SECURITY_ALERT = 'security_alert',
 }
 
-export enum NotificationChannel {
-  IN_APP = 'in_app',
-  WEBSOCKET = 'websocket',
-  PUSH = 'push',
-  EMAIL = 'email',
-  WEBHOOK = 'webhook',
-}
+import { DeliveryChannel } from '../interfaces/notification.types';
+export { DeliveryChannel as NotificationChannel };
 
 export enum DeliveryStatus {
   PENDING = 'pending',
@@ -88,6 +83,10 @@ export class Notification {
 
   @Column({ type: 'boolean', default: false })
   read: boolean;
+
+  @Column({ type: 'boolean', default: false })
+  @Index()
+  emailed: boolean;
 
   @Column({ type: 'timestamp', nullable: true })
   readAt?: Date;

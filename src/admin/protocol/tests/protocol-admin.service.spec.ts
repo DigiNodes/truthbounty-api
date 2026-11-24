@@ -1,9 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { getQueueToken } from '@nestjs/bullmq';
-import { NotFoundException, ConflictException } from '@nestjs/common';
-import { Repository, DataSource } from 'typeorm';
-import { Admin, AdminRole } from '../../entities/admin.entity';
+import { NotFoundException } from '@nestjs/common';
+import { DataSource } from 'typeorm';
+import { Admin } from '../../entities/admin.entity';
 import { AuditLog } from '../../../audit/entities/audit-log.entity';
 import { ProtocolAdminService } from '../protocol-admin.service';
 import { AuditTrailService } from '../../../audit/services/audit-trail.service';
@@ -118,7 +118,10 @@ describe('ProtocolAdminService', () => {
         { provide: ConfigurationService, useValue: mockConfigService },
         { provide: JobsService, useValue: mockJobsService },
         { provide: RedisService, useValue: mockRedisService },
-        { provide: getQueueToken(QueueName.DEFAULT), useValue: mockDefaultQueue },
+        {
+          provide: getQueueToken(QueueName.DEFAULT),
+          useValue: mockDefaultQueue,
+        },
         {
           provide: getQueueToken(QueueName.NOTIFICATIONS),
           useValue: mockNotificationsQueue,
@@ -544,10 +547,7 @@ describe('ProtocolAdminService', () => {
 
   describe('getAdminAuditLogs', () => {
     it('should return admin audit logs', async () => {
-      mockAuditLogRepo.findAndCount.mockResolvedValue([
-        [{ id: 'log-1' }],
-        1,
-      ]);
+      mockAuditLogRepo.findAndCount.mockResolvedValue([[{ id: 'log-1' }], 1]);
 
       const result = await service.getAdminAuditLogs(10, 0);
 

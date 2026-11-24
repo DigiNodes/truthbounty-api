@@ -7,7 +7,7 @@ import {
   JoinColumn,
   Index,
 } from 'typeorm';
-import { Evidence } from './evidence.entity';
+import type { Evidence } from './evidence.entity';
 
 @Entity('evidence_versions')
 @Index(['evidenceId'])
@@ -19,7 +19,7 @@ export class EvidenceVersion {
   @Column()
   evidenceId: string;
 
-  @ManyToOne(() => Evidence, { onDelete: 'CASCADE' })
+  @ManyToOne('Evidence', { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'evidenceId' })
   evidence: Evidence;
 

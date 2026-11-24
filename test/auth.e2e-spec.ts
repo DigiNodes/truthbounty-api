@@ -1,12 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
-import * as request from 'supertest';
+import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { ethers } from 'ethers';
 
 describe('Authentication Gateway E2E (auth.e2e-spec.ts)', () => {
   let app: INestApplication;
-  let testWallet: ethers.Wallet;
+  let testWallet: ethers.HDNodeWallet;
 
   beforeAll(async () => {
     testWallet = ethers.Wallet.createRandom();
@@ -49,7 +49,9 @@ describe('Authentication Gateway E2E (auth.e2e-spec.ts)', () => {
         })
         .expect(201)
         .expect((res) => {
-          expect(res.body.message).toContain('wants you to sign in with your Ethereum account');
+          expect(res.body.message).toContain(
+            'wants you to sign in with your Ethereum account',
+          );
           expect(res.body.format).toBe('siwe');
         });
     });
@@ -93,7 +95,7 @@ describe('Authentication Gateway E2E (auth.e2e-spec.ts)', () => {
         });
     });
 
-    it('should reject invalid signature format', () => {
+    it('should reject invalid signature format with constant-shape 401', () => {
       return request(app.getHttpServer())
         .post('/auth/login')
         .send({
@@ -101,7 +103,11 @@ describe('Authentication Gateway E2E (auth.e2e-spec.ts)', () => {
           signature: '0xinvalid',
           message: challengeMessage,
         })
-        .expect(400);
+        .expect(401)
+        .expect((res) => {
+          expect(res.body.code).toBe('AUTH_UNAUTHORIZED');
+          expect(res.body.message).toBe('Invalid credentials');
+        });
     });
 
     it('should reject mismatched address', async () => {
@@ -228,9 +234,7 @@ describe('Authentication Gateway E2E (auth.e2e-spec.ts)', () => {
     });
 
     it('should reject logout without token', () => {
-      return request(app.getHttpServer())
-        .post('/auth/logout')
-        .expect(403);
+      return request(app.getHttpServer()).post('/auth/logout').expect(403);
     });
   });
 
@@ -268,9 +272,7 @@ describe('Authentication Gateway E2E (auth.e2e-spec.ts)', () => {
     });
 
     it('should reject without token', () => {
-      return request(app.getHttpServer())
-        .get('/auth/profile')
-        .expect(403);
+      return request(app.getHttpServer()).get('/auth/profile').expect(403);
     });
 
     it('should reject with invalid token', () => {
@@ -331,16 +333,14 @@ describe('Authentication Gateway E2E (auth.e2e-spec.ts)', () => {
     });
 
     it('should allow GET /claims/latest without auth', () => {
-      return request(app.getHttpServer())
-        .get('/claims/latest')
-        .expect(200);
+      return request(app.getHttpServer()).get('/claims/latest').expect(200);
     });
   });
 
   // ── Standardized Error Responses ─────────────────────────────────────────
 
-  describe('Standardized error responses', () => {
-    it('should return standardized error for invalid login', () => {
+  describe('Standardized error responses (constant-shape, issue-416)', () => {
+    it('should return constant-shape 401 for invalid login', () => {
       return request(app.getHttpServer())
         .post('/auth/login')
         .send({
@@ -348,15 +348,16 @@ describe('Authentication Gateway E2E (auth.e2e-spec.ts)', () => {
           signature: '0xinvalid',
           message: 'random message',
         })
-        .expect(400)
+        .expect(401)
         .expect((res) => {
-          expect(res.body.code).toBeDefined();
+          expect(res.body.code).toBe('AUTH_UNAUTHORIZED');
+          expect(res.body.message).toBe('Invalid credentials');
           expect(res.body.timestamp).toBeDefined();
           expect(res.body.path).toBe('/auth/login');
         });
     });
 
-    it('should return standardized error for missing challenge', () => {
+    it('should return identical shape for missing challenge (no enumeration)', () => {
       return request(app.getHttpServer())
         .post('/auth/login')
         .send({
@@ -366,7 +367,8 @@ describe('Authentication Gateway E2E (auth.e2e-spec.ts)', () => {
         })
         .expect(401)
         .expect((res) => {
-          expect(res.body.code).toBeDefined();
+          expect(res.body.code).toBe('AUTH_UNAUTHORIZED');
+          expect(res.body.message).toBe('Invalid credentials');
           expect(res.body.timestamp).toBeDefined();
         });
     });

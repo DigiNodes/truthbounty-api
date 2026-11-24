@@ -35,11 +35,21 @@ export interface SearchResult<T> {
   page: number;
   limit: number;
   totalPages: number;
+  nextCursor?: string;
+}
+
+export interface PublicUserResult {
+  id: string;
+  walletAddress: string;
+  reputation: number;
+  worldcoinVerified: boolean;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface GlobalSearchResult {
   query: string;
   claims: SearchResult<unknown>;
   disputes: SearchResult<unknown>;
-  users: SearchResult<unknown>;
+  users: SearchResult<PublicUserResult>;
 }

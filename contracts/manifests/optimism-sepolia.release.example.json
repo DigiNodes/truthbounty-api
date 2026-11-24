@@ -1,0 +1,67 @@
+{
+  "version": "2.0.0-rc.3",
+  "releaseId": "rel-opsepolia-20261015-v2",
+  "chainId": 11155420,
+  "publishedAt": "2026-10-15T16:56:32.141Z",
+  "manifestChecksum": "f183dd1270bacc47f49f05f3d2ac0c8f021b41138da06d822377a2845cddb22f",
+  "contracts": [
+    {
+      "name": "ClaimRegistry",
+      "address": "0x0000000000000000000000000000000000001001",
+      "deployBlock": 24850000,
+      "events": [
+        {
+          "name": "ClaimSubmitted",
+          "abi": "event ClaimSubmitted(bytes32 indexed claimId, address indexed author, string contentURI)",
+          "topic0": "0x1ade945054b1cb7694489e6babea1f79bd9d8896dd5cfde28dd775a01a39b3f9",
+          "signature": "ClaimSubmitted(bytes32,address,string)",
+          "anonymous": false,
+          "indexed": [
+            { "name": "claimId", "type": "bytes32", "position": 0 },
+            { "name": "author", "type": "address", "position": 1 }
+          ]
+        },
+        {
+          "name": "ClaimStatusChanged",
+          "abi": "event ClaimStatusChanged(bytes32 indexed claimId, uint8 newStatus)",
+          "topic0": "0x698a3a7f5c0bc9915a6f167e9ce03ffc660392e807cf6fd57fd9ae52063dd27b",
+          "signature": "ClaimStatusChanged(bytes32,uint8)",
+          "anonymous": false,
+          "indexed": [
+            { "name": "claimId", "type": "bytes32", "position": 0 }
+          ]
+        }
+      ],
+      "abiChecksum": "de377e474c3aa1d70e6a3222aa82eccabed108a797d63dbacf9b5e39f6bd4061"
+    },
+    {
+      "name": "VerificationEngine",
+      "address": "0x0000000000000000000000000000000000001002",
+      "deployBlock": 24850000,
+      "events": [
+        {
+          "name": "VerificationRecorded",
+          "abi": "event VerificationRecorded(bytes32 indexed claimId, address indexed verifier, bool verdict, uint256 confidenceScore)",
+          "topic0": "0xdb3f964aa4bd8f7f9dcf16b35e38fc1c5d209392f9b9d4b19fe7f394cfe103f3",
+          "signature": "VerificationRecorded(bytes32,address,bool,uint256)",
+          "anonymous": false,
+          "indexed": [
+            { "name": "claimId", "type": "bytes32", "position": 0 },
+            { "name": "verifier", "type": "address", "position": 1 }
+          ]
+        },
+        {
+          "name": "VerdictSettled",
+          "abi": "event VerdictSettled(bytes32 indexed claimId, uint8 finalVerdict, uint256 totalPayout)",
+          "topic0": "0xe43a1d7ecc11dab2170ed3cfc71749b006f36f1a5d06393626b27dc6b46fbbc5",
+          "signature": "VerdictSettled(bytes32,uint8,uint256)",
+          "anonymous": false,
+          "indexed": [
+            { "name": "claimId", "type": "bytes32", "position": 0 }
+          ]
+        }
+      ],
+      "abiChecksum": "2ce80f475503d47bdb20f069beb11860ba958482c5c69585f7c7ec380a723264"
+    }
+  ]
+}

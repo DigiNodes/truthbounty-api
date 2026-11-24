@@ -110,6 +110,21 @@ Reviewed before implementation to avoid duplicating or breaking existing paths.
   gateway, not a live content fetch; it does not guarantee the content is
   retrievable at request time.
 
+### SSRF gateway boundary
+- `IpfsService.getGatewayUrl` fails closed for loopback, private, shared,
+  link-local, cloud-metadata, multicast, reserved, and documentation IP
+  ranges, including IPv6 equivalents and local/internal hostnames.
+- Gateway URLs containing credentials or nonstandard ports are rejected, and
+  only `http` and `https` URLs are eligible for normalization.
+- A rejected or unavailable gateway is represented as `undefined`; callers
+  must report off-chain content as unavailable rather than substitute a raw
+  provider URL or fabricate evidence state.
+- The V2 projection stores metadata pointers but does not fetch them. This
+  sanitizer is not a substitute for DNS-aware SSRF protection if a future
+  server-side fetcher is introduced; that fetcher must resolve and validate
+  every destination and redirect at request time, enforce timeouts and body
+  limits, and fail closed on resolution uncertainty.
+
 ## 3. Evidence of commands run and results
 
 ### Targeted unit + integration tests (pass)

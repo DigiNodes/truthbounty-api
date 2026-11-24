@@ -8,10 +8,13 @@ export class ClaimFactory {
   /**
    * Create a mock CreateClaimDto with realistic data
    */
-  static createCreateClaimDto(overrides: Partial<CreateClaimDto> = {}): CreateClaimDto {
+  static createCreateClaimDto(
+    overrides: Partial<CreateClaimDto> = {},
+  ): CreateClaimDto {
     return {
       title: 'Test claim about climate change',
-      content: 'Recent scientific studies indicate that global temperature rise is exceeding previous climate models by approximately 0.2°C per decade.',
+      content:
+        'Recent scientific studies indicate that global temperature rise is exceeding previous climate models by approximately 0.2°C per decade.',
       source: 'https://example.com/scientific-study',
       metadata: {
         category: 'climate',
@@ -27,7 +30,9 @@ export class ClaimFactory {
    */
   static createClaim(overrides: Partial<Claim> = {}): Claim {
     const dto = ClaimFactory.createCreateClaimDto();
-    return {
+    // Real Claim instance (not a plain object) so prototype methods
+    // getCurrentState()/transitionTo() used by the services are available.
+    return Object.assign(new Claim(), {
       id: '00000000-0000-0000-0000-000000000000',
       title: dto.title,
       content: dto.content,
@@ -38,22 +43,21 @@ export class ClaimFactory {
       confidenceScore: null,
       finalized: false,
       createdAt: new Date(),
-      resolvedAt: null,
       evidences: [],
       ...overrides,
-    } as Claim;
+    });
   }
 
   /**
    * Create multiple mock claims for load testing
    */
   static createManyClaims(count: number): Claim[] {
-    return Array.from({ length: count }, (_, index) => 
+    return Array.from({ length: count }, (_, index) =>
       ClaimFactory.createClaim({
         id: `00000000-0000-0000-0000-${index.toString().padStart(12, '0')}`,
         title: `Test claim ${index + 1}`,
         content: `Content for test claim number ${index + 1}`,
-      })
+      }),
     );
   }
 
@@ -78,7 +82,7 @@ export class ClaimFactory {
       ClaimFactory.createClaimWithVerdict(true, 0.95),
       ClaimFactory.createClaimWithVerdict(false, 0.85),
       ClaimFactory.createClaimWithVerdict(true, 0.75),
-      ClaimFactory.createClaimWithVerdict(false, 0.60),
+      ClaimFactory.createClaimWithVerdict(false, 0.6),
       ClaimFactory.createClaimWithVerdict(true, 0.45),
     ];
   }

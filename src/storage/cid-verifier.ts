@@ -1,9 +1,9 @@
-import { CID } from "multiformats/cid";
-import { sha256 } from "multiformats/hashes/sha2";
+import { CID } from 'multiformats/cid';
+import { sha256 } from 'multiformats/hashes/sha2';
 
 export async function verifyCIDIntegrity(
   fileBuffer: Buffer,
-  returnedCid: string
+  returnedCid: string,
 ): Promise<boolean> {
   try {
     const cid = CID.parse(returnedCid);

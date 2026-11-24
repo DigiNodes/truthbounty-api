@@ -1,6 +1,13 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { getRuntimeEnvironment } from '../config/runtime-config';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { buildPoolConfig, PoolConfig } from './pool.config';
 
 /**
  * Database connectivity and pool health information.
@@ -18,6 +25,40 @@ export interface DatabaseHealth {
   poolTotal: number | null;
   /** Error message if the health check failed. */
   error?: string;
+}
+
+/**
+ * Bounded, sanitized connection-pool metrics.
+ *
+ * Every field is a finite, non-negative integer that has been clamped into a
+ * safe range before being returned. No connection strings, credentials, or
+ * hostnames are included, so the payload is safe to expose on health and
+ * metrics endpoints.
+ */
+export interface BoundedPoolMetrics {
+  /** Total connections currently established by the pool. */
+  total: number;
+  /** Idle (available) connections. */
+  idle: number;
+  /** Active (checked-out) connections. */
+  active: number;
+  /** Callers currently waiting for a free connection. */
+  waiting: number;
+  /** Configured maximum pool size (clamped). */
+  max: number;
+  /** Whether these figures were read successfully. */
+  available: boolean;
+}
+
+/**
+ * Structural shape of the `pg` pool object reachable through the TypeORM
+ * driver. Typing it (instead of `any`) keeps lint/type safety intact while
+ * tolerating drivers that do not expose a pool.
+ */
+interface PgPoolStats {
+  totalCount?: number;
+  idleCount?: number;
+  waitingCount?: number;
 }
 
 /**
@@ -119,7 +160,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
            WHERE state = 'active'`,
         );
         result.poolActive = Number(poolStats?.[0]?.active ?? 0);
-        result.poolTotal = (this.dataSource.options.extra as any)?.max ?? null;
+        result.poolTotal = this.dataSource.options.extra?.max ?? null;
       }
     } catch {
       // Pool stats are only available for PostgreSQL
@@ -171,7 +212,9 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     pending: number;
     migrations: Array<{ name: string; timestamp: number }>;
   }> {
-    const migrations = await this.dataSource.runMigrations({ transaction: 'none' });
+    const migrations = await this.dataSource.runMigrations({
+      transaction: 'none',
+    });
     const allMigrations = this.dataSource.migrations;
     const appliedMigrations = await this.dataSource.query(
       'SELECT name, "timestamp" FROM migrations ORDER BY "timestamp"',
@@ -180,10 +223,12 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     return {
       applied: appliedMigrations.length,
       pending: allMigrations.length - appliedMigrations.length,
-      migrations: appliedMigrations.map((m: { name: string; timestamp: number }) => ({
-        name: m.name,
-        timestamp: m.timestamp,
-      })),
+      migrations: appliedMigrations.map(
+        (m: { name: string; timestamp: number }) => ({
+          name: m.name,
+          timestamp: m.timestamp,
+        }),
+      ),
     };
   }
 
@@ -196,7 +241,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     active: number;
     waiting: number;
   }> {
-    const pool = (this.dataSource.driver as any).master;
+    const pool = this.getPgPool();
     if (!pool) {
       return { total: 0, idle: 0, active: 0, waiting: 0 };
     }
@@ -208,4 +253,67 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       waiting: pool.waitingCount ?? 0,
     };
   }
+
+  /**
+   * Returns a **bounded and sanitized** snapshot of pool utilization.
+   *
+   * Unlike {@link getPoolMetrics}, every value here is clamped to a finite,
+   * non-negative integer bounded by the configured pool maximum, so the
+   * result can be safely serialized into health/metrics responses without
+   * risking NaN, Infinity, or negative counts. Fails closed: if the driver
+   * does not expose a pool (SQLite, uninitialized), `available` is false and
+   * all counts are zero.
+   */
+  getBoundedPoolMetrics(): BoundedPoolMetrics {
+    const poolConfig: PoolConfig = buildPoolConfig(getRuntimeEnvironment());
+    const max = poolConfig.poolMax;
+
+    const unavailable: BoundedPoolMetrics = {
+      total: 0,
+      idle: 0,
+      active: 0,
+      waiting: 0,
+      max,
+      available: false,
+    };
+
+    try {
+      const pool = this.getPgPool();
+      if (!pool) return unavailable;
+
+      const total = clampCount(pool.totalCount, max);
+      const idle = clampCount(pool.idleCount, max);
+      const waiting = clampCount(pool.waitingCount, max);
+      // Active is derived and independently clamped so a malformed driver
+      // value can never produce a negative or overflowing count.
+      const active = clampCount(
+        typeof pool.totalCount === 'number' &&
+          typeof pool.idleCount === 'number'
+          ? pool.totalCount - pool.idleCount
+          : 0,
+        max,
+      );
+
+      return { total, idle, active, waiting, max, available: true };
+    } catch {
+      return unavailable;
+    }
+  }
+
+  /**
+   * Returns the underlying `pg` pool (when the driver exposes one), or
+   * `undefined` for drivers without a pool (SQLite, uninitialized).
+   */
+  private getPgPool(): PgPoolStats | undefined {
+    const driver = this.dataSource.driver as
+      { master?: PgPoolStats } | undefined;
+    return driver?.master;
+  }
+}
+
+/** Clamps a possibly-undefined/non-finite number to [0, max] as an integer. */
+function clampCount(value: unknown, max: number): number {
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.min(max, Math.max(0, Math.floor(n)));
 }

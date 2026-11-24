@@ -32,7 +32,9 @@ describe('WebhooksController', () => {
     findOne: jest.fn().mockResolvedValue(mockWebhook),
     update: jest.fn().mockResolvedValue(mockWebhook),
     remove: jest.fn().mockResolvedValue(undefined),
-    getDeliveries: jest.fn().mockResolvedValue({ deliveries: [], total: 0, page: 1, limit: 20 }),
+    getDeliveries: jest
+      .fn()
+      .mockResolvedValue({ deliveries: [], total: 0, page: 1, limit: 20 }),
     getDelivery: jest.fn().mockResolvedValue({
       id: 'del-001',
       webhookId: 'wh-001',
@@ -40,7 +42,9 @@ describe('WebhooksController', () => {
       status: DeliveryStatus.DELIVERED,
     }),
     retryDelivery: jest.fn().mockResolvedValue(undefined),
-    rotateSecret: jest.fn().mockResolvedValue({ secret: 'new-secret', expiresAt: new Date() }),
+    rotateSecret: jest
+      .fn()
+      .mockResolvedValue({ secret: 'new-secret', expiresAt: new Date() }),
     revokeSecret: jest.fn().mockResolvedValue(undefined),
     getWebhookStatus: jest.fn().mockResolvedValue({
       webhook: mockWebhook,

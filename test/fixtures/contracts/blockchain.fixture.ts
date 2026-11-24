@@ -1,5 +1,5 @@
-import { Wallet } from 'ethers';
-import { v4 as uuidv4 } from 'uuid';
+import { Wallet, HDNodeWallet } from 'ethers';
+import { randomUUID as uuidv4 } from 'node:crypto';
 
 /**
  * Blockchain Test Fixtures
@@ -20,7 +20,7 @@ export type ContractType = keyof typeof CONTRACT_ADDRESSES;
 /**
  * Generate deterministic wallet for testing
  */
-export function createTestWallet(seed: string = 'test'): Wallet {
+export function createTestWallet(seed: string = 'test'): HDNodeWallet {
   const mnemonic = `test test test test test test test test test test test ${seed}`;
   return Wallet.fromPhrase(mnemonic);
 }
@@ -87,7 +87,10 @@ export function createMockBlock(blockNumber: number = 1): MockBlock {
     number: blockNumber,
     hash: `0x${uuidv4().replace(/-/g, '')}`,
     timestamp: Math.floor(Date.now() / 1000) + blockNumber * 1000,
-    parentHash: blockNumber > 0 ? `0x${uuidv4().replace(/-/g, '')}` : '0x' + '0'.repeat(64),
+    parentHash:
+      blockNumber > 0
+        ? `0x${uuidv4().replace(/-/g, '')}`
+        : '0x' + '0'.repeat(64),
     transactions: [`0x${uuidv4().replace(/-/g, '')}`],
   };
 }
@@ -95,7 +98,10 @@ export function createMockBlock(blockNumber: number = 1): MockBlock {
 /**
  * Generate mock transaction receipt
  */
-export function createMockTransactionReceipt(hash: string, blockNumber: number = 1): MockTransactionReceipt {
+export function createMockTransactionReceipt(
+  hash: string,
+  blockNumber: number = 1,
+): MockTransactionReceipt {
   return {
     transactionHash: hash,
     blockHash: `0x${uuidv4().replace(/-/g, '')}`,

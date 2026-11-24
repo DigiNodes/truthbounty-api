@@ -1,12 +1,21 @@
-/* eslint-disable @typescript-eslint/unbound-method */
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { ConfigService } from '@nestjs/config';
 import { AuditTrailService } from './audit-trail.service';
-import { AuditLog, AuditActionType, AuditEntityType, AuditSeverity, AuditCategory } from '../entities/audit-log.entity';
+import {
+  AuditLog,
+  AuditActionType,
+  AuditEntityType,
+  AuditSeverity,
+  AuditCategory,
+} from '../entities/audit-log.entity';
+import { AuditChainState } from '../entities/audit-chain-state.entity';
 import { Repository } from 'typeorm';
 import { REQUEST } from '@nestjs/core';
 import { AuditQueueService } from './audit-queue.service';
-import { maskIp } from '../utils/ip-masking';
+import { AuditMetricsService } from './audit-metrics.service';
+import { TransactionRunner } from '../../database/transaction.runner';
+import { computeAuditRecordHash } from '../utils/integrity';
 
 interface MockRequestType {
   headers: Record<string, string>;
@@ -18,8 +27,11 @@ interface MockRequestType {
 describe('AuditTrailService', () => {
   let service: AuditTrailService;
   let repository: jest.Mocked<Repository<AuditLog>>;
+  let chainStateRepo: any;
   let queueService: jest.Mocked<AuditQueueService>;
+  let metricsService: jest.Mocked<AuditMetricsService>;
   let mockRequest: MockRequestType;
+  let chainState: { id: number; lastHash: string | null; lastSequence: number };
 
   const mockAuditLog = (overrides: Partial<AuditLog> = {}): AuditLog => ({
     id: 'audit-1',
@@ -42,6 +54,8 @@ describe('AuditTrailService', () => {
     correlationId: 'corr-1',
     retentionUntil: null,
     integrityHash: null,
+    previousHash: null,
+    chainSequence: null,
     archived: false,
     user: null,
     createdAt: new Date(),
@@ -62,14 +76,33 @@ describe('AuditTrailService', () => {
       getQueueStats: jest.fn(),
     } as unknown as jest.Mocked<AuditQueueService>;
 
+    metricsService = {
+      incrementFailedWrite: jest.fn(),
+    } as unknown as jest.Mocked<AuditMetricsService>;
+
+    // Chain state starts at genesis; `save` mutates this fixture like a
+    // real single-row table would, so tests can assert on it across calls.
+    chainState = { id: 1, lastHash: null, lastSequence: 0 };
+    chainStateRepo = {
+      createQueryBuilder: jest.fn().mockReturnValue({
+        setLock: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockImplementation(async () => ({ ...chainState })),
+      }),
+      save: jest.fn().mockImplementation(async (state: typeof chainState) => {
+        chainState = { ...state };
+        return chainState;
+      }),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuditTrailService,
         {
           provide: getRepositoryToken(AuditLog),
           useValue: {
-            create: jest.fn(),
-            save: jest.fn(),
+            create: jest.fn((input) => ({ ...input })),
+            save: jest.fn(async (entity) => entity),
             find: jest.fn(),
             findAndCount: jest.fn(),
             findOne: jest.fn(),
@@ -80,6 +113,31 @@ describe('AuditTrailService', () => {
         {
           provide: AuditQueueService,
           useValue: queueService,
+        },
+        {
+          provide: AuditMetricsService,
+          useValue: metricsService,
+        },
+        {
+          provide: TransactionRunner,
+          useValue: {
+            run: jest.fn(async (callback: any) =>
+              callback({
+                getRepository: (entity: any) =>
+                  entity === AuditChainState ? chainStateRepo : repository,
+              }),
+            ),
+          },
+        },
+        {
+          provide: ConfigService,
+          useValue: {
+            get: jest.fn((key: string) => {
+              if (key === 'AUDIT_HASH_SECRET') return 'test-secret';
+              if (key === 'NODE_ENV') return 'test';
+              return undefined;
+            }),
+          },
         },
         {
           provide: REQUEST,
@@ -95,7 +153,7 @@ describe('AuditTrailService', () => {
   });
 
   describe('log', () => {
-    it('should create and save an audit log entry', async () => {
+    it('should create and save a chained audit log entry', async () => {
       const input = {
         actionType: AuditActionType.CLAIM_CREATED,
         entityType: AuditEntityType.CLAIM,
@@ -103,10 +161,6 @@ describe('AuditTrailService', () => {
         userId: 'user-1',
         description: 'Claim created',
       };
-
-      const createdLog = mockAuditLog();
-      (repository.create as jest.Mock).mockReturnValue(createdLog);
-      (repository.save as jest.Mock).mockResolvedValue(createdLog);
 
       await service.log(input);
 
@@ -119,9 +173,14 @@ describe('AuditTrailService', () => {
           description: input.description,
           severity: AuditSeverity.LOW,
           category: AuditCategory.OPERATIONS,
+          previousHash: null,
+          chainSequence: 1,
         }),
       );
-      expect(repository.save).toHaveBeenCalledWith(createdLog);
+      expect(repository.save).toHaveBeenCalled();
+      // The chain tip must advance so the next write links to this one.
+      expect(chainState.lastSequence).toBe(1);
+      expect(chainState.lastHash).toEqual(expect.any(String));
     });
 
     it('should use provided severity and category', async () => {
@@ -133,10 +192,6 @@ describe('AuditTrailService', () => {
         category: AuditCategory.AUTHENTICATION,
       };
 
-      const createdLog = mockAuditLog(input);
-      (repository.create as jest.Mock).mockReturnValue(createdLog);
-      (repository.save as jest.Mock).mockResolvedValue(createdLog);
-
       await service.log(input);
 
       expect(repository.create).toHaveBeenCalledWith(
@@ -147,20 +202,44 @@ describe('AuditTrailService', () => {
       );
     });
 
-    it('should not throw when save fails', async () => {
-      (repository.create as jest.Mock).mockReturnValue(mockAuditLog());
+    it('should not throw when the write fails, and should record it as a metric instead of swallowing it silently', async () => {
       (repository.save as jest.Mock).mockRejectedValue(new Error('DB error'));
 
-      await expect(service.log({
+      await expect(
+        service.log({
+          actionType: AuditActionType.CLAIM_CREATED,
+          entityType: AuditEntityType.CLAIM,
+          entityId: 'claim-1',
+        }),
+      ).resolves.toBeUndefined();
+
+      expect(metricsService.incrementFailedWrite).toHaveBeenCalledTimes(1);
+    });
+
+    it('should chain a second record to the first', async () => {
+      await service.log({
         actionType: AuditActionType.CLAIM_CREATED,
         entityType: AuditEntityType.CLAIM,
         entityId: 'claim-1',
-      })).resolves.toBeUndefined();
+      });
+      const firstHash = chainState.lastHash;
+
+      await service.log({
+        actionType: AuditActionType.CLAIM_UPDATED,
+        entityType: AuditEntityType.CLAIM,
+        entityId: 'claim-1',
+      });
+
+      expect(repository.create).toHaveBeenLastCalledWith(
+        expect.objectContaining({ previousHash: firstHash, chainSequence: 2 }),
+      );
+      expect(chainState.lastSequence).toBe(2);
+      expect(chainState.lastHash).not.toEqual(firstHash);
     });
   });
 
   describe('logBatch', () => {
-    it('should create and save multiple audit logs', async () => {
+    it('should create and save multiple chained audit logs in one lock', async () => {
       const inputs = [
         {
           actionType: AuditActionType.CLAIM_CREATED,
@@ -176,14 +255,124 @@ describe('AuditTrailService', () => {
         },
       ];
 
-      const createdLogs = inputs.map((_, i) => mockAuditLog({ id: `audit-${i}` }));
-      (repository.create as jest.Mock).mockReturnValue(createdLogs[0]);
-      (repository.save as jest.Mock).mockResolvedValue(createdLogs);
-
       await service.logBatch(inputs);
 
       expect(repository.create).toHaveBeenCalledTimes(2);
-      expect(repository.save).toHaveBeenCalled();
+      expect(repository.create).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ previousHash: null, chainSequence: 1 }),
+      );
+      expect(repository.create).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ chainSequence: 2 }),
+      );
+      expect(chainStateRepo.save).toHaveBeenCalledTimes(1);
+      expect(chainState.lastSequence).toBe(2);
+    });
+  });
+
+  describe('persistChainedRecord / verifyChain', () => {
+    it('detects a tampered record via verifyIntegrity', async () => {
+      let savedRecord: any;
+      (repository.save as jest.Mock).mockImplementation(async (entity: any) => {
+        savedRecord = entity;
+        return entity;
+      });
+
+      await service.persistChainedRecord({
+        actionType: AuditActionType.CLAIM_CREATED,
+        entityType: AuditEntityType.CLAIM,
+        entityId: 'claim-1',
+      } as any);
+
+      (repository.findOne as jest.Mock).mockResolvedValue(savedRecord);
+
+      const before = await service.verifyIntegrity(savedRecord.id);
+      expect(before.valid).toBe(true);
+
+      // Simulate direct DB tampering with no knowledge of the HMAC secret.
+      (repository.findOne as jest.Mock).mockResolvedValue({
+        ...savedRecord,
+        description: 'tampered',
+      });
+      const after = await service.verifyIntegrity(savedRecord.id);
+      expect(after.valid).toBe(false);
+      expect(after.reason).toBe('hash_mismatch');
+    });
+
+    it('verifyChain reports valid for an intact chain', async () => {
+      const records: AuditLog[] = [];
+      (repository.save as jest.Mock).mockImplementation(async (entity: any) => {
+        records.push(entity);
+        return entity;
+      });
+
+      await service.persistChainedRecord({
+        actionType: AuditActionType.CLAIM_CREATED,
+        entityType: AuditEntityType.CLAIM,
+        entityId: 'claim-1',
+      } as any);
+      await service.persistChainedRecord({
+        actionType: AuditActionType.CLAIM_UPDATED,
+        entityType: AuditEntityType.CLAIM,
+        entityId: 'claim-1',
+      } as any);
+
+      const qb = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getMany: jest
+          .fn()
+          .mockResolvedValueOnce(records)
+          .mockResolvedValueOnce([]),
+      };
+      (repository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      const result = await service.verifyChain();
+      expect(result.valid).toBe(true);
+      expect(result.recordsChecked).toBe(2);
+    });
+
+    it('verifyChain reports the broken link when a record is altered after being chained', async () => {
+      const records: AuditLog[] = [];
+      (repository.save as jest.Mock).mockImplementation(async (entity: any) => {
+        records.push(entity);
+        return entity;
+      });
+
+      await service.persistChainedRecord({
+        actionType: AuditActionType.CLAIM_CREATED,
+        entityType: AuditEntityType.CLAIM,
+        entityId: 'claim-1',
+      } as any);
+      await service.persistChainedRecord({
+        actionType: AuditActionType.CLAIM_UPDATED,
+        entityType: AuditEntityType.CLAIM,
+        entityId: 'claim-1',
+      } as any);
+
+      // Tamper with the first record's content after the fact, exactly
+      // what a hash chain (as opposed to a per-row hash) is meant to
+      // catch even though only the first record was touched.
+      records[0].description = 'tampered after the fact';
+
+      const qb = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getMany: jest
+          .fn()
+          .mockResolvedValueOnce(records)
+          .mockResolvedValueOnce([]),
+      };
+      (repository.createQueryBuilder as jest.Mock).mockReturnValue(qb);
+
+      const result = await service.verifyChain();
+      expect(result.valid).toBe(false);
+      expect(result.brokenAt?.id).toBe(records[0].id);
     });
   });
 
@@ -212,7 +401,9 @@ describe('AuditTrailService', () => {
         getManyAndCount: jest.fn().mockResolvedValue([[mockAuditLog()], 1]),
       } as any;
 
-      (repository.createQueryBuilder as jest.Mock).mockReturnValue(mockQueryBuilder);
+      (repository.createQueryBuilder as jest.Mock).mockReturnValue(
+        mockQueryBuilder,
+      );
 
       const result = await service.query({});
 
@@ -233,7 +424,9 @@ describe('AuditTrailService', () => {
         getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
       } as any;
 
-      (repository.createQueryBuilder as jest.Mock).mockReturnValue(mockQueryBuilder);
+      (repository.createQueryBuilder as jest.Mock).mockReturnValue(
+        mockQueryBuilder,
+      );
 
       await service.query({
         entityType: AuditEntityType.CLAIM,
@@ -252,13 +445,16 @@ describe('AuditTrailService', () => {
       });
 
       expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
-        'audit.entityType = :entityType', { entityType: AuditEntityType.CLAIM },
+        'audit.entityType = :entityType',
+        { entityType: AuditEntityType.CLAIM },
       );
       expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
-        'audit.severity = :severity', { severity: AuditSeverity.HIGH },
+        'audit.severity = :severity',
+        { severity: AuditSeverity.HIGH },
       );
       expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
-        'audit.category = :category', { category: AuditCategory.SECURITY },
+        'audit.category = :category',
+        { category: AuditCategory.SECURITY },
       );
       expect(mockQueryBuilder.skip).toHaveBeenCalledWith(25);
       expect(mockQueryBuilder.take).toHaveBeenCalledWith(25);
@@ -317,12 +513,20 @@ describe('AuditTrailService', () => {
 
       const oldestQueryBuilder = {
         orderBy: jest.fn().mockReturnThis(),
-        getOne: jest.fn().mockResolvedValue(mockAuditLog({ createdAt: new Date('2024-01-01') })),
+        getOne: jest
+          .fn()
+          .mockResolvedValue(
+            mockAuditLog({ createdAt: new Date('2024-01-01') }),
+          ),
       } as any;
 
       const newestQueryBuilder = {
         orderBy: jest.fn().mockReturnThis(),
-        getOne: jest.fn().mockResolvedValue(mockAuditLog({ createdAt: new Date('2024-06-15') })),
+        getOne: jest
+          .fn()
+          .mockResolvedValue(
+            mockAuditLog({ createdAt: new Date('2024-06-15') }),
+          ),
       } as any;
 
       (repository.createQueryBuilder as jest.Mock)
@@ -345,7 +549,9 @@ describe('AuditTrailService', () => {
         execute: jest.fn().mockResolvedValue({ affected: 4 }),
       } as any;
 
-      (repository.createQueryBuilder as jest.Mock).mockReturnValue(mockQueryBuilder);
+      (repository.createQueryBuilder as jest.Mock).mockReturnValue(
+        mockQueryBuilder,
+      );
 
       const deleted = await service.deleteOldLogs(90);
 
@@ -366,7 +572,10 @@ describe('AuditTrailService', () => {
 
       (repository.find as jest.Mock).mockResolvedValue([log]);
 
-      const history = await service.getChangeHistory(AuditEntityType.CLAIM, 'claim-1');
+      const history = await service.getChangeHistory(
+        AuditEntityType.CLAIM,
+        'claim-1',
+      );
 
       expect(history).toHaveLength(1);
       expect(history[0].changes).toEqual({
@@ -389,7 +598,9 @@ describe('AuditTrailService', () => {
         ]),
       } as any;
 
-      (repository.createQueryBuilder as jest.Mock).mockReturnValue(mockQueryBuilder);
+      (repository.createQueryBuilder as jest.Mock).mockReturnValue(
+        mockQueryBuilder,
+      );
 
       const summary = await service.getAuditSummary(AuditEntityType.CLAIM, 7);
 
@@ -409,9 +620,6 @@ describe('AuditTrailService', () => {
         entityId: 'test-123',
       };
 
-      (repository.create as jest.Mock).mockReturnValue(mockAuditLog());
-      (repository.save as jest.Mock).mockResolvedValue({ id: 'audit-1' });
-
       await service.log(input);
 
       expect(repository.create).toHaveBeenCalledWith(
@@ -419,6 +627,33 @@ describe('AuditTrailService', () => {
           ipAddress: '203.0.113.0',
         }),
       );
+    });
+  });
+
+  describe('fail-closed HMAC secret', () => {
+    it('throws at startup in production when AUDIT_HASH_SECRET is not configured', async () => {
+      const configService = {
+        get: jest.fn((key: string) => {
+          if (key === 'AUDIT_HASH_SECRET') return undefined;
+          if (key === 'NODE_ENV') return 'production';
+          return undefined;
+        }),
+      };
+
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          AuditTrailService,
+          { provide: getRepositoryToken(AuditLog), useValue: repository },
+          { provide: AuditQueueService, useValue: queueService },
+          { provide: AuditMetricsService, useValue: metricsService },
+          { provide: TransactionRunner, useValue: { run: jest.fn() } },
+          { provide: ConfigService, useValue: configService },
+          { provide: REQUEST, useValue: mockRequest },
+        ],
+      }).compile();
+
+      const prodService = module.get<AuditTrailService>(AuditTrailService);
+      expect(() => prodService.onModuleInit()).toThrow(/AUDIT_HASH_SECRET/);
     });
   });
 });

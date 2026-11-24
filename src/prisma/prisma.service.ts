@@ -1,16 +1,20 @@
+import { getRuntimeEnvironment } from '../config/runtime-config';
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { PrismaClient } from '../generated/client/client';
-import { PrismaLibSql } from '@prisma/adapter-libsql';
-import * as dotenv from 'dotenv';
-
-dotenv.config();
+import { PrismaPg } from '@prisma/adapter-pg';
 
 @Injectable()
-export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+export class PrismaService
+  extends PrismaClient
+  implements OnModuleInit, OnModuleDestroy
+{
   constructor() {
-    const connectionString = process.env.DATABASE_URL || 'file:./dev.db';
-    const adapter = new PrismaLibSql({ url: connectionString });
-    
+    const connectionString = getRuntimeEnvironment().DATABASE_URL;
+    if (!connectionString || !/^postgres(?:ql)?:\/\//i.test(connectionString)) {
+      throw new Error('DATABASE_URL must be a PostgreSQL connection string');
+    }
+    const adapter = new PrismaPg({ connectionString });
+
     super({ adapter });
   }
 

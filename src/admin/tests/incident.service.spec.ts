@@ -120,7 +120,9 @@ describe('IncidentService', () => {
     it('should throw NotFoundException if incident not found', async () => {
       incidentRepo.findOneBy.mockResolvedValue(null);
 
-      await expect(service.findById('nonexistent')).rejects.toThrow(NotFoundException);
+      await expect(service.findById('nonexistent')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -170,16 +172,17 @@ describe('IncidentService', () => {
 
   describe('addNote', () => {
     it('should add an investigation note', async () => {
-      const incidentWithNote = {
+      incidentRepo.findOneBy.mockResolvedValue({
         ...mockIncident,
-        investigationNotes: [
-          { author: 'admin-1', content: 'Initial analysis', createdAt: expect.any(String) },
-        ],
-      };
-      incidentRepo.findOneBy.mockResolvedValue(incidentWithNote);
-      incidentRepo.save.mockResolvedValue(incidentWithNote);
+        investigationNotes: [],
+      });
+      incidentRepo.save.mockImplementation(async (incident: any) => incident);
 
-      const result = await service.addNote('inc-1', { content: 'Initial analysis' }, mockAdmin);
+      const result = await service.addNote(
+        'inc-1',
+        { content: 'Initial analysis' },
+        mockAdmin,
+      );
 
       expect(result.investigationNotes).toHaveLength(1);
     });
@@ -205,7 +208,11 @@ describe('IncidentService', () => {
       incidentRepo.findOneBy.mockResolvedValue(closedIncident);
 
       await expect(
-        service.update('inc-1', { severity: IncidentSeverity.CRITICAL }, mockAdmin),
+        service.update(
+          'inc-1',
+          { severity: IncidentSeverity.CRITICAL },
+          mockAdmin,
+        ),
       ).rejects.toThrow(ForbiddenException);
     });
   });
@@ -230,4 +237,25 @@ describe('IncidentService', () => {
       expect(stats.byClassification).toBeDefined();
     });
   });
+
+  describe('publishProjection and draft', () => {
+    it('throws ServiceUnavailableException if publicIncidentService is not provided', async () => {
+      incidentRepo.findOneBy.mockResolvedValue(mockIncident);
+
+      await expect(
+        service.publishProjection(
+          'inc-1',
+          {
+            title: 'Public notice',
+            status: 'investigating',
+            impact: 'minor',
+            affectedComponents: ['api'],
+            description: 'Incident occurred',
+          },
+          mockAdmin,
+        ),
+      ).rejects.toThrow();
+    });
+  });
 });
+

@@ -5,17 +5,15 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { RedisService } from '../redis/redis.service';
+import { GracefulShutdownService } from '../common/lifecycle/graceful-shutdown.service';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, IsNull, Not, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import { Stake } from '../staking/entities/stake.entity';
 import { Wallet } from '../entities/wallet.entity';
-import { Claim, ClaimState } from '../claims/entities/claim.entity';
+import { Claim } from '../claims/entities/claim.entity';
 import { User } from '../entities/user.entity';
 import { AggregationService } from '../aggregation/aggregation.service';
-import {
-  ClaimStatus,
-  VerificationVerdict,
-} from '../aggregation/aggregation.types';
+import { VerificationVerdict } from '../aggregation/aggregation.types';
 import { ClaimsCache } from '../cache/claims.cache';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Job, JobsOptions, Queue } from 'bullmq';
@@ -29,6 +27,12 @@ import {
   QueueMetrics,
   QueueName,
 } from './jobs.types';
+import {
+  calculateBackoffWithJitter,
+  classifyError,
+  determineRetryBehavior,
+  formatRetryMetadata,
+} from '../queue/retry-utils';
 
 const SCORE_BATCH_SIZE = 50;
 const REPUTATION_BATCH_SIZE = 100;
@@ -58,6 +62,7 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
 
   constructor(
     private readonly redisService: RedisService,
+    private readonly gracefulShutdown: GracefulShutdownService,
     @InjectRepository(Stake)
     private readonly stakeRepo: Repository<Stake>,
     @InjectRepository(Wallet)
@@ -97,6 +102,13 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
     options: JobOptions = {},
     queueName: QueueName = QueueName.DEFAULT,
   ): Promise<Job<T> | null> {
+    if (this.gracefulShutdown.isDraining) {
+      this.logger.warn(
+        `Rejected job ${name}; application shutdown is draining`,
+      );
+      return null;
+    }
+
     const queue = this.getQueue(queueName);
     if (!queue) {
       this.logger.error(`Queue ${queueName} not found`);
@@ -107,23 +119,31 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
     const attempts = options.attempts ?? DEFAULT_RETRY_POLICY.attempts;
     const backoffDelay =
       options.backoffDelay ?? DEFAULT_RETRY_POLICY.backoff.delay;
+    const jitterEnabled = DEFAULT_RETRY_POLICY.jitterEnabled ?? true;
+    const jitterRatio = DEFAULT_RETRY_POLICY.jitterRatio ?? 0.3;
 
     try {
-      const job = await queue.add(name, data, {
-        priority,
-        delay: options.delay,
-        attempts,
-        backoff: {
-          type: 'exponential',
-          delay: backoffDelay,
-        },
-      });
+      const job = await this.gracefulShutdown.runTracked(
+        `enqueue:${name}`,
+        () =>
+          queue.add(name, data, {
+            priority,
+            delay: options.delay,
+            attempts,
+            backoff: {
+              type: 'exponential',
+              delay: backoffDelay,
+            },
+          }),
+      );
       this.logger.log(`Enqueued job ${name} (id: ${job.id}) on ${queueName}`);
       return job as Job<T>;
     } catch (error) {
+      const errorClassification = classifyError(error);
       this.logger.error(
         `Failed to enqueue job ${name}: ${error instanceof Error ? error.message : String(error)}`,
       );
+      this.logger.debug(`Enqueue error classification: ${errorClassification}`);
       return null;
     }
   }
@@ -134,17 +154,28 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
     cron: string,
     queueName: QueueName = QueueName.DEFAULT,
   ): Promise<Job<T> | null> {
+    if (this.gracefulShutdown.isDraining) {
+      this.logger.warn(
+        `Rejected recurring job ${name}; application is draining`,
+      );
+      return null;
+    }
     const queue = this.getQueue(queueName);
     if (!queue) return null;
 
     const options: JobsOptions = {
-      repeat: { pattern: cron },
       attempts: DEFAULT_RETRY_POLICY.attempts,
       backoff: DEFAULT_RETRY_POLICY.backoff,
     };
 
     try {
-      const job = await queue.add(name, data, options);
+      // bullmq 6 removed `repeat` from Queue.add(); repeatable work must go
+      // through the job-scheduler API.
+      const job = await queue.upsertJobScheduler(
+        name,
+        { pattern: cron },
+        { data, opts: options },
+      );
       this.logger.log(`Scheduled recurring job ${name} with cron ${cron}`);
       return job as Job<T>;
     } catch (error) {
@@ -157,30 +188,65 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
 
   @Cron('0 */1 * * *')
   async runHourlyMaintenance(): Promise<void> {
+    if (this.gracefulShutdown.isDraining) return;
     this.logger.log('Hourly maintenance cron triggered');
     // Only run cleanup jobs - compute scores/reputation removed in V2
     // (no backend-authoritative claim finalization allowed)
-    await this.enqueue(
-      JobName.CLEANUP_SYBIL_HISTORY,
-      {},
-      { priority: JobPriority.NORMAL },
+    await this.gracefulShutdown.runTracked('jobs-hourly-maintenance', () =>
+      this.enqueue(
+        JobName.CLEANUP_SYBIL_HISTORY,
+        {},
+        { priority: JobPriority.NORMAL },
+      ),
     );
   }
 
   async retryFailed(queueName: QueueName): Promise<number> {
+    if (this.gracefulShutdown.isDraining) {
+      this.logger.warn(
+        `Rejected retry request for ${queueName}; application is draining`,
+      );
+      return 0;
+    }
     const queue = this.getQueue(queueName);
     if (!queue) return 0;
 
     const failed = await queue.getFailed();
     let retried = 0;
+    let skipped = 0;
+
     for (const job of failed) {
       try {
+        // Classify the error to determine if retry is appropriate
+        const errorClassification = classifyError(
+          job.failedReason || 'Unknown error',
+        );
+        const retryBehavior = determineRetryBehavior(
+          job.failedReason || 'Unknown error',
+          job.attemptsMade,
+        );
+
+        if (!retryBehavior.shouldRetry) {
+          this.logger.warn(
+            `Skipping non-retryable job ${job.id} (classification: ${errorClassification})`,
+          );
+          skipped++;
+          continue;
+        }
+
         await job.retry();
         retried++;
+        this.logger.debug(
+          `Retrying job ${job.id} with metadata: ${formatRetryMetadata(retryBehavior)}`,
+        );
       } catch (error) {
         this.logger.warn(`Failed to retry job ${job.id}: ${error}`);
       }
     }
+
+    this.logger.log(
+      `Retry summary for ${queueName}: ${retried} retried, ${skipped} skipped`,
+    );
     return retried;
   }
 
@@ -215,7 +281,6 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
       'completed',
       'failed',
       'delayed',
-      'paused',
     );
 
     return {

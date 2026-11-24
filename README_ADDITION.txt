@@ -32,7 +32,7 @@ cp .env.example .env.local
 # Edit .env.local with your RPC URL and database credentials
 
 # 4. Start service
-npm run start:dev
+npx nest start --watch
 
 # 5. Check status
 curl http://localhost:3000/indexer/status
@@ -109,7 +109,7 @@ The Event Indexer provides the foundation for:
 
 ```bash
 # Development with hot-reload
-npm run start:dev
+npx nest start --watch
 
 # Build for production
 npm run build
@@ -120,7 +120,7 @@ npm run test:e2e
 npm run test:cov
 
 # Lint and format
-npm run lint
+npx eslint "{src,apps,libs,test}/**/*.ts"
 npm run format
 ```
 

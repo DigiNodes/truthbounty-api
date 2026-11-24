@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import { StartupValidationService } from './startup-validation.service';
 import { ConfigService } from '@nestjs/config';
 import { ContractConfig } from '../config/event-indexer.config';
+import { RealtimeConfig } from '../config/realtime.config';
 
 describe('StartupValidationService', () => {
   let service: StartupValidationService;
@@ -20,6 +21,25 @@ describe('StartupValidationService', () => {
     ],
   });
 
+  const validRealtime = (): RealtimeConfig => ({
+    releaseId: 'wave-9',
+    chainId: 10,
+    deploymentBlock: 1000,
+    artifactChecksum: '0x' + 'a'.repeat(64),
+    heartbeatMs: 15000,
+    retentionMs: 60000,
+    maxPayloadBytes: 65536,
+    origins: ['https://app.example.com'],
+    topics: [
+      { name: 'public:stakes', visibility: 'public', capabilities: [] },
+      {
+        name: 'protected:stakes',
+        visibility: 'protected',
+        capabilities: ['stakes:read'],
+      },
+    ],
+  });
+
   beforeEach(async () => {
     configService = {
       get: jest.fn((key: string, def?: unknown) => {
@@ -29,6 +49,8 @@ describe('StartupValidationService', () => {
           INDEXED_CONTRACTS: JSON.stringify([validContract()]),
           CHAIN_ID: '10',
           OPTIMISM_RPC_URL: 'https://mainnet.optimism.io',
+          REALTIME_CONFIG: JSON.stringify(validRealtime()),
+          SUPPORTED_RELEASE_ID: 'wave-9',
         };
         return key in map ? map[key] : def;
       }),
@@ -88,7 +110,7 @@ describe('StartupValidationService', () => {
       if (key === 'BLOCKCHAIN_STARTUP_VALIDATION') return 'false';
       return def;
     });
-    await expect(service.onApplicationBootstrap()).resolves.toBeUndefined();
+    await expect(service.onApplicationBootstrap()).resolvesToBeUndefined();
   });
 
   it('throws (fail-closed) when a configured contract is invalid', async () => {
@@ -99,6 +121,151 @@ describe('StartupValidationService', () => {
         INDEXED_CONTRACTS: JSON.stringify([
           { name: 'Bad', address: '0xZZZ', events: [] },
         ]),
+      };
+      return map[key] ?? def;
+    });
+    await expect(service.onApplicationBootstrap()).rejects.toThrow(
+      /startup validation failed/i,
+    );
+  });
+
+  describe('realtime configuration', () => {
+    it('accepts a well-formed realtime config', () => {
+      const result = service.validateRealtime(validRealtime());
+      expect(result.valid).toBe(true);
+      expect(result.errors).toEqual([]);
+    });
+
+    it('rejects an unknown topic name', () => {
+      const config = validRealtime();
+      config.topics.push({ name: 'unknown:topic', visibility: 'public', capabilities: [] });
+      const result = service.validateRealtime(config);
+      expect(result.valid).toBe(false);
+      expect(result.errors.join(' ')).toMatch(/unknown topic/i);
+    });
+
+    it('rejects wildcard topic patterns', () => {
+      const config = validRealtime();
+      config.topics[0].name = 'public:*';
+      const result = service.validateRealtime(config);
+      expect(result.valid).toBe(false);
+      expect(result.errors.join(' ')).toMatch(/wildcard/i);
+    });
+
+    it('rejects topic names that could inject Redis/WebSocket patterns', () => {
+      const config = validRealtime();
+      config.topics[0].name = 'public:stakes\n*';
+      const result = service.validateRealtime(config);
+      expect(result.valid).toBe(false);
+      expect(result.errors.join(' ')).toMatch(/invalid topic name/i);
+    });
+
+    it('rejects oversized payload limits', () => {
+      const config = validRealtime();
+      config.maxPayloadBytes = 10 * 1024 * 1024;
+      const result = service.validateRealtime(config);
+      expect(result.valid).toBe(false);
+      expect(result.errors.join(' ')).toMatch(/payload/i);
+    });
+
+    it('rejects a stale release id', () => {
+      const config = validRealtime();
+      config.releaseId = 'wave-8';
+      const result = service.validateRealtime(config);
+      expect(result.valid).toBe(false);
+      expect(result.errors.join(' ')).toMatch(/stale release/i);
+    });
+
+    it('rejects a chain id mismatch', () => {
+      const config = validRealtime();
+      config.chainId = 1;
+      const result = service.validateRealtime(config);
+      expect(result.valid).toBe(false);
+      expect(result.errors.join(' ')).toMatch(/chain id/i);
+    });
+
+    it('rejects an unapproved origin', () => {
+      const config = validRealtime();
+      config.origins.push('https://evil.example.com');
+      const result = service.validateRealtime(config);
+      expect(result.valid).toBe(false);
+      expect(result.errors.join(' ')).toMatch(/origin/i);
+    });
+
+    it('rejects a protected topic without capabilities', () => {
+      const config = validRealtime();
+      config.topics[1].capabilities = [];
+      const result = service.validateRealtime(config);
+      expect(result.valid).toBe(false);
+      expect(result.errors.join(' ')).toMatch(/capabilit/i);
+    });
+  });
+
+  describe('topic authorization', () => {
+    it('allows a public topic for an anonymous principal', () => {
+      const result = service.authorizeTopic(
+        validRealtime(),
+        { capabilities: [], sessionRevoked: false },
+        'public:stakes',
+      );
+      expect(result.authorized).toBe(true);
+    });
+
+    it('denies a protected topic without the required capability', () => {
+      const result = service.authorizeTopic(
+        validRealtime(),
+        { capabilities: [], sessionRevoked: false },
+        'protected:stakes',
+      );
+      expect(result.authorized).toBe(false);
+    });
+
+    it('allows a protected topic with the required capability', () => {
+      const result = service.authorizeTopic(
+        validRealtime(),
+        { capabilities: ['stakes:read'], sessionRevoked: false },
+        'protected:stakes',
+      );
+      expect(result.authorized).toBe(true);
+    });
+
+    it('denies an unknown topic', () => {
+      const result = service.authorizeTopic(
+        validRealtime(),
+        { capabilities: ['stakes:read'], sessionRevoked: false },
+        'unknown:topic',
+      );
+      expect(result.authorized).toBe(false);
+    });
+
+    it('denies a revoked session', () => {
+      const result = service.authorizeTopic(
+        validRealtime(),
+        { capabilities: ['stakes:read'], sessionRevoked: true },
+        'protected:stakes',
+      );
+      expect(result.authorized).toBe(false);
+    });
+
+    it('denies wildcard escalation attempts', () => {
+      const result = service.authorizeTopic(
+        validRealtime(),
+        { capabilities: ['stakes:read'], sessionRevoked: false },
+        'protected:*',
+      );
+      expect(result.authorized).toBe(false);
+    });
+  });
+
+  it('fails startup when realtime config is invalid', async () => {
+    configService.get.mockImplementation((key: string, def?: unknown) => {
+      const map: Record<string, unknown> = {
+        BLOCKCHAIN_STARTUP_VALIDATION: undefined,
+        BLOCKCHAIN_STARTUP_RPC_CHECK: 'false',
+        INDEXED_CONTRACTS: JSON.stringify([validContract()]),
+        CHAIN_ID: '10',
+        REALTIME_CONFIG: JSON.stringify({ ...validRealtime(), releaseId: 'wave-8' }),
+        SUPPORTED_RELEASE_ID: 'wave-9',
       };
       return map[key] ?? def;
     });

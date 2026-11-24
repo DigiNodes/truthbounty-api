@@ -6,11 +6,16 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { SiweService } from './services/siwe.service';
+import { SiweNonceService } from './siwe-nonce.service';
+import { SiweVerificationService } from './siwe-verification.service';
 import { TokenService } from './services/token.service';
+import { WalletRateLimiterService } from './wallet-rate-limiter.service';
+import { AuthorizationPolicyService } from './authorization-policy.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { OptionalJwtAuthGuard } from './optional-jwt-auth.guard';
 import { AdminGuard } from './guards/admin.guard';
+import { RolesGuard } from './guards/roles.guard';
 import { ServiceAuthGuard } from './guards/service-auth.guard';
 
 @Module({
@@ -21,7 +26,10 @@ import { ServiceAuthGuard } from './guards/service-auth.guard';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET', 'truthbounty-secret-key-change-in-production'),
+        secret: configService.get<string>(
+          'JWT_SECRET',
+          'truthbounty-secret-key-change-in-production',
+        ),
         signOptions: {
           expiresIn: configService.get<string>('JWT_EXPIRATION', '15m') as any,
         },
@@ -32,20 +40,30 @@ import { ServiceAuthGuard } from './guards/service-auth.guard';
   providers: [
     AuthService,
     SiweService,
+    SiweNonceService,
+    SiweVerificationService,
     TokenService,
+    WalletRateLimiterService,
+    AuthorizationPolicyService,
     JwtStrategy,
     JwtAuthGuard,
     OptionalJwtAuthGuard,
     AdminGuard,
+    RolesGuard,
     ServiceAuthGuard,
   ],
   exports: [
     AuthService,
     SiweService,
+    SiweNonceService,
+    SiweVerificationService,
     TokenService,
+    WalletRateLimiterService,
+    AuthorizationPolicyService,
     JwtAuthGuard,
     OptionalJwtAuthGuard,
     AdminGuard,
+    RolesGuard,
     ServiceAuthGuard,
     PassportModule,
   ],

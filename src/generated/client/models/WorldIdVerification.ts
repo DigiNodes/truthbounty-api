@@ -182,7 +182,7 @@ export type WorldIdVerificationGroupByOutputType = {
   _max: WorldIdVerificationMaxAggregateOutputType | null
 }
 
-type GetWorldIdVerificationGroupByPayload<T extends WorldIdVerificationGroupByArgs> = Prisma.PrismaPromise<
+export type GetWorldIdVerificationGroupByPayload<T extends WorldIdVerificationGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<WorldIdVerificationGroupByOutputType, T['by']> &
       {
@@ -1255,6 +1255,11 @@ export type WorldIdVerificationFindManyArgs<ExtArgs extends runtime.Types.Extens
    * Skip the first `n` WorldIdVerifications.
    */
   skip?: number
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+   * 
+   * Filter by unique combinations of WorldIdVerifications.
+   */
   distinct?: Prisma.WorldIdVerificationScalarFieldEnum | Prisma.WorldIdVerificationScalarFieldEnum[]
 }
 

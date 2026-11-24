@@ -27,7 +27,9 @@ export class CreateV2EvidenceTables1769800100000 implements MigrationInterface {
         "updatedAt" TIMESTAMP NOT NULL DEFAULT now()
       )
     `);
-    await queryRunner.query(`CREATE INDEX "idx_v2_project_evidence_claim_id" ON "v2_project_evidence" ("claimId")`);
+    await queryRunner.query(
+      `CREATE INDEX "idx_v2_project_evidence_claim_id" ON "v2_project_evidence" ("claimId")`,
+    );
 
     await queryRunner.query(`
       CREATE TABLE "v2_project_evidence_version" (

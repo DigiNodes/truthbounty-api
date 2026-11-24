@@ -1,5 +1,5 @@
-import { Column, Entity, Index, PrimaryGeneratedColumn } from "typeorm";
-import { StakingEventType } from "../types/staking-event.type";
+import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
+import { StakingEventType } from '../types/staking-event.type';
 
 @Entity()
 @Index(['txHash'], { unique: true })
@@ -35,4 +35,3 @@ export class StakeEvent {
   @Column()
   timestamp: Date;
 }
-

@@ -2,6 +2,7 @@ import { ProjectionEvent } from './entities/projection-event.entity';
 import { IndexedEvent } from '../entities';
 import { RealtimePublisherService } from './realtime-publisher.service';
 import { ProjectionEventType, RealtimeEnvelopeType } from './realtime.enums';
+import { GracefulShutdownService } from '../common/lifecycle/graceful-shutdown.service';
 
 describe('RealtimePublisherService', () => {
   let service: RealtimePublisherService;
@@ -72,6 +73,7 @@ describe('RealtimePublisherService', () => {
       dataSource,
       bus as any,
       configService as any,
+      new GracefulShutdownService(),
     );
   });
 

@@ -5,7 +5,6 @@ import {
   IsEnum,
   IsJSON,
   IsEmail,
-  IsUrl,
   IsInt,
   Min,
   Max,

@@ -58,7 +58,24 @@ export const ModelName = {
   WorldIdVerification: 'WorldIdVerification',
   Conversation: 'Conversation',
   Message: 'Message',
-  AiUsageMetric: 'AiUsageMetric'
+  ContextDocument: 'ContextDocument',
+  AiUsageMetric: 'AiUsageMetric',
+  AnalyticsEvent: 'AnalyticsEvent',
+  MetricAggregate: 'MetricAggregate',
+  ReportJob: 'ReportJob',
+  MonitoringMetric: 'MonitoringMetric',
+  OutboxEvent: 'OutboxEvent',
+  BlockCursor: 'BlockCursor',
+  BlockCursorAncestor: 'BlockCursorAncestor',
+  ChainEvent: 'ChainEvent',
+  FeatureFlag: 'FeatureFlag',
+  FeatureFlagRollbackTarget: 'FeatureFlagRollbackTarget',
+  FeatureFlagAuditEvent: 'FeatureFlagAuditEvent',
+  SupportSubmission: 'SupportSubmission',
+  SupportAttachment: 'SupportAttachment',
+  QuarantineAuditLog: 'QuarantineAuditLog',
+  WebhookProviderConfig: 'WebhookProviderConfig',
+  WebhookDelivery: 'WebhookDelivery'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -162,6 +179,22 @@ export const MessageScalarFieldEnum = {
 export type MessageScalarFieldEnum = (typeof MessageScalarFieldEnum)[keyof typeof MessageScalarFieldEnum]
 
 
+export const ContextDocumentScalarFieldEnum = {
+  id: 'id',
+  title: 'title',
+  category: 'category',
+  content: 'content',
+  tags: 'tags',
+  sourceUrl: 'sourceUrl',
+  isActive: 'isActive',
+  createdBy: 'createdBy',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type ContextDocumentScalarFieldEnum = (typeof ContextDocumentScalarFieldEnum)[keyof typeof ContextDocumentScalarFieldEnum]
+
+
 export const AiUsageMetricScalarFieldEnum = {
   id: 'id',
   userId: 'userId',
@@ -175,6 +208,275 @@ export const AiUsageMetricScalarFieldEnum = {
 } as const
 
 export type AiUsageMetricScalarFieldEnum = (typeof AiUsageMetricScalarFieldEnum)[keyof typeof AiUsageMetricScalarFieldEnum]
+
+
+export const AnalyticsEventScalarFieldEnum = {
+  id: 'id',
+  eventType: 'eventType',
+  entityType: 'entityType',
+  entityId: 'entityId',
+  userId: 'userId',
+  data: 'data',
+  occurredAt: 'occurredAt',
+  createdAt: 'createdAt'
+} as const
+
+export type AnalyticsEventScalarFieldEnum = (typeof AnalyticsEventScalarFieldEnum)[keyof typeof AnalyticsEventScalarFieldEnum]
+
+
+export const MetricAggregateScalarFieldEnum = {
+  id: 'id',
+  metricKey: 'metricKey',
+  period: 'period',
+  bucketStart: 'bucketStart',
+  filters: 'filters',
+  value: 'value',
+  updatedAt: 'updatedAt'
+} as const
+
+export type MetricAggregateScalarFieldEnum = (typeof MetricAggregateScalarFieldEnum)[keyof typeof MetricAggregateScalarFieldEnum]
+
+
+export const ReportJobScalarFieldEnum = {
+  id: 'id',
+  name: 'name',
+  reportType: 'reportType',
+  filters: 'filters',
+  format: 'format',
+  status: 'status',
+  progress: 'progress',
+  fileUrl: 'fileUrl',
+  error: 'error',
+  createdAt: 'createdAt',
+  startedAt: 'startedAt',
+  completedAt: 'completedAt',
+  scheduledFor: 'scheduledFor',
+  createdByUserId: 'createdByUserId'
+} as const
+
+export type ReportJobScalarFieldEnum = (typeof ReportJobScalarFieldEnum)[keyof typeof ReportJobScalarFieldEnum]
+
+
+export const MonitoringMetricScalarFieldEnum = {
+  id: 'id',
+  name: 'name',
+  value: 'value',
+  labels: 'labels',
+  recordedAt: 'recordedAt'
+} as const
+
+export type MonitoringMetricScalarFieldEnum = (typeof MonitoringMetricScalarFieldEnum)[keyof typeof MonitoringMetricScalarFieldEnum]
+
+
+export const OutboxEventScalarFieldEnum = {
+  id: 'id',
+  eventType: 'eventType',
+  aggregateId: 'aggregateId',
+  payload: 'payload',
+  idempotencyKey: 'idempotencyKey',
+  status: 'status',
+  jobId: 'jobId',
+  retryCount: 'retryCount',
+  maxRetries: 'maxRetries',
+  lastError: 'lastError',
+  scheduledAt: 'scheduledAt',
+  processedAt: 'processedAt',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type OutboxEventScalarFieldEnum = (typeof OutboxEventScalarFieldEnum)[keyof typeof OutboxEventScalarFieldEnum]
+
+
+export const BlockCursorScalarFieldEnum = {
+  id: 'id',
+  chainId: 'chainId',
+  source: 'source',
+  processedHeight: 'processedHeight',
+  processedHash: 'processedHash',
+  safeHeight: 'safeHeight',
+  safeHash: 'safeHash',
+  finalizedHeight: 'finalizedHeight',
+  finalizedHash: 'finalizedHash',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type BlockCursorScalarFieldEnum = (typeof BlockCursorScalarFieldEnum)[keyof typeof BlockCursorScalarFieldEnum]
+
+
+export const BlockCursorAncestorScalarFieldEnum = {
+  id: 'id',
+  cursorId: 'cursorId',
+  height: 'height',
+  hash: 'hash',
+  parentHash: 'parentHash',
+  confirmation: 'confirmation',
+  isCanonical: 'isCanonical',
+  createdAt: 'createdAt'
+} as const
+
+export type BlockCursorAncestorScalarFieldEnum = (typeof BlockCursorAncestorScalarFieldEnum)[keyof typeof BlockCursorAncestorScalarFieldEnum]
+
+
+export const ChainEventScalarFieldEnum = {
+  id: 'id',
+  chainId: 'chainId',
+  contractAddress: 'contractAddress',
+  eventName: 'eventName',
+  blockNumber: 'blockNumber',
+  blockHash: 'blockHash',
+  txHash: 'txHash',
+  logIndex: 'logIndex',
+  blockTimestamp: 'blockTimestamp',
+  payload: 'payload',
+  rawArgs: 'rawArgs',
+  ingestedAt: 'ingestedAt'
+} as const
+
+export type ChainEventScalarFieldEnum = (typeof ChainEventScalarFieldEnum)[keyof typeof ChainEventScalarFieldEnum]
+
+
+export const FeatureFlagScalarFieldEnum = {
+  id: 'id',
+  key: 'key',
+  description: 'description',
+  value: 'value',
+  version: 'version',
+  releaseId: 'releaseId',
+  schemaVersion: 'schemaVersion',
+  chainId: 'chainId',
+  deploymentBlock: 'deploymentBlock',
+  artifactChecksum: 'artifactChecksum',
+  status: 'status',
+  updatedBy: 'updatedBy',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type FeatureFlagScalarFieldEnum = (typeof FeatureFlagScalarFieldEnum)[keyof typeof FeatureFlagScalarFieldEnum]
+
+
+export const FeatureFlagRollbackTargetScalarFieldEnum = {
+  id: 'id',
+  flagId: 'flagId',
+  targetVersion: 'targetVersion',
+  targetValue: 'targetValue',
+  releaseId: 'releaseId',
+  schemaVersion: 'schemaVersion',
+  chainId: 'chainId',
+  deploymentBlock: 'deploymentBlock',
+  artifactChecksum: 'artifactChecksum',
+  validationStatus: 'validationStatus',
+  validatedAt: 'validatedAt',
+  validatedBy: 'validatedBy',
+  validationReason: 'validationReason',
+  createdAt: 'createdAt'
+} as const
+
+export type FeatureFlagRollbackTargetScalarFieldEnum = (typeof FeatureFlagRollbackTargetScalarFieldEnum)[keyof typeof FeatureFlagRollbackTargetScalarFieldEnum]
+
+
+export const FeatureFlagAuditEventScalarFieldEnum = {
+  id: 'id',
+  flagId: 'flagId',
+  action: 'action',
+  fromVersion: 'fromVersion',
+  toVersion: 'toVersion',
+  actorId: 'actorId',
+  actorAuthorized: 'actorAuthorized',
+  outcome: 'outcome',
+  reason: 'reason',
+  releaseId: 'releaseId',
+  schemaVersion: 'schemaVersion',
+  chainId: 'chainId',
+  deploymentBlock: 'deploymentBlock',
+  artifactChecksum: 'artifactChecksum',
+  metadata: 'metadata',
+  createdAt: 'createdAt'
+} as const
+
+export type FeatureFlagAuditEventScalarFieldEnum = (typeof FeatureFlagAuditEventScalarFieldEnum)[keyof typeof FeatureFlagAuditEventScalarFieldEnum]
+
+
+export const SupportSubmissionScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  userId: 'userId',
+  sanitizedText: 'sanitizedText',
+  status: 'status',
+  detectionCount: 'detectionCount',
+  detectionTypes: 'detectionTypes',
+  quarantineRef: 'quarantineRef',
+  remediationGuidance: 'remediationGuidance',
+  quarantinedAt: 'quarantinedAt',
+  reviewedBy: 'reviewedBy',
+  reviewedAt: 'reviewedAt'
+} as const
+
+export type SupportSubmissionScalarFieldEnum = (typeof SupportSubmissionScalarFieldEnum)[keyof typeof SupportSubmissionScalarFieldEnum]
+
+
+export const SupportAttachmentScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  submissionId: 'submissionId',
+  filename: 'filename',
+  contentType: 'contentType',
+  size: 'size',
+  contentHash: 'contentHash',
+  quarantineKey: 'quarantineKey',
+  status: 'status',
+  detectionTypes: 'detectionTypes'
+} as const
+
+export type SupportAttachmentScalarFieldEnum = (typeof SupportAttachmentScalarFieldEnum)[keyof typeof SupportAttachmentScalarFieldEnum]
+
+
+export const QuarantineAuditLogScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  actorId: 'actorId',
+  action: 'action',
+  targetType: 'targetType',
+  targetId: 'targetId',
+  context: 'context'
+} as const
+
+export type QuarantineAuditLogScalarFieldEnum = (typeof QuarantineAuditLogScalarFieldEnum)[keyof typeof QuarantineAuditLogScalarFieldEnum]
+
+
+export const WebhookProviderConfigScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  provider: 'provider',
+  timestampToleranceSeconds: 'timestampToleranceSeconds',
+  maxBodyBytes: 'maxBodyBytes',
+  isActive: 'isActive',
+  activeSecretRef: 'activeSecretRef',
+  rotatedSecretRefs: 'rotatedSecretRefs'
+} as const
+
+export type WebhookProviderConfigScalarFieldEnum = (typeof WebhookProviderConfigScalarFieldEnum)[keyof typeof WebhookProviderConfigScalarFieldEnum]
+
+
+export const WebhookDeliveryScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  provider: 'provider',
+  deliveryId: 'deliveryId',
+  secretRef: 'secretRef',
+  eventTimestamp: 'eventTimestamp',
+  bodySha256: 'bodySha256',
+  bodyBytes: 'bodyBytes',
+  status: 'status',
+  rejectionReason: 'rejectionReason',
+  receivedAt: 'receivedAt'
+} as const
+
+export type WebhookDeliveryScalarFieldEnum = (typeof WebhookDeliveryScalarFieldEnum)[keyof typeof WebhookDeliveryScalarFieldEnum]
 
 
 export const SortOrder = {

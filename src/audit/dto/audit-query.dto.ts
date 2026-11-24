@@ -1,7 +1,20 @@
-import { IsOptional, IsString, IsEnum, IsInt, Min, Max, IsDateString } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  IsEnum,
+  IsInt,
+  Min,
+  Max,
+  IsDateString,
+} from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { AuditActionType, AuditEntityType, AuditSeverity, AuditCategory } from '../entities/audit-log.entity';
+import {
+  AuditActionType,
+  AuditEntityType,
+  AuditSeverity,
+  AuditCategory,
+} from '../entities/audit-log.entity';
 
 export class AuditQueryDto {
   @ApiPropertyOptional({ enum: AuditEntityType })
@@ -118,7 +131,17 @@ export class ExportAuditDto {
 }
 
 export class ComplianceReportDto {
-  @ApiPropertyOptional({ enum: ['admin-activity', 'moderation-actions', 'login-history', 'governance-actions', 'permission-changes', 'security-incidents', 'audit-summary'] })
+  @ApiPropertyOptional({
+    enum: [
+      'admin-activity',
+      'moderation-actions',
+      'login-history',
+      'governance-actions',
+      'permission-changes',
+      'security-incidents',
+      'audit-summary',
+    ],
+  })
   @IsOptional()
   @IsString()
   type?: string;

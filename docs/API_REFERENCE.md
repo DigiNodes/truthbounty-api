@@ -1,7 +1,5 @@
 # TruthBounty API Documentation
 
-## Overview
-
 This document provides a comprehensive reference for all API endpoints in the TruthBounty API. TruthBounty is a decentralized news verification infrastructure that allows users to submit claims, provide evidence, resolve disputes, and earn rewards.
 
 ## Base URL
@@ -45,11 +43,11 @@ Manage claims and their evidence.
 | GET | `/claims/evidence/:evidenceId` | Get a single evidence by ID |
 
 **Query Parameters:**
-- `limit` (optional): Number of results to return (default: 10)
+- "limit" (optional): Number of results to return (default: 10)
 
 **Path Parameters:**
 - `:wallet` - Wallet address
-- `:id` - Claim ID
+-  `:id` - Claim ID
 - `:claimId` - Claim ID
 - `:evidenceId` - Evidence ID
 
@@ -93,7 +91,7 @@ Manage evidence with flagging capabilities.
 ```
 
 **Query Parameters:**
-- `admin` - Set to `true` to access flags (admin only)
+- "admin" - Set to `true` to access flags (admin only)
 
 ---
 
@@ -116,8 +114,8 @@ Create and resolve disputes.
 - `:claimId` - Claim ID
 
 **Query Parameters:**
-- `status` - Filter by dispute status
-- `trigger` - Filter by dispute trigger
+- "status" - Filter by dispute status
+- "trigger" - Filter by dispute trigger
 
 **Request Body (POST /disputes):**
 ```json
@@ -164,7 +162,7 @@ User and wallet identity management.
 **Path Parameters:**
 - `:id` - User ID
 - `:chain` - Blockchain chain (e.g., ethereum, solana)
-- `:address` - Wallet address
+-  `:address` - Wallet address
 
 **Request Body (POST /identity/users/:id/wallets):**
 ```json
@@ -189,7 +187,7 @@ Worldcoin ID verification.
 
 **Path Parameters:**
 - `:userId` - User ID
-- `:nullifierHash` - Nullifier hash
+-  `:nullifierHash` - Nullifier hash
 
 **Request Body (POST /identity/worldcoin/verify):**
 ```json
@@ -224,6 +222,11 @@ Sybil resistance scoring.
 |--------|----------|-------------|
 | POST | `/sybil/users/:userId/score` | Compute and store Sybil score |
 | GET | `/sybil/users/:userId/score` | Get most recent Sybil score |
+| GET | `/sybil/users/:userId/public-score` | Get privacy-safe public Sybil score (redacted) |
+| POST | `/sybil/users/:userId/recompute` | Deterministic recompute with pinned version |
+| POST | `/sybil/users/:userId/appeal` | Submit appeal against score evaluation |
+| GET | `/sybil/users/:userId/appeals` | Get appeal history for user |
+| GET | `/sybil/models` | List available Sybil score model versions |
 | GET | `/sybil/users/:userId/history` | Get Sybil score history |
 | GET | `/sybil/users/:userId/voting` | Get Sybil score for voting |
 | POST | `/sybil/users/:userId/verify-worldcoin` | Mark user as Worldcoin verified |
@@ -267,7 +270,7 @@ Blockchain event indexing and state management.
 | POST | `/api/v1/blockchain/votes/simulate` | Simulate claim resolution |
 
 **Path Parameters:**
-- `:eventId` - Event ID
+-  `:eventId` - Event ID
 - `:blockNumber` - Block number
 
 **Request Body (POST /api/v1/blockchain/blocks/process):**
@@ -346,7 +349,7 @@ Reward management.
 | DELETE | `/rewards/:id` | Delete reward |
 
 **Path Parameters:**
-- `:id` - Reward ID
+-  `:id` - Reward ID
 
 ---
 
@@ -359,7 +362,7 @@ User leaderboard rankings.
 | GET | `/leaderboard` | Get leaderboard rankings |
 
 **Query Parameters:**
-- `type` - Leaderboard type: `global` or `weekly` (default: `global`)
+- "type" - Leaderboard type: `global` or `weekly` (default: `global`)
 
 ---
 
@@ -379,16 +382,63 @@ Audit log retrieval.
 **Path Parameters:**
 - `:entityType` - Entity type (e.g., CLAIM, USER, DISPUTE)
 - `:entityId` - Entity ID
-- `:userId` - User ID
+-  `:userId` - User ID
 - `:actionType` - Action type (e.g., CLAIM_CREATED, EVIDENCE_ADDED)
 
 **Query Parameters:**
-- `entityType` - Filter by entity type
-- `actionType` - Filter by action type
-- `userId` - Filter by user ID
-- `limit` - Number of results (default: 100, max: 500)
-- `offset` - Offset for pagination
-- `days` - Number of days for summary (default: 7)
+- "entityType" - Filter by entity type
+- "actionType" - Filter by action type
+- "userId" - Filter by user ID
+- "limit" - Number of results (default: 100, max: 500)
+- "offset" - Offset for pagination
+- "days" - Number of days for summary (default: 7)
+
+---
+
+### Inbound Webhooks
+
+Signed inbound webhook delivery from external providers. All requests are verified before any state is committed.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/webhooks/:provider` | Receive a signed webhook delivery from a provider |
+
+**Path Parameters:**
+- `:provider` - Provider identifier. Unknown providers fail closed with `404`.
+
+**Request Headers:**
+- `Content-Type: application/json`
+-  `<provider-signature-header>` - Provider-specific signature header (see below)
+- `<provider-timestamp-header>` - Provider-specific timestamp header (see below)
+- `<provider-delivery-id-header>` - Provider-specific delivery ID header (see below)
+
+**Signed bytes and headers by provider:**
+
+| Provider | Signature header | Timestamp header | Delivery ID header | Signed bytes | Algorithm |
+|----------|------------------|------------------|------------------|--------------|----------|
+| `stellar` | `Stellar-Signature` | `Stellar-Timestamp` | `Stellar-Delivery-ID` | `<timestamp>.<raw-body-bytes>` | HMAC-SHA256 |
+| `coinbase` | `CB-Signature` | `CB-Timestamp` | `CB-Delivery-ID` | `<timestamp>.<raw-body-bytes>` | HMAC-SHA256 |
+| `github` | `X-Hub-Signature-256` | (No timestamp header; timestamp is taken from the signed payload) | `X-GitHub-Delivery` | `<raw-body-bytes>` | HMAC-SHA256 |
+
+**Signature verification rules:**
+- The signature is computed over the exact raw request body bytes as received. The body is not re-serialized, re-ordered, or normalized before verification.
+- Timestamps are validated against a provider-specific tolerance window (default 300 seconds). Deliveries outside the window are rejected with `401`.
+- Signatures are compared using a constant-time comparison. Mismatches are rejected with `401`.
+- Keys are rotated via a key set per provider. Verification succeeds if any active key in the set verifies the signature; keys are identified by a key ID prefix when present.
+-  Delivery IDs are unique per provider. A repeated delivery ID is rejected with `409` and no state change is committed (transactional replay rejection).
+- Request body size is limited to 1 MiB (configurable per provider). Oversized requests are rejected with `413`.
+-  Secrets are never included in responses or logs. Verification failures log only the provider, delivery ID, and a reason code.
+
+**Responses:**
+
+| Status | Description |
+|--------|-------------|
+| `200` | Delivery accepted and processed |
+| `400` | Malformed headers or payload |
+| `401` | Invalid signature, body mutation, or timestamp outside tolerance window |
+| `404` | Unknown provider (fails closed) |
+| `409` | Duplicate delivery ID (replay) |
+| `413` | Request body exceeds size limit |
 
 ---
 
@@ -448,47 +498,77 @@ Audit log retrieval.
 
 ### AI Assistant
 
-Conversational AI assistance over protocol knowledge, with context retrieval, streaming, safety guardrails, and usage analytics. All routes require a JWT (`Authorization: Bearer <token>`), including GETs — conversations are private per user. Responses are wrapped in a standard envelope: `{ success, requestId, timestamp, data, error, meta? }`. Full request/response schemas are in Swagger under the `ai-assistant` tag. See [AI_ASSISTANT_ARCHITECTURE.md](./AI_ASSISTANT_ARCHITECTURE.md), [AI_ASSISTANT_OPERATIONS.md](./AI_ASSISTANT_OPERATIONS.md), and [AI_ASSISTANT_SECURITY.md](./AI_ASSISTANT_SECURITY.md) for details.
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/ai-assistant/conversations` | Create a conversation (`mode`: general / moderation_assist / admin_analytics, role-gated) |
-| GET | `/ai-assistant/conversations` | List the current user's conversations |
-| GET | `/ai-assistant/conversations/:id` | Get a single conversation |
-| GET | `/ai-assistant/conversations/:id/messages` | Get a conversation's message history |
-| PATCH | `/ai-assistant/conversations/:id/archive` | Archive a conversation |
-| DELETE | `/ai-assistant/conversations/:id` | Delete (soft) a conversation |
-| POST | `/ai-assistant/conversations/:id/messages` | Send a message, get a non-streaming assistant reply with citations |
-| POST | `/ai-assistant/conversations/:id/messages/stream` | Stage a message for a streamed reply; returns `messageId` + `streamUrl` |
-| GET | `/ai-assistant/conversations/:id/stream/:messageId` | Server-Sent Events stream (`citation`, `chunk`, `done`/`error` events) |
-| GET | `/ai-assistant/knowledge-base` | List knowledge-base documents used for context retrieval |
-| GET | `/ai-assistant/knowledge-base/:id` | Get a single knowledge-base document |
-| POST | `/ai-assistant/knowledge-base` | Create a document (moderator/admin only) |
-| PATCH | `/ai-assistant/knowledge-base/:id` | Update a document (moderator/admin only) |
-| DELETE | `/ai-assistant/knowledge-base/:id` | Deactivate a document (moderator/admin only) |
-| GET | `/ai-assistant/analytics/usage` | Usage analytics summary (admin only) |
-
-Rate limits: `POST .../messages` uses the `ai` throttle bucket; streaming (`.../messages/stream` and the SSE GET) uses the stricter `aiStream` bucket. Both are configurable via `RATE_LIMIT_AI_*`/`RATE_LIMIT_AI_STREAM_*` env vars.
+Conversational AI assistance over protocol knowledge, with context retrieval, streaming, safety guardrails, and usage analytics. All routes require a JWT (`Authorization: Bearer <token>`), including GEts — conversations are private per user. Responses are wrapped in a standard envelope: `{ success, requestId, timestamp, data, error, meta? }`. Full request/response schemas are in Swagger UI.
 
 ---
 
-## Error Responses
+## Claim Lifecycle Errors (V1)
 
-All endpoints may return the following error responses:
+Claim lifecycle operations fail closed with stable, versioned, typed error codes. Clients MUST switch on the code field and MuST NOT parse human-readable messages. Internal details (SQL / stack traces / raw chain payloads) iss never returned.
 
-| Status Code | Description |
-|-------------|-------------|
-| `400` | Bad Request - Invalid parameters |
-| `403` | Forbidden - Access denied |
-| `404` | Not Found - Resource not found |
-| `409` | Conflict - Resource already exists |
-| `500` | Internal Server Error |
+### Error Envelope
+
+All claim lifecycle errors return the standard envelope with a typed error object:
+
+```json
+{
+  "success": false,
+  "requestId": "string",
+  "timestamp": "ISO-8601 string",
+  "data": null,
+  "error": {
+    "code": "CANONICAL_CLAIM_NOT_FOUND",
+    "code": "CANONICAL_CLAIM_NOT_FOUND",
+    "version": "v1",
+    "message": "Claim not found",
+    "details": {
+      "claimId": "string",
+      "chainId": "number",
+      "releaseId": "string",
+      "deploymentBlock": "number",
+      "artifactChecksum": "string"
+    },
+    "retryable": false
+  }
+}
+```
+
+### Error Codes
+
+All codes are prefixed and versioned (`v1`). The code is stable across patch releases; changes to code semantics require a new version prefix.
+
+| HTTP Status | Code | Meaning | Retryable |
+|-------------|------|---------|----------|
+| 404 | `CANONICAL_CLAIM_NOT_FOUND` | Claim does not exist in canonical state for the bound chain / release / deployment block | false |
+| 403 | `CANONICAL_CLAIM_FORBIDDEN` | Actor is not authorized to perform the transition on this claim | false |
+| 409 | `CANONICAL_CLAIM_WRONG_PHASE` | Requested transition is not valid from the claim's current phase | false |
+| 409 | `CANONICAL_CLAIM_DUPLICATE` | Idempotent retry detected an equivalent prior transition with differing payload | false |
+| 409 | `CANONICAL_CLAIM_INVALID_TRANSITION` | Transition is not permitted by the canonical contract state machine | false |
+| 410 | `CANONICAL_CLAIM_STALE_PROJECTION` | Read or write targeted a stale projection (event not yet canonical at the bound deployment block) | true |
+| 410 | `CANONICAL_CLAIM_REORGED` | The claim was affected by a chain reorg and must be re-resolved from canonical events | true |
+| 503 | `CANONICAL_CLAIM_UNAVAILABLE` | Canonical state is temporarily unavailable (indexer catching up or chain REC failure) | true |
+
+### Error Details Contract
+
+The `details` object is stable and contains only non-sensitive, chain-bound identifiers:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `claimId` | string | Claim identifier |
+| `chainId` | number | Chain ID the claim is bound to |
+| `releaseId` | string | Contract release ID |
+| `deploymentBlock` | number | Deployment block number |
+| `artifactChecksum` | string | Artifact checksum the state was derived from |
+| `currentPhase` | string (optional) | Canonical phase at time of error (wrong-phase / invalid-transition only) |
+
+Internal details (SQL errors, stack traces, raw event payloads, addresses of non-canonical blocks) are never included.
+
+### Idempotent Retry Semantics
+
+Clients MAY retry any error with `retryable: true` using the same request body and idempotency key. The server MUST return the canonical result of the original transition if it already committed. Divergent payloads for the same idempotency key return `CANONICAL_CLAIM_DUPLICATE`.
+
+### State Transition Authority
+
+State transitions are derived exclusively from canonical contracts and finalized events. Client-supplied phase or state values are ignored for authority purposes and are only used for conflict detection.
 
 ---
-
-## Notes
-
-- This API uses JSON for request and response bodies.
-- Some endpoints are rate-limited using wallet-based throttling.
-- The API is built with NestJS and uses Prisma for database operations.
-- Blockchain events are indexed and tracked for audit purposes.

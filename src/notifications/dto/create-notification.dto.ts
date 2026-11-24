@@ -33,10 +33,10 @@ export class CreateNotificationDto {
   @IsOptional()
   category?: NotificationCategory;
 
-  @ApiPropertyOptional({ enum: NotificationChannel })
-  @IsEnum(NotificationChannel)
+  @ApiPropertyOptional({ enum: DeliveryChannel })
+  @IsEnum(DeliveryChannel)
   @IsOptional()
-  channel?: NotificationChannel;
+  channel?: DeliveryChannel;
 
   @ApiPropertyOptional({ enum: DeliveryChannel, isArray: true })
   @IsArray()

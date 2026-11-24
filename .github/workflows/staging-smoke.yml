@@ -1,0 +1,66 @@
+name: Staging Deployment Smoke Tests
+
+# Post-deployment smoke tests for the staging environment (V2-BE-146).
+# Run manually against a deployed instance, or on a schedule against the
+# configured staging URL. Failures are hard and never skipped: a deployment
+# that does not satisfy its health contract is reported loudly rather than
+# quietly accepted.
+#
+# Staging URL lives in a repository secret so unreviewed forks can never
+# discover or target it, and the script reads no other secrets.
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: 'Staging base URL to smoke-test'
+        required: false
+        default: ''
+      timeout_ms:
+        description: 'Per-probe timeout in milliseconds'
+        required: false
+        default: '10000'
+  schedule:
+    - cron: '40 */4 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  staging-smoke:
+    name: Staging smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Resolve staging base URL
+        id: resolve
+        env:
+          MANUAL_URL: ${{ github.event.inputs.base_url }}
+          SECRET_URL: ${{ secrets.staging_base_url }}
+        run: |
+          if [[ -n "$MANUAL_URL" ]]; then
+            echo "url=$MANUAL_URL" >> "$GITHUB_OUTPUT"
+          elif [[ -n "$SECRET_URL" ]]; then
+            echo "url=$SECRET_URL" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::staging_base_url repository secret must be configured, or provide a base_url dispatch input."
+            exit 1
+          fi
+
+      - name: Run staging smoke tests
+        env:
+          STAGING_BASE_URL: ${{ steps.resolve.outputs.url }}
+          SMOKE_TIMEOUT_MS: ${{ github.event.inputs.timeout_ms || '10000' }}
+        run: |
+          npx ts-node src/scripts/staging-smoke.ts

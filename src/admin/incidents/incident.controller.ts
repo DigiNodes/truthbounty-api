@@ -1,5 +1,20 @@
-import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiParam,
+} from '@nestjs/swagger';
 import { IncidentService } from './incident.service';
 import { AdminGuard } from '../guards/admin.guard';
 import { RolesGuard } from '../guards/roles.guard';
@@ -14,6 +29,7 @@ import {
   PostIncidentReportDto,
   IncidentQueryDto,
 } from '../dto/incident.dto';
+import { PublishIncidentProjectionDto } from '../dto/public-incident-publish.dto';
 
 @ApiTags('admin / incidents')
 @ApiBearerAuth()
@@ -23,22 +39,41 @@ export class IncidentController {
   constructor(private readonly incidentService: IncidentService) {}
 
   @Post()
-  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMINISTRATOR, AdminRole.SECURITY_ANALYST)
+  @Roles(
+    AdminRole.SUPER_ADMIN,
+    AdminRole.ADMINISTRATOR,
+    AdminRole.SECURITY_ANALYST,
+  )
   @ApiOperation({ summary: 'Create a new incident' })
   @ApiResponse({ status: 201, description: 'Incident created' })
-  async create(@Body() createDto: CreateIncidentDto, @CurrentAdmin() admin: Admin) {
+  async create(
+    @Body() createDto: CreateIncidentDto,
+    @CurrentAdmin() admin: Admin,
+  ) {
     return this.incidentService.create(createDto, admin);
   }
 
   @Get()
-  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMINISTRATOR, AdminRole.SECURITY_ANALYST, AdminRole.MODERATOR, AdminRole.AUDITOR)
+  @Roles(
+    AdminRole.SUPER_ADMIN,
+    AdminRole.ADMINISTRATOR,
+    AdminRole.SECURITY_ANALYST,
+    AdminRole.MODERATOR,
+    AdminRole.AUDITOR,
+  )
   @ApiOperation({ summary: 'List all incidents' })
   async findAll(@Query() query: IncidentQueryDto) {
     return this.incidentService.findAll(query);
   }
 
   @Get(':id')
-  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMINISTRATOR, AdminRole.SECURITY_ANALYST, AdminRole.MODERATOR, AdminRole.AUDITOR)
+  @Roles(
+    AdminRole.SUPER_ADMIN,
+    AdminRole.ADMINISTRATOR,
+    AdminRole.SECURITY_ANALYST,
+    AdminRole.MODERATOR,
+    AdminRole.AUDITOR,
+  )
   @ApiOperation({ summary: 'Get incident details' })
   @ApiParam({ name: 'id', description: 'Incident ID' })
   async findById(@Param('id') id: string) {
@@ -46,7 +81,11 @@ export class IncidentController {
   }
 
   @Patch(':id')
-  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMINISTRATOR, AdminRole.SECURITY_ANALYST)
+  @Roles(
+    AdminRole.SUPER_ADMIN,
+    AdminRole.ADMINISTRATOR,
+    AdminRole.SECURITY_ANALYST,
+  )
   @ApiOperation({ summary: 'Update incident' })
   @ApiParam({ name: 'id', description: 'Incident ID' })
   async update(
@@ -58,7 +97,11 @@ export class IncidentController {
   }
 
   @Post(':id/assign')
-  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMINISTRATOR, AdminRole.SECURITY_ANALYST)
+  @Roles(
+    AdminRole.SUPER_ADMIN,
+    AdminRole.ADMINISTRATOR,
+    AdminRole.SECURITY_ANALYST,
+  )
   @ApiOperation({ summary: 'Assign incident to an investigator' })
   @ApiParam({ name: 'id', description: 'Incident ID' })
   async assign(
@@ -70,7 +113,11 @@ export class IncidentController {
   }
 
   @Post(':id/notes')
-  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMINISTRATOR, AdminRole.SECURITY_ANALYST)
+  @Roles(
+    AdminRole.SUPER_ADMIN,
+    AdminRole.ADMINISTRATOR,
+    AdminRole.SECURITY_ANALYST,
+  )
   @ApiOperation({ summary: 'Add investigation note' })
   @ApiParam({ name: 'id', description: 'Incident ID' })
   async addNote(
@@ -82,7 +129,11 @@ export class IncidentController {
   }
 
   @Post(':id/resolve')
-  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMINISTRATOR, AdminRole.SECURITY_ANALYST)
+  @Roles(
+    AdminRole.SUPER_ADMIN,
+    AdminRole.ADMINISTRATOR,
+    AdminRole.SECURITY_ANALYST,
+  )
   @ApiOperation({ summary: 'Resolve an incident' })
   @ApiParam({ name: 'id', description: 'Incident ID' })
   async resolve(
@@ -94,7 +145,11 @@ export class IncidentController {
   }
 
   @Post(':id/report')
-  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMINISTRATOR, AdminRole.SECURITY_ANALYST)
+  @Roles(
+    AdminRole.SUPER_ADMIN,
+    AdminRole.ADMINISTRATOR,
+    AdminRole.SECURITY_ANALYST,
+  )
   @ApiOperation({ summary: 'Submit post-incident report' })
   @ApiParam({ name: 'id', description: 'Incident ID' })
   async addReport(
@@ -106,9 +161,64 @@ export class IncidentController {
   }
 
   @Get('stats/summary')
-  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMINISTRATOR, AdminRole.SECURITY_ANALYST, AdminRole.AUDITOR)
+  @Roles(
+    AdminRole.SUPER_ADMIN,
+    AdminRole.ADMINISTRATOR,
+    AdminRole.SECURITY_ANALYST,
+    AdminRole.AUDITOR,
+  )
   @ApiOperation({ summary: 'Get incident statistics' })
   async getStats() {
     return this.incidentService.getStats();
+  }
+
+  @Post(':id/publish')
+  @Roles(
+    AdminRole.SUPER_ADMIN,
+    AdminRole.ADMINISTRATOR,
+    AdminRole.SECURITY_ANALYST,
+  )
+  @ApiOperation({
+    summary: 'Publish or update sanitized public incident projection',
+  })
+  @ApiParam({ name: 'id', description: 'Internal Incident ID' })
+  async publishProjection(
+    @Param('id') id: string,
+    @Body() publishDto: PublishIncidentProjectionDto,
+    @CurrentAdmin() admin: Admin,
+  ) {
+    return this.incidentService.publishProjection(id, publishDto, admin);
+  }
+
+  @Post(':id/projection/draft')
+  @Roles(
+    AdminRole.SUPER_ADMIN,
+    AdminRole.ADMINISTRATOR,
+    AdminRole.SECURITY_ANALYST,
+  )
+  @ApiOperation({
+    summary: 'Save draft of public incident projection without publishing',
+  })
+  @ApiParam({ name: 'id', description: 'Internal Incident ID' })
+  async saveDraftProjection(
+    @Param('id') id: string,
+    @Body() draftDto: PublishIncidentProjectionDto,
+    @CurrentAdmin() admin: Admin,
+  ) {
+    return this.incidentService.saveDraftProjection(id, draftDto, admin);
+  }
+
+  @Get(':id/projection')
+  @Roles(
+    AdminRole.SUPER_ADMIN,
+    AdminRole.ADMINISTRATOR,
+    AdminRole.SECURITY_ANALYST,
+    AdminRole.MODERATOR,
+    AdminRole.AUDITOR,
+  )
+  @ApiOperation({ summary: 'Get projection for an incident' })
+  @ApiParam({ name: 'id', description: 'Internal Incident ID' })
+  async getProjection(@Param('id') id: string) {
+    return this.incidentService.getProjection(id);
   }
 }

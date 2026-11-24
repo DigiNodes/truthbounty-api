@@ -6,6 +6,7 @@ import {
   IsNumber,
   Min,
   Max,
+  MaxLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { SortField, PaginationType } from '../search.types';
@@ -13,6 +14,7 @@ import { SortField, PaginationType } from '../search.types';
 export class SearchQueryDto {
   @IsOptional()
   @IsString()
+  @MaxLength(256)
   q?: string;
 
   @IsOptional()

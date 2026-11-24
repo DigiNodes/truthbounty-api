@@ -1,37 +1,37 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { BaseDeliveryService, DeliveryResult } from './base-delivery.service';
-import { DeliveryChannel } from '../../enums/notification-type.enum';
-import { NotificationDelivery } from '../../entities/notification-delivery.entity';
+import { DeliveryChannel } from '../../interfaces/notification.types';
+import type { RenderedNotificationPayload } from '../../delivery/rendered-notification-payload';
 
 @Injectable()
 export class SmsDeliveryService extends BaseDeliveryService {
   protected readonly logger = new Logger(SmsDeliveryService.name);
   readonly channel = DeliveryChannel.SMS;
 
-  async deliver(delivery: NotificationDelivery): Promise<DeliveryResult> {
-    const phoneNumber = delivery.destination;
+  deliver(payload: RenderedNotificationPayload): Promise<DeliveryResult> {
+    const phoneNumber = this.resolveDestination(payload);
     if (!phoneNumber) {
-      return { success: false, failureReason: 'No phone number configured' };
+      return Promise.resolve({
+        success: false,
+        failureReason: 'No phone number configured',
+      });
     }
 
     try {
-      this.logger.debug(`SMS delivery to ${phoneNumber} for notification ${delivery.notificationId}`);
-
-      this.logger.log(
-        `SMS TO: ${phoneNumber} | Body: ${delivery.responseData?.body || ''}`,
+      this.logger.debug(
+        `SMS delivery for notification ${payload.notificationId ?? 'unknown'}`,
       );
 
-      return {
+      return Promise.resolve({
         success: true,
         deliveredAt: new Date(),
-        responseData: { provider: 'twilio-placeholder', phoneNumber },
-      };
+        responseData: { provider: 'twilio-placeholder' },
+      });
     } catch (error) {
-      this.logger.error(`SMS delivery failed to ${phoneNumber}: ${error.message}`);
-      return {
-        success: false,
-        failureReason: error.message,
-      };
+      this.logger.error(
+        `SMS delivery failed for notification ${payload.notificationId ?? 'unknown'}`,
+      );
+      return Promise.resolve(this.failure(error));
     }
   }
 }

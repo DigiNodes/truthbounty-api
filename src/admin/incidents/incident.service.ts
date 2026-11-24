@@ -1,14 +1,17 @@
-import { Injectable, NotFoundException, Logger, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  Logger,
+  ForbiddenException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like } from 'typeorm';
-import {
-  Incident,
-  IncidentStatus,
-  IncidentSeverity,
-  IncidentClassification,
-} from '../entities/incident.entity';
+import { Incident, IncidentStatus } from '../entities/incident.entity';
 import { AuditTrailService } from '../../audit/services/audit-trail.service';
-import { AuditActionType, AuditEntityType } from '../../audit/entities/audit-log.entity';
+import {
+  AuditActionType,
+  AuditEntityType,
+} from '../../audit/entities/audit-log.entity';
 import {
   CreateIncidentDto,
   UpdateIncidentDto,
@@ -17,7 +20,11 @@ import {
   PostIncidentReportDto,
   IncidentQueryDto,
 } from '../dto/incident.dto';
-import { Admin, AdminRole } from '../entities/admin.entity';
+import { PublishIncidentProjectionDto } from '../dto/public-incident-publish.dto';
+import { Admin } from '../entities/admin.entity';
+import { PublicIncidentService } from '../../health/public-incidents/public-incidents.service';
+import { PublicIncidentDetailDto } from '../../health/public-incidents/public-incidents.dto';
+import { Optional, ServiceUnavailableException } from '@nestjs/common';
 
 @Injectable()
 export class IncidentService {
@@ -27,6 +34,8 @@ export class IncidentService {
     @InjectRepository(Incident)
     private readonly incidentRepo: Repository<Incident>,
     private readonly auditTrailService: AuditTrailService,
+    @Optional()
+    private readonly publicIncidentService?: PublicIncidentService,
   ) {}
 
   async create(createDto: CreateIncidentDto, admin: Admin): Promise<Incident> {
@@ -57,7 +66,9 @@ export class IncidentService {
       },
     });
 
-    this.logger.log(`Incident created: ${saved.id} - ${saved.title} [${saved.severity}]`);
+    this.logger.log(
+      `Incident created: ${saved.id} - ${saved.title} [${saved.severity}]`,
+    );
     return saved;
   }
 
@@ -103,7 +114,11 @@ export class IncidentService {
     return incident;
   }
 
-  async update(id: string, updateDto: UpdateIncidentDto, admin: Admin): Promise<Incident> {
+  async update(
+    id: string,
+    updateDto: UpdateIncidentDto,
+    admin: Admin,
+  ): Promise<Incident> {
     const incident = await this.findById(id);
 
     if (incident.status === IncidentStatus.CLOSED) {
@@ -112,7 +127,8 @@ export class IncidentService {
 
     if (updateDto.title) incident.title = updateDto.title;
     if (updateDto.description) incident.description = updateDto.description;
-    if (updateDto.classification) incident.classification = updateDto.classification;
+    if (updateDto.classification)
+      incident.classification = updateDto.classification;
     if (updateDto.severity) incident.severity = updateDto.severity;
     if (updateDto.status) incident.status = updateDto.status;
 
@@ -135,7 +151,11 @@ export class IncidentService {
     return saved;
   }
 
-  async assign(id: string, assigneeId: string, admin: Admin): Promise<Incident> {
+  async assign(
+    id: string,
+    assigneeId: string,
+    admin: Admin,
+  ): Promise<Incident> {
     const incident = await this.findById(id);
 
     incident.assignedTo = assigneeId;
@@ -157,7 +177,11 @@ export class IncidentService {
     return saved;
   }
 
-  async addNote(id: string, noteDto: AddInvestigationNoteDto, admin: Admin): Promise<Incident> {
+  async addNote(
+    id: string,
+    noteDto: AddInvestigationNoteDto,
+    admin: Admin,
+  ): Promise<Incident> {
     const incident = await this.findById(id);
 
     const notes = incident.investigationNotes || [];
@@ -182,7 +206,11 @@ export class IncidentService {
     return saved;
   }
 
-  async resolve(id: string, resolveDto: ResolveIncidentDto, admin: Admin): Promise<Incident> {
+  async resolve(
+    id: string,
+    resolveDto: ResolveIncidentDto,
+    admin: Admin,
+  ): Promise<Incident> {
     const incident = await this.findById(id);
 
     incident.status = IncidentStatus.RESOLVED;
@@ -209,7 +237,11 @@ export class IncidentService {
     return saved;
   }
 
-  async addPostIncidentReport(id: string, reportDto: PostIncidentReportDto, admin: Admin): Promise<Incident> {
+  async addPostIncidentReport(
+    id: string,
+    reportDto: PostIncidentReportDto,
+    admin: Admin,
+  ): Promise<Incident> {
     const incident = await this.findById(id);
 
     incident.postIncidentReport = {
@@ -246,10 +278,18 @@ export class IncidentService {
     avgResolutionTimeHours: number;
   }> {
     const total = await this.incidentRepo.count();
-    const open = await this.incidentRepo.count({ where: { status: IncidentStatus.OPEN } });
-    const investigating = await this.incidentRepo.count({ where: { status: IncidentStatus.INVESTIGATING } });
-    const resolved = await this.incidentRepo.count({ where: { status: IncidentStatus.RESOLVED } });
-    const closed = await this.incidentRepo.count({ where: { status: IncidentStatus.CLOSED } });
+    const open = await this.incidentRepo.count({
+      where: { status: IncidentStatus.OPEN },
+    });
+    const investigating = await this.incidentRepo.count({
+      where: { status: IncidentStatus.INVESTIGATING },
+    });
+    const resolved = await this.incidentRepo.count({
+      where: { status: IncidentStatus.RESOLVED },
+    });
+    const closed = await this.incidentRepo.count({
+      where: { status: IncidentStatus.CLOSED },
+    });
 
     const bySeverityRaw = await this.incidentRepo
       .createQueryBuilder('i')
@@ -266,10 +306,14 @@ export class IncidentService {
       .getRawMany();
 
     const bySeverity: Record<string, number> = {};
-    bySeverityRaw.forEach((r) => { bySeverity[r.severity] = parseInt(r.count, 10); });
+    bySeverityRaw.forEach((r) => {
+      bySeverity[r.severity] = parseInt(r.count, 10);
+    });
 
     const byClassification: Record<string, number> = {};
-    byClassificationRaw.forEach((r) => { byClassification[r.classification] = parseInt(r.count, 10); });
+    byClassificationRaw.forEach((r) => {
+      byClassification[r.classification] = parseInt(r.count, 10);
+    });
 
     let avgResolutionTimeHours = 0;
     const resolvedIncidents = await this.incidentRepo.find({
@@ -281,12 +325,129 @@ export class IncidentService {
     if (resolvedIncidents.length > 0) {
       const totalHours = resolvedIncidents.reduce((sum, inc) => {
         const created = new Date(inc.createdAt).getTime();
-        const resolvedAt = inc.resolvedAt ? new Date(inc.resolvedAt).getTime() : Date.now();
+        const resolvedAt = inc.resolvedAt
+          ? new Date(inc.resolvedAt).getTime()
+          : Date.now();
         return sum + (resolvedAt - created) / (1000 * 60 * 60);
       }, 0);
-      avgResolutionTimeHours = Math.round((totalHours / resolvedIncidents.length) * 100) / 100;
+      avgResolutionTimeHours =
+        Math.round((totalHours / resolvedIncidents.length) * 100) / 100;
     }
 
-    return { total, open, investigating, resolved, closed, bySeverity, byClassification, avgResolutionTimeHours };
+    return {
+      total,
+      open,
+      investigating,
+      resolved,
+      closed,
+      bySeverity,
+      byClassification,
+      avgResolutionTimeHours,
+    };
+  }
+
+  async publishProjection(
+    id: string,
+    dto: PublishIncidentProjectionDto,
+    admin: Admin,
+  ): Promise<PublicIncidentDetailDto> {
+    const incident = await this.findById(id);
+
+    if (!this.publicIncidentService) {
+      throw new ServiceUnavailableException(
+        'Public incident projection service unavailable',
+      );
+    }
+
+    const result = await this.publicIncidentService.publishProjection({
+      incidentId: incident.id,
+      slug: dto.slug,
+      title: dto.title,
+      status: dto.status,
+      impact: dto.impact,
+      affectedComponents: dto.affectedComponents,
+      description: dto.description,
+      mitigation: dto.mitigation,
+      postIncidentLinks: dto.postIncidentLinks,
+      updateMessage: dto.updateMessage,
+      isDraft: false,
+      adminId: admin.id,
+    });
+
+    await this.auditTrailService.log({
+      actionType: AuditActionType.CLAIM_UPDATED,
+      entityType: AuditEntityType.CLAIM,
+      entityId: id,
+      userId: admin.id,
+      walletAddress: admin.walletAddress,
+      description: `Public incident projection published: ${dto.title} (${dto.status})`,
+      metadata: {
+        status: dto.status,
+        impact: dto.impact,
+        affectedComponents: dto.affectedComponents,
+      },
+    });
+
+    return result;
+  }
+
+  async saveDraftProjection(
+    id: string,
+    dto: PublishIncidentProjectionDto,
+    admin: Admin,
+  ): Promise<PublicIncidentDetailDto> {
+    const incident = await this.findById(id);
+
+    if (!this.publicIncidentService) {
+      throw new ServiceUnavailableException(
+        'Public incident projection service unavailable',
+      );
+    }
+
+    const result = await this.publicIncidentService.publishProjection({
+      incidentId: incident.id,
+      slug: dto.slug,
+      title: dto.title,
+      status: dto.status,
+      impact: dto.impact,
+      affectedComponents: dto.affectedComponents,
+      description: dto.description,
+      mitigation: dto.mitigation,
+      postIncidentLinks: dto.postIncidentLinks,
+      updateMessage: dto.updateMessage,
+      isDraft: true,
+      adminId: admin.id,
+    });
+
+    await this.auditTrailService.log({
+      actionType: AuditActionType.CLAIM_UPDATED,
+      entityType: AuditEntityType.CLAIM,
+      entityId: id,
+      userId: admin.id,
+      walletAddress: admin.walletAddress,
+      description: `Public incident projection draft saved: ${dto.title}`,
+      metadata: {
+        isDraft: true,
+        status: dto.status,
+      },
+    });
+
+    return result;
+  }
+
+  async getProjection(id: string): Promise<PublicIncidentDetailDto | null> {
+    await this.findById(id);
+    if (!this.publicIncidentService) {
+      return null;
+    }
+    try {
+      const { body } = await this.publicIncidentService.findById(id);
+      return body;
+    } catch (err) {
+      if (err instanceof NotFoundException) {
+        return null;
+      }
+      throw err;
+    }
   }
 }

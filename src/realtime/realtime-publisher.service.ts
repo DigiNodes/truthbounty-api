@@ -6,6 +6,7 @@ import { RealtimeBusService } from './realtime-bus.service';
 import { RealtimeConfigService } from './realtime-config.service';
 import { IndexedEvent } from '../entities';
 import { ProjectionEventType, RealtimeEnvelopeType } from './realtime.enums';
+import { GracefulShutdownService } from '../common/lifecycle/graceful-shutdown.service';
 
 /**
  * Polls the committed projection outbox and broadcasts newly committed rows to
@@ -31,18 +32,22 @@ export class RealtimePublisherService {
     private readonly dataSource: DataSource,
     private readonly bus: RealtimeBusService,
     private readonly configService: RealtimeConfigService,
+    private readonly gracefulShutdown: GracefulShutdownService,
   ) {}
 
   @Cron(CronExpression.EVERY_SECOND)
   async publishPending(): Promise<void> {
+    if (this.gracefulShutdown.isDraining) return;
     const config = this.configService.getConfig();
     // Never run a poll more often than configured.
     if (Date.now() - this.lastPollAt < config.pollIntervalMs) {
       return;
     }
     this.lastPollAt = Date.now();
-    await this.publishOnce(config.maxPublishBatch);
-    await this.detectRollbacks();
+    await this.gracefulShutdown.runTracked('realtime-publisher', async () => {
+      await this.publishOnce(config.maxPublishBatch);
+      await this.detectRollbacks();
+    });
   }
 
   private lastPollAt = 0;

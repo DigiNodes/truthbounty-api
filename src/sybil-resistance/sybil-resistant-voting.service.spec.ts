@@ -56,9 +56,14 @@ describe('SybilResistantVotingService', () => {
         updatedAt: new Date(),
       };
 
-      jest.spyOn(sybilService, 'getLatestSybilScore').mockResolvedValueOnce(mockScore);
+      jest
+        .spyOn(sybilService, 'getLatestSybilScore')
+        .mockResolvedValueOnce(mockScore);
 
-      const result = await votingService.calculateSybilWeightedVote(mockUser1, 100);
+      const result = await votingService.calculateSybilWeightedVote(
+        mockUser1,
+        100,
+      );
 
       // Multiplier = 0.5 + (0.5 * 0.8) = 0.9
       expect(result.multiplier).toBe(0.9);
@@ -80,9 +85,14 @@ describe('SybilResistantVotingService', () => {
         updatedAt: new Date(),
       };
 
-      jest.spyOn(sybilService, 'getLatestSybilScore').mockResolvedValueOnce(mockScore);
+      jest
+        .spyOn(sybilService, 'getLatestSybilScore')
+        .mockResolvedValueOnce(mockScore);
 
-      const result = await votingService.calculateSybilWeightedVote(mockUser1, 100);
+      const result = await votingService.calculateSybilWeightedVote(
+        mockUser1,
+        100,
+      );
 
       // Multiplier = 0.5 + (0.5 * 0.0) = 0.5
       expect(result.multiplier).toBe(0.5);
@@ -103,9 +113,14 @@ describe('SybilResistantVotingService', () => {
         updatedAt: new Date(),
       };
 
-      jest.spyOn(sybilService, 'getLatestSybilScore').mockResolvedValueOnce(mockScore);
+      jest
+        .spyOn(sybilService, 'getLatestSybilScore')
+        .mockResolvedValueOnce(mockScore);
 
-      const result = await votingService.calculateSybilWeightedVote(mockUser1, 100);
+      const result = await votingService.calculateSybilWeightedVote(
+        mockUser1,
+        100,
+      );
 
       // Multiplier = 0.5 + (0.5 * 1.0) = 1.0
       expect(result.multiplier).toBe(1.0);
@@ -189,7 +204,9 @@ describe('SybilResistantVotingService', () => {
         updatedAt: new Date(),
       };
 
-      jest.spyOn(sybilService, 'getLatestSybilScore').mockResolvedValueOnce(mockScore);
+      jest
+        .spyOn(sybilService, 'getLatestSybilScore')
+        .mockResolvedValueOnce(mockScore);
 
       const result = await votingService.meetsMinimumSybilScore(mockUser1, 0.3);
 
@@ -211,7 +228,9 @@ describe('SybilResistantVotingService', () => {
         updatedAt: new Date(),
       };
 
-      jest.spyOn(sybilService, 'getLatestSybilScore').mockResolvedValueOnce(mockScore);
+      jest
+        .spyOn(sybilService, 'getLatestSybilScore')
+        .mockResolvedValueOnce(mockScore);
 
       const result = await votingService.meetsMinimumSybilScore(mockUser1, 0.5);
 
@@ -277,9 +296,14 @@ describe('SybilResistantVotingService', () => {
         updatedAt: new Date(),
       };
 
-      jest.spyOn(sybilService, 'getLatestSybilScore').mockResolvedValueOnce(mockScore);
+      jest
+        .spyOn(sybilService, 'getLatestSybilScore')
+        .mockResolvedValueOnce(mockScore);
 
-      const result = await votingService.calculateSybilWeightedVote(mockUser1, 0);
+      const result = await votingService.calculateSybilWeightedVote(
+        mockUser1,
+        0,
+      );
 
       expect(result.finalWeight).toBe(0);
     });
@@ -303,8 +327,14 @@ describe('SybilResistantVotingService', () => {
         .mockResolvedValueOnce(mockScore)
         .mockResolvedValueOnce(mockScore);
 
-      const result1 = await votingService.calculateSybilWeightedVote(mockUser1, 100);
-      const result2 = await votingService.calculateSybilWeightedVote(mockUser1, 100);
+      const result1 = await votingService.calculateSybilWeightedVote(
+        mockUser1,
+        100,
+      );
+      const result2 = await votingService.calculateSybilWeightedVote(
+        mockUser1,
+        100,
+      );
 
       expect(result1.finalWeight).toBe(result2.finalWeight);
       expect(result1.multiplier).toBe(result2.multiplier);

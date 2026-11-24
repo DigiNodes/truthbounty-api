@@ -1,4 +1,4 @@
-import { Column, Entity, Index, PrimaryGeneratedColumn } from "typeorm";
+import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 
 @Entity()
 @Index(['walletAddress', 'claimId'], { unique: true })
@@ -24,4 +24,3 @@ export class Stake {
   @Column()
   updatedAt: Date;
 }
-

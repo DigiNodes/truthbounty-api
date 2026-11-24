@@ -10,20 +10,12 @@ import {
 } from 'prom-client';
 
 export type AiRequestStatus =
-  | 'success'
-  | 'error'
-  | 'fallback'
-  | 'safety_blocked';
+  'success' | 'error' | 'fallback' | 'safety_blocked';
 export type AiTokenType = 'prompt' | 'completion';
 export type AiCacheType =
-  | 'context'
-  | 'conversation_window'
-  | 'provider_availability';
+  'context' | 'conversation_window' | 'provider_availability';
 export type AiEndpointLabel =
-  | 'chat'
-  | 'stream'
-  | 'knowledge_base'
-  | 'analytics';
+  'chat' | 'stream' | 'knowledge_base' | 'analytics';
 
 /**
  * Registers on prom-client's default/shared registry — the same registry

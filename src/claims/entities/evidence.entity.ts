@@ -8,7 +8,7 @@ import {
   OneToMany,
   Index,
 } from 'typeorm';
-import { Claim } from './claim.entity';
+import type { Claim } from './claim.entity';
 import { EvidenceVersion } from './evidence-version.entity';
 
 @Entity('evidences')
@@ -20,7 +20,7 @@ export class Evidence {
   @Column()
   claimId: string;
 
-  @ManyToOne(() => Claim, { onDelete: 'CASCADE' })
+  @ManyToOne('Claim', { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'claimId' })
   claim: Claim;
 

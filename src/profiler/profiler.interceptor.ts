@@ -56,7 +56,8 @@ export class ProfilerInterceptor implements NestInterceptor {
       }),
       catchError((error) => {
         const statusCode = error.status || response.statusCode || 500;
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
         this.profilerService.endTrace(trace.id, {
           route: routePath,
           method,

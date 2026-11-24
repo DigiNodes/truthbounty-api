@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query, ValidationPipe } from '@nestjs/common';
+import { Controller, Get, Param, Query, ValidationPipe, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { SearchService } from './search.service';
 import { SearchQueryDto } from './dto/search-query.dto';
@@ -11,16 +11,18 @@ import {
   SearchResult,
   SortField,
 } from './search.types';
+import { WalletThrottlerGuard } from '../common/guards/wallet-throttler.guard';
 
 @ApiTags('Search')
 @Controller('search')
+@UseGuards(WalletThrottlerGuard)
 export class SearchController {
   constructor(private readonly searchService: SearchService) {}
 
   @Get()
   @ApiOperation({ summary: 'Global search across claims, disputes, and users' })
   async globalSearch(
-    @Query(new ValidationPipe({ transform: true, whitelist: true }))
+    @Query(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }))
     query: SearchQueryDto,
   ): Promise<GlobalSearchResult> {
     const { q = '', ...filters } = query;
@@ -36,7 +38,7 @@ export class SearchController {
   @ApiOperation({ summary: 'Entity-specific search' })
   async entitySearch(
     @Param('entity') entity: SearchableEntity,
-    @Query(new ValidationPipe({ transform: true, whitelist: true }))
+    @Query(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }))
     query: SearchQueryDto,
   ): Promise<SearchResult<unknown>> {
     const { q = '', ...filters } = query;

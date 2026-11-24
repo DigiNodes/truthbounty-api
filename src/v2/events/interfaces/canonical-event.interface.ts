@@ -16,6 +16,8 @@ export interface NormalizedEvent {
   contractAddress: string;
   artifactVersion: string;
   eventName: string;
+  /** Canonical event signature for overload disambiguation, e.g. "Transfer(address,address,uint256)" */
+  eventSignature: string;
   txHash: string;
   logIndex: number;
   blockNumber: bigint;

@@ -8,10 +8,14 @@ export class AddProcessedEventPayload1769500000002 implements MigrationInterface
   name = 'AddProcessedEventPayload1769500000002';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`ALTER TABLE "processed_events" ADD "payload" text`);
+    await queryRunner.query(
+      `ALTER TABLE "processed_events" ADD "payload" text`,
+    );
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`ALTER TABLE "processed_events" DROP COLUMN "payload"`);
+    await queryRunner.query(
+      `ALTER TABLE "processed_events" DROP COLUMN "payload"`,
+    );
   }
 }

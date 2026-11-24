@@ -5,6 +5,7 @@ import {
   CreateDateColumn,
   Index,
   Unique,
+  Check,
 } from 'typeorm';
 
 /**
@@ -25,6 +26,14 @@ import {
 @Index(['eventName', 'blockNumber'])
 @Index(['claimId'])
 @Index(['roundId'])
+@Check('chk_v2_canonical_chain_positive', '"chainId" > 0')
+@Check('chk_v2_canonical_log_nonneg', '"logIndex" >= 0')
+@Check('chk_v2_canonical_block_nonneg', '"blockNumber" >= 0')
+@Check('chk_v2_canonical_tx_len', 'length("txHash") = 66')
+@Check(
+  'chk_v2_canonical_ids_present',
+  'length("eventName") > 0 AND length("contractAddress") > 0 AND length("artifactVersion") > 0',
+)
 export class CanonicalEvent {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -42,6 +51,16 @@ export class CanonicalEvent {
   /** Canonical event name, unchanged from the protocol's own naming. */
   @Column({ type: 'varchar', length: 128 })
   eventName: string;
+
+  /**
+   * Canonical event signature for overload disambiguation.
+   * Format: EventName(type1,type2,...)
+   * Example: "Transfer(address,address,uint256)"
+   * 
+   * Required for production-grade event keying (post-Wave-9).
+   */
+  @Column({ type: 'varchar', length: 256, nullable: true })
+  eventSignature: string | null;
 
   @Column({ type: 'varchar', length: 66 })
   txHash: string;

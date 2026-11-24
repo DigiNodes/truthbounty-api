@@ -13,7 +13,7 @@ It is designed for production-safe, low-overhead observability (< 0.1ms overhead
 1. **HTTP Request Profiling**: Measures request duration, status code distribution, payload sizes, memory & CPU deltas per route.
 2. **Database Query Profiling**: Flags slow queries exceeding configurable threshold (`100ms` default), sanitizes sensitive SQL parameters, tracks query execution counts.
 3. **Redis & Cache Profiling**: Tracks command latency (GET, SET, DEL), key patterns, and cache hit/miss statistics.
-4. **Blockchain RPC Profiling**: Measures execution times for Optimism, Ethereum, and Soroban/Stellar RPC invocations.
+4. **Blockchain RPC Profiling**: Measures execution times for Optimism/EVM RPC invocations.
 5. **Queue & Job Profiling**: Tracks BullMQ worker execution timelines and error rates.
 6. **Notification Delivery**: Measures external webhook dispatch latencies.
 7. **Flame Graphs & Timeline Spans**: Hierarchical call tree visualization for root transactions and nested sub-operations.

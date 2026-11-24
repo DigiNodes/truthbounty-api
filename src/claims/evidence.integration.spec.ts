@@ -1,6 +1,4 @@
-/* eslint-disable @typescript-eslint/unbound-method */
 import { DataSource, Repository } from 'typeorm';
-import { SqliteDriver } from 'typeorm/driver/sqlite/SqliteDriver';
 import { EvidenceService, EvidenceAvailability } from './evidence.service';
 import { Evidence } from './entities/evidence.entity';
 import { EvidenceVersion } from './entities/evidence-version.entity';
@@ -18,25 +16,17 @@ const cidParse = CID.parse as unknown as jest.Mock;
  * so the in-memory test connection uses a driver subclass that additionally
  * accepts `timestamp` (SQLite itself is permissive about type names).
  */
-class TimestampAwareSqliteDriver extends SqliteDriver {
-  constructor(connection: DataSource) {
-    super(connection);
-    if (!this.supportedDataTypes.includes('timestamp')) {
-      this.supportedDataTypes.push('timestamp');
-    }
-  }
-}
-
 const buildTestDataSource = (): DataSource => {
   const dataSource = new DataSource({
-    type: 'sqlite',
+    type: 'better-sqlite3',
     database: ':memory:',
     entities: [Claim, Evidence, EvidenceVersion],
     synchronize: true,
   });
-  dataSource.driver = new TimestampAwareSqliteDriver(
-    dataSource as unknown as DataSource,
-  );
+  const supported = (dataSource.driver as any).supportedDataTypes as string[];
+  if (!supported.includes('timestamp')) {
+    supported.push('timestamp');
+  }
   return dataSource;
 };
 

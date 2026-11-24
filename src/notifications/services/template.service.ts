@@ -17,13 +17,20 @@ export class TemplateService {
     templateName: string,
     variables: Record<string, string>,
     locale = 'en',
-  ): Promise<{ subject: string; body: string; html?: string; markdown?: string }> {
+  ): Promise<{
+    subject: string;
+    body: string;
+    html?: string;
+    markdown?: string;
+  }> {
     const template = await this.templateRepo.findOne({
       where: { name: templateName, active: true, locale },
     });
 
     if (!template) {
-      this.logger.warn(`Template ${templateName} not found for locale ${locale}, trying default locale`);
+      this.logger.warn(
+        `Template ${templateName} not found for locale ${locale}, trying default locale`,
+      );
       const fallback = await this.templateRepo.findOne({
         where: { name: templateName, active: true, locale: 'en' },
       });
@@ -40,7 +47,12 @@ export class TemplateService {
     type: NotificationType,
     variables: Record<string, string>,
     locale = 'en',
-  ): Promise<{ subject: string; body: string; html?: string; markdown?: string }> {
+  ): Promise<{
+    subject: string;
+    body: string;
+    html?: string;
+    markdown?: string;
+  }> {
     const template = await this.templateRepo.findOne({
       where: { type, active: true, locale },
     });
@@ -65,20 +77,35 @@ export class TemplateService {
     return {
       subject: this.substitute(template.subjectTemplate, variables),
       body: this.substitute(template.bodyTemplate, variables),
-      html: template.htmlTemplate ? this.substitute(template.htmlTemplate, variables) : undefined,
-      markdown: template.markdownTemplate ? this.substitute(template.markdownTemplate, variables) : undefined,
+      html: template.htmlTemplate
+        ? this.substitute(template.htmlTemplate, variables)
+        : undefined,
+      markdown: template.markdownTemplate
+        ? this.substitute(template.markdownTemplate, variables)
+        : undefined,
     };
   }
 
-  private substitute(template: string, variables: Record<string, string>): string {
-    return template.replace(/\{\{(\w+)\}\}/g, (_, key) => variables[key] || `{{${key}}}`);
+  private substitute(
+    template: string,
+    variables: Record<string, string>,
+  ): string {
+    return template.replace(
+      /\{\{(\w+)\}\}/g,
+      (_, key) => variables[key] || `{{${key}}}`,
+    );
   }
 
-  async createTemplate(data: Partial<NotificationTemplate>): Promise<NotificationTemplate> {
+  async createTemplate(
+    data: Partial<NotificationTemplate>,
+  ): Promise<NotificationTemplate> {
     return this.templateRepo.save(this.templateRepo.create(data));
   }
 
-  async updateTemplate(id: string, data: Partial<NotificationTemplate>): Promise<NotificationTemplate> {
+  async updateTemplate(
+    id: string,
+    data: Partial<NotificationTemplate>,
+  ): Promise<NotificationTemplate> {
     await this.templateRepo.update(id, data);
     return this.templateRepo.findOneOrFail({ where: { id } });
   }

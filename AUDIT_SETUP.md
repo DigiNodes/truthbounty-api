@@ -70,7 +70,7 @@ Test that audit logging is working:
 
 ```bash
 # Start your application
-npm run start
+npx nest start
 
 # Make a request that triggers an audited action
 curl -X POST http://localhost:3000/claims \

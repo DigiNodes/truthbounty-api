@@ -63,8 +63,14 @@ describe('Sampling Validation Tests', () => {
       },
     });
 
-    const heavyReq = { url: '/api/v1/heavy-endpoint', route: { path: '/api/v1/heavy-endpoint' } };
-    const lightReq = { url: '/api/v1/light-endpoint', route: { path: '/api/v1/light-endpoint' } };
+    const heavyReq = {
+      url: '/api/v1/heavy-endpoint',
+      route: { path: '/api/v1/heavy-endpoint' },
+    };
+    const lightReq = {
+      url: '/api/v1/light-endpoint',
+      route: { path: '/api/v1/light-endpoint' },
+    };
 
     expect(service.shouldSample(heavyReq)).toBe(true);
     expect(service.shouldSample(lightReq)).toBe(false);

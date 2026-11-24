@@ -1,7 +1,12 @@
+/* eslint-disable @typescript-eslint/unbound-method */
 import { Test, TestingModule } from '@nestjs/testing';
+import {
+  BadRequestException,
+  ConflictException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { WorldcoinService } from './worldcoin.service';
 import { WorldIdVerification } from './entities/world-id-verification.entity';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -13,323 +18,694 @@ jest.mock('../../sybil-resistance/sybil-resistance.service', () => ({
   SybilResistanceService: jest.fn(),
 }));
 
+// ---------------------------------------------------------------------------
+// Test helpers
+// ---------------------------------------------------------------------------
+
+const VALID_ACTION = 'test-action';
+const VALID_APP_ID = 'test-app-id';
+const VALID_BASE_URL = 'https://developer.worldcoin.org/api/v2/verify';
+
+const VALID_PROOF = {
+  merkle_root: '0xdeadbeef',
+  nullifier_hash: '0xcafe1234',
+  proof: '0xabc123',
+  verification_level: 'orb',
+} as const;
+
+const VALID_DTO = {
+  proof: { ...VALID_PROOF },
+  action: VALID_ACTION,
+  signal: 'test-signal',
+};
+
+/** Returns a Response-like mock that the fetch global can use. */
+function makeOkResponse(body: object = { success: true }): Response {
+  return {
+    ok: true,
+    status: 200,
+    json: jest.fn().mockResolvedValue(body),
+  } as unknown as Response;
+}
+
+function makeErrorResponse(status = 400): Response {
+  return {
+    ok: false,
+    status,
+    json: jest.fn().mockResolvedValue({ detail: 'verification_error' }),
+  } as unknown as Response;
+}
+
+// ---------------------------------------------------------------------------
+// Module bootstrap
+// ---------------------------------------------------------------------------
+
 describe('WorldcoinService', () => {
   let service: WorldcoinService;
-  let repository: jest.Mocked<Repository<WorldIdVerification>>;
-  let configService: jest.Mocked<ConfigService>;
-  let prisma: any;
-  let sybilResistanceService: jest.Mocked<SybilResistanceService>;
   let fetchMock: jest.Mock;
-
-  const mockRepository = {
-    findOne: jest.fn(),
-    create: jest.fn(),
-    save: jest.fn(),
+  let repository: {
+    findOne: jest.Mock;
+    create: jest.Mock;
+    save: jest.Mock;
   };
-
-  const mockConfigService = {
-    get: jest.fn(),
+  let configMap: Record<string, string | number | undefined>;
+  let prisma: {
+    $transaction: jest.Mock;
+    worldIdVerification: { findUnique: jest.Mock; findFirst: jest.Mock };
+    user: { update: jest.Mock };
   };
-
-  const mockPrisma = {
-    worldIdVerification: {
-      findUnique: jest.fn(),
-      findFirst: jest.fn(),
-      create: jest.fn(),
-    },
-    user: {
-      update: jest.fn(),
-    },
-  };
-
-  const mockSybilResistanceService = {
-    recordSybilScore: jest.fn(),
-  };
+  let sybilResistanceService: { recordSybilScore: jest.Mock };
 
   beforeEach(async () => {
+    repository = { findOne: jest.fn(), create: jest.fn(), save: jest.fn() };
+
+    configMap = {
+      WORLDCOIN_APP_ID: VALID_APP_ID,
+      WORLDCOIN_ACTION: VALID_ACTION,
+      WORLDCOIN_VERIFY_BASE_URL: VALID_BASE_URL,
+    };
+
+    prisma = {
+      $transaction: jest.fn(),
+      worldIdVerification: { findUnique: jest.fn(), findFirst: jest.fn() },
+      user: { update: jest.fn() },
+    };
+
+    sybilResistanceService = { recordSybilScore: jest.fn() };
+
+    // Default transaction: check passes (no existing), create + user update succeed.
+    prisma.$transaction.mockImplementation(async (fn: (tx: typeof prisma) => Promise<unknown>) => {
+      const txPrisma = {
+        worldIdVerification: {
+          findUnique: jest.fn().mockResolvedValue(null),
+          create: jest.fn().mockResolvedValue({}),
+        },
+        user: { update: jest.fn().mockResolvedValue({}) },
+      };
+      return fn(txPrisma as unknown as typeof prisma);
+    });
+
+    const mockVerification: Partial<WorldIdVerification> = {
+      id: 'ver-1',
+      userId: 'user-1',
+      nullifierHash: VALID_PROOF.nullifier_hash,
+      verificationLevel: VALID_PROOF.verification_level,
+      worldcoinAppId: VALID_APP_ID,
+      worldcoinAction: VALID_ACTION,
+      verifiedAt: new Date(),
+    };
+
+    repository.create.mockReturnValue(mockVerification);
+    repository.save.mockResolvedValue(mockVerification);
+    sybilResistanceService.recordSybilScore.mockResolvedValue({
+      compositeScore: 0.5,
+    });
+
+    fetchMock = jest.fn().mockResolvedValue(makeOkResponse());
+    global.fetch = fetchMock as typeof fetch;
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         WorldcoinService,
         {
           provide: getRepositoryToken(WorldIdVerification),
-          useValue: mockRepository,
+          useValue: repository,
         },
         {
           provide: ConfigService,
-          useValue: mockConfigService,
+          useValue: { get: (key: string) => configMap[key] },
         },
-        {
-          provide: PrismaService,
-          useValue: mockPrisma,
-        },
-        {
-          provide: SybilResistanceService,
-          useValue: mockSybilResistanceService,
-        },
+        { provide: PrismaService, useValue: prisma },
+        { provide: SybilResistanceService, useValue: sybilResistanceService },
       ],
     }).compile();
 
     service = module.get<WorldcoinService>(WorldcoinService);
-    repository = module.get(getRepositoryToken(WorldIdVerification));
-    configService = module.get(ConfigService);
-    prisma = module.get<any>(PrismaService);
-    sybilResistanceService = module.get(SybilResistanceService) as jest.Mocked<SybilResistanceService>;
-    fetchMock = jest.fn();
-    global.fetch = fetchMock as typeof fetch;
+  });
 
-    configService.get.mockImplementation((key: string) => {
-      const config: Record<string, string> = {
-        WORLDCOIN_APP_ID: 'test-app-id',
-        WORLDCOIN_ACTION: 'test-action',
-        WORLDCOIN_VERIFY_BASE_URL: 'https://developer.worldcoin.org/api/v2/verify',
-      };
-      return config[key];
+  afterEach(() => jest.clearAllMocks());
+
+  // =========================================================================
+  // 1. Happy path
+  // =========================================================================
+
+  describe('happy path', () => {
+    it('verifies a valid proof and returns a WorldIdVerification record', async () => {
+      const result = await service.verifyProof('user-1', VALID_DTO);
+
+      expect(result.userId).toBe('user-1');
+      expect(result.nullifierHash).toBe(VALID_PROOF.nullifier_hash);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
-    fetchMock.mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: jest.fn().mockResolvedValue({ success: true }),
+    it('passes the correct fields to the provider, including signal', async () => {
+      await service.verifyProof('user-1', VALID_DTO);
+
+      const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe(`${VALID_BASE_URL}/${VALID_APP_ID}`);
+      const body = JSON.parse(options.body as string);
+      expect(body.action).toBe(VALID_ACTION);
+      expect(body.signal).toBe('test-signal');
+      expect(body.merkle_root).toBe(VALID_PROOF.merkle_root);
     });
-  });
 
-  afterEach(() => {
-    jest.clearAllMocks();
-  });
+    it('omits signal key when signal is undefined', async () => {
+      const dto = { ...VALID_DTO, signal: undefined };
+      await service.verifyProof('user-1', dto);
 
-  it('should be defined', () => {
-    expect(service).toBeDefined();
-  });
+      const [, options] = fetchMock.mock.calls[0] as [string, RequestInit];
+      const body = JSON.parse(options.body as string);
+      expect(Object.prototype.hasOwnProperty.call(body, 'signal')).toBe(false);
+    });
 
-  describe('verifyProof', () => {
-    const userId = 'test-user-123';
-    const verifyDto = {
-      proof: {
-        merkle_root: '0x123',
-        nullifier_hash: '0x456',
-        proof: '0x789',
-        verification_level: 'orb',
-      },
-      action: 'test-action',
-      signal: 'test-signal',
-    };
+    it('does NOT store raw proof bytes in the TypeORM entity', async () => {
+      await service.verifyProof('user-1', VALID_DTO);
 
-    it('should successfully verify a valid Worldcoin proof', async () => {
-      repository.findOne.mockResolvedValue(null);
-      prisma.worldIdVerification.findUnique.mockResolvedValue(null);
+      const createArg = repository.create.mock.calls[0][0] as Partial<WorldIdVerification>;
+      expect(createArg).not.toHaveProperty('proof');
+    });
 
-      const mockVerification = {
-        id: 'verification-id',
-        userId,
-        nullifierHash: verifyDto.proof.nullifier_hash,
-        verificationLevel: verifyDto.proof.verification_level,
-        worldcoinAppId: 'test-app-id',
-        worldcoinAction: verifyDto.action,
-        verifiedAt: new Date(),
-      };
-
-      repository.create.mockReturnValue(mockVerification);
-      repository.save.mockResolvedValue(mockVerification);
-      prisma.worldIdVerification.create.mockResolvedValue(mockVerification);
-      prisma.user.update.mockResolvedValue({});
-      sybilResistanceService.recordSybilScore.mockResolvedValue({ compositeScore: 0.5 });
-
-      const result = await service.verifyProof(userId, verifyDto);
-
-      expect(result).toEqual(mockVerification);
-      expect(fetchMock).toHaveBeenCalledWith(
-        'https://developer.worldcoin.org/api/v2/verify/test-app-id',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ...verifyDto.proof,
-            action: verifyDto.action,
-            signal: verifyDto.signal,
-          }),
+    it('does NOT store raw proof bytes in the Prisma transaction create', async () => {
+      let txCreateArg: Record<string, unknown> | undefined;
+      prisma.$transaction.mockImplementation(
+        async (fn: (tx: typeof prisma) => Promise<unknown>) => {
+          const txPrisma = {
+            worldIdVerification: {
+              findUnique: jest.fn().mockResolvedValue(null),
+              create: jest.fn().mockImplementation((arg: unknown) => {
+                txCreateArg = arg as Record<string, unknown>;
+                return Promise.resolve({});
+              }),
+            },
+            user: { update: jest.fn().mockResolvedValue({}) },
+          };
+          return fn(txPrisma as unknown as typeof prisma);
         },
       );
-      expect(repository.findOne).toHaveBeenCalledWith({
-        where: { nullifierHash: verifyDto.proof.nullifier_hash },
-      });
-      expect(repository.create).toHaveBeenCalledWith({
-        userId,
-        nullifierHash: verifyDto.proof.nullifier_hash,
-        verificationLevel: verifyDto.proof.verification_level,
-        worldcoinAppId: 'test-app-id',
-        worldcoinAction: verifyDto.action,
-        merkleRoot: verifyDto.proof.merkle_root,
-        proof: verifyDto.proof.proof,
-      });
+
+      await service.verifyProof('user-1', VALID_DTO);
+
+      expect(txCreateArg).toBeDefined();
+      const data = (txCreateArg as { data?: Record<string, unknown> }).data ?? {};
+      expect(data).not.toHaveProperty('proof');
     });
 
-    it('should write verification to both TypeORM and Prisma (dual-write sync)', async () => {
-      repository.findOne.mockResolvedValue(null);
-      prisma.worldIdVerification.findUnique.mockResolvedValue(null);
+    it('calls recordSybilScore after successful verification', async () => {
+      await service.verifyProof('user-1', VALID_DTO);
+      expect(sybilResistanceService.recordSybilScore).toHaveBeenCalledWith('user-1');
+    });
 
-      const mockVerification = {
-        id: 'ver-1',
-        userId,
-        nullifierHash: verifyDto.proof.nullifier_hash,
-        verifiedAt: new Date(),
-      } as unknown as WorldIdVerification;
-
-      repository.create.mockReturnValue(mockVerification);
-      repository.save.mockResolvedValue(mockVerification);
-      prisma.worldIdVerification.create.mockResolvedValue(mockVerification);
-      prisma.user.update.mockResolvedValue({});
-      sybilResistanceService.recordSybilScore.mockResolvedValue({ compositeScore: 0.5 });
-
-      await service.verifyProof(userId, verifyDto);
-
-      // Verify both stores were written
-      expect(repository.save).toHaveBeenCalledTimes(1);
-      expect(prisma.worldIdVerification.create).toHaveBeenCalledTimes(1);
-      expect(prisma.worldIdVerification.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            userId,
-            nullifierHash: verifyDto.proof.nullifier_hash,
-          }),
-        }),
+    it('marks user worldcoinVerified=true inside the transaction', async () => {
+      let userUpdateArg: unknown;
+      prisma.$transaction.mockImplementation(
+        async (fn: (tx: typeof prisma) => Promise<unknown>) => {
+          const txPrisma = {
+            worldIdVerification: {
+              findUnique: jest.fn().mockResolvedValue(null),
+              create: jest.fn().mockResolvedValue({}),
+            },
+            user: {
+              update: jest.fn().mockImplementation((arg: unknown) => {
+                userUpdateArg = arg;
+                return Promise.resolve({});
+              }),
+            },
+          };
+          return fn(txPrisma as unknown as typeof prisma);
+        },
       );
-    });
 
-    it('should set worldcoinVerified=true on User via Prisma after successful verification', async () => {
-      repository.findOne.mockResolvedValue(null);
-      prisma.worldIdVerification.findUnique.mockResolvedValue(null);
+      await service.verifyProof('user-1', VALID_DTO);
 
-      const mockVerification = { id: 'ver-1', userId, nullifierHash: verifyDto.proof.nullifier_hash } as unknown as WorldIdVerification;
-      repository.create.mockReturnValue(mockVerification);
-      repository.save.mockResolvedValue(mockVerification);
-      prisma.worldIdVerification.create.mockResolvedValue(mockVerification);
-      prisma.user.update.mockResolvedValue({});
-      sybilResistanceService.recordSybilScore.mockResolvedValue({ compositeScore: 0.5 });
-
-      await service.verifyProof(userId, verifyDto);
-
-      expect(prisma.user.update).toHaveBeenCalledWith({
-        where: { id: userId },
+      expect(userUpdateArg).toMatchObject({
+        where: { id: 'user-1' },
         data: { worldcoinVerified: true },
       });
     });
+  });
 
-    it('should trigger sybil score recalculation after verification', async () => {
-      repository.findOne.mockResolvedValue(null);
-      prisma.worldIdVerification.findUnique.mockResolvedValue(null);
+  // =========================================================================
+  // 2. Wrong action (required test scenario #1)
+  // =========================================================================
 
-      const mockVerification = { id: 'ver-1', userId } as unknown as WorldIdVerification;
-      repository.create.mockReturnValue(mockVerification);
-      repository.save.mockResolvedValue(mockVerification);
-      prisma.worldIdVerification.create.mockResolvedValue(mockVerification);
-      prisma.user.update.mockResolvedValue({});
-      sybilResistanceService.recordSybilScore.mockResolvedValue({ compositeScore: 0.5 });
-
-      await service.verifyProof(userId, verifyDto);
-
-      expect(sybilResistanceService.recordSybilScore).toHaveBeenCalledWith(userId);
-    });
-
-    it('should throw ConflictException when nullifier hash exists in TypeORM store', async () => {
-      repository.findOne.mockResolvedValue({
-        id: 'existing',
-        userId: 'other-user',
-        nullifierHash: verifyDto.proof.nullifier_hash,
-      } as WorldIdVerification);
-      prisma.worldIdVerification.findUnique.mockResolvedValue(null);
-
-      await expect(service.verifyProof(userId, verifyDto)).rejects.toThrow(
-        'This Worldcoin proof has already been used',
-      );
-    });
-
-    it('should throw ConflictException when nullifier hash exists in Prisma store', async () => {
-      repository.findOne.mockResolvedValue(null);
-      prisma.worldIdVerification.findUnique.mockResolvedValue({
-        id: 'existing-prisma',
-        nullifierHash: verifyDto.proof.nullifier_hash,
-      });
-
-      await expect(service.verifyProof(userId, verifyDto)).rejects.toThrow(
-        'This Worldcoin proof has already been used',
-      );
-    });
-
-    it('should throw BadRequestException for invalid proof', async () => {
-      fetchMock.mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: jest.fn().mockResolvedValue({ success: false }),
-      });
-      repository.findOne.mockResolvedValue(null);
-
-      await expect(service.verifyProof(userId, verifyDto)).rejects.toThrow(
-        'Invalid Worldcoin proof',
-      );
-    });
-
-    it('should throw BadRequestException when the action does not match config', async () => {
-      repository.findOne.mockResolvedValue(null);
-
+  describe('wrong action', () => {
+    it('throws BadRequestException when action does not match config', async () => {
       await expect(
-        service.verifyProof(userId, { ...verifyDto, action: 'unexpected-action' }),
-      ).rejects.toThrow('Invalid Worldcoin proof');
+        service.verifyProof('user-1', { ...VALID_DTO, action: 'wrong-action' }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('does NOT contact the provider when action is wrong', async () => {
+      await expect(
+        service.verifyProof('user-1', { ...VALID_DTO, action: 'evil-action' }),
+      ).rejects.toThrow(BadRequestException);
 
       expect(fetchMock).not.toHaveBeenCalled();
     });
+
+    it('throws BadRequestException when action is an empty string', async () => {
+      await expect(
+        service.verifyProof('user-1', { ...VALID_DTO, action: '' }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('throws ServiceUnavailableException when WORLDCOIN_ACTION is not configured', async () => {
+      configMap['WORLDCOIN_ACTION'] = undefined;
+      await expect(
+        service.verifyProof('user-1', VALID_DTO),
+      ).rejects.toThrow(ServiceUnavailableException);
+    });
   });
 
+  // =========================================================================
+  // 3. Wrong / invalid signal (required test scenario #2)
+  // =========================================================================
+
+  describe('wrong / invalid signal', () => {
+    it('throws BadRequestException for an empty signal string', async () => {
+      await expect(
+        service.verifyProof('user-1', { ...VALID_DTO, signal: '' }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('throws BadRequestException for a whitespace-only signal', async () => {
+      await expect(
+        service.verifyProof('user-1', { ...VALID_DTO, signal: '   ' }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('throws BadRequestException when signal exceeds 512 characters', async () => {
+      await expect(
+        service.verifyProof('user-1', { ...VALID_DTO, signal: 'x'.repeat(513) }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('does not contact the provider when signal is invalid', async () => {
+      await expect(
+        service.verifyProof('user-1', { ...VALID_DTO, signal: '' }),
+      ).rejects.toThrow(BadRequestException);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('accepts undefined signal (signal is optional)', async () => {
+      await expect(
+        service.verifyProof('user-1', { ...VALID_DTO, signal: undefined }),
+      ).resolves.toBeDefined();
+    });
+
+    it('accepts a valid 512-character signal', async () => {
+      await expect(
+        service.verifyProof('user-1', { ...VALID_DTO, signal: 'a'.repeat(512) }),
+      ).resolves.toBeDefined();
+    });
+  });
+
+  // =========================================================================
+  // 4. Reused nullifier — transactional uniqueness (required test scenario #3)
+  // =========================================================================
+
+  describe('reused nullifier', () => {
+    it('throws ConflictException when nullifier is already in Prisma store', async () => {
+      // Simulate the transaction finding an existing record.
+      prisma.$transaction.mockImplementation(
+        async (fn: (tx: typeof prisma) => Promise<unknown>) => {
+          const txPrisma = {
+            worldIdVerification: {
+              findUnique: jest.fn().mockResolvedValue({
+                id: 'existing',
+                nullifierHash: VALID_PROOF.nullifier_hash,
+              }),
+              create: jest.fn(),
+            },
+            user: { update: jest.fn() },
+          };
+          return fn(txPrisma as unknown as typeof prisma);
+        },
+      );
+
+      await expect(
+        service.verifyProof('user-1', VALID_DTO),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('does NOT write a new Prisma record when nullifier is already used', async () => {
+      let txCreateCalled = false;
+      prisma.$transaction.mockImplementation(
+        async (fn: (tx: typeof prisma) => Promise<unknown>) => {
+          const txPrisma = {
+            worldIdVerification: {
+              findUnique: jest.fn().mockResolvedValue({ id: 'existing' }),
+              create: jest.fn().mockImplementation(() => {
+                txCreateCalled = true;
+                return Promise.resolve({});
+              }),
+            },
+            user: { update: jest.fn() },
+          };
+          return fn(txPrisma as unknown as typeof prisma);
+        },
+      );
+
+      await expect(service.verifyProof('user-1', VALID_DTO)).rejects.toThrow(
+        ConflictException,
+      );
+      expect(txCreateCalled).toBe(false);
+    });
+
+    it('uniqueness check is inside a transaction (atomic TOCTOU guard)', () => {
+      // The $transaction mock is called exactly once per verifyProof call,
+      // proving the check and insert are collocated in a single transaction
+      // rather than two separate DB calls.
+      const txCalls: unknown[] = [];
+      prisma.$transaction.mockImplementation(
+        async (fn: (tx: typeof prisma) => Promise<unknown>) => {
+          txCalls.push(fn);
+          const txPrisma = {
+            worldIdVerification: {
+              findUnique: jest.fn().mockResolvedValue(null),
+              create: jest.fn().mockResolvedValue({}),
+            },
+            user: { update: jest.fn().mockResolvedValue({}) },
+          };
+          return fn(txPrisma as unknown as typeof prisma);
+        },
+      );
+
+      return service.verifyProof('user-1', VALID_DTO).then(() => {
+        expect(txCalls).toHaveLength(1);
+      });
+    });
+  });
+
+  // =========================================================================
+  // 5. Stale / malformed root (required test scenario #4)
+  // =========================================================================
+
+  describe('malformed / invalid proof fields', () => {
+    it('throws BadRequestException for a non-hex merkle_root', async () => {
+      await expect(
+        service.verifyProof('user-1', {
+          ...VALID_DTO,
+          proof: { ...VALID_PROOF, merkle_root: 'not-hex' },
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('throws BadRequestException for an empty merkle_root', async () => {
+      await expect(
+        service.verifyProof('user-1', {
+          ...VALID_DTO,
+          proof: { ...VALID_PROOF, merkle_root: '' },
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('throws BadRequestException for a non-hex nullifier_hash', async () => {
+      await expect(
+        service.verifyProof('user-1', {
+          ...VALID_DTO,
+          proof: { ...VALID_PROOF, nullifier_hash: 'plaintext-hash' },
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('throws BadRequestException for a non-hex proof string', async () => {
+      await expect(
+        service.verifyProof('user-1', {
+          ...VALID_DTO,
+          proof: { ...VALID_PROOF, proof: 'not-a-hex-proof' },
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('throws BadRequestException for an unknown verification_level', async () => {
+      await expect(
+        service.verifyProof('user-1', {
+          ...VALID_DTO,
+          proof: { ...VALID_PROOF, verification_level: 'ultraorb' },
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('does NOT contact the provider for any malformed proof field', async () => {
+      const badProofs = [
+        { ...VALID_PROOF, merkle_root: 'bad' },
+        { ...VALID_PROOF, nullifier_hash: 'bad' },
+        { ...VALID_PROOF, proof: 'bad' },
+        { ...VALID_PROOF, verification_level: 'unknown' },
+      ];
+
+      for (const badProof of badProofs) {
+        fetchMock.mockClear();
+        await expect(
+          service.verifyProof('user-1', { ...VALID_DTO, proof: badProof }),
+        ).rejects.toThrow(BadRequestException);
+        expect(fetchMock).not.toHaveBeenCalled();
+      }
+    });
+  });
+
+  // =========================================================================
+  // 6. Provider outage (required test scenario #5)
+  // =========================================================================
+
+  describe('provider outage', () => {
+    it('throws ServiceUnavailableException on network error (not BadRequestException)', async () => {
+      fetchMock.mockRejectedValue(new TypeError('fetch failed'));
+
+      await expect(
+        service.verifyProof('user-1', VALID_DTO),
+      ).rejects.toThrow(ServiceUnavailableException);
+    });
+
+    it('throws ServiceUnavailableException on DNS failure', async () => {
+      fetchMock.mockRejectedValue(new Error('ENOTFOUND developer.worldcoin.org'));
+
+      await expect(service.verifyProof('user-1', VALID_DTO)).rejects.toThrow(
+        ServiceUnavailableException,
+      );
+    });
+
+    it('does NOT persist a verification record when provider is unreachable', async () => {
+      fetchMock.mockRejectedValue(new Error('timeout'));
+
+      await expect(service.verifyProof('user-1', VALID_DTO)).rejects.toThrow(
+        ServiceUnavailableException,
+      );
+
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(repository.save).not.toHaveBeenCalled();
+    });
+
+    it('throws ServiceUnavailableException when provider returns malformed JSON', async () => {
+      fetchMock.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: jest.fn().mockRejectedValue(new SyntaxError('Unexpected token')),
+      } as unknown as Response);
+
+      await expect(service.verifyProof('user-1', VALID_DTO)).rejects.toThrow(
+        ServiceUnavailableException,
+      );
+    });
+
+    it('throws BadRequestException (not ServiceUnavailable) when provider rejects proof (4xx)', async () => {
+      fetchMock.mockResolvedValue(makeErrorResponse(400));
+
+      await expect(service.verifyProof('user-1', VALID_DTO)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('throws BadRequestException when provider returns success: false', async () => {
+      fetchMock.mockResolvedValue(makeOkResponse({ success: false }));
+
+      await expect(service.verifyProof('user-1', VALID_DTO)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('throws ServiceUnavailableException when WORLDCOIN_APP_ID is not configured', async () => {
+      configMap['WORLDCOIN_APP_ID'] = undefined;
+
+      await expect(service.verifyProof('user-1', VALID_DTO)).rejects.toThrow(
+        ServiceUnavailableException,
+      );
+    });
+  });
+
+  // =========================================================================
+  // 7. Privacy / proof retention (required test scenario #6)
+  // =========================================================================
+
+  describe('proof data retention and privacy logging', () => {
+    it('does not include raw proof in any log output (logger.log / logger.warn / logger.error)', async () => {
+      // Spy on the internal logger to verify no raw proof bytes are emitted.
+      // We access the logger through the service instance.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const svc = service as any;
+      const logSpy = jest.spyOn(svc.logger, 'log').mockImplementation(() => undefined);
+      const warnSpy = jest.spyOn(svc.logger, 'warn').mockImplementation(() => undefined);
+      const errorSpy = jest.spyOn(svc.logger, 'error').mockImplementation(() => undefined);
+
+      await service.verifyProof('user-1', VALID_DTO);
+
+      const allLogMessages = [
+        ...logSpy.mock.calls,
+        ...warnSpy.mock.calls,
+        ...errorSpy.mock.calls,
+      ]
+        .flat()
+        .map((v) => String(v));
+
+      for (const msg of allLogMessages) {
+        // Raw proof bytes must never appear in any log line.
+        expect(msg).not.toContain(VALID_PROOF.proof);
+        // Nullifier hash must not appear in success log paths.
+        expect(msg).not.toContain(VALID_PROOF.nullifier_hash);
+      }
+    });
+
+    it('logs [redacted] placeholder (not raw hash) on nullifier replay attempt', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const svc = service as any;
+      const warnSpy = jest.spyOn(svc.logger, 'warn').mockImplementation(() => undefined);
+
+      prisma.$transaction.mockImplementation(
+        async (fn: (tx: typeof prisma) => Promise<unknown>) => {
+          const txPrisma = {
+            worldIdVerification: {
+              findUnique: jest.fn().mockResolvedValue({ id: 'existing' }),
+              create: jest.fn(),
+            },
+            user: { update: jest.fn() },
+          };
+          return fn(txPrisma as unknown as typeof prisma);
+        },
+      );
+
+      await expect(service.verifyProof('user-1', VALID_DTO)).rejects.toThrow(
+        ConflictException,
+      );
+
+      const warnMessages = warnSpy.mock.calls.flat().map(String);
+      // Should contain a redacted marker, not the actual nullifier hash.
+      expect(warnMessages.some((m) => m.includes('[redacted]'))).toBe(true);
+      // Must not log the actual nullifier value.
+      for (const msg of warnMessages) {
+        expect(msg).not.toContain(VALID_PROOF.nullifier_hash);
+      }
+    });
+
+    it('does not store raw proof bytes — only proofHash is in the entity', async () => {
+      await service.verifyProof('user-1', VALID_DTO);
+
+      const createArg = repository.create.mock.calls[0][0] as Record<
+        string,
+        unknown
+      >;
+      expect(createArg).not.toHaveProperty('proof');
+      // proofHash is set internally; the raw proof field must be absent.
+      expect(JSON.stringify(createArg)).not.toContain(VALID_PROOF.proof);
+    });
+
+    it('does not store raw proof bytes in Prisma create data', async () => {
+      let createData: Record<string, unknown> | undefined;
+      prisma.$transaction.mockImplementation(
+        async (fn: (tx: typeof prisma) => Promise<unknown>) => {
+          const txPrisma = {
+            worldIdVerification: {
+              findUnique: jest.fn().mockResolvedValue(null),
+              create: jest.fn().mockImplementation(
+                (arg: { data: Record<string, unknown> }) => {
+                  createData = arg.data;
+                  return Promise.resolve({});
+                },
+              ),
+            },
+            user: { update: jest.fn().mockResolvedValue({}) },
+          };
+          return fn(txPrisma as unknown as typeof prisma);
+        },
+      );
+
+      await service.verifyProof('user-1', VALID_DTO);
+
+      expect(createData).toBeDefined();
+      expect(createData!).not.toHaveProperty('proof');
+      expect(JSON.stringify(createData)).not.toContain(VALID_PROOF.proof);
+    });
+
+    it('does not expose raw proof in getVerificationByNullifierHash response', async () => {
+      const stored: Partial<WorldIdVerification> = {
+        id: 'ver-1',
+        userId: 'user-1',
+        nullifierHash: '0xcafe1234',
+        verificationLevel: 'orb',
+        verifiedAt: new Date(),
+        // proofHash stored internally, but the TypeORM entity no longer has
+        // a `proof` column — raw bytes are not retrievable.
+      };
+      repository.findOne.mockResolvedValue(stored);
+
+      const result = await service.getVerificationByNullifierHash('0xcafe1234');
+
+      expect(result).toBeDefined();
+      // The result must not carry raw proof bytes.
+      expect((result as Record<string, unknown>)['proof']).toBeUndefined();
+    });
+  });
+
+  // =========================================================================
+  // 8. Legacy query helpers (backward compatibility)
+  // =========================================================================
+
   describe('getVerificationStatus', () => {
-    it('should return verification status for user', async () => {
-      const userId = 'test-user-123';
-      const mockVerification = {
-        id: 'verification-id',
-        userId,
+    it('returns the most recent verification for a user', async () => {
+      const mock: Partial<WorldIdVerification> = {
+        id: 'ver-1',
+        userId: 'user-1',
         verificationLevel: 'orb',
         verifiedAt: new Date(),
       };
+      repository.findOne.mockResolvedValue(mock);
 
-      repository.findOne.mockResolvedValue(mockVerification as WorldIdVerification);
-
-      const result = await service.getVerificationStatus(userId);
-
-      expect(result).toEqual(mockVerification);
+      const result = await service.getVerificationStatus('user-1');
+      expect(result).toEqual(mock);
       expect(repository.findOne).toHaveBeenCalledWith({
-        where: { userId },
+        where: { userId: 'user-1' },
         order: { verifiedAt: 'DESC' },
       });
+    });
+
+    it('returns null when no verification exists', async () => {
+      repository.findOne.mockResolvedValue(null);
+      const result = await service.getVerificationStatus('user-1');
+      expect(result).toBeNull();
     });
   });
 
   describe('isUserVerified', () => {
-    it('should return true when TypeORM store has a verification record', async () => {
-      const userId = 'test-user-123';
-      repository.findOne.mockResolvedValue({ id: 'verification-id' } as WorldIdVerification);
+    it('returns true when TypeORM store has a record', async () => {
+      repository.findOne.mockResolvedValue({ id: 'v1' } as WorldIdVerification);
       prisma.worldIdVerification.findFirst.mockResolvedValue(null);
 
-      const result = await service.isUserVerified(userId);
-
-      expect(result).toBe(true);
+      expect(await service.isUserVerified('user-1')).toBe(true);
     });
 
-    it('should return true when Prisma store has a verification record', async () => {
-      const userId = 'test-user-123';
+    it('returns true when Prisma store has a record', async () => {
       repository.findOne.mockResolvedValue(null);
-      prisma.worldIdVerification.findFirst.mockResolvedValue({ id: 'prisma-ver' });
+      prisma.worldIdVerification.findFirst.mockResolvedValue({ id: 'v2' });
 
-      const result = await service.isUserVerified(userId);
-
-      expect(result).toBe(true);
+      expect(await service.isUserVerified('user-1')).toBe(true);
     });
 
-    it('should return false when neither store has a verification record', async () => {
-      const userId = 'test-user-123';
+    it('returns false when neither store has a record', async () => {
       repository.findOne.mockResolvedValue(null);
       prisma.worldIdVerification.findFirst.mockResolvedValue(null);
 
-      const result = await service.isUserVerified(userId);
-
-      expect(result).toBe(false);
+      expect(await service.isUserVerified('user-1')).toBe(false);
     });
   });
 });

@@ -35,7 +35,9 @@ describe('TemplateService', () => {
     }).compile();
 
     service = module.get<TemplateService>(TemplateService);
-    templateRepo = module.get<Repository<NotificationTemplate>>(getRepositoryToken(NotificationTemplate));
+    templateRepo = module.get<Repository<NotificationTemplate>>(
+      getRepositoryToken(NotificationTemplate),
+    );
   });
 
   it('should be defined', () => {
@@ -44,7 +46,9 @@ describe('TemplateService', () => {
 
   describe('render', () => {
     it('should render a template with variables', async () => {
-      jest.spyOn(templateRepo, 'findOne').mockResolvedValue(mockTemplate as any);
+      jest
+        .spyOn(templateRepo, 'findOne')
+        .mockResolvedValue(mockTemplate as any);
 
       const result = await service.render('claim-submitted', {
         claimTitle: 'Test Claim',
@@ -57,13 +61,18 @@ describe('TemplateService', () => {
 
     it('should fall back to default locale when template not found', async () => {
       const enTemplate = { ...mockTemplate, locale: 'en' };
-      jest.spyOn(templateRepo, 'findOne')
+      jest
+        .spyOn(templateRepo, 'findOne')
         .mockResolvedValueOnce(null)
         .mockResolvedValueOnce(enTemplate as any);
 
-      const result = await service.render('claim-submitted', {
-        claimTitle: 'Test',
-      }, 'fr');
+      const result = await service.render(
+        'claim-submitted',
+        {
+          claimTitle: 'Test',
+        },
+        'fr',
+      );
 
       expect(result.subject).toBe('Claim Submitted: Test');
     });
@@ -71,17 +80,24 @@ describe('TemplateService', () => {
     it('should throw when template not found in any locale', async () => {
       jest.spyOn(templateRepo, 'findOne').mockResolvedValue(null);
 
-      await expect(service.render('nonexistent', {})).rejects.toThrow('Template nonexistent not found');
+      await expect(service.render('nonexistent', {})).rejects.toThrow(
+        'Template nonexistent not found',
+      );
     });
   });
 
   describe('renderByType', () => {
     it('should render template by notification type', async () => {
-      jest.spyOn(templateRepo, 'findOne').mockResolvedValue(mockTemplate as any);
+      jest
+        .spyOn(templateRepo, 'findOne')
+        .mockResolvedValue(mockTemplate as any);
 
-      const result = await service.renderByType(NotificationType.CLAIM_SUBMITTED, {
-        claimTitle: 'Test Claim',
-      });
+      const result = await service.renderByType(
+        NotificationType.CLAIM_SUBMITTED,
+        {
+          claimTitle: 'Test Claim',
+        },
+      );
 
       expect(result.subject).toBe('Claim Submitted: Test Claim');
     });
@@ -89,8 +105,12 @@ describe('TemplateService', () => {
 
   describe('createTemplate', () => {
     it('should create a new template', async () => {
-      const createSpy = jest.spyOn(templateRepo, 'create').mockReturnValue(mockTemplate as any);
-      const saveSpy = jest.spyOn(templateRepo, 'save').mockResolvedValue(mockTemplate as any);
+      const createSpy = jest
+        .spyOn(templateRepo, 'create')
+        .mockReturnValue(mockTemplate as any);
+      const saveSpy = jest
+        .spyOn(templateRepo, 'save')
+        .mockResolvedValue(mockTemplate as any);
 
       const result = await service.createTemplate(mockTemplate);
 
@@ -129,7 +149,9 @@ describe('TemplateService', () => {
     });
 
     it('should leave unmatched variables as-is', async () => {
-      jest.spyOn(templateRepo, 'findOne').mockResolvedValue(mockTemplate as any);
+      jest
+        .spyOn(templateRepo, 'findOne')
+        .mockResolvedValue(mockTemplate as any);
 
       const result = await service.render('claim-submitted', {});
 

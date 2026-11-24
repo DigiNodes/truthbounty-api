@@ -12,11 +12,12 @@ describe('AdminGuard', () => {
   const mockContext = (user?: any) => {
     const handler = () => {};
     const cls = class {};
+    const request: any = { user };
     return {
       getHandler: () => handler,
       getClass: () => cls,
       switchToHttp: () => ({
-        getRequest: () => ({ user }),
+        getRequest: () => request,
       }),
     } as any;
   };

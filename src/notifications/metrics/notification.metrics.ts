@@ -8,11 +8,11 @@ export class NotificationMetricsService {
   private notificationsSent: Counter;
   private notificationsFailed: Counter;
   private notificationsRetried: Counter;
-  
+
   // Gauges
   private queueDepth: Gauge;
   private connectedUsers: Gauge;
-  
+
   // Histograms
   private processingLatency: Histogram;
   private deliveryLatency: Histogram;

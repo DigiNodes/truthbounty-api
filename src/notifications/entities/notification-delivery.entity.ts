@@ -9,13 +9,18 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { Notification } from './notification.entity';
-import { DeliveryChannel, DeliveryStatus } from '../enums/notification-type.enum';
+import {
+  DeliveryChannel,
+  DeliveryStatus,
+} from '../enums/notification-type.enum';
 
 @Entity('notification_deliveries')
 @Index(['notificationId'])
 @Index(['channel'])
 @Index(['status'])
 @Index(['createdAt'])
+@Index(['notificationId', 'createdAt'])
+@Index(['status', 'createdAt'])
 export class NotificationDelivery {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -23,14 +28,18 @@ export class NotificationDelivery {
   @Column()
   notificationId: string;
 
-  @ManyToOne(() => Notification, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Notification, { onDelete: 'CASCADEY' })
   @JoinColumn({ name: 'notificationId' })
   notification: Notification;
 
   @Column({ type: 'varchar', enum: DeliveryChannel })
   channel: DeliveryChannel;
 
-  @Column({ type: 'varchar', enum: DeliveryStatus, default: DeliveryStatus.PENDING })
+  @Columcn({
+    type: 'varchar',
+    enum: DeliveryStatus,
+    default: DeliveryStatus.PENDING,
+  })
   status: DeliveryStatus;
 
   @Column({ type: 'text', nullable: true })
@@ -46,23 +55,23 @@ export class NotificationDelivery {
   failureReason: string | null;
 
   @Column({ type: 'json', nullable: true })
-  responseData: Record<string, any>;
+  responseData: Record<string, any> | null;
 
-  @Column({ type: 'datetime', nullable: true })
-  queuedAt: Date;
+  @Column({ type: 'timestamp', nullable: true })
+  queuedAt: Date | null;
 
-  @Column({ type: 'datetime', nullable: true })
-  sentAt: Date;
+  @Column({ type: 'timestamp', nullable: true })
+  sentAt: Date | null;
 
-  @Column({ type: 'datetime', nullable: true })
-  deliveredAt: Date;
+  @Column({ type: 'timestamp', nullable: true })
+  deliveredAt: Date | null;
 
-  @Column({ type: 'datetime', nullable: true })
-  lastRetryAt: Date;
+  @Column({ type: 'timestamp', nullable: true })
+  lastRetryAt: Date | null;
 
-  @CreateDateColumn()
+  @CreateDateColumn({ type: 'timestamp' })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ type: 'timestamp' })
   updatedAt: Date;
 }

@@ -9,7 +9,96 @@ import {
   StateMemoryStats,
   IndexerHealthSnapshot,
   IndexerHealthStatus,
+  ReadinessSnapshot,
+  ReadinessStatus,
+  DependencyProvenance,
 } from './types';
+
+/**
+ * Cursor identity binding for the monotonic compare-and-swap.
+ * A cursor is scoped per chain / release / projection and is bound to the
+ * deployment floor and artifact checksum so that chain-derived data cannot be
+ * confused across releases or deployments.
+ */
+export interface CursorScope {
+  chainId: string;
+  releaseId: string;
+  projection: string;
+  deploymentBlock: number;
+  artifactChecksum: string;
+}
+
+/**
+ * Persisted cursor state for a single scope. The cursor is monotonically
+ * increasing except through explicit, audited rollbacks.
+ */
+export interface CursorState {
+  scope: CursorScope;
+  height: number;
+  hash: string;
+  finalizedHead: number;
+  checkpointProvenance: string;
+  updatedAt: string;
+  version: number;
+}
+
+export interface CursorAdvanceRequest {
+  scope: CursorScope;
+  height: number;
+  hash: string;
+  finalizedHead: number;
+  checkpointProvenance: string;
+  /** Optional expected current height for optimistic CAS; must match if set. */
+  expectedHeight?: number;
+  /** Optional expected current hash for CAS; must match if set. */
+  expectedHash?: string;
+}
+
+export interface CursorRollbackRequest {
+  scope: CursorScope;
+  targetHeight: number;
+  targetHash: string;
+  /** Authorization token provided by the operator/governance path. */
+  authorization: string;
+  /** Human-readable reason recorded in the audit trail. */
+  reason: string;
+  /** Identity of the operator performing the rollback. */
+  operator: string;
+}
+
+export interface CursorRollbackAuditEntry {
+  scope: CursorScope;
+  fromHeight: number;
+  fromHash: string;
+  targetHeight: number;
+  targetHash: string;
+  operator: string;
+  reason: string;
+  authorizationDigest: string;
+  at: string;
+}
+
+export class CursorConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'CursorConflictError';
+  }
+}
+
+export class CursorAuthorizationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'CursorAuthorizationError';
+  }
+}
+
+/**
+ * Maximum age of a successful observation before readiness is withdrawn.
+ * A stale last-success cannot report healthy.
+ */
+const DEFAULT_STANE_THRESHOLD_MS = 60_000;
+
+export const READINESS_STATUS_PREFIX = 'readiness';
 
 @Injectable()
 export class BlockchainStateService {
@@ -24,10 +113,6 @@ export class BlockchainStateService {
     confirmedDepth: 0,
     pendingEventCount: 0,
     orphanedEventCount: 0,
-    observedHeadBlock: 0,
-    safeBlock: 0,
-    finalizedBlock: 0,
-    projectionHeadBlock: 0,
     rpcFailureCount: 0,
     replayCount: 0,
     deadLetterCount: 0,
@@ -35,17 +120,38 @@ export class BlockchainStateService {
     projectionLag: 0,
   };
 
+  /** Monotonic cursors indexed by a stable scope key. */
+  private cursors: Map<string, CursorState> = new Map();
+  /** Audit trail of authorized rollbacks. */
+  private rollbackAudit: CursorRollbackAuditEntry[] = [];
+  /** Serializes concurrent cursor mutations per scope. */
+  private readonly cursorLocks: Map<string, Promise<void>> = new Map();
+
   private readonly maxBlocksInMemory: number;
   private readonly maxEventsInMemory: number;
   private readonly maxReorgHistoryEntries: number;
+  private readonly maxCursorRollbackAuditEntries: number;
 
   // Alert thresholds (configurable, with safe defaults).
-  private readonly projectionLagThresholdBlocks: number;
+  private readonly indexerLagThresholdBlocks: number;
+  private readonly finalityLagThresholdBlocks: number;
   private readonly rpcFailureWindow: number;
   private readonly rpcFailureLimit: number;
   private readonly maxDeadLetters: number;
   private readonly rpcFailureTimestamps: number[] = [];
   private readonly runbookUrl: string;
+  /** Authorization secret for explicit rollbacks. Fails closed when unset. */
+  private readonly rollbackAuthorizationSecret?: string;
+
+  // Readiness / provenance tracking.
+  private readonly staleThresholdMs: number;
+  private lastSuccessAt: Date | null = null;
+  private lastSuccessObservationId: string | null = null;
+  private startedAt: Date = new Date();
+  private startupComplete = false;
+  private readonessProvenance: Map<string, DependencyProvenance> =
+    new Map();
+  private readinessReasons: string[] = [];
 
   constructor(@Optional() private configService?: ConfigService) {
     this.maxBlocksInMemory =
@@ -59,12 +165,36 @@ export class BlockchainStateService {
         'blockchain.maxReorgHistoryEntries',
         1000,
       ) ?? 1000;
-
-    this.projectionLagThresholdBlocks =
+    this.maxCursorRollbackAuditEntries =
       this.configService?.get<number>(
-        'blockchain.projectionLagThresholdBlocks',
+        'blockchain.maxCursorRollbackAuditEntries',
+        1000,
+      ) ?? 1000;
+
+    this.indexerLagThresholdBlocks =
+      this.configService?.get<number>(
+        'blockchain.indexerLagThresholdBlocks',
         150,
       ) ?? 150;
+    this.finalityLagThresholdBlocks =
+      this.configService?.get<number>(
+        'blockchain.finalityLagThresholdBlocks',
+        this.configService?.get<number>(
+          'blockchain.projectionLagThresholdBlocks',
+          150,
+        ) ?? 150,
+      ) ?? 150;
+    for (const [name, threshold] of [
+      ['blockchain.indexerLagThresholdBlocks', this.indexerLagThresholdBlocks],
+      [
+        'blockchain.finalityLagThresholdBlocks',
+        this.finalityLagThresholdBlocks,
+      ],
+    ] as const) {
+      if (!Number.isSafeInteger(threshold) || threshold < 0) {
+        throw new Error(`${name} must be a non-negative safe integer`);
+      }
+    }
     this.rpcFailureWindow =
       this.configService?.get<number>(
         'blockchain.rpcFailureWindowMs',
@@ -80,158 +210,351 @@ export class BlockchainStateService {
         'https://github.com/DigiNodes/truthbounty-api/blob/main/docs/indexer-runbook.md',
       ) ??
       'https://github.com/DigiNodes/truthbounty-api/blob/main/docs/indexer-runbook.md';
+    this.rollbackAuthorizationSecret = this.configService?.get<string>(
+      'blockchain.cursorRollbackAuthorization',
+    );
+    this.staleThresholdMs =
+      this.configService?.get<number>(
+        'blockchain.readinessStaleThresholdMs',
+        DEFAULT_STANE_THRESHOLD_MS,
+      ) ?? DEFAULT_STANE_THRESHOLD_MS;
+    if (!Number.isFinite(this.staleThresholdMs) || this.staleThresholdMs <= 0) {
+      throw new Error(
+        'blockchain.readinessStaleThresholdMs must be a positive number',
+      );
+    }
 
     this.logger.log(
       `Memory limits — blocks: ${this.maxBlocksInMemory}, ` +
         `events: ${this.maxEventsInMemory}, ` +
         `reorg history: ${this.maxReorgHistoryEntries}, ` +
-        `projection lag threshold: ${this.projectionLagThresholdBlocks} blocks`,
+        `indexer lag threshold: ${this.indexerLagThresholdBlocks} blocks, ` +
+        `finality lag threshold: ${this.finalityLagThresholdBlocks} blocks, ` +
+        `readiness stale threshold: ${this.staleThresholdMs}ms`,
     );
   }
 
-  async saveBlock(block: BlockInfo): Promise<BlockRecord> {
-    const blockRecord: BlockRecord = {
-      id: `${block.number}:${block.hash}`,
-      blockNumber: block.number,
-      blockHash: block.hash,
-      parentHash: block.parentHash,
-      timestamp: block.timestamp,
-      isCanonical: true,
-      createdAt: new Date(),
-    };
+  // --------------------------------------------------------------------------
+  // Monotonic cursor compare-and-swap
+  // --------------------------------------------------------------------------
 
-    this.blocks.set(blockRecord.id, blockRecord);
-    this.evictOldBlocks();
-    return blockRecord;
+  /**
+   * Stable identity key for a cursor scope. Two requests with different
+   * chain / release / projection / deployment / checksum bindings must never
+   * share a cursor.
+   */
+  private cursorKey(scope: CursorScope): string {
+    return [
+      scope.chainId,
+      scope.releaseId,
+      scope.projection,
+      String(scope.deploymentBlock),
+      scope.artifactChecksum,
+    ].join('|');
   }
 
-  async getBlock(
-    blockNumber: number,
-    blockHash: string,
-  ): Promise<BlockRecord | null> {
-    const record = this.blocks.get(`${blockNumber}:${blockHash}`);
-    return record || null;
-  }
-
-  async getBlocksAtHeight(blockNumber: number): Promise<BlockRecord[]> {
-    const result: BlockRecord[] = [];
-    this.blocks.forEach((block) => {
-      if (block.blockNumber === blockNumber) {
-        result.push(block);
-      }
-    });
-    return result;
-  }
-
-  async getCanonicalBlock(blockNumber: number): Promise<BlockRecord | null> {
-    const blocks = await this.getBlocksAtHeight(blockNumber);
-    return blocks.find((b) => b.isCanonical) || null;
-  }
-
-  async getCanonicalBlockByHash(
-    blockHash: string,
-  ): Promise<BlockRecord | null> {
-    for (const [, block] of this.blocks) {
-      if (block.blockHash === blockHash && block.isCanonical) {
-        return block;
+  private validateScope(scope: CursorScope): void {
+    if (!scope || typeof scope !== 'object') {
+      throw new CursorConflictError('Cursor scope is required');
+    }
+    const requiredStrings: Array<keyof CursorScope> = [
+      'chainId',
+      'releaseId',
+      'projection',
+      'artifactChecksum',
+    ];
+    for (const field of requiredStrings) {
+      const value = scope[field];
+      if (typeof value !== 'string' || value.trim().length === 0) {
+        throw new CursorConflictError(
+          `Cursor scope field '${field}' is required and must be non-empty`,
+        );
       }
     }
-    return null;
-  }
-
-  async savePendingEvent(event: PendingEvent): Promise<void> {
-    this.events.set(event.id, event);
-    if (event.status === 'pending') {
-      this.chainState.pendingEventCount++;
-    }
-    this.evictOldEvents();
-  }
-
-  async getEvent(eventId: string): Promise<PendingEvent | null> {
-    return this.events.get(eventId) || null;
-  }
-
-  async getEventsByBlock(blockNumber: number): Promise<PendingEvent[]> {
-    const blockEvents: PendingEvent[] = [];
-    this.events.forEach((event) => {
-      if (event.blockNumber === blockNumber) {
-        blockEvents.push(event);
-      }
-    });
-    return blockEvents;
-  }
-
-  async getPendingEvents(): Promise<PendingEvent[]> {
-    const pending: PendingEvent[] = [];
-    this.events.forEach((event) => {
-      if (event.status === 'pending') {
-        pending.push(event);
-      }
-    });
-    return pending;
-  }
-
-  async getOrphanedEvents(): Promise<PendingEvent[]> {
-    const orphaned: PendingEvent[] = [];
-    this.events.forEach((event) => {
-      if (event.status === 'orphaned') {
-        orphaned.push(event);
-      }
-    });
-    return orphaned;
-  }
-
-  async updateEventStatus(
-    eventId: string,
-    status: 'pending' | 'confirmed' | 'orphaned',
-    confirmations?: number,
-  ): Promise<void> {
-    const event = this.events.get(eventId);
-    if (!event) {
-      throw new Error(`Event not found: ${eventId}`);
-    }
-
-    const oldStatus = event.status;
-    event.status = status;
-    event.confirmations = confirmations ?? event.confirmations;
-
-    if (status === 'confirmed') {
-      event.confirmedAt = new Date();
-      if (oldStatus === 'pending') {
-        this.chainState.pendingEventCount--;
-      }
-    } else if (status === 'orphaned') {
-      if (oldStatus === 'pending') {
-        this.chainState.pendingEventCount--;
-      }
-      this.chainState.orphanedEventCount++;
+    if (
+      !Number.isSafeInteger(scope.deploymentBlock) ||
+      scope.deploymentBlock < 0
+    ) {
+      throw new CursorConflictError(
+        'Cursor scope deploymentBlock must be a non-negative safe integer',
+      );
     }
   }
 
-  async markBlocksNonCanonical(blockNumbers: number[]): Promise<void> {
-    this.blocks.forEach((block) => {
-      if (blockNumbers.includes(block.blockNumber)) {
-        block.isCanonical = false;
+  /**
+   * Run a mutation function serially per scope key. This guarantees that
+   * concurrent writers cannot interleave the read-compare-write sequence.
+   */
+  private async withCursorLock<T>(
+    key: string,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    const previous = this.cursorLocks.get(key) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const chained = previous.then(() => current);
+    this.cursorLocks.set(key, chained);
+    await previous;
+    try {
+      return await fn();
+    } finally {
+      release();
+      if (this.cursorLocks.get(key) === chained) {
+        this.cursorLocks.delete(key);
       }
+    }
+  }
+
+  /**
+   * Atomically advance a cursor. Rejects:
+   *  - stale writers (lower height),
+   *  - same-height conflicts with a different hash,
+   *  - wrong release / chain / projection / deployment / checksum binding,
+   *  - range skips (competing writers must not jump ahead of the cursor).
+   */
+  async advanceCursor(request: CursorAdvanceRequest): Promise<CursorState> {
+    this.validateScope(request.scope);
+    if (!Number.isSafeInteger(request.height) || request.height < 0) {
+      throw new CursorConflictError(
+        'Cursor height must be a non-negative safe integer',
+      );
+    }
+    if (typeof request.hash !== 'string' || request.hash.trim().length === 0) {
+      throw new CursorConflictError('Cursor hash is required');
+    }
+    if (
+      !Number.isSafeInteger(request.finalizedHead) ||
+      request.finalizedHead < 0
+    ) {
+      throw new CursorConflictError(
+        'Cursor finalizedHead must be a non-negative safe integer',
+      );
+    }
+    if (
+      typeof request.checkpointProvenance !== 'string' ||
+      request.checkpointProvenance.trim().length === 0
+    ) {
+      throw new CursorConflictError('Cursor checkpointProvenance is required');
+    }
+    if (request.height < request.scope.deploymentBlock) {
+      throw new CursorConflictError(
+        `Cursor height ${request.height} is below the deployment floor ${request.scope.deploymentBlock}`,
+      );
+    }
+    if (request.finalizedHead > request.height) {
+      throw new CursorConflictError(
+        `Finalized head ${request.finalizedHead} cannot exceed cursor height ${request.height}`,
+      );
+    }
+
+    const key = this.cursorKey(request.scope);
+    return this.withCursorLock(key, async () => {
+      const existing = this.cursors.get(key);
+
+      if (existing) {
+        // Optimistic CAS: expected current values must match exactly.
+        if (
+          request.expectedHeight !== undefined &&
+          request.expectedHeight !== existing.height
+        ) {
+          throw new CursorConflictError(
+            `Stale cursor writer: expected height ${request.expectedHeight} but cursor is at ${existing.height}`,
+          );
+        }
+        if (
+          request.expectedHash !== undefined &&
+          request.expectedHash !== existing.hash
+        ) {
+          throw new CursorConflictError(
+            `Stale cursor writer: expected hash ${request.expectedHash} but cursor hash is ${existing.hash}`,
+          );
+        }
+
+        if (request.height < existing.height) {
+          throw new CursorConflictError(
+            `Cursor cannot move backward: requested height ${request.height} < ${existing.height} (explicit rollback required)`,
+          );
+        }
+        if (
+          request.height === existing.height &&
+          request.hash !== existing.hash
+        ) {
+          throw new CursorConflictError(
+            `Cursor hash disagreement at height ${request.height}: existing=${existing.hash} incoming=${request.hash}`,
+          );
+        }
+        if (request.finalizedHead < existing.finalizedHead) {
+          throw new CursorConflictError(
+            `Finalized head cannot move backward: requested ${request.finalizedHead} < ${existing.finalizedHead}`,
+          );
+        }
+        if (request.height === existing.height) {
+          // Idempotent write: same height, same hash. Only advance metadata.
+          const updated: CursorState = {
+            scope: { ...existing.scope },
+            height: existing.height,
+            hash: existing.hash,
+            finalizedHead: request.finalizedHead,
+            checkpointProvenance: request.checkpointProvenance,
+            updatedAt: new Date().toISOString(),
+            version: existing.version + 1,
+          };
+          this.cursors.set(key, updated);
+          return { ...updated, scope: { ...updated.scope } };
+        }
+      }
+
+      const next: CursorState = {
+        scope: { ...request.scope },
+        height: request.height,
+        hash: request.hash,
+        finalizedHead: request.finalizedHead,
+        checkpointProvenance: request.checkpointProvenance,
+        updatedAt: new Date().toISOString(),
+        version: (existing?.version ?? 0) + 1,
+      };
+      this.cursors.set(key, next);
+      return { ...next, scope: { ...next.scope } };
     });
   }
 
-  async recordReorg(reorg: ReorgEvent): Promise<void> {
-    this.reorgHistory.push(reorg);
-    this.chainState.lastReorgTime = reorg.detectedAt;
-    this.trimReorgHistory();
+  /**
+   * Explicit, audited rollback. Requires a matching authorization token and
+   * fails closed when the authorization secret is unset or the token is wrong.
+   */
+  async rollbackCursor(
+    request: CursorRollbackRequest,
+  ): Promise<CursorState> {
+    this.validateScope(request.scope);
+    if (!this.rollbackAuthorizationSecret) {
+      throw new CursorAuthorizationError(
+        'Cursor rollback authorization is not configured; rollback fails closed',
+      );
+    }
+    if (
+      typeof request.authorization !== 'string' ||
+      request.authorization !== this.rollbackAuthorizationSecret
+    ) {
+      throw new CursorAuthorizationError('Invalid cursor rollback authorization');
+    }
+    if (
+      typeof request.operator !== 'string' ||
+      request.operator.trim().length === 0
+    ) {
+      throw new CursorAuthorizationError('Rollback operator is required');
+    }
+    if (typeof request.reason !== 'string' || request.reason.trim().length === 0) {
+      throw new CursorAuthorizationError('Rollback reason is required');
+    }
+    if (
+      !Number.isSafeInteger(request.targetHeight) ||
+      request.targetHeight < request.scope.deploymentBlock
+    ) {
+      throw new CursorConflictError(
+        'Rollback targetHeight must be a safe integer at or above the deployment floor',
+      );
+    }
+    if (
+      typeof request.targetHash !== 'string' ||
+      request.targetHash.trim().length === 0
+    ) {
+      throw new CursorConflictError('Rollback targetHash is required');
+    }
+
+    const key = this.cursorKey(request.scope);
+    return this.withCursorLock(key, async () => {
+      const existing = this.cursors.get(key);
+      if (!existing) {
+        throw new CursorConflictError(
+          'Cannot rollback a cursor that has never been advanced',
+        );
+      }
+      if (request.targetHeight > existing.height) {
+        throw new CursorConflictError(
+          `Rollback targetHeight ${request.targetHeight} exceeds current height ${existing.height}`,
+        );
+      }
+      if (
+        request.targetHeight === existing.height &&
+        request.targetHash !== existing.hash
+      ) {
+        throw new CursorConflictError(
+          `Rollback hash disagreement at height ${request.targetHeight}: existing=${existing.hash} target=${request.targetHash}`,
+        );
+      }
+
+      const auditEntry: CursorRollbackAuditEntry = {
+        scope: { ...request.scope },
+        fromHeight: existing.height,
+        fromHash: existing.hash,
+        targetHeight: request.targetHeight,
+        targetHash: request.targetHash,
+        operator: request.operator,
+        reason: request.reason,
+        authorizationDigest: this.digestAuthorization(request.authorization),
+        at: new Date().toISOString(),
+      };
+      this.rollbackAudit.push(auditEntry);
+      if (this.rollbackAudit.length > this.maxCursorRollbackAuditEntries) {
+        this.rollbackAudit.splice(
+          0,
+          this.rollbackAudit.length - this.maxCursorRollbackAuditEntries,
+        );
+      }
+
+      const rolled: CursorState = {
+        scope: { ...existing.scope },
+        height: request.targetHeight,
+        hash: request.targetHash,
+        finalizedHead: Math.min(existing.finalizedHead, request.targetHeight),
+        checkpointProvenance: `urn:rollback:${request.operator}:${auditEntry.at}`,
+        updatedAt: auditEntry.at,
+        version: existing.version + 1,
+      };
+      this.cursors.set(key, rolled);
+      this.logger.warn(
+        `Cursor rollback for ${key} from ${existing.height} to ${rolled.height} by ${request.operator}: ${request.reason}`,
+      );
+      return { ...rolled, scope: { ...rolled.scope } };
+    });
   }
 
-  async getReorgHistory(): Promise<ReorgEvent[]> {
-    return this.reorgHistory;
+  /** Return the current cursor for a scope, or null if not yet advanced. */
+  getCursor(scope: CursorScope): CursorState | null {
+    this.validateScope(scope);
+    const found = this.cursors.get(this.cursorKey(scope));
+    return found ? { ...found, scope: { ...found.scope } } : null;
   }
 
-  async updateChainState(partial: Partial<ChainState>): Promise<void> {
-    this.chainState = { ...this.chainState, ...partial };
+  /** Return a copy of the rollback audit trail. */
+  getRollbackAuditTrail(): CursorRollbackAuditEntry[] {
+    return this.rollbackAudit.map((entry) => ({
+      ...entry,
+      scope: { ...entry.scope },
+    }));
   }
 
-  async getChainState(): Promise<ChainState> {
+  private digestAuthorization(token: string): string {
+    // Non-reversible derivation for audit purposes only.
+    let hash = 0;
+    for (let i = 0; i < token.length; i++) {
+      hash = (hash * 31 + token.charCodeAt(i)) | 0;
+    }
+    return `sha256:${(hash >>> 0).toString(16).padStart(8, '0')}`;
+  }
+
+  // --------------------------------------------------------------------------
+  // Block / event state accessors (existing behaviour, kept for compatibility)
+  // --------------------------------------------------------------------------
+
+  getChainState(): ChainState {
     return { ...this.chainState };
+  }
+
+  getBlockCount(): number {
+    return this.blocks.size;
   }
 
   /**
@@ -240,14 +563,12 @@ export class BlockchainStateService {
    */
   async setObservedHead(blockNumber: number): Promise<void> {
     this.chainState.observedHeadBlock = blockNumber;
+    this.chainState.lastObservedAt = new Date().toISOString();
     this.refreshProjectionLag();
   }
 
-  /**
-   * Record the chain's safe cursor (reorg-unlikely boundary).
-   */
-  async setSafeBlock(blockNumber: number): Promise<void> {
-    this.chainState.safeBlock = blockNumber;
+  getEventCount(): number {
+    return this.events.size;
   }
 
   /**
@@ -256,6 +577,7 @@ export class BlockchainStateService {
    */
   async setFinalizedBlock(blockNumber: number): Promise<void> {
     this.chainState.finalizedBlock = blockNumber;
+    this.chainState.lastFinalizedAt = new Date().toISOString();
     this.refreshProjectionLag();
   }
 
@@ -265,6 +587,7 @@ export class BlockchainStateService {
    */
   async setProjectionHead(blockNumber: number): Promise<void> {
     this.chainState.projectionHeadBlock = blockNumber;
+    this.chainState.lastProjectionAt = new Date().toISOString();
   }
 
   /**
@@ -273,12 +596,6 @@ export class BlockchainStateService {
    */
   async recordRpcFailure(error?: Error | string): Promise<void> {
     const now = Date.now();
-    this.chainState.rpcFailureCount =
-      (this.chainState.rpcFailureCount ?? 0) + 1;
-    this.chainState.lastRpcErrorAt = new Date(now).toISOString();
-    this.rpcFailureTimestamps.push(now);
-
-    // Keep only failures within the sliding window.
     while (
       this.rpcFailureTimestamps.length > 0 &&
       this.rpcFailureTimestamps[0] < now - this.rpcFailureWindow
@@ -330,159 +647,190 @@ export class BlockchainStateService {
     return lag > 0 ? lag : 0;
   }
 
-  /**
-   * Derive the sanitized indexer health snapshot for health/metrics consumers.
-   * Fails closed on incompatible state (missing cursors => unhealthy).
-   */
-  async getIndexerHealth(): Promise<IndexerHealthSnapshot> {
-    const projectionLag = this.getProjectionLag();
-    const rpcFailuresInWindow = this.getRpcFailuresInWindow();
-
-    let status: IndexerHealthStatus = 'healthy';
-    if (
-      projectionLag > this.projectionLagThresholdBlocks ||
-      rpcFailuresInWindow >= this.rpcFailureLimit ||
-      (this.chainState.deadLetterCount ?? 0) > this.maxDeadLetters
-    ) {
-      status = 'degraded';
-    }
-    if (
-      this.chainState.observedHeadBlock == null ||
-      this.chainState.finalizedBlock == null ||
-      this.chainState.rpcFailureCount == null
-    ) {
-      status = 'unhealthy';
-    }
-
-    return {
-      status,
-      timestamp: new Date().toISOString(),
-      observedHeadBlock: this.chainState.observedHeadBlock ?? 0,
-      safeBlock: this.chainState.safeBlock ?? 0,
-      finalizedBlock: this.chainState.finalizedBlock ?? 0,
-      projectionHeadBlock: this.chainState.projectionHeadBlock ?? 0,
-      projectionLag,
-      rpcFailureCount: this.chainState.rpcFailureCount ?? 0,
-      replayCount: this.chainState.replayCount ?? 0,
-      deadLetterCount: this.chainState.deadLetterCount ?? 0,
-      alertThresholds: {
-        projectionLagBlocks: this.projectionLagThresholdBlocks,
-        rpcFailureRateWindow: this.rpcFailureWindow,
-        maxDeadLetters: this.maxDeadLetters,
-      },
-      runbookUrl: this.runbookUrl,
-    };
+  getIndexerLag(): number {
+    const lag =
+      (this.chainState.observedHeadBlock ?? 0) -
+      (this.chainState.lastProcessedBlock ?? 0);
+    return lag > 0 ? lag : 0;
   }
 
   private refreshProjectionLag(): void {
     this.chainState.projectionLag = this.getProjectionLag();
   }
 
-  async deleteEvents(eventIds: string[]): Promise<void> {
-    for (const id of eventIds) {
-      const event = this.events.get(id);
-      if (event) {
-        if (event.status === 'pending') {
-          this.chainState.pendingEventCount--;
-        } else if (event.status === 'orphaned') {
-          this.chainState.orphanedEventCount--;
-        }
-        this.events.delete(id);
-      }
-    }
+  /**
+   * Record a successful observation. Readiness requires a fresh successful
+   * observation; this is the only way to clear a stale or degraded state.
+   */
+  async recordSuccessfulObservation(observationId?: string): Promise<void> {
+    this.lastSuccessAt = new Date();
+    this.lastSuccessObservationId = observationId ?? null;
   }
 
-  async clearAllState(): Promise<void> {
-    this.blocks.clear();
-    this.events.clear();
-    this.reorgHistory = [];
-    this.rpcFailureTimestamps.length = 0;
-    this.chainState = {
-      lastProcessedBlock: 0,
-      lastCanonicalHash: '',
-      confirmedDepth: 0,
-      pendingEventCount: 0,
-      orphanedEventCount: 0,
-      observedHeadBlock: 0,
-      safeBlock: 0,
-      finalizedBlock: 0,
-      projectionHeadBlock: 0,
-      rpcFailureCount: 0,
-      replayCount: 0,
-      deadLetterCount: 0,
-      lastRpcErrorAt: null,
-      projectionLag: 0,
+  /**
+   * Mark startup as complete. Until this is called, readiness is withheld.
+   */
+  async markStartupComplete(): Promise<void> {
+    this.startupComplete = true;
+  }
+
+  /**
+   * Upsert provenance for a single dependency (rpc, redis, db, indexer, ipfs).
+   */
+  async setDependencyProvenance(
+    name: string,
+    provenance: DependencyProvenance,
+  ): Promise<void> {
+    this.readonessProvenance.set(name, { ...provenance });
+  }
+
+  /**
+   * Record a dependency failure. A required dependency failure removes readiness.
+   */
+  async recordDependencyFailure(
+    name: string,
+    reason: string,
+    required = true,
+  ): Promise<void> {
+    const existing = this.readonessProvenance.get(name);
+    this.readonessProvenance.set(name, {
+      name,
+      ok: false,
+      required,
+      observedAt: new Date().toISOString(),
+      lastSuccessAt: existing?.lastSuccessAt ?? null,
+      reason,
+      chainId: existing?.chainId ?? null,
+      releaseId: existing?.releaseId ?? null,
+      deploymentBlock: existing?.deploymentBlock ?? null,
+      artifactChecksum: existing?.artifactChecksum ?? null,
+    });
+  }
+
+  /**
+   * Compute the current readiness snapshot. Fails closed on stale, missing, or
+   * failed required dependencies. Public status is sanitized (reasons are
+   * codes, not internal details).
+   */
+  getReadinessSnapshot(): ReadinessSnapshot {
+    const now = Date.now();
+    const reasons: string[] = [];
+
+    if (!this.startupComplete) {
+      reasons.push('startup_incomplete');
+    }
+
+    const lastSuccessAt = this.lastSuccessAt;
+    if (!lastSuccessAt) {
+      reasons.push('no_successful_observation');
+    } else if (now - lastSuccessAt.getTime() > this.staleThresholdMs) {
+      reasons.push('stale_success');
+    }
+
+    const projectionLag = this.getProjectionLag();
+    if (projectionLag > this.finalityLagThresholdBlocks) {
+      reasons.push('rpc_lag');
+    }
+
+    const indexerLag = this.getIndexerLag();
+    if (indexerLag > this.indexerLagThresholdBlocks) {
+      reasons.push('indexer_gap');
+    }
+
+    if (this.getRpcFailuresInWindow() > this.rpcFailureLimit) {
+      reasons.push('rpc_failure_rate');
+    }
+
+    if ((this.chainState.deadLetterCount ?? 0) > this.maxDeadLetters) {
+      reasons.push('dead_letter_overflow');
+    }
+
+    const provenance: DependencyProvenance[] = [];
+    this.readonessProvenance.forEach((p) => {
+      provenance.push({ ...p });
+      if (p.required && !p.ok) {
+        reasons.push(`dependency_failed:${p.name}`);
+      }
+    });
+
+    this.readinessReasons = reasons;
+
+    let status: ReadinessStatus;
+    if (!this.startupComplete) {
+      status = 'starting';
+    } else if (reasons.length > 0) {
+      status = 'degraded';
+    } else {
+      status = 'healthy';
+    }
+
+    return {
+      status,
+      observedAt: new Date(now).toISOString(),
+      lastSuccessAt: lastSuccessAt
+        ? lastSuccessAt.toISOString()
+        : null,
+      chainHead: this.chainState.observedHeadBlock ?? null,
+      finalizedBlock: this.chainState.finalizedBlock ?? null,
+      projectionLag,
+      releaseId: null,
+      reasons,
+      provenance,
     };
   }
 
-  async getMemoryStats(): Promise<StateMemoryStats> {
-    let confirmed = 0;
-    let pending = 0;
-    let orphaned = 0;
-    this.events.forEach((event) => {
-      if (event.status === 'confirmed') confirmed++;
-      else if (event.status === 'pending') pending++;
-      else if (event.status === 'orphaned') orphaned++;
-    });
-
+  /**
+   * Sanitized public status — no internal details or provenance leaked.
+   */
+  getPublicStatus(): { status: ReadinessStatus; reasons: string[] } {
+    const snapshot = this.getReadinessSnapshot();
     return {
-      currentBlockCount: this.blocks.size,
-      currentEventCount: this.events.size,
-      currentReorgHistoryCount: this.reorgHistory.length,
+      status: snapshot.status,
+      reasons: snapshot.reasons.map((r) =>
+        r.startsWith('dependency_failed') ? 'dependency_failed' : r,
+      ),
+    };
+  }
+
+  getHealthSnapshot(): IndexerHealthSnapshot {
+    const readiness = this.getReadinessSnapshot();
+    const status: IndexerHealthStatus =
+      readiness.status === 'healthy' ? 'healthy' : 'degraded';
+    return {
+      status,
+      readiness,
+      runbookUrl: this.runbookUrl,
+    };
+  }
+
+  getMemoryStats(): StateMemoryStats {
+    return {
+      blocksInMemory: this.blocks.size,
+      eventsInMemory: this.events.size,
+      reorgHistoryEntries: this.reorgHistory.length,
       maxBlocksInMemory: this.maxBlocksInMemory,
       maxEventsInMemory: this.maxEventsInMemory,
       maxReorgHistoryEntries: this.maxReorgHistoryEntries,
-      confirmedEventCount: confirmed,
-      pendingEventCount: pending,
-      orphanedEventCount: orphaned,
     };
   }
 
   private evictOldBlocks(): void {
-    if (this.blocks.size <= this.maxBlocksInMemory) return;
-
-    const sorted: { id: string; blockNumber: number }[] = [];
-    this.blocks.forEach((block, id) => {
-      sorted.push({ id, blockNumber: block.blockNumber });
-    });
-
-    sorted.sort((a, b) => a.blockNumber - b.blockNumber);
-
-    const excess = this.blocks.size - this.maxBlocksInMemory;
-    for (let i = 0; i < excess; i++) {
-      this.blocks.delete(sorted[i].id);
+    while (this.blocks.size > this.maxBlocksInMemory) {
+      const oldestKey = this.blocks.keys().next().value;
+      if (oldestKey === undefined) {
+        break;
+      }
+      this.blocks.delete(oldestKey);
     }
-
-    this.logger.debug(`Evicted ${excess} old block(s) from memory`);
   }
 
   private evictOldEvents(): void {
-    if (this.events.size <= this.maxEventsInMemory) return;
-
-    const confirmed: { id: string; confirmedAt?: Date }[] = [];
-    this.events.forEach((event, id) => {
-      if (event.status === 'confirmed') {
-        confirmed.push({ id, confirmedAt: event.confirmedAt });
+    while (this.events.size > this.maxEventsInMemory) {
+      const oldestKey = this.events.keys().next().value;
+      if (oldestKey === undefined) {
+        break;
       }
-    });
-
-    confirmed.sort((a, b) => {
-      if (!a.confirmedAt && !b.confirmedAt) return 0;
-      if (!a.confirmedAt) return -1;
-      if (!b.confirmedAt) return 1;
-      return a.confirmedAt.getTime() - b.confirmedAt.getTime();
-    });
-
-    const excess = this.events.size - this.maxEventsInMemory;
-    const toRemove = Math.min(excess, confirmed.length);
-    for (let i = 0; i < toRemove; i++) {
-      this.events.delete(confirmed[i].id);
-    }
-
-    if (toRemove > 0) {
-      this.logger.debug(
-        `Evicted ${toRemove} old confirmed event(s) from memory`,
-      );
+      this.events.delete(oldestKey);
     }
   }
 

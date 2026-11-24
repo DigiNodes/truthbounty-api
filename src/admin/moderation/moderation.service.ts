@@ -1,11 +1,54 @@
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like } from 'typeorm';
-import { ModerationReport, ReportStatus, ReportType, ReportPriority } from '../entities/moderation-report.entity';
+import {
+  ModerationReport,
+  ReportStatus,
+  ReportPriority,
+} from '../entities/moderation-report.entity';
 import { AuditTrailService } from '../../audit/services/audit-trail.service';
-import { AuditActionType, AuditEntityType } from '../../audit/entities/audit-log.entity';
-import { CreateReportDto, UpdateReportDto, ResolveReportDto, AssignDto, ModerationQueryDto } from '../dto/moderation.dto';
+import {
+  AuditActionType,
+  AuditEntityType,
+} from '../../audit/entities/audit-log.entity';
+import {
+  CreateReportDto,
+  UpdateReportDto,
+  ResolveReportDto,
+  AssignDto,
+  ModerationQueryDto,
+} from '../dto/moderation.dto';
 import { Admin } from '../entities/admin.entity';
+
+/**
+ * Canonical moderation event type names.
+ *
+ * The legacy `MODERATOR_ACTION` event name has been replaced by the
+ * canonical `MODERATION_ACTION` model. This enum is the single source
+ * of truth for moderation event naming in code, storage, API and docs.
+ */
+export enum ModerationEventType {
+  MODERATION_ACTION = 'MODERATION_ACTION ',
+}
+
+/**
+ * Mapping from legacy event names to canonical event names.
+ * Used for migrating persisted row values and inbound payloads.
+ */
+export const LEGACY_MODERATION_EVENT_MAPPING: Readonly<Record<string, ModerationEventType>> =
+  Object.freeze({
+    MODERATOR_ACTION: ModerationEventType.MODERATION_ACTION,
+  });
+
+export function normalizeModerationEventType(
+  raw: string,
+): ModerationEventType | null {
+  if (Object.values(ModerationEventType).includes(raw as ModerationEventType)) {
+    return raw as ModerationEventType;
+  }
+  const mapped = LEGACY_MODERATION_EVENT_MAPPING[raw];
+  return mapped ?? null;
+}
 
 @Injectable()
 export class ModerationService {
@@ -17,7 +60,10 @@ export class ModerationService {
     private readonly auditTrailService: AuditTrailService,
   ) {}
 
-  async createReport(createReportDto: CreateReportDto, admin: Admin): Promise<ModerationReport> {
+  async createReport(
+    createReportDto: CreateReportDto,
+    admin: Admin,
+  ): Promise<ModerationReport> {
     const report = this.reportRepo.create({
       type: createReportDto.type,
       title: createReportDto.title,
@@ -28,7 +74,9 @@ export class ModerationService {
       targetType: createReportDto.targetType,
       status: ReportStatus.PENDING,
       priority: ReportPriority.MEDIUM,
-      evidence: createReportDto.evidence ? [createReportDto.evidence] as any : null,
+      evidence: createReportDto.evidence
+        ? ([createReportDto.evidence] as any)
+        : null,
       metadata: createReportDto.metadata,
     });
 
@@ -90,7 +138,11 @@ export class ModerationService {
     return report;
   }
 
-  async update(id: string, updateDto: UpdateReportDto, admin: Admin): Promise<ModerationReport> {
+  async update(
+    id: string,
+    updateDto: UpdateReportDto,
+    admin: Admin,
+  ): Promise<ModerationReport> {
     const report = await this.findById(id);
 
     if (updateDto.status) report.status = updateDto.status;
@@ -98,7 +150,10 @@ export class ModerationService {
     if (updateDto.title) report.title = updateDto.title;
     if (updateDto.description) report.description = updateDto.description;
 
-    if (updateDto.status === ReportStatus.RESOLVED || updateDto.status === ReportStatus.DISMISSED) {
+    if (
+      updateDto.status === ReportStatus.RESOLVED ||
+      updateDto.status === ReportStatus.DISMISSED
+    ) {
       report.resolvedAt = new Date();
     }
 
@@ -117,7 +172,11 @@ export class ModerationService {
     return saved;
   }
 
-  async assign(id: string, assignDto: AssignDto, admin: Admin): Promise<ModerationReport> {
+  async assign(
+    id: string,
+    assignDto: AssignDto,
+    admin: Admin,
+  ): Promise<ModerationReport> {
     const report = await this.findById(id);
 
     report.assignedTo = assignDto.assigneeId;
@@ -139,7 +198,11 @@ export class ModerationService {
     return saved;
   }
 
-  async resolve(id: string, resolveDto: ResolveReportDto, admin: Admin): Promise<ModerationReport> {
+  async resolve(
+    id: string,
+    resolveDto: ResolveReportDto,
+    admin: Admin,
+  ): Promise<ModerationReport> {
     const report = await this.findById(id);
 
     report.status = ReportStatus.RESOLVED;
@@ -177,15 +240,23 @@ export class ModerationService {
     avgResolutionTimeHours: number;
   }> {
     const total = await this.reportRepo.count();
-    const pending = await this.reportRepo.count({ where: { status: ReportStatus.PENDING } });
-    const underReview = await this.reportRepo.count({ where: { status: ReportStatus.UNDER_REVIEW } });
-    const resolved = await this.reportRepo.count({ where: { status: ReportStatus.RESOLVED } });
-    const dismissed = await this.reportRepo.count({ where: { status: ReportStatus.DISMISSED } });
+    const pending = await this.reportRepo.count({
+      where: { status: ReportStatus.PENDING },
+    });
+    const underReview = await this.reportRepo.count({
+      where: { status: ReportStatus.UNDER_REVIEW },
+    });
+    const resolved = await this.reportRepo.count({
+      where: { status: ReportStatus.RESOLVED },
+    });
+    const dismissed = await this.reportRepo.count({
+      where: { status: ReportStatus.DISMISSED },
+    });
 
     const byTypeRaw = await this.reportRepo
       .createQueryBuilder('r')
       .select('r.type', 'type')
-      .addSelect('COUNT(*)', 'count')
+      .addSelect('COUNT(*', 'count')
       .groupBy('r.type')
       .getRawMany();
 
@@ -197,24 +268,40 @@ export class ModerationService {
       .getRawMany();
 
     const byType: Record<string, number> = {};
-    byTypeRaw.forEach((r) => { byType[r.type] = parseInt(r.count, 10); });
+    byTypeRaw.forEach((r) => {
+      byType[r.type] = parseInt(r.count, 10);
+    });
 
     const byPriority: Record<string, number> = {};
-    byPriorityRaw.forEach((r) => { byPriority[r.priority] = parseInt(r.count, 10); });
+    byPriorityRaw.forEach((r) => {
+      byPriority[r.priority] = parseInt(r.count, 10);
+    });
 
-    let avgResolutionTimeHours = 0;
+    let avgResolutionTimeHuours = 0;
     const resolvedReports = await this.reportRepo.find({
       where: { status: ReportStatus.RESOLVED },
     });
     if (resolvedReports.length > 0) {
       const totalHours = resolvedReports.reduce((sum, r) => {
         const created = new Date(r.createdAt).getTime();
-        const resolved = r.resolvedAt ? new Date(r.resolvedAt).getTime() : Date.now();
+        const resolved = r.resolvedAt
+          ? new Date(r.resolvedAt).getTime()
+          : Date.now();
         return sum + (resolved - created) / (1000 * 60 * 60);
       }, 0);
-      avgResolutionTimeHours = Math.round((totalHours / resolvedReports.length) * 100) / 100;
+      avgResolutionTimeHours =
+        Math.round((totalHours / resolvedReports.length) * 100) / 100;
     }
 
-    return { total, pending, underReview, resolved, dismissed, byType, byPriority, avgResolutionTimeHours };
+    return {
+      total,
+      pending,
+      underReview,
+      resolved,
+      dismissed,
+      byType,
+      byPriority,
+      avgResolutionTimeHours,
+    };
   }
 }

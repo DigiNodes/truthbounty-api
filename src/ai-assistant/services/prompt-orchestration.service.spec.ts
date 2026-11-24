@@ -50,13 +50,7 @@ describe('PromptOrchestrationService', () => {
       }),
     } as unknown as ConfigService;
 
-    safetyGuardrailService = new SafetyGuardrailService({
-      get: jest.fn().mockReturnValue({
-        maxPromptLength: 4000,
-        blockedTerms: ['forbidden phrase'],
-        promptLeakHeuristics: ['ignore previous instructions'],
-      }),
-    } as unknown as ConfigService);
+    safetyGuardrailService = new SafetyGuardrailService();
 
     return new PromptOrchestrationService(
       messageRepository as any,
@@ -98,7 +92,7 @@ describe('PromptOrchestrationService', () => {
       conversation,
       requesterId: 'user-1',
       requesterRole: 'contributor',
-      userContent: 'this has a forbidden phrase in it',
+      userContent: 'this has a bomb in it',
       endpoint: 'chat',
     });
 
@@ -221,7 +215,13 @@ describe('PromptOrchestrationService', () => {
 
     expect(result.flagged).toBe(true);
     expect(result.flagReason).toBe('prompt_leak_detected');
-    expect(result.content).toBe(safetyGuardrailService.LEAK_REFUSAL_MESSAGE);
+    expect(result.content).toBe(
+      (
+        safetyGuardrailService as unknown as {
+          LEAK_REFUSAL_MESSAGE: string;
+        }
+      ).LEAK_REFUSAL_MESSAGE,
+    );
   });
 
   it('builds the memory window from the message repository and trims to the token budget', async () => {

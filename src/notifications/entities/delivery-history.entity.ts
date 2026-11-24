@@ -1,6 +1,15 @@
-import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, CreateDateColumn } from 'typeorm';
+import {
+  Entity,
+  Column,
+  PrimaryGeneratedColumn,
+  ManyToOne,
+  CreateDateColumn,
+} from 'typeorm';
 import { Notification } from './notification.entity';
-import { DeliveryChannel, DeliveryStatus } from '../interfaces/notification.types';
+import {
+  DeliveryChannel,
+  DeliveryStatus,
+} from '../interfaces/notification.types';
 
 @Entity('delivery_history')
 export class DeliveryHistory {
@@ -40,6 +49,9 @@ export class DeliveryHistory {
 
   @Column({ type: 'jsonb', nullable: true })
   metadata: Record<string, any>;
+
+  @Column({ nullable: true, unique: true })
+  idempotencyKey: string;
 
   @CreateDateColumn()
   createdAt: Date;

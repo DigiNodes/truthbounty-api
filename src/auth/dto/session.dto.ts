@@ -1,5 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, IsNumber, Min } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsNumber,
+  Min,
+} from 'class-validator';
 
 export class RefreshDto {
   @ApiProperty({
@@ -13,7 +19,8 @@ export class RefreshDto {
 
 export class LogoutDto {
   @ApiPropertyOptional({
-    description: 'Optional: specific refresh token to invalidate. If omitted, all tokens for the user are revoked.',
+    description:
+      'Optional: specific refresh token to invalidate. If omitted, all tokens for the user are revoked.',
   })
   @IsString()
   @IsOptional()

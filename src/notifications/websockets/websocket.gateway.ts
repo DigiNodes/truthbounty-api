@@ -8,10 +8,12 @@ import {
   MessageBody,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { Logger } from '@nestjs/common';
+import { Logger, OnModuleInit } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { Notification } from '../entities/notification.entity';
+import { NotificationsService } from '../services/notifications.service';
+import { GracefulShutdownService } from '../../common/lifecycle/graceful-shutdown.service';
 
 interface AuthenticatedSocket extends Socket {
   userId?: string;
@@ -19,26 +21,43 @@ interface AuthenticatedSocket extends Socket {
 
 @WebSocketGateway({
   cors: {
-    origin: '*', // Configure this appropriately for production
+    origin: '*',
   },
   transports: ['websocket', 'polling'],
 })
-export class NotificationGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class NotificationGateway
+  implements OnGatewayConnection, OnGatewayDisconnect, OnModuleInit
+{
   @WebSocketServer()
   server: Server;
 
   private readonly logger = new Logger(NotificationGateway.name);
-  private userSockets: Map<string, Set<string>> = new Map(); // userId -> Set<socketIds>
+  private userSockets: Map<string, Set<string>> = new Map();
 
   constructor(
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly notificationsService: NotificationsService,
+    private readonly gracefulShutdown: GracefulShutdownService,
   ) {}
 
+  onModuleInit(): void {
+    this.gracefulShutdown.registerStopHook('notification-websocket', () => {
+      if (!this.server) return;
+      this.server.emit('server_shutdown', { retryable: true });
+      this.server.disconnectSockets(true);
+    });
+  }
+
   async handleConnection(@ConnectedSocket() client: AuthenticatedSocket) {
+    if (this.gracefulShutdown.isDraining) {
+      client.disconnect(true);
+      return;
+    }
+
     try {
       const token = client.handshake.auth.token || client.handshake.query.token;
-      
+
       if (!token) {
         this.logger.warn(`Client ${client.id} connected without token`);
         client.disconnect();
@@ -52,19 +71,21 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
       const userId = payload.sub;
       client.userId = userId;
 
-      // Add socket to user's set
       if (!this.userSockets.has(userId)) {
         this.userSockets.set(userId, new Set());
       }
-      this.userSockets.get(userId).add(client.id);
+      this.userSockets.get(userId)?.add(client.id);
 
       this.logger.log(`Client ${client.id} authenticated for user ${userId}`);
-      
-      // Send connection confirmation
+
       client.emit('connected', { userId, timestamp: new Date() });
-      
+
+      // Fetch and send unread notifications
+      this.sendUnreadNotifications(userId);
     } catch (error) {
-      this.logger.warn(`Invalid token from client ${client.id}: ${error.message}`);
+      this.logger.warn(
+        `Invalid token from client ${client.id}: ${error.message}`,
+      );
       client.disconnect();
     }
   }
@@ -78,17 +99,18 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
           this.userSockets.delete(client.userId);
         }
       }
-      this.logger.log(`Client ${client.id} disconnected for user ${client.userId}`);
+      this.logger.log(
+        `Client ${client.id} disconnected for user ${client.userId}`,
+      );
     }
   }
 
-  /**
-   * Broadcast a notification to a specific user's connected clients
-   */
   sendToUser(userId: string, notification: Notification) {
     const userSocketSet = this.userSockets.get(userId);
     if (!userSocketSet || userSocketSet.size === 0) {
-      this.logger.debug(`No active connections for user ${userId}, notification queued`);
+      this.logger.debug(
+        `No active connections for user ${userId}, notification queued`,
+      );
       return false;
     }
 
@@ -103,36 +125,57 @@ export class NotificationGateway implements OnGatewayConnection, OnGatewayDiscon
     return true;
   }
 
-  /**
-   * Check if a user is currently online
-   */
   isUserOnline(userId: string): boolean {
     const userSocketSet = this.userSockets.get(userId);
-    return userSocketSet && userSocketSet.size > 0;
+    return !!userSocketSet && userSocketSet.size > 0;
   }
 
-  /**
-   * Get number of connected users
-   */
   getConnectedUsersCount(): number {
     return this.userSockets.size;
   }
 
   @SubscribeMessage('subscribe')
-  handleSubscribe(@ConnectedSocket() client: AuthenticatedSocket, @MessageBody() channels: string[]) {
-    this.logger.debug(`Client ${client.id} subscribed to channels: ${channels.join(', ')}`);
+  handleSubscribe(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody() channels: string[],
+  ) {
+    this.logger.debug(
+      `Client ${client.id} subscribed to channels: ${channels.join(', ')}`,
+    );
     channels.forEach((channel) => client.join(channel));
   }
 
   @SubscribeMessage('unsubscribe')
-  handleUnsubscribe(@ConnectedSocket() client: AuthenticatedSocket, @MessageBody() channels: string[]) {
-    this.logger.debug(`Client ${client.id} unsubscribed from channels: ${channels.join(', ')}`);
+  handleUnsubscribe(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody() channels: string[],
+  ) {
+    this.logger.debug(
+      `Client ${client.id} unsubscribed from channels: ${channels.join(', ')}`,
+    );
     channels.forEach((channel) => client.leave(channel));
   }
 
   @SubscribeMessage('mark_read')
-  handleMarkRead(@ConnectedSocket() client: AuthenticatedSocket, @MessageBody() notificationId: string) {
-    // This will be handled by the notification service to update the database
-    this.logger.debug(`User ${client.userId} marked notification ${notificationId} as read`);
+  handleMarkRead(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody() notificationId: string,
+  ) {
+    this.logger.debug(
+      `User ${client.userId} marked notification ${notificationId} as read`,
+    );
+  }
+
+  private async sendUnreadNotifications(userId: string) {
+    const unreadNotifications =
+      await this.notificationsService.getUnreadNotifications(userId);
+    if (unreadNotifications.length > 0) {
+      this.logger.log(
+        `Sending ${unreadNotifications.length} unread notifications to user ${userId}`,
+      );
+      unreadNotifications.forEach((notification) => {
+        this.sendToUser(userId, notification);
+      });
+    }
   }
 }

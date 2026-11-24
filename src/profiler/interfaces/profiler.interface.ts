@@ -1,11 +1,5 @@
 export type SpanCategory =
-  | 'http'
-  | 'db'
-  | 'redis'
-  | 'blockchain'
-  | 'queue'
-  | 'notification'
-  | 'system';
+  'http' | 'db' | 'redis' | 'blockchain' | 'queue' | 'notification' | 'system';
 
 export type SpanStatus = 'ok' | 'error';
 
@@ -116,10 +110,7 @@ export interface BottleneckReport {
 }
 
 export type SamplingStrategy =
-  | 'fixed-rate'
-  | 'adaptive'
-  | 'header-based'
-  | 'route-based';
+  'fixed-rate' | 'adaptive' | 'header-based' | 'route-based';
 
 export interface SamplingConfig {
   enabled: boolean;

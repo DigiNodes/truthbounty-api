@@ -1,5 +1,5 @@
 import { INestApplication } from '@nestjs/common';
-import * as request from 'supertest';
+import request from 'supertest';
 import { ethers } from 'ethers';
 import { PrismaService } from '../../src/prisma/prisma.service';
 
@@ -36,9 +36,15 @@ export async function createAuthenticatedTestUser(
 
   const signature = await wallet.signMessage(challengeRes.body.message);
 
-  const loginRes = await request(app.getHttpServer())
-    .post('/auth/login')
-    .send({ address: wallet.address, signature, message: challengeRes.body.message });
+  const loginRes = await request(app.getHttpServer()).post('/auth/login').send({
+    address: wallet.address,
+    signature,
+    message: challengeRes.body.message,
+  });
 
-  return { accessToken: loginRes.body.accessToken, userId: user.id, walletAddress: address };
+  return {
+    accessToken: loginRes.body.accessToken,
+    userId: user.id,
+    walletAddress: address,
+  };
 }

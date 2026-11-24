@@ -16,6 +16,8 @@ export class IndexerMetricsService {
   private safeBlockGauge: Gauge;
   private finalizedBlockGauge: Gauge;
   private projectionHeadGauge: Gauge;
+  private indexerLagGauge: Gauge;
+  private finalityLagGauge: Gauge;
   private projectionLagGauge: Gauge;
   private rpcFailuresCounter: Counter;
   private replayCounter: Counter;
@@ -46,6 +48,16 @@ export class IndexerMetricsService {
       help: 'Highest block to which projections (derived state) have advanced',
     });
 
+    this.indexerLagGauge = new Gauge({
+      name: 'indexer_lag_blocks',
+      help: 'Finalized canonical blocks not yet applied to projections',
+    });
+
+    this.finalityLagGauge = new Gauge({
+      name: 'indexer_finality_lag_blocks',
+      help: 'Observed head distance from the finalized cursor',
+    });
+
     this.projectionLagGauge = new Gauge({
       name: 'indexer_projection_lag_blocks',
       help: 'Projection lag in blocks (observed head minus finalized cursor)',
@@ -70,6 +82,8 @@ export class IndexerMetricsService {
     register.registerMetric(this.safeBlockGauge);
     register.registerMetric(this.finalizedBlockGauge);
     register.registerMetric(this.projectionHeadGauge);
+    register.registerMetric(this.indexerLagGauge);
+    register.registerMetric(this.finalityLagGauge);
     register.registerMetric(this.projectionLagGauge);
     register.registerMetric(this.rpcFailuresCounter);
     register.registerMetric(this.replayCounter);
@@ -99,6 +113,8 @@ export class IndexerMetricsService {
     this.safeBlockGauge.set(health.safeBlock);
     this.finalizedBlockGauge.set(health.finalizedBlock);
     this.projectionHeadGauge.set(health.projectionHeadBlock);
+    this.indexerLagGauge.set(health.indexerLagBlocks);
+    this.finalityLagGauge.set(health.finalityLagBlocks);
     this.projectionLagGauge.set(health.projectionLag);
     // Counters reflect cumulative totals; report absolute values idempotently.
     this.rpcFailuresCounter.reset();

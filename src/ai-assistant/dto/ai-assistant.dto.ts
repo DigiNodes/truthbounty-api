@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional, IsUUID, IsArray } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsArray } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateConversationDto {
@@ -14,7 +14,9 @@ export class SendMessageDto {
   @IsNotEmpty()
   content: string;
 
-  @ApiPropertyOptional({ description: 'Optional list of tools to use (mocked)' })
+  @ApiPropertyOptional({
+    description: 'Optional list of tools to use (mocked)',
+  })
   @IsArray()
   @IsString({ each: true })
   @IsOptional()

@@ -24,11 +24,11 @@ export enum ClaimLifecycleEventType {
 export const EVENT_TYPE_TO_STATE: Record<ClaimLifecycleEventType, ClaimState> =
   {
     [ClaimLifecycleEventType.SUBMITTED]: ClaimState.Submitted,
-    [ClaimLifecycleEventType.UNDER_VERIFICATION]: ClaimState.UnderVerification,
+    [ClaimLifecycleEventType.UNDER_VERIFICATION]: ClaimState.Review,
     [ClaimLifecycleEventType.DISPUTED]: ClaimState.Disputed,
-    [ClaimLifecycleEventType.SETTLED]: ClaimState.Settled,
+    [ClaimLifecycleEventType.SETTLED]: ClaimState.Finalized,
     [ClaimLifecycleEventType.REJECTED]: ClaimState.Rejected,
-    [ClaimLifecycleEventType.EXPIRED]: ClaimState.Expired,
+    [ClaimLifecycleEventType.EXPIRED]: ClaimState.Reorged,
   };
 
 /**

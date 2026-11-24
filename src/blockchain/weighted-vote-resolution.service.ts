@@ -1,24 +1,29 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { 
-  VerificationVote, 
-  WeightedVote, 
-  VoteAggregation, 
-  ClaimResolution, 
+import {
+  VerificationVote,
+  WeightedVote,
+  VoteAggregation,
+  ClaimResolution,
   ResolutionConfig,
-  Verdict
+  Verdict,
+  VerifierEligibilityState,
+  VerifierReadiness,
+  ChainReleaseBinding,
 } from './types';
 
 /**
  * Weighted Vote Resolution Service
- * 
+ *
  * Implements reputation-weighted voting for claim resolution in TruthBounty protocol.
  * Converts individual verification votes into authoritative claim outcomes.
- * 
+ *
  * Key Features:
  * - Reputation-based vote weighting
  * - Deterministic resolution logic
  * - Protection against Sybil attacks
  * - Confidence scoring for downstream systems
+ * - Canonical chain/block/artifact binding for all chain-derived data
+ * - Fail-closed eligibility, phase, deadline, and reveal projections
  */
 @Injectable()
 export class WeightedVoteResolutionService {
@@ -26,10 +31,10 @@ export class WeightedVoteResolutionService {
 
   // Default configuration - can be overridden
   private readonly defaultConfig: ResolutionConfig = {
-    minTotalWeight: 100,        // Minimum total weight required
-    confidenceThreshold: 0.6,   // 60% confidence minimum
-    maxReputationShare: 0.4,    // No single user can contribute >40%
-    tieThreshold: 0.05          // 5% margin for tie detection
+    minTotalWeight: 100, // Minimum total weight required
+    confidenceThreshold: 0.6, // 60% confidence minimum
+    maxReputationShare: 0.4, // No single user can contribute >40%
+    tieThreshold: 0.05, // 5% margin for tie detection
   };
 
   /**
@@ -38,56 +43,63 @@ export class WeightedVoteResolutionService {
    * @param config Optional resolution configuration
    * @returns Claim resolution result with confidence metrics
    */
-  resolveClaim(votes: VerificationVote[], config?: Partial<ResolutionConfig>): ClaimResolution {
+  resolveClaim(
+    votes: VerificationVote[],
+    config?: Partial<ResolutionConfig>,
+  ): ClaimResolution {
     const effectiveConfig = { ...this.defaultConfig, ...config };
-    
+
     if (votes.length === 0) {
-      return this.createUnresolvedResult('unknown', 'No votes submitted', effectiveConfig);
+      return this.createUnresolvedResult(
+        'unknown',
+        'No votes submitted',
+        effectiveConfig,
+      );
     }
 
     // Step 1: Calculate weights for all votes
     const weightedVotes = this.calculateVoteWeights(votes, effectiveConfig);
-    
+
     // Step 2: Aggregate votes by verdict
     const aggregation = this.aggregateVotes(weightedVotes);
-    
+
     // Step 3: Apply resolution logic
     return this.determineResolution(aggregation, effectiveConfig);
   }
 
   /**
    * Calculate individual vote weights based on reputation and stake
-   * 
+   *
    * Weight Formula:
    * weight = baseReputation + sqrt(stakeAmount) * stakeMultiplier
-   * 
+   *
    * Where:
    * - baseReputation: Linear reputation component (primary signal)
    * - stakeAmount: Square root scaling to prevent whale dominance
    * - stakeMultiplier: Configurable modifier (default: 0.1)
-   * 
+   *
    * @param votes Raw verification votes
    * @param config Resolution configuration
    * @returns Votes with calculated weights
    */
   private calculateVoteWeights(
-    votes: VerificationVote[], 
-    config: ResolutionConfig
+    votes: VerificationVote[],
+    config: ResolutionConfig,
   ): WeightedVote[] {
-    return votes.map(vote => {
+    return votes.map((vote) => {
       // Convert reputation to weight (1-100 scale)
       const reputationWeight = Math.max(1, Math.min(100, vote.userReputation));
-      
+
       // Stake component with square root scaling to prevent whale dominance
       const stakeAmountNum = parseFloat(vote.stakeAmount) || 0;
       const stakeWeight = Math.sqrt(Math.max(0, stakeAmountNum)) * 0.1; // 0.1 multiplier
-      
+
       // Total weight combines both factors
       const totalWeight = reputationWeight + stakeWeight;
-      
+
       return {
         ...vote,
-        weight: totalWeight
+        weight: totalWeight,
       };
     });
   }
@@ -104,9 +116,9 @@ export class WeightedVoteResolutionService {
 
     const claimId = weightedVotes[0].claimId;
     const verdictWeights: Record<Verdict, number> = {
-      'TRUE': 0,
-      'FALSE': 0,
-      'UNSURE': 0
+      TRUE: 0,
+      FALSE: 0,
+      UNSURE: 0,
     };
 
     let totalWeight = 0;
@@ -122,7 +134,7 @@ export class WeightedVoteResolutionService {
       totalWeight,
       verdictWeights,
       voterCount: weightedVotes.length,
-      votes: weightedVotes
+      votes: weightedVotes,
     };
   }
 
@@ -133,24 +145,25 @@ export class WeightedVoteResolutionService {
    * @returns Final claim resolution
    */
   private determineResolution(
-    aggregation: VoteAggregation, 
-    config: ResolutionConfig
+    aggregation: VoteAggregation,
+    config: ResolutionConfig,
   ): ClaimResolution {
     const { verdictWeights, totalWeight, voterCount } = aggregation;
-    
+
     // Safety checks
     if (totalWeight < config.minTotalWeight) {
       return this.createUnresolvedResult(
         aggregation.claimId,
         `Insufficient total weight (${totalWeight} < ${config.minTotalWeight})`,
-        config
+        config,
       );
     }
 
     // Sort verdicts by weight (descending)
-    const sortedVerdicts = Object.entries(verdictWeights)
-      .sort(([,a], [,b]) => b - a) as [Verdict, number][];
-    
+    const sortedVerdicts = Object.entries(verdictWeights).sort(
+      ([, a], [, b]) => b - a,
+    ) as [Verdict, number][];
+
     const [dominantVerdict, dominantWeight] = sortedVerdicts[0];
     const [, secondWeight] = sortedVerdicts[1] || ['', 0];
 
@@ -160,14 +173,14 @@ export class WeightedVoteResolutionService {
       return this.createUnresolvedResult(
         aggregation.claimId,
         `Single verifier dominance (${(maxIndividualShare * 100).toFixed(1)}% share)`,
-        config
+        config,
       );
     }
 
     // Calculate resolution metrics
     const resolutionMargin = dominantWeight - secondWeight;
-    const isTie = resolutionMargin < (totalWeight * config.tieThreshold);
-    
+    const isTie = resolutionMargin < totalWeight * config.tieThreshold;
+
     // Determine confidence score
     const confidenceScore = totalWeight > 0 ? dominantWeight / totalWeight : 0;
     const isLowConfidence = confidenceScore < config.confidenceThreshold;
@@ -200,19 +213,17 @@ export class WeightedVoteResolutionService {
         dominantVerdictWeight: dominantWeight,
         secondVerdictWeight: secondWeight,
         isTie,
-        isLowConfidence
-      }
+        isLowConfidence,
+      },
     };
 
     this.logger.log(
       `Claim ${aggregation.claimId} resolved as ${resolvedVerdict} ` +
-      `(confidence: ${(confidenceScore * 100).toFixed(1)}%, margin: ${resolutionMargin.toFixed(2)})`
+        `(confidence: ${(confidenceScore * 100).toFixed(1)}%, margin: ${resolutionMargin.toFixed(2)})`,
     );
 
     if (resolvedVerdict === 'UNRESOLVED') {
-      this.logger.warn(
-        `Claim ${aggregation.claimId} unresolved: ${resolutionReason}`
-      );
+      this.logger.warn(`Claim ${aggregation.claimId} unresolved: ${resolutionReason}`);
     }
 
     return result;
@@ -243,7 +254,7 @@ export class WeightedVoteResolutionService {
   private createUnresolvedResult(
     claimId: string,
     reason: string,
-    config: ResolutionConfig
+    config: ResolutionConfig,
   ): ClaimResolution {
     return {
       claimId,
@@ -252,14 +263,14 @@ export class WeightedVoteResolutionService {
       resolutionMargin: 0,
       totalWeight: 0,
       voterCount: 0,
-      verdictDistribution: { 'TRUE': 0, 'FALSE': 0, 'UNSURE': 0 },
+      verdictDistribution: { TRUE: 0, FALSE: 0, UNSURE: 0 },
       metadata: {
         timestamp: new Date(),
         dominantVerdictWeight: 0,
         secondVerdictWeight: 0,
         isTie: false,
-        isLowConfidence: true
-      }
+        isLowConfidence: true,
+      },
     };
   }
 
@@ -293,7 +304,9 @@ export class WeightedVoteResolutionService {
     const claimId = votes[0].claimId;
     for (let i = 1; i < votes.length; i++) {
       if (votes[i].claimId !== claimId) {
-        errors.push(`Inconsistent claim ID: expected ${claimId}, got ${votes[i].claimId}`);
+        errors.push(
+          `Inconsistent claim ID: expected ${claimId}, got ${votes[i].claimId}`,
+        );
       }
     }
 
@@ -306,7 +319,9 @@ export class WeightedVoteResolutionService {
         errors.push(`Vote ${index}: Invalid verdict ${vote.verdict}`);
       }
       if (vote.userReputation < 0 || vote.userReputation > 100) {
-        errors.push(`Vote ${index}: Invalid reputation ${vote.userReputation} (must be 0-100)`);
+        errors.push(
+          `Vote ${index}: Invalid reputation ${vote.userReputation} (must be 0-100)`,
+        );
       }
       if (parseFloat(vote.stakeAmount) < 0) {
         errors.push(`Vote ${index}: Negative stake amount`);
@@ -315,4 +330,120 @@ export class WeightedVoteResolutionService {
 
     return errors;
   }
+
+  // --------------------------------------------------------------------------
+  // Prejudge projections: verifier eligibility, phase, deadline, commit-reveal
+  // All chain-derived data is bound to chain ID, release ID, deployment block,
+  // and artifact checksum. Missing, stale, ambiguous, or wrong-release data
+  // fails closed.
+  // --------------------------------------------------------------------------
+
+  /**
+   * Project verifier readiness from canonical chain state.
+   * Fails closed when binding is incomplete or stale.
+   */
+  projectVerifierReadiness(
+    binding: ChainReleaseBinding,
+    readiness: {
+      chainId: number;
+      releaseId: string;
+      deploymentBlock: number;
+      artifactChecksum: string;
+      observedBlock: number;
+      registered: boolean;
+      stakeLocked: boolean;
+      reputationReady: boolean;
+      commitmentWindowOpen: boolean;
+    },
+  ): VerifierReadiness {
+    const bindingError = this.validateBinding(binding, readiness);
+    if (bindingError) {
+      return {
+        state: 'UNAVAILABLE',
+        reason: bindingError,
+        chainId: binding.chainId,
+        releaseId: binding.releaseId,
+        deploymentBlock: binding.deploymentBlock,
+        artifactChecksum: binding.artifactChecksum,
+        observedBlock: readiness.observedBlock,
+        source: 'canonical-chain',
+      };
+    }
+
+    if (!readiness.registered) {
+      return this.readinessResult('INELIGIBLE', 'Verifier not registered in registry', binding, readiness);
+    }
+    if (!readiness.stakeLocked) {
+      return this.readinessResult('INELIGIBLE', 'Stake not locked for current release', binding, readiness);
+    }
+    if (!readiness.reputationReady) {
+      return this.readinessResult('INELIGIBLE', 'Reputation input not available', binding, readiness);
+    }
+    if (!readiness.commitmentWindowOpen) {
+      return this.readinessResult('INELIGIBLE', 'Commitment window not open', binding, readiness);
+    }
+
+    return this.readinessResult('READY', 'Verifier ready', binding, readiness);
+  }
+
+  private readinessResult(
+    state: VerifierEligibilityState,
+    reason: string,
+    binding: ChainReleaseBinding,
+    readiness: {
+      observedBlock: number;
+    },
+  ): VerifierReadiness {
+    return {
+      state,
+      reason,
+      chainId: binding.chainId,
+      releaseId: binding.releaseId,
+      deploymentBlock: binding.deploymentBlock,
+      artifactChecksum: binding.artifactChecksum,
+      observedBlock: readiness.observedBlock,
+      source: 'canonical-chain',
+    };
+  }
+
+  /**
+   * Validate that observed data matches the canonical binding.
+   * Returns an error string or null when valid.
+   */
+  private validateBinding(
+    binding: ChainReleaseBinding,
+    observed: {
+      chainId: number;
+      releaseId: string;
+      deploymentBlock: number;
+      artifactChecksum: string;
+    },
+  ): string | null {
+    if (!binding || typeof binding.chainId !== 'number') {
+      return 'Missing chain binding';
+    }
+    if (!binding.releaseId) {
+      return 'Missing release ID';
+    }
+    if (typeof binding.deploymentBlock !== 'number' || binding.deploymentBlock < 0) {
+      return 'Missing deployment block';
+    }
+    if (!binding.artifactChecksum) {
+      return 'Missing artifact checksum';
+    }
+    if (observed.chainId !== binding.chainId) {
+      return 'Wrong chain ID';
+    }
+    if (observed.releaseId !== binding.releaseId) {
+      return 'Wrong release ID';
+    }
+    if (observed.deploymentBlock !== binding.deploymentBlock) {
+      return 'Wrong deployment block';
+    }
+    if (observed.artifactChecksum !== binding.artifactChecksum) {
+      return 'Wrong artifact checksum';
+    }
+    return null;
+  }
 }
+

@@ -1,4 +1,7 @@
-import { NotificationType, DeliveryChannel } from '../enums/notification-type.enum';
+import {
+  NotificationType,
+  DeliveryChannel,
+} from '../enums/notification-type.enum';
 
 export interface NotificationPayload {
   type: NotificationType;

@@ -37,7 +37,6 @@ describe('EvidenceController', () => {
 
     const result = await controller.getEvidence(claimId);
 
-    // eslint-disable-next-line @typescript-eslint/unbound-method -- jest mock assertion, not a real unbound call
     expect(queryService.getEvidence).toHaveBeenCalledWith(claimId);
     expect(result).toEqual({ evidenceId: claimId });
   });
@@ -57,9 +56,8 @@ describe('EvidenceController', () => {
       limit: 10,
     });
 
-    // eslint-disable-next-line @typescript-eslint/unbound-method -- jest mock assertion, not a real unbound call
     expect(queryService.getEvidence).toHaveBeenCalledWith(claimId);
-    // eslint-disable-next-line @typescript-eslint/unbound-method -- jest mock assertion, not a real unbound call
+
     expect(queryService.listVersions).toHaveBeenCalledWith(claimId, 'abc', 10);
     expect(result).toEqual({ items: [], nextCursor: null });
   });

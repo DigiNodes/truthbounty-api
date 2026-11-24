@@ -5,14 +5,55 @@ import { ArtifactRegistryService } from './artifact-registry.service';
 import { EventDecoderService } from './event-decoder.service';
 import { CanonicalEvent } from './entities/canonical-event.entity';
 import {
-  EventQuarantine,
+  QuarantineFailureKind,
   QuarantineReason,
 } from './entities/event-quarantine.entity';
 import { EventCheckpoint } from './entities/event-checkpoint.entity';
 import { RawLog, IngestOutcome } from './interfaces/canonical-event.interface';
+import { IndexerConfigService } from '../../config/indexer-config.service';
+import { EventQuarantineService } from './event-quarantine.service';
 
 /** Postgres unique_violation error code. */
 const PG_UNIQUE_VIOLATION = '23505';
+
+const HEX_32 = /^0x[a-fA-F0-9]{64}$/;
+const HEX = /^0x[a-fA-F0-9]*$/;
+
+/** Structural validation: reject malformed logs before any decoding attempt. */
+export function isWellFormedRawLog(log: RawLog): boolean {
+  if (!log || typeof log !== 'object') return false;
+  if (!Number.isInteger(log.chainId) || log.chainId <= 0) return false;
+  if (
+    typeof log.address !== 'string' ||
+    !/^0x[a-fA-F0-9]{40}$/.test(log.address)
+  ) {
+    return false;
+  }
+  if (!Array.isArray(log.topics) || log.topics.length > 8) return false;
+  if (
+    !log.topics.every(
+      (topic) => typeof topic === 'string' && HEX_32.test(topic),
+    )
+  ) {
+    return false;
+  }
+  if (
+    typeof log.data !== 'string' ||
+    !HEX.test(log.data) ||
+    log.data.length % 2 !== 0
+  ) {
+    return false;
+  }
+  if (
+    typeof log.transactionHash !== 'string' ||
+    !HEX_32.test(log.transactionHash)
+  ) {
+    return false;
+  }
+  if (!Number.isInteger(log.logIndex) || log.logIndex < 0) return false;
+  if (typeof log.blockNumber !== 'bigint' || log.blockNumber < 0n) return false;
+  return true;
+}
 
 @Injectable()
 export class CanonicalEventsService {
@@ -22,65 +63,106 @@ export class CanonicalEventsService {
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly artifacts: ArtifactRegistryService,
     private readonly decoder: EventDecoderService,
+    private readonly indexerConfig: IndexerConfigService,
+    private readonly quarantine: EventQuarantineService,
   ) {}
+
+  private getFinalizedBlock(currentEventBlock: bigint): bigint {
+    const config = this.indexerConfig.getEventIndexerConfig();
+    return currentEventBlock - BigInt(config.confirmations.finalized);
+  }
 
   /**
    * Ingest one raw log. Idempotent: replaying the same (chainId, txHash,
    * logIndex) is a no-op on the second and subsequent calls. Every branch
-   * (unregistered address, unknown signature, decode error, artifact drift,
-   * duplicate, success) is represented explicitly in the return type so
-   * callers/tests can assert on it rather than inferring it from side effects.
+   * (malformed, unregistered address, ABI mismatch, unknown topic, decode
+   * error, artifact drift, duplicate, success) is represented explicitly in
+   * the return type so callers/tests can assert on it rather than inferring it
+   * from side effects.
+   *
+   * Events are keyed by canonical signature/topic0 for overload support.
    */
   async ingest(log: RawLog): Promise<IngestOutcome> {
-    const resolved = await this.artifacts.resolve(log.chainId, log.address);
-    if (!resolved) {
-      await this.quarantine(
+    // Malformed/truncated logs are quarantined before anything else: they must
+    // never reach the decoder or a projection.
+    if (!isWellFormedRawLog(log)) {
+      await this.recordSafety(log, {
+        reason: QuarantineReason.DECODE_ERROR,
+        failureKind: QuarantineFailureKind.MALFORMED_LOG,
+        detail: 'malformed log shape (topics/data/txHash/blockNumber)',
+      });
+      return { status: 'quarantined', reason: QuarantineReason.DECODE_ERROR };
+    }
+
+    const resolution = await this.artifacts.resolveDetailed(
+      log.chainId,
+      log.address,
+    );
+    if (resolution.status === 'unregistered') {
+      await this.quarantine.record({
         log,
-        QuarantineReason.UNREGISTERED_ADDRESS,
-        null,
-        'no approved artifact for this address',
-      );
+        reason: QuarantineReason.UNREGISTERED_ADDRESS,
+        failureKind: QuarantineFailureKind.UNREGISTERED_ADDRESS,
+        detail: 'no approved artifact for this address',
+      });
       return {
         status: 'quarantined',
         reason: QuarantineReason.UNREGISTERED_ADDRESS,
       };
     }
-
-    const decoded = this.decoder.decode(log, resolved.iface);
-    if (decoded.status === 'unknown_signature') {
-      await this.quarantine(
+    if (resolution.status === 'invalid_artifact') {
+      await this.quarantine.record({
         log,
-        QuarantineReason.UNKNOWN_SIGNATURE,
-        log.topics[0] ?? null,
-        'topic0 matched no fragment in approved ABI',
-      );
+        reason: QuarantineReason.ABI_MISMATCH,
+        failureKind: QuarantineFailureKind.ABI_MISMATCH,
+        detail: resolution.detail,
+      });
+      return { status: 'quarantined', reason: QuarantineReason.ABI_MISMATCH };
+    }
+
+    const decoded = this.decoder.decode(log, resolution.iface);
+    if (decoded.status === 'unknown_signature') {
+      await this.quarantine.record({
+        log,
+        reason: QuarantineReason.UNKNOWN_SIGNATURE,
+        failureKind: QuarantineFailureKind.UNKNOWN_TOPIC,
+        detail: 'topic0 matched no fragment in the approved ABI',
+        artifactVersion: resolution.artifactVersion,
+        abiChecksum: resolution.abiChecksum,
+      });
       return {
         status: 'quarantined',
         reason: QuarantineReason.UNKNOWN_SIGNATURE,
       };
     }
     if (decoded.status === 'decode_error') {
-      await this.quarantine(
+      await this.quarantine.record({
         log,
-        QuarantineReason.DECODE_ERROR,
-        log.topics[0] ?? null,
-        decoded.error,
-      );
+        reason: QuarantineReason.DECODE_ERROR,
+        failureKind: QuarantineFailureKind.DECODER_FAILURE,
+        detail: decoded.error,
+        artifactVersion: resolution.artifactVersion,
+        abiChecksum: resolution.abiChecksum,
+      });
       return { status: 'quarantined', reason: QuarantineReason.DECODE_ERROR };
     }
 
     const normalized = this.decoder.normalize(
       log,
-      resolved.artifactVersion,
+      resolution.artifactVersion,
       decoded.description,
+      decoded.signature,
     );
     if (normalized.status === 'artifact_drift') {
-      await this.quarantine(
+      await this.quarantine.record({
         log,
-        QuarantineReason.ARTIFACT_DRIFT,
-        log.topics[0] ?? null,
-        `decoded event "${normalized.eventName}" has no canonical schema mapping`,
-      );
+        reason: QuarantineReason.ARTIFACT_DRIFT,
+        failureKind: QuarantineFailureKind.ARTIFACT_DRIFT,
+        detail: `decoded event "${normalized.eventName}" has no canonical schema mapping`,
+        artifactVersion: resolution.artifactVersion,
+        abiChecksum: resolution.abiChecksum,
+        eventSignature: decoded.signature,
+      });
       this.logger.warn(
         `Artifact drift: unmapped event "${normalized.eventName}" from ${log.address}`,
       );
@@ -94,6 +176,7 @@ export class CanonicalEventsService {
           contractAddress: normalized.event.contractAddress,
           artifactVersion: normalized.event.artifactVersion,
           eventName: normalized.event.eventName,
+          eventSignature: normalized.event.eventSignature,
           txHash: normalized.event.txHash,
           logIndex: normalized.event.logIndex,
           blockNumber: normalized.event.blockNumber.toString(),
@@ -108,67 +191,108 @@ export class CanonicalEventsService {
         });
       } catch (err) {
         if (this.isUniqueViolation(err)) {
-          return { status: 'duplicate' } as IngestOutcome;
+          return { status: 'duplicate' };
         }
         throw err;
       }
 
       // Advance the checkpoint atomically with the event write. Monotonic:
-      // never move the cursor backward, so out-of-order batches can't regress it.
-      const checkpointRepo = manager.getRepository(EventCheckpoint);
-      const existing = await checkpointRepo.findOne({
-        where: {
+      // never move any cursor backward, so out-of-order batches can't regress state.
+      const newBlock = normalized.event.blockNumber;
+      const newBlockStr = newBlock.toString();
+      const finalizedBlock = this.getFinalizedBlock(newBlock);
+      const finalizedBlockStr =
+        finalizedBlock > 0n ? finalizedBlock.toString() : '0';
+
+      const updateResult = await manager
+        .createQueryBuilder()
+        .update(EventCheckpoint)
+        .set({
+          lastSafeBlock: () => `GREATEST("lastSafeBlock", '${newBlockStr}')`,
+          lastFinalizedBlock: () =>
+            `GREATEST("lastFinalizedBlock", '${finalizedBlockStr}')`,
+        })
+        .where('chainId = :chainId AND contractAddress = :contractAddress', {
           chainId: log.chainId,
           contractAddress: normalized.event.contractAddress,
-        },
-      });
-      if (!existing) {
-        await checkpointRepo.insert({
+        })
+        .execute();
+
+      if (updateResult.affected === 0) {
+        await manager.insert(EventCheckpoint, {
           chainId: log.chainId,
           contractAddress: normalized.event.contractAddress,
-          lastSafeBlock: normalized.event.blockNumber.toString(),
-        });
-      } else if (
-        BigInt(existing.lastSafeBlock) < normalized.event.blockNumber
-      ) {
-        await checkpointRepo.update(existing.id, {
-          lastSafeBlock: normalized.event.blockNumber.toString(),
+          lastSafeBlock: newBlockStr,
+          lastFinalizedBlock: finalizedBlockStr,
         });
       }
 
-      return { status: 'ingested', event: normalized.event } as IngestOutcome;
+      return { status: 'ingested', event: normalized.event };
     });
   }
 
-  private async quarantine(
+  /**
+   * Best-effort quarantine for a structurally invalid log. We can only persist
+   * a row when the identity fields are usable; otherwise log and fail closed
+   * without mutating projections.
+   */
+  private async recordSafety(
     log: RawLog,
-    reason: QuarantineReason,
-    topic0: string | null,
-    detail: string,
+    input: Pick<
+      Parameters<EventQuarantineService['record']>[0],
+      'reason' | 'failureKind' | 'detail'
+    >,
   ): Promise<void> {
+    const canPersist =
+      log &&
+      typeof log === 'object' &&
+      Number.isInteger(log.chainId) &&
+      typeof log.address === 'string' &&
+      typeof log.transactionHash === 'string' &&
+      Number.isInteger(log.logIndex) &&
+      typeof log.blockNumber === 'bigint';
+
+    if (!canPersist) {
+      this.logger.warn(
+        'Dropped structurally invalid log with unusable identity (not persisted)',
+      );
+      return;
+    }
+
     try {
-      await this.dataSource.getRepository(EventQuarantine).insert({
-        chainId: log.chainId,
-        contractAddress: log.address.toLowerCase(),
-        txHash: log.transactionHash,
-        logIndex: log.logIndex,
-        blockNumber: log.blockNumber.toString(),
-        topic0,
-        reason,
-        rawLog: { topics: log.topics, data: log.data },
-        detail,
+      await this.quarantine.record({
+        log,
+        reason: input.reason,
+        failureKind: input.failureKind,
+        detail: input.detail,
       });
-    } catch (err) {
-      if (!this.isUniqueViolation(err)) throw err;
-      // Already quarantined for this identity; replay is idempotent.
+    } catch (error) {
+      this.logger.error(
+        `Failed to persist malformed-log quarantine: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 
   private isUniqueViolation(err: unknown): boolean {
     if (typeof err !== 'object' || err === null) return false;
     const code = (err as { code?: string }).code;
-    // Postgres (production) uses the SQLSTATE code; sqlite (used only in the
-    // fast in-memory integration test) reports its own constraint code.
     return code === PG_UNIQUE_VIOLATION || code === 'SQLITE_CONSTRAINT';
+  }
+
+  /**
+   * Observable quarantine inspection: counts events that still block readiness.
+   * Replayed rows no longer block.
+   */
+  async getQuarantineCount(chainId?: number): Promise<number> {
+    return this.quarantine.getBlockingCount(chainId);
+  }
+
+  /**
+   * Checks whether observable quarantine status blocks readiness.
+   * If any open quarantined event is present, readiness fails closed.
+   */
+  async isReadinessBlockedByQuarantine(chainId?: number): Promise<boolean> {
+    const count = await this.getQuarantineCount(chainId);
+    return count > 0;
   }
 }

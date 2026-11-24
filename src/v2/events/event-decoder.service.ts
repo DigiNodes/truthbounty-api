@@ -10,9 +10,9 @@ import {
 } from './event-schema-registry';
 
 export type DecodeResult =
-  | { status: 'decoded'; description: LogDescription }
-  | { status: 'unknown_signature' }
-  | { status: 'decode_error'; error: string };
+  | { status: 'decoded'; description: LogDescription; signature: string; topic0: string | null }
+  | { status: 'unknown_signature'; topic0: string | null }
+  | { status: 'decode_error'; error: string; topic0: string | null };
 
 export type NormalizeResult =
   | { status: 'normalized'; event: NormalizedEvent }
@@ -30,7 +30,7 @@ function toJsonSafe(value: unknown): unknown {
   return value;
 }
 
-function argsToObject(description: LogDescription): Record<string, unknown> {
+export function argsToObject(description: LogDescription): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   description.fragment.inputs.forEach((input, index) => {
     const name = input.name || `arg${index}`;
@@ -41,19 +41,33 @@ function argsToObject(description: LogDescription): Record<string, unknown> {
 
 @Injectable()
 export class EventDecoderService {
-  /** Attempt to decode a raw log against the given ABI. Never throws. */
+  /**
+   * Attempt to decode a raw log against the given ABI. Never throws.
+   * 
+   * Events are now keyed by canonical signature/topic0 instead of name alone
+   * to properly support overloaded events and detect drift.
+   */
   decode(log: RawLog, iface: Interface): DecodeResult {
+    const topic0 = log.topics[0] ?? null;
+    
     try {
       const description = iface.parseLog({
         topics: log.topics,
         data: log.data,
       });
-      if (!description) return { status: 'unknown_signature' };
-      return { status: 'decoded', description };
+      if (!description) {
+        return { status: 'unknown_signature', topic0 };
+      }
+      
+      // Compute canonical signature for event keying
+      const signature = description.fragment.format('sighash');
+      
+      return { status: 'decoded', description, signature, topic0 };
     } catch (err) {
       return {
         status: 'decode_error',
         error: err instanceof Error ? err.message : String(err),
+        topic0,
       };
     }
   }
@@ -63,26 +77,34 @@ export class EventDecoderService {
    * Returns `artifact_drift` if the ABI decoded an event name this pipeline
    * has no canonical mapping for yet, since that is a real signal the
    * approved artifact has moved ahead of what's been reviewed here.
+   * 
+   * Events are keyed by canonical signature to support overloads.
    */
   normalize(
     log: RawLog,
     artifactVersion: string,
     description: LogDescription,
+    signature: string,
   ): NormalizeResult {
     const { name } = description;
-    if (!KNOWN_EVENT_NAMES.has(name)) {
+    
+    // For overloaded events, we need to check the signature-based mapping first
+    // Fall back to name-based mapping for backward compatibility
+    const mappingKey = KNOWN_EVENT_NAMES.has(signature) ? signature : name;
+    
+    if (!KNOWN_EVENT_NAMES.has(mappingKey)) {
       return { status: 'artifact_drift', eventName: name };
     }
 
     const args = argsToObject(description);
-    const mapping = EVENT_SCHEMA_REGISTRY[name];
+    const mapping = EVENT_SCHEMA_REGISTRY[mappingKey];
 
     const pick = (argName?: string): string | null => {
       if (!argName) return null;
       const value = args[argName];
       if (value === undefined || value === null) return null;
       if (typeof value === 'object') return JSON.stringify(value);
-      return String(value as string | number | boolean);
+      return String(value);
     };
 
     const event: NormalizedEvent = {
@@ -90,6 +112,7 @@ export class EventDecoderService {
       contractAddress: log.address.toLowerCase(),
       artifactVersion,
       eventName: name,
+      eventSignature: signature,
       txHash: log.transactionHash,
       logIndex: log.logIndex,
       blockNumber: log.blockNumber,

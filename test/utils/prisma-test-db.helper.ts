@@ -15,8 +15,14 @@ import * as os from 'os';
  * bypasses migration history entirely and creates tables straight from the
  * current schema, so it's unaffected by that gap.
  */
-export function setupPrismaTestDatabase(testName: string): { databaseUrl: string; cleanup: () => void } {
-  const dbPath = path.join(os.tmpdir(), `truthbounty-ai-e2e-${testName}-${Date.now()}.db`);
+export function setupPrismaTestDatabase(testName: string): {
+  databaseUrl: string;
+  cleanup: () => void;
+} {
+  const dbPath = path.join(
+    os.tmpdir(),
+    `truthbounty-ai-e2e-${testName}-${Date.now()}.db`,
+  );
   const databaseUrl = `file:${dbPath}`;
 
   execSync(`npx prisma db push --url="${databaseUrl}" --accept-data-loss`, {
