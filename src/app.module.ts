@@ -19,6 +19,7 @@ import { IdentityModule } from './identity/identity.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 import throttlerConfig from './config/throttler.config';
+import aiConfig from './ai-assistant/config/ai.config';
 import { WalletThrottlerGuard } from './common/guards/wallet-throttler.guard';
 import { SybilResistanceModule } from './sybil-resistance/sybil-resistance.module';
 import { AggregationModule } from './aggregation/aggregation.module';
@@ -302,6 +303,7 @@ async function createThrottlerStorage(
         throttlerConfig,
         sybilConfig,
         finalityPolicyConfig,
+        aiConfig,
       ],
       ignoreEnvFile: true,
       skipProcessEnv: true,

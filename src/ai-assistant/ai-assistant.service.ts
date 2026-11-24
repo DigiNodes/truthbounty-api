@@ -164,11 +164,13 @@ ${context}
       message: assistantMessage,
       metadata: {
         provider: llmResponse.provider,
+        model: llmResponse.model,
         latencyMs,
         tokens: llmResponse.usage?.total_tokens || 0,
         citations,
       },
     };
+
   }
 
   async deleteConversation(userId: string, conversationId: string) {

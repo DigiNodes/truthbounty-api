@@ -20,6 +20,8 @@ export function configurationArtifacts(): Record<string, string> {
     '',
     'Legacy `RELEASE_MANIFEST_MAX_AGE_MS` must migrate to `CONTRACT_RELEASE_MAX_AGE_DAYS`; downstream milliseconds are derived. Same-key file precedence is process environment > `.env.local` > `.env`; duplicate assignments inside either file are rejected.',
     '',
+    '`AI_PROVIDER` and `DEFAULT_LLM_PROVIDER` select one shared provider; when both are supplied they must agree. Staging/production require an explicit real provider and its matching API key, and reject `mock`.',
+    '',
     '| Variable | Type | Default | Required explicitly when deployed | Aliases (use only one) |',
     '| --- | --- | --- | --- | --- |',
   ];

@@ -3,6 +3,7 @@ import {
   NotFoundException,
   Logger,
   ForbiddenException,
+  ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AnalyticsConsentService } from '../../analytics/analytics-consent.service';
@@ -14,6 +15,7 @@ import { CreateConversationDto, SendMessageDto } from '../dto/ai-assistant.dto';
 @Injectable()
 export class AiAssistantService {
   private readonly logger = new Logger(AiAssistantService.name);
+  private readonly mutationClaims = new Map<string, number>();
 
   constructor(
     private prisma: PrismaService,
@@ -79,6 +81,15 @@ export class AiAssistantService {
       );
     }
 
+    // #879: claim the mutation before the first write so a retried request
+    // cannot append a second user message and LLM response.
+    const claimKey = `${userId}:${conversationId}:${dto.content}`;
+    const claimedAt = this.mutationClaims.get(claimKey);
+    if (claimedAt !== undefined && Date.now() - claimedAt < 60_000) {
+      throw new ConflictException('Duplicate message request');
+    }
+    this.mutationClaims.set(claimKey, Date.now());
+
     // 0. Safety Check
     const safetyCheck = this.safetyGuardrail.checkContent(dto.content);
 
@@ -114,11 +125,15 @@ export class AiAssistantService {
     }
 
     // 2. Retrieve Conversation History
-    const history = await this.prisma.message.findMany({
-      where: { conversationId },
-      orderBy: { createdAt: 'asc' },
-      take: 10, // Short-term conversation memory limit
-    });
+    // #880: take the newest messages first, then restore chronological order.
+    // Ascending + take(10) kept the oldest turns and dropped the live context.
+    const history = (
+      await this.prisma.message.findMany({
+        where: { conversationId },
+        orderBy: { createdAt: 'desc' },
+        take: 10, // Short-term conversation memory limit
+      })
+    ).reverse();
 
     // 3. RAG Retrieval
     const { context, citations } = await this.ragService.retrieveContext(
@@ -194,11 +209,13 @@ ${context}
       message: assistantMessage,
       metadata: {
         provider: llmResponse.provider,
+        model: llmResponse.model,
         latencyMs,
         tokens: llmResponse.usage?.total_tokens || 0,
         citations,
       },
     };
+
   }
 
   async deleteConversation(userId: string, conversationId: string) {

@@ -1,4 +1,5 @@
 import { isIP } from 'node:net';
+import { ConfiguredAiProvider, providerSecretKey } from './ai-provider';
 
 /** One definition for parsing, compatibility aliases and operator documentation. */
 export interface Field<T> {
@@ -333,8 +334,8 @@ export const runtimeSchema = {
   NOTIFICATION_QUEUE_DELAY: integer(0, 0),
   NOTIFICATION_MAX_RETRIES: integer(5, 0, 100),
   NOTIFICATION_RETRY_DELAY: integer(2000),
-  AI_PROVIDER: choice(['openai', 'mock'], 'mock'),
-  DEFAULT_LLM_PROVIDER: choice(['openai', 'anthropic'], 'openai'),
+  AI_PROVIDER: choice(['openai', 'anthropic', 'mock'], 'mock'),
+  DEFAULT_LLM_PROVIDER: choice(['openai', 'anthropic', 'mock'], 'mock'),
   OPENAI_API_KEY: secret(),
   ANTHROPIC_API_KEY: secret(),
   OPENAI_BASE_URL: { ...url(), default: 'https://api.openai.com/v1' },
@@ -448,6 +449,19 @@ export const runtimeSchema = {
   FCM_SERVER_KEY: secret(),
   WEBHOOK_REQUIRE_HTTPS: boolean(true),
   WEBHOOK_TIMEOUT_MS: integer(10000),
+  WEBHOOK_SECRET_KEYS: {
+    ...secret(),
+    description:
+      'JSON object mapping webhook secret key IDs to base64url-encoded 32-byte AES-GCM keys',
+  },
+  WEBHOOK_SECRET_ACTIVE_KEY_ID: {
+    ...text(),
+    description: 'key ID used to encrypt newly configured webhook secrets',
+  },
+  WEBHOOK_SECRET_KEY: {
+    ...secret(),
+    description: 'base64url-encoded 32-byte AES-GCM key for single-key deployments',
+  },
   AUDIT_HASH_SECRET: secret(true),
   AUDIT_ARCHIVAL_BUCKET: text({ default: 'audit-archive' }),
   AUDIT_ARCHIVAL_ENABLED: boolean(false),
@@ -534,6 +548,23 @@ export function parseRuntimeConfig(env: Environment): RuntimeConfig {
     }
   }
   const config = result as RuntimeConfig;
+  const aiProviderSupplied = env.AI_PROVIDER !== undefined;
+  const llmProviderSupplied = env.DEFAULT_LLM_PROVIDER !== undefined;
+  if (
+    aiProviderSupplied &&
+    llmProviderSupplied &&
+    config.AI_PROVIDER !== config.DEFAULT_LLM_PROVIDER
+  )
+    errors.push('AI_PROVIDER: conflicts with DEFAULT_LLM_PROVIDER');
+  if (aiProviderSupplied !== llmProviderSupplied) {
+    if (aiProviderSupplied)
+      result.DEFAULT_LLM_PROVIDER = result.AI_PROVIDER;
+    else result.AI_PROVIDER = result.DEFAULT_LLM_PROVIDER;
+  }
+  if (deployed && !aiProviderSupplied && !llmProviderSupplied)
+    errors.push('AI_PROVIDER: required explicitly in staging/production');
+  const effectiveAiProvider = (result.AI_PROVIDER ??
+    result.DEFAULT_LLM_PROVIDER) as ConfiguredAiProvider | undefined;
   if (
     config.SIWE_SUPPORTED_CHAIN_IDS &&
     !config.SIWE_SUPPORTED_CHAIN_IDS.includes(String(config.CHAIN_ID))
@@ -668,10 +699,15 @@ export function parseRuntimeConfig(env: Environment): RuntimeConfig {
       errors.push(
         'IPFS_PROVIDER: local storage forbidden in staging/production',
       );
-    if (config.AI_PROVIDER === 'mock')
+    if (effectiveAiProvider === 'mock') {
       errors.push('AI_PROVIDER: mock forbidden in staging/production');
-    if (config.AI_PROVIDER === 'openai' && !config.OPENAI_API_KEY)
-      errors.push('OPENAI_API_KEY: required for AI_PROVIDER');
+      errors.push('DEFAULT_LLM_PROVIDER: mock forbidden in staging/production');
+    }
+    if (effectiveAiProvider && effectiveAiProvider !== 'mock') {
+      const secretKey = providerSecretKey(effectiveAiProvider);
+      if (secretKey && !result[secretKey])
+        errors.push(`${secretKey}: required for ${effectiveAiProvider} provider`);
+    }
     if (config.CONTRACT_ADDRESS_MANIFEST)
       errors.push(
         'CONTRACT_ADDRESS_MANIFEST: migrate to pinned canonical release',

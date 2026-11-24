@@ -8,6 +8,10 @@ import { AuditTrailService } from '../audit/services/audit-trail.service';
 import { Claim } from './entities/claim.entity';
 import { CID } from 'multiformats/cid';
 
+jest.mock('multiformats/cid', () => ({
+  CID: { parse: jest.fn() },
+}));
+
 const cidParse = CID.parse as unknown as jest.Mock;
 
 /**

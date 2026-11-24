@@ -3,6 +3,10 @@ import { readFileSync, promises as fsPromises } from 'fs';
 import path from 'path';
 import { CID } from 'multiformats/cid';
 import { verifyCIDIntegrity } from '../storage/cid-verifier';
+import {
+  EVIDENCE_CID_RAW_CODEC,
+  EVIDENCE_CID_SHA256_MULTIHASH_CODE,
+} from '../storage/evidence-cid.constants';
 
 describe('LocalFsIpfsProvider', () => {
   const tmpDir = path.join(process.cwd(), 'tmp-ipfs-test');
@@ -23,7 +27,8 @@ describe('LocalFsIpfsProvider', () => {
     const res = await provider.add(stream, { filename: 'greeting.txt' });
     const parsed = CID.parse(res.cid);
     expect(parsed.version).toBe(1);
-    expect(parsed.code).toBe(0x55);
+    expect(parsed.code).toBe(EVIDENCE_CID_RAW_CODEC);
+    expect(parsed.multihash.code).toBe(EVIDENCE_CID_SHA256_MULTIHASH_CODE);
     expect(await verifyCIDIntegrity(buf, res.cid)).toBe(true);
     expect(await verifyCIDIntegrity(Buffer.from('altered'), res.cid)).toBe(false);
     expect(res.size).toBe(buf.length);

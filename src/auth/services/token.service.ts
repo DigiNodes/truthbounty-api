@@ -241,10 +241,17 @@ export class TokenService {
     }
 
     const requestedTtl = options.ttlSeconds ?? this.CAPABILITY_MAX_TTL_SECONDS;
-    const ttlSeconds = Math.min(
-      Math.max(1, requestedTtl),
-      this.CAPABILITY_MAX_TTL_SECONDS,
-    );
+
+if (
+  !Number.isSafeInteger(requestedTtl) ||
+  requestedTtl < 1 ||
+  requestedTtl > this.CAPABILITY_MAX_TTL_SECONDS
+) {
+  this.logger.warn('Capability issuance failed [invalid-ttl]');
+  throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
+}
+
+const ttlSeconds = requestedTtl;
 
     const nonce = randomBytes(16).toString('hex');
     const payload: Omit<CapabilityTokenPayload, 'iat' | 'exp'> = {
