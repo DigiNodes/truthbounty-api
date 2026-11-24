@@ -25,6 +25,7 @@ import {
   toNotificationPreferenceResponse,
 } from '../dto/preferences-response.dto';
 import { requireDeliveryChannel } from '../delivery/delivery-channel';
+import { UpdatePreferenceSettingsDto } from '../dto/update-preference-settings.dto';
 
 @ApiTags('Notifications - Preferences')
 @Controller('api/v2/notifications/preferences')
@@ -69,17 +70,10 @@ export class PreferencesController {
   })
   async updatePreferences(
     @CurrentUser('id') userId: string,
-    @Body() updates: PatchPreferencesDto,
-  ): Promise<NotificationPreferenceResponseDto> {
-    // Log metadata only. Never log the request body: it may contain secrets.
-    this.logger.debug(
-      `Updating preferences for user ${userId}: fields=${Object.keys(updates ?? {}).join(',')}`,
-    );
-    const preferences = await this.preferenceEnforcer.updatePreferences(
-      userId,
-      updates as unknown as Partial<NotificationPreference>,
-    );
-    return toNotificationPreferenceResponse(preferences);
+    @Body() updates: UpdatePreferenceSettingsDto,
+  ): Promise<NotificationPreference> {
+    this.logger.debug(`Updating preferences for user ${userId}`, updates);
+    return this.preferenceEnforcer.updatePreferences(userId, updates);
   }
 
   /**
