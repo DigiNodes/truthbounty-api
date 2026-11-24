@@ -4,8 +4,66 @@ import { Repository } from 'typeorm';
 import { NotificationPreference } from '../entities/notification-preference.entity';
 import { DeliveryChannel } from '../interfaces/notification.types';
 import { EventType } from '../enums/event-type.enum';
+import { RedisService } from '../../redis/redis.service';
+import { DeliveryHistory } from '../entities/delivery-history.entity';
+import { Notification } from '../entities/notification.entity';
+import {
+  parseDeliveryChannel,
+  normalizeChannelPreferences,
+  createDefaultChannelPreferences,
+} from '../delivery/delivery-channel';
 
 const QUIET_HOURS_TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+/**
+ * EMAIL channels eligible for the email-specific cap.
+ */
+const EMAIL_CHANNELS: ReadonlySet<DeliveryChannel> = new Set([DeliveryChannel.EMAIL]);
+
+/**
+ * Channels that are counted towards the overall daily notification cap.
+ * Digest notifications are excluded; they go through a separate path.
+ */
+const QUOTA_ELIGIBLE_CHANNELS: ReadonlySet<DeliveryChannel> = new Set([
+  DeliveryChannel.IN_APP,
+  DeliveryChannel.EMAIL,
+  DeliveryChannel.PUSH,
+  DeliveryChannel.WEBHOOK,
+  DeliveryChannel.WEBSOCKET,
+  DeliveryChannel.SMS,
+]);
+
+/**
+ * Result of a quota-reservation attempt.
+ */
+export interface QuotaResult {
+  /** Whether the delivery is permitted under the current cap. */
+  allowed: boolean;
+  /** Machine-readable denial reason when allowed=false. */
+  reason?: 'overall_cap_reached' | 'email_cap_reached';
+  /** ISO-8601 timestamp of the next UTC calendar-day reset (00:00:00 UTC). */
+  resetAt?: string;
+}
+
+/**
+ * Atomically check and increment a Redis counter with a calendar-day TTL.
+ *
+ * Returns the new counter value after increment, or throws if Redis is
+ * unavailable (callers must handle the throw and fall back to the DB).
+ *
+ * Lua guarantees atomicity across the INCR + EXPIREAT pair so concurrent
+ * workers on separate instances cannot race past the cap.
+ */
+const LUA_INCR_CALDAY = `
+local key     = KEYS[1]
+local cap     = tonumber(ARGV[1])
+local expiry  = tonumber(ARGV[2])
+local current = redis.call('INCR', key)
+if current == 1 then
+  redis.call('EXPIREAT', key, expiry)
+end
+return current
+`;
 
 /**
  * PreferenceEnforcer
@@ -15,7 +73,7 @@ const QUIET_HOURS_TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
  * - Channel enablement (in-app, email, push, webhook, websocket)
  * - Category subscriptions (event type filtering)
  * - Quiet hours (timezone-aware)
- * - Rate limiting (max per-day caps)
+ * - Rate limiting (max per-day caps) — atomically enforced via Redis INCR
  * - Digest mode (batch delivery)
  */
 @Injectable()
@@ -25,6 +83,11 @@ export class PreferenceEnforcer {
   constructor(
     @InjectRepository(NotificationPreference)
     private preferenceRepository: Repository<NotificationPreference>,
+    @InjectRepository(DeliveryHistory)
+    private deliveryHistoryRepository: Repository<DeliveryHistory>,
+    @InjectRepository(Notification)
+    private notificationRepository: Repository<Notification>,
+    private redisService: RedisService,
   ) {}
 
   /**
@@ -176,26 +239,219 @@ export class PreferenceEnforcer {
   }
 
   /**
-   * Check if user has exceeded rate limit for notifications
+   * Atomically check and reserve quota for a notification delivery.
+   *
+   * Policy:
+   *  - Window: UTC calendar day (resets at 00:00:00 UTC).
+   *  - Overall cap: maxNotificationsPerDay across all QUOTA_ELIGIBLE_CHANNELS.
+   *  - Email cap: maxEmailsPerDay for EMAIL channel only.
+   *  - Null/undefined cap = unlimited.
+   *  - Idempotent deliveries (same idempotency key already delivered) do not
+   *    consume quota; callers should check idempotency before calling this.
+   *  - If Redis is unavailable the method falls back to a DB count. The DB
+   *    count is a read-then-check (not atomic) but is the safe-degraded path.
+   *  - If even the DB fallback fails, the method denies delivery (fail-closed).
+   *
+   * @param userId   The recipient user id.
+   * @param channel  The delivery channel being attempted.
+   * @returns QuotaResult indicating whether delivery is permitted.
    */
   async canDeliverNotification(
     userId: string,
     channel: DeliveryChannel,
-  ): Promise<boolean> {
+  ): Promise<QuotaResult> {
     const pref = await this.getPreferences(userId);
 
-    // Check overall max per day
-    if (pref.maxNotificationsPerDay) {
-      // In production, would query notification history count for today
-      // For now, allow (rate limiting counter would be in Redis)
+    // Calculate the UTC midnight that ends today (= first second of tomorrow).
+    const resetAt = this.utcMidnightTimestamp();
+    const resetAtIso = new Date(resetAt * 1000).toISOString();
+
+    // ── Overall daily cap ───────────────────────────────────────────────────
+    if (
+      pref.maxNotificationsPerDay != null &&
+      QUOTA_ELIGIBLE_CHANNELS.has(channel)
+    ) {
+      const overallKey = `quota:overall:${userId}:${this.utcDateKey()}`;
+      const overallCount = await this.atomicIncrement(
+        overallKey,
+        pref.maxNotificationsPerDay,
+        resetAt,
+      );
+
+      if (overallCount === null) {
+        // Redis unavailable — fall back to DB count (read-only, not atomic).
+        const dbCount = await this.countTodayDeliveriesFromDb(userId, null);
+        if (dbCount >= pref.maxNotificationsPerDay) {
+          return {
+            allowed: false,
+            reason: 'overall_cap_reached',
+            resetAt: resetAtIso,
+          };
+        }
+      } else if (overallCount > pref.maxNotificationsPerDay) {
+        // Undo the increment we just made — we're over the cap.
+        await this.decrementQuota(overallKey).catch(() => {/* best-effort */});
+        return {
+          allowed: false,
+          reason: 'overall_cap_reached',
+          resetAt: resetAtIso,
+        };
+      }
     }
 
-    // Check email-specific cap
-    if (channel === DeliveryChannel.EMAIL && pref.maxEmailsPerDay) {
-      // Check email count today
+    // ── Email-specific daily cap ─────────────────────────────────────────────
+    if (pref.maxEmailsPerDay != null && EMAIL_CHANNELS.has(channel)) {
+      const emailKey = `quota:email:${userId}:${this.utcDateKey()}`;
+      const emailCount = await this.atomicIncrement(
+        emailKey,
+        pref.maxEmailsPerDay,
+        resetAt,
+      );
+
+      if (emailCount === null) {
+        // DB fallback.
+        const dbEmailCount = await this.countTodayDeliveriesFromDb(
+          userId,
+          DeliveryChannel.EMAIL,
+        );
+        if (dbEmailCount >= pref.maxEmailsPerDay) {
+          // Roll back the overall counter we may have already incremented.
+          if (pref.maxNotificationsPerDay != null) {
+            const overallKey = `quota:overall:${userId}:${this.utcDateKey()}`;
+            await this.decrementQuota(overallKey).catch(() => {/* best-effort */});
+          }
+          return {
+            allowed: false,
+            reason: 'email_cap_reached',
+            resetAt: resetAtIso,
+          };
+        }
+      } else if (emailCount > pref.maxEmailsPerDay) {
+        await this.decrementQuota(emailKey).catch(() => {/* best-effort */});
+        // Roll back overall counter too.
+        if (pref.maxNotificationsPerDay != null) {
+          const overallKey = `quota:overall:${userId}:${this.utcDateKey()}`;
+          await this.decrementQuota(overallKey).catch(() => {/* best-effort */});
+        }
+        return {
+          allowed: false,
+          reason: 'email_cap_reached',
+          resetAt: resetAtIso,
+        };
+      }
     }
 
-    return true;
+    return { allowed: true };
+  }
+
+  // ── Private quota helpers ──────────────────────────────────────────────────
+
+  /**
+   * Returns the UTC "YYYY-MM-DD" key for today, used as part of the Redis key
+   * so the counter automatically partitions by calendar day.
+   */
+  private utcDateKey(): string {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  /**
+   * Returns the Unix timestamp (seconds) of midnight UTC that starts tomorrow,
+   * i.e. the moment the current calendar day resets.
+   */
+  private utcMidnightTimestamp(): number {
+    const now = new Date();
+    const midnight = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1),
+    );
+    return Math.floor(midnight.getTime() / 1000);
+  }
+
+  /**
+   * Atomically increment a Redis counter, setting an expiry on first creation.
+   *
+   * Returns the new counter value after increment, or null when Redis is
+   * unavailable (callers must fall back to the DB).
+   *
+   * @param key      Redis key.
+   * @param _cap     The cap (not enforced here — enforcement is in the caller).
+   * @param expiry   Unix timestamp at which the key should expire.
+   */
+  private async atomicIncrement(
+    key: string,
+    _cap: number,
+    expiry: number,
+  ): Promise<number | null> {
+    try {
+      const result = await this.redisService.eval(
+        LUA_INCR_CALDAY,
+        1,
+        key,
+        String(_cap),
+        String(expiry),
+      );
+      return typeof result === 'number' ? result : Number(result);
+    } catch (err) {
+      this.logger.warn(
+        `Redis quota increment failed for key ${key}: ${(err as Error).message}. Falling back to DB.`,
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Decrement a Redis counter by 1 (best-effort rollback on cap exceeded).
+   */
+  private async decrementQuota(key: string): Promise<void> {
+    try {
+      await this.redisService.eval(
+        `return redis.call('DECR', KEYS[1])`,
+        1,
+        key,
+      );
+    } catch {
+      // best-effort — do not propagate
+    }
+  }
+
+  /**
+   * Count today's accepted (non-failed) delivery attempts from the DB.
+   *
+   * Joins delivery_history → notifications to scope by userId.
+   * channel=null counts across all channels.
+   *
+   * "Today" is defined as the UTC calendar day.
+   */
+  private async countTodayDeliveriesFromDb(
+    userId: string,
+    channel: DeliveryChannel | null,
+  ): Promise<number> {
+    try {
+      const startOfDay = new Date();
+      startOfDay.setUTCHours(0, 0, 0, 0);
+
+      const qb = this.deliveryHistoryRepository
+        .createQueryBuilder('dh')
+        .innerJoin(
+          Notification,
+          'n',
+          'n.id = dh.notificationId AND n.userId = :userId',
+          { userId },
+        )
+        .where('dh.createdAt >= :startOfDay', { startOfDay })
+        .andWhere("dh.status NOT IN ('failed', 'permanent_failure')");
+
+      if (channel !== null) {
+        qb.andWhere('dh.channel = :channel', { channel });
+      }
+
+      return qb.getCount();
+    } catch (err) {
+      this.logger.error(
+        `DB fallback count failed for user ${userId}: ${(err as Error).message}`,
+      );
+      // Fail-closed: treat as over cap.
+      return Number.MAX_SAFE_INTEGER;
+    }
   }
 
   /**
@@ -216,14 +472,15 @@ export class PreferenceEnforcer {
   }
 
   /**
-   * Check all constraints for delivery
-   * Returns { allowed, reason } to help with debugging
+   * Check all constraints for delivery.
+   * Returns { allowed, reason, resetAt } to aid delivery orchestration.
+   * resetAt is populated when a quota cap is the reason for denial.
    */
   async shouldDeliver(
     userId: string,
     eventType: EventType,
     channel: DeliveryChannel,
-  ): Promise<{ allowed: boolean; reason?: string }> {
+  ): Promise<{ allowed: boolean; reason?: string; resetAt?: string }> {
     // Check channel enabled
     const channelEnabled = await this.isChannelEnabled(userId, channel);
     if (!channelEnabled) {
@@ -243,10 +500,16 @@ export class PreferenceEnforcer {
       return { allowed: false, reason: 'In quiet hours (email only)' };
     }
 
-    // Check rate limits
-    const canDeliver = await this.canDeliverNotification(userId, channel);
-    if (!canDeliver) {
-      return { allowed: false, reason: `Daily limit reached for ${channel}` };
+    // Check rate limits (atomic quota reservation)
+    const quota = await this.canDeliverNotification(userId, channel);
+    if (!quota.allowed) {
+      return {
+        allowed: false,
+        reason: quota.reason === 'email_cap_reached'
+          ? `Daily email limit reached for ${channel}`
+          : `Daily limit reached for ${channel}`,
+        resetAt: quota.resetAt,
+      };
     }
 
     return { allowed: true };

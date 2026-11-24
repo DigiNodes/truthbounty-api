@@ -123,3 +123,24 @@ All outbound webhook payloads use a versioned envelope. The envelope version is 
 
 ### Required Tests
 - Receiver timeout, 2xx/4xx/5xx handling, redirect rejection, duplicate delivery, key rotation, SSRF target rejection, and bounded retry behavior.
+## Module convergence and truthful delivery outcomes (PREWAVE-BE-018)
+
+- Exactly one production notification module is registered:
+  `src/notifications/notifications.module.ts`. The duplicate
+  `notifications.module.new.ts`, the legacy `notification.module.ts`
+  (which imported the non-existent `@instanct/nestjs/common` package and a
+  missing `notification.service`), and its `notification.controller.ts` and
+  `notification.processor.ts` have been removed.
+- The production worker is `src/notifications/services/notification.processor.ts`
+  on the `notifications` queue. No second consumer or provider is registered.
+- Email delivery resolves the recipient from the user's notification
+  preferences (`NotificationPreferencesService.getUserPreferences().emailAddress`).
+  There is no placeholder fallback: an unresolved recipient fails closed with
+  `No verified recipient email on record`.
+- A missing email provider is a failure (`Email provider not configured`), not a
+  simulated success. A delivery row is marked `DELIVERED` only after a
+  provider-confirmed send; `NotificationService.processDelivery()` records
+  attempts as `PENDING` and never claims delivery on its own.
+- Push remains explicitly unimplemented and is reported as `FAILED` with
+  `Push notifications not implemented`, so it can never be recorded as
+  delivered.
