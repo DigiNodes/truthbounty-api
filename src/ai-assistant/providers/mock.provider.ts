@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Observable, from, of } from 'rxjs';
 import { concatMap, delay } from 'rxjs';
 import {
@@ -7,6 +8,7 @@ import {
   AiProvider,
   AiStreamChunk,
 } from './ai-provider.interface';
+import { mockProviderAllowed } from '../../config/ai-provider';
 
 const estimateTokens = (text: string): number =>
   Math.max(1, Math.ceil(text.length / 4));
@@ -21,6 +23,19 @@ export class MockProvider implements AiProvider {
   readonly name = 'mock';
 
   private available = true;
+
+  constructor(private readonly configService?: ConfigService) {}
+
+  private assertAllowed(): void {
+    const allowed =
+      !this.configService ||
+      mockProviderAllowed(
+        this.configService.get<string>('NODE_ENV'),
+        this.configService.get<string | boolean>('LOCAL_DEV_MODE'),
+      );
+    if (!allowed)
+      throw new ServiceUnavailableException('Mock provider is not available.');
+  }
 
   /** Test hook to simulate an outage and exercise AiProviderRouterService fallback. */
   setAvailable(available: boolean): void {
@@ -38,6 +53,7 @@ export class MockProvider implements AiProvider {
   }
 
   async chat(request: AiChatRequest): Promise<AiChatResponse> {
+    this.assertAllowed();
     const promptTokens = request.messages.reduce(
       (sum, m) => sum + estimateTokens(m.content),
       0,
@@ -56,6 +72,7 @@ export class MockProvider implements AiProvider {
   }
 
   stream(request: AiChatRequest): Observable<AiStreamChunk> {
+    this.assertAllowed();
     const content = this.buildReply(request);
     const words = content.split(' ');
     const chunkSize = Math.max(1, Math.ceil(words.length / 5));
@@ -93,6 +110,12 @@ export class MockProvider implements AiProvider {
   }
 
   async isAvailable(): Promise<boolean> {
-    return this.available;
+    const allowed =
+      !this.configService ||
+      mockProviderAllowed(
+        this.configService.get<string>('NODE_ENV'),
+        this.configService.get<string | boolean>('LOCAL_DEV_MODE'),
+      );
+    return allowed && this.available;
   }
 }

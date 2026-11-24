@@ -82,6 +82,14 @@ Template resolution fails closed. An event whose type is not present in the cano
 ### Escaping and Variables
 Placeholders are filled from event payloads treated as untrusted input. Values are escaped for the target channel: HTML escaping for `HTML` bodies, Markdown escaping for `Markdown` bodies, and plain-text sanitization for subjects and text bodies. Missing template variables cause rendering to fail closed rather than emitting partial output.
 
+#### Stored HTML templates (`TemplateRenderer`)
+- Markup in a stored `htmlTemplate` is authored, trusted content and is kept as written.
+- Every `{{variable}}` value interpolated into `htmlTemplate` is untrusted. It is HTML-escaped (`&`, `<`, `>`, `"`, `'`), so it renders as text in both element-text and quoted-attribute positions.
+- When a value is the start of an `href` or `src` attribute, it must also pass `sanitizeActionUrl`; otherwise the attribute is left empty.
+- There is no trusted-HTML escape hatch for interpolated values: event context can never inject markup.
+- `actionUrl` returned by the renderer, and the call-to-action link built by the email channel, go through `sanitizeActionUrl`. It allows only `http:`, `https:`, `mailto:` and root-relative `/path` URLs, and rejects `javascript:`, `data:`, other schemes, protocol-relative `//host` URLs, and values containing whitespace, backslashes or control characters.
+- Subject, plaintext body and Markdown output are not HTML-escaped by the renderer.
+
 ## Future Extensibility
 The modular architecture permits drop-in integrations for SMS, Slack, Discord, Telegram, and AI-generated summaries without modifying the core queue processor.
 

@@ -8,6 +8,8 @@ A release file must match `CONTRACT_RELEASE_SHA256`, `CONTRACT_RELEASE_ID`, `CHA
 
 Legacy `RELEASE_MANIFEST_MAX_AGE_MS` must migrate to `CONTRACT_RELEASE_MAX_AGE_DAYS`; downstream milliseconds are derived. Same-key file precedence is process environment > `.env.local` > `.env`; duplicate assignments inside either file are rejected.
 
+`AI_PROVIDER` and `DEFAULT_LLM_PROVIDER` select one shared provider; when both are supplied they must agree. Staging/production require an explicit real provider and its matching API key, and reject `mock`.
+
 | Variable | Type | Default | Required explicitly when deployed | Aliases (use only one) |
 | --- | --- | --- | --- | --- |
 | APP_VERSION | non-empty string | dev | no | npm_package_version |
@@ -133,8 +135,8 @@ their settings are not accepted as provider choices.
 | NOTIFICATION_QUEUE_DELAY | integer 0..9007199254740991 | 0 | no | - |
 | NOTIFICATION_MAX_RETRIES | integer 0..100 | 5 | no | - |
 | NOTIFICATION_RETRY_DELAY | integer 1..9007199254740991 | 2000 | no | - |
-| AI_PROVIDER | openai / mock | mock | no | - |
-| DEFAULT_LLM_PROVIDER | openai / anthropic | openai | no | - |
+| AI_PROVIDER | openai / anthropic / mock | mock | no | - |
+| DEFAULT_LLM_PROVIDER | openai / anthropic / mock | mock | no | - |
 | OPENAI_API_KEY | non-empty string | (unset) | no | - |
 | ANTHROPIC_API_KEY | non-empty string | (unset) | no | - |
 | OPENAI_BASE_URL | URL (https:, http:) | https://api.openai.com/v1 | no | - |
