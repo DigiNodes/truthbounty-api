@@ -171,27 +171,57 @@ export class DurableAuditStreamStore extends AuditStreamStore {
   }
 
   private mapToRecord(entity: AuditStreamRecordEntity): AuditStreamRecord {
+    const timestamp = new Date(entity.timestamp).toISOString();
     return {
       streamId: entity.streamId,
       sequence: entity.sequence,
       previousHash: entity.previousHash,
       payloadHash: entity.payloadHash,
       hmacSignature: entity.hmacSignature,
+      integrityHash: entity.hmacSignature,
       keyId: entity.keyId,
-      timestamp: new Date(entity.timestamp),
-      createdAt: entity.createdAt,
+      timestamp,
+      createdAt: entity.createdAt.toISOString(),
+      // Required payload fields - defaults for compatibility
+      eventId: '',
+      recordType: 'operational' as const,
+      action: '',
+      actorId: '',
+      actorType: 'system' as const,
+      targetType: '',
+      targetId: '',
+      capability: '',
+      authoritySource: 'service' as const,
+      authorityReference: '',
+      requestReference: '',
+      correlationId: '',
+      outcome: 'unknown',
+      chainContext: {
+        chainId: 0,
+        releaseId: '',
+        deploymentBlock: '0',
+        artifactChecksum: '0x',
+      },
     };
   }
 
   private mapToCheckpoint(
     entity: AuditStreamCheckpointEntity,
   ): AuditStreamCheckpoint {
+    const timestamp = entity.createdAt.toISOString();
     return {
       streamId: entity.streamId,
       sequence: entity.sequence,
       headHash: entity.headHash,
+      checkpointHash: entity.headHash,
       keyId: entity.keyId,
-      createdAt: entity.createdAt,
+      timestamp,
+      chainContext: {
+        chainId: 0,
+        releaseId: '',
+        deploymentBlock: '0',
+        artifactChecksum: '0x',
+      },
     };
   }
 }
