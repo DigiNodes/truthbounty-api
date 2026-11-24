@@ -8,6 +8,7 @@ import { DeliveryHistory } from '../entities/delivery-history.entity';
 import { Notification } from '../entities/notification.entity';
 import { DeliveryChannel } from '../interfaces/notification.types';
 import { EventType } from '../enums/event-type.enum';
+import { UpdatePreferenceSettingsDto } from '../dto/update-preference-settings.dto';
 import { RedisService } from '../../redis/redis.service';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -1031,24 +1032,229 @@ describe('PreferenceEnforcer', () => {
     });
   });
 
-  describe('updatePreferences', () => {
-    it('should update and save preferences', async () => {
-      const original = {
-        userId: 'user-1',
-        channels: { [DeliveryChannel.IN_APP]: true },
-      };
+describe('updatePreferences', () => {
+  it('should update valid editable preferences', async () => {
+    const original = {
+      id: 'preference-1',
+      userId: 'user-1',
+      channels: {
+        [DeliveryChannel.IN_APP]: true,
+        [DeliveryChannel.EMAIL]: true,
+      },
+      categorySubscriptions: {},
+      language: 'en',
+      lastModifiedAt: new Date('2026-01-01T00:00:00Z'),
+    };
 
-      mockPreferenceRepository.findOne.mockResolvedValue(original as any);
-      mockPreferenceRepository.save.mockResolvedValue({
-        ...original,
-        channels: { [DeliveryChannel.IN_APP]: false },
-      } as any);
+    mockPreferenceRepository.findOne.mockResolvedValue(original as any);
+    mockPreferenceRepository.save.mockImplementation(
+      async (preference) => preference as NotificationPreference,
+    );
 
-      await service.updatePreferences('user-1', {
-        channels: { [DeliveryChannel.IN_APP]: false },
-      });
+    const updates: UpdatePreferenceSettingsDto = {
+      channels: {
+        [DeliveryChannel.IN_APP]: false,
+        [DeliveryChannel.EMAIL]: true,
+      },
+      categorySubscriptions: {
+        [EventType.CLAIM_CREATED]: false,
+      },
+      language: 'es',
+      quietHours: {
+        enabled: true,
+        startTime: '22:00',
+        endTime: '08:00',
+        timezone: 'UTC',
+      },
+      digestPreferences: {
+        enabled: true,
+        frequency: 'DAILY',
+        deliveryTime: '09:00',
+      },
+    };
 
-      expect(mockPreferenceRepository.save).toHaveBeenCalled();
-    });
+    const result = await service.updatePreferences('user-1', updates);
+
+    expect(result.channels[DeliveryChannel.IN_APP]).toBe(false);
+    expect(result.categorySubscriptions[EventType.CLAIM_CREATED]).toBe(false);
+    expect(result.language).toBe('es');
+    expect(result.quietHours).toEqual(updates.quietHours);
+    expect(result.digestPreferences).toEqual(updates.digestPreferences);
+
+    expect(mockPreferenceRepository.save).toHaveBeenCalledTimes(1);
+    expect(result.userId).toBe('user-1');
   });
+
+  it('should preserve server-owned fields when malicious properties are submitted', async () => {
+    const original = {
+      id: 'preference-1',
+      userId: 'user-1',
+      user: { id: 'user-1' },
+      unsubscribeToken: 'original-token',
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+      updatedAt: new Date('2026-01-02T00:00:00Z'),
+      lastModifiedAt: new Date('2026-01-03T00:00:00Z'),
+      channels: {
+        [DeliveryChannel.IN_APP]: true,
+      },
+      language: 'en',
+    };
+
+    mockPreferenceRepository.findOne.mockResolvedValue(original as any);
+    mockPreferenceRepository.save.mockImplementation(
+      async (preference) => preference as NotificationPreference,
+    );
+
+    // Simula una llamada que evita deliberadamente la validación HTTP del DTO.
+    const maliciousUpdates = {
+      language: 'es',
+      id: 'attacker-preference-id',
+      userId: 'user-2',
+      user: { id: 'user-2' },
+      unsubscribeToken: 'attacker-token',
+      createdAt: new Date('2030-01-01T00:00:00Z'),
+      updatedAt: new Date('2030-01-02T00:00:00Z'),
+      lastModifiedAt: new Date('2030-01-03T00:00:00Z'),
+    } as unknown as UpdatePreferenceSettingsDto;
+
+    const result = await service.updatePreferences(
+      'user-1',
+      maliciousUpdates,
+    );
+
+    expect(result.language).toBe('es');
+
+    expect(result.id).toBe('preference-1');
+    expect(result.userId).toBe('user-1');
+    expect(result.user).toEqual({ id: 'user-1' });
+    expect(result.unsubscribeToken).toBe('original-token');
+    expect(result.createdAt).toEqual(original.createdAt);
+    expect(result.updatedAt).toEqual(original.updatedAt);
+
+    // lastModifiedAt sí debe actualizarse, pero exclusivamente desde el servidor.
+    expect(result.lastModifiedAt).toBeInstanceOf(Date);
+    expect(result.lastModifiedAt).not.toEqual(
+      new Date('2030-01-03T00:00:00Z'),
+    );
+
+    expect(mockPreferenceRepository.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'preference-1',
+        userId: 'user-1',
+        unsubscribeToken: 'original-token',
+      }),
+    );
+  });
+
+  it('should not reassign the preference to another user', async () => {
+    const original = {
+      id: 'preference-1',
+      userId: 'user-1',
+      channels: {
+        [DeliveryChannel.IN_APP]: true,
+      },
+      language: 'en',
+    };
+
+    mockPreferenceRepository.findOne.mockResolvedValue(original as any);
+    mockPreferenceRepository.save.mockImplementation(
+      async (preference) => preference as NotificationPreference,
+    );
+
+    const maliciousUpdates = {
+      userId: 'user-2',
+      language: 'es',
+    } as unknown as UpdatePreferenceSettingsDto;
+
+    const result = await service.updatePreferences(
+      'user-1',
+      maliciousUpdates,
+    );
+
+    expect(mockPreferenceRepository.findOne).toHaveBeenCalledWith({
+      where: { userId: 'user-1' },
+    });
+
+    expect(result.userId).toBe('user-1');
+    expect(mockPreferenceRepository.save).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'user-1' }),
+    );
+  });
+
+  it('should preserve ownership and protected metadata during concurrent updates', async () => {
+    const original = {
+      id: 'preference-1',
+      userId: 'user-1',
+      unsubscribeToken: 'original-token',
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+      updatedAt: new Date('2026-01-02T00:00:00Z'),
+      channels: {
+        [DeliveryChannel.IN_APP]: true,
+      },
+      language: 'en',
+    };
+
+    // Cada llamada recibe una instancia independiente, como ocurriría
+    // al cargar la entidad en dos operaciones separadas.
+    mockPreferenceRepository.findOne
+      .mockResolvedValueOnce({ ...original, channels: { ...original.channels } } as any)
+      .mockResolvedValueOnce({ ...original, channels: { ...original.channels } } as any);
+
+    mockPreferenceRepository.save.mockImplementation(
+      async (preference) => preference as NotificationPreference,
+    );
+
+    const [firstResult, secondResult] = await Promise.all([
+      service.updatePreferences('user-1', {
+        language: 'es',
+      }),
+      service.updatePreferences('user-1', {
+        channels: {
+          [DeliveryChannel.IN_APP]: false,
+        },
+      }),
+    ]);
+
+    for (const result of [firstResult, secondResult]) {
+      expect(result.id).toBe('preference-1');
+      expect(result.userId).toBe('user-1');
+      expect(result.unsubscribeToken).toBe('original-token');
+      expect(result.createdAt).toEqual(original.createdAt);
+    }
+
+    expect(mockPreferenceRepository.save).toHaveBeenCalledTimes(2);
+  });
+
+  it('should persist false values instead of ignoring them', async () => {
+    const original = {
+      id: 'preference-1',
+      userId: 'user-1',
+      channels: {
+        [DeliveryChannel.IN_APP]: true,
+      },
+      quietHours: { enabled: true },
+      digestPreferences: { enabled: true },
+      pushConfig: { enabled: true },
+    };
+
+    mockPreferenceRepository.findOne.mockResolvedValue(original as any);
+    mockPreferenceRepository.save.mockImplementation(
+      async (preference) => preference as NotificationPreference,
+    );
+
+    const result = await service.updatePreferences('user-1', {
+      channels: {
+        [DeliveryChannel.IN_APP]: false,
+      },
+      quietHours: { enabled: false },
+      digestPreferences: { enabled: false },
+      pushConfig: { enabled: false },
+    });
+
+    expect(result.channels[DeliveryChannel.IN_APP]).toBe(false);
+    expect(result.quietHours?.enabled).toBe(false);
+    expect(result.digestPreferences?.enabled).toBe(false);
+    expect(result.pushConfig?.enabled).toBe(false);
+  });
+});
 });
