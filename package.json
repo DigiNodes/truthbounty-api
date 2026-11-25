@@ -10,7 +10,7 @@
     "npm": ">=10 <12"
   },
   "scripts": {
-    "generate:prisma": "prisma generate",
+    "generate:prisma": "prisma generate --config prisma.generate.config.ts",
     "generate:prisma:migrate": "prisma migrate deploy",
     "generate:prerequisites": "npm run generate:prisma",
     "parity:report": "node scripts/parity-report.mjs",
