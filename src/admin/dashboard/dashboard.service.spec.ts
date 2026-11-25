@@ -102,6 +102,8 @@ describe('DashboardService', () => {
     expect(summary.infrastructure.queues.totalWaiting).toBe(2);
     expect(summary.notifications.delivered).toBe(4);
     expect(summary.api.totalRequests).toBe(120);
-    expect(summary.protocol.activeClaims).toBe(3);
+    expect(summary.protocol.activeClaims).toBeNull();
+    expect(summary.protocol.finalizedClaims).toBeNull();
+    expect(summary.protocol.claimStateProjection).toBe('unavailable');
   });
 });
