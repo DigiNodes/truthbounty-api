@@ -1,4 +1,4 @@
-import { 
+import {
   Injectable,
   ConflictException,
   BadRequestException,
@@ -12,7 +12,6 @@ import { createHash } from 'crypto';
 import { WorldIdVerification } from './entities/world-id-verification.entity';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SybilResistanceService } from '../../sybil-resistance/sybil-resistance.service';
-import { SafeHttpClientService } from '../../common/security/ssrf/safe-http-client.service';
 
 // ---------------------------------------------------------------------------
 // Public input shape
@@ -66,15 +65,15 @@ const DEFAULT_MAX_ROOT_AGE_MS = 24 * 60 * 60 * 1000;
 @Injectable()
 export class WorldcoinService {
   private readonly logger = new Logger(WorldcoinService.name);
+  private readonly httpClient: SafeHttpClientService;
 
   constructor(
-  @InjectRepository(WorldIdVerification)
-  private readonly worldIdVerificationRepository: Repository<WorldIdVerification>,
-  private readonly configService: ConfigService,
-  private readonly prisma: PrismaService,
-  private readonly sybilResistanceService: SybilResistanceService,
-  private readonly httpClient: SafeHttpClientService,
-) {}
+    @InjectRepository(WorldIdVerification)
+    private readonly worldIdVerificationRepository: Repository<WorldIdVerification>,
+    private readonly configService: ConfigService,
+    private readonly prisma: PrismaService,
+    private readonly sybilResistanceService: SybilResistanceService,
+  ) {}
 
   // -------------------------------------------------------------------------
   // Primary verification flow
@@ -268,36 +267,33 @@ export class WorldcoinService {
       throw new ServiceUnavailableException('Identity verification unavailable');
     }
 
+    let response: Response;
+    try {
+      response = await fetch(`${verifyBaseUrl}/${appId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          merkle_root: proof.merkle_root,
+          nullifier_hash: proof.nullifier_hash,
+          proof: proof.proof,
+          verification_level: proof.verification_level,
+          action,
+          ...(signal !== undefined ? { signal } : {}),
+        }),
+      });
+    } catch (networkError) {
+      // Network errors, DNS failures, timeouts — treat as provider outage.
+      // Fail with 503 so callers can retry; NEVER treat as valid proof.
+      this.logger.error(
+        'worldcoin.provider_unreachable',
+        // Log the error class/message only — never proof bytes.
+        networkError instanceof Error ? networkError.message : 'unknown',
+      );
+      throw new ServiceUnavailableException(
+        'Worldcoin verification service temporarily unavailable',
+      );
+    }
 
-let response;
-
-try {
-  response = await this.httpClient.post(
-    `${verifyBaseUrl}/${appId}`,
-    JSON.stringify({
-      merkle_root: proof.merkle_root,
-      nullifier_hash: proof.nullifier_hash,
-      proof: proof.proof,
-      verification_level: proof.verification_level,
-      action,
-      ...(signal !== undefined ? { signal } : {}),
-    }),
-    {
-      headers: { 'Content-Type': 'application/json' },
-      allowedHostnames: ['developer.worldcoin.org'],
-      maxRedirects: 0,
-    },
-  );
-} catch (networkError) {
-  this.logger.error(
-    'worldcoin.provider_unreachable',
-    networkError instanceof Error ? networkError.message : 'unknown',
-  );
-
-  throw new ServiceUnavailableException(
-    'Worldcoin verification service temporarily unavailable',
-  );
-}
     if (!response.ok) {
       // Log the status code for observability; never log response body
       // as it may contain sensitive proof context.
