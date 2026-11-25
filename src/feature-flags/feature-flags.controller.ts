@@ -10,7 +10,12 @@ import {
   UseGuards,
   Request,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminGuard } from '../auth/guards/admin.guard';
 import { AdminOnly } from '../auth/decorators/admin-only.decorator';
@@ -22,7 +27,16 @@ import {
   AuditEntityType,
 } from '../audit/entities/audit-log.entity';
 import { FeatureFlag } from './entities/feature-flag.entity';
-import { ConfigurationValue } from './entities/configuration-value.entity';
+import {
+  ConfigurationHistoryResponseDto,
+  ConfigurationReadResponseDto,
+  ConfigurationValueResponseDto,
+} from './dto/configuration-response.dto';
+import {
+  redactConfigurationValue,
+  toConfigurationHistoryResponse,
+  toConfigurationValueResponse,
+} from './configuration-redaction';
 import {
   CreateFeatureFlagInput,
   FeatureFlagContext,
@@ -172,21 +186,38 @@ export class FeatureFlagsController {
   }
 
   @Get('configuration')
-  @ApiOperation({ summary: 'List configuration values' })
+  @AdminOnly()
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'List configuration values (administrator only)',
+    description:
+      'Returns configuration records only to administrators. Secret-classified values are redacted.',
+  })
+  @ApiOkResponse({ type: ConfigurationValueResponseDto, isArray: true })
   listConfig(
     @Query('environment') environment?: string,
-  ): Promise<ConfigurationValue[]> {
-    return this.configService.findAll(environment);
+  ): Promise<ConfigurationValueResponseDto[]> {
+    return this.configService
+      .findAll(environment)
+      .then((records) => records.map(toConfigurationValueResponse));
   }
 
   @Get('configuration/:key')
-  @ApiOperation({ summary: 'Get a configuration value' })
+  @AdminOnly()
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Get a configuration value (administrator only)',
+    description: 'Secret-classified values are redacted.',
+  })
+  @ApiOkResponse({ type: ConfigurationReadResponseDto })
   async getConfig(
     @Param('key') key: string,
     @Query('environment') environment?: string,
-  ): Promise<{ key: string; value: unknown }> {
+  ): Promise<ConfigurationReadResponseDto> {
     const value = await this.configService.get(key, environment);
-    return { key, value };
+    return { key, value: redactConfigurationValue(key, value) };
   }
 
   @Post('configuration')
@@ -194,6 +225,7 @@ export class FeatureFlagsController {
   @UseGuards(JwtAuthGuard, AdminGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Set a configuration value' })
+  @ApiOkResponse({ type: ConfigurationValueResponseDto })
   async setConfig(
     @Body()
     input: {
@@ -203,7 +235,7 @@ export class FeatureFlagsController {
       changeReason?: string;
     },
     @Request() req: RequestWithUser,
-  ): Promise<ConfigurationValue> {
+  ): Promise<ConfigurationValueResponseDto> {
     const userId = this.userIdFrom(req);
     const existing = await this.configService.get(input.key, input.environment);
     const saved = await this.configService.set(
@@ -224,7 +256,7 @@ export class FeatureFlagsController {
       beforeState: existing ? { value: existing } : undefined,
       afterState: { value: saved.value, changeReason: input.changeReason },
     });
-    return saved;
+    return toConfigurationValueResponse(saved);
   }
 
   @Delete('configuration/:id')
@@ -250,12 +282,21 @@ export class FeatureFlagsController {
   }
 
   @Get('configuration/:key/history')
-  @ApiOperation({ summary: 'Get configuration history' })
+  @AdminOnly()
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Get configuration history (administrator only)',
+    description: 'Historical secret-classified values are redacted.',
+  })
+  @ApiOkResponse({ type: ConfigurationHistoryResponseDto, isArray: true })
   getHistory(
     @Param('key') key: string,
     @Query('environment') environment?: string,
   ) {
-    return this.configService.getHistory(key, environment);
+    return this.configService
+      .getHistory(key, environment)
+      .then((records) => records.map(toConfigurationHistoryResponse));
   }
 
   @Post('configuration/:id/rollback')
@@ -263,11 +304,12 @@ export class FeatureFlagsController {
   @UseGuards(JwtAuthGuard, AdminGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Rollback a configuration value' })
+  @ApiOkResponse({ type: ConfigurationValueResponseDto })
   async rollbackConfig(
     @Param('id') id: string,
     @Body('targetVersion') targetVersion: number,
     @Request() req: RequestWithUser,
-  ): Promise<ConfigurationValue> {
+  ): Promise<ConfigurationValueResponseDto> {
     const userId = this.userIdFrom(req);
     const config = await this.configService.rollback(id, targetVersion, userId);
     await this.auditTrailService.log({
@@ -278,7 +320,7 @@ export class FeatureFlagsController {
       description: `Rolled back configuration ${config.key} to version ${targetVersion}`,
       afterState: { version: config.version } as Record<string, any>,
     });
-    return config;
+    return toConfigurationValueResponse(config);
   }
 
   @Post('configuration/promote')
@@ -286,6 +328,7 @@ export class FeatureFlagsController {
   @UseGuards(JwtAuthGuard, AdminGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Promote a configuration to another environment' })
+  @ApiOkResponse({ type: ConfigurationValueResponseDto })
   async promoteConfig(
     @Body()
     input: {
@@ -294,7 +337,7 @@ export class FeatureFlagsController {
       targetEnvironment: string;
     },
     @Request() req: RequestWithUser,
-  ): Promise<ConfigurationValue> {
+  ): Promise<ConfigurationValueResponseDto> {
     const userId = this.userIdFrom(req);
     const sourceValue = await this.configService.getRequired(
       input.key,
@@ -315,7 +358,7 @@ export class FeatureFlagsController {
       description: `Promoted configuration ${saved.key} from ${input.sourceEnvironment} to ${input.targetEnvironment}`,
       afterState: { value: saved.value, environment: input.targetEnvironment },
     });
-    return saved;
+    return toConfigurationValueResponse(saved);
   }
 
   private userIdFrom(req: RequestWithUser): string | undefined {

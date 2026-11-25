@@ -124,6 +124,30 @@ Notation:
 
 No POST, PATCH, or DELETE routes are exposed for legacy rewards.
 
+### Feature Flags & Configuration
+
+| Method | Route | Authorization |
+|-------|-------|--------------|
+| GET | `/feature-flags` | PUBLIC |
+| GET | `/feature-flags/:id` | PUBLIC |
+| GET | `/feature-flags/evaluate/:key` | PUBLIC |
+| POST | `/feature-flags` | ADMIN (JWT + `AdminGuard`) |
+| PATCH | `/feature-flags/:id` | ADMIN (JWT + `AdminGuard`) |
+| POST | `/feature-flags/:id/toggle` | ADMIN (JWT + `AdminGuard`) |
+| POST | `/feature-flags/:id/rollback` | ADMIN (JWT + `AdminGuard`) |
+| GET | `/configuration` | ADMIN (JWT + `AdminGuard`; secret values redacted) |
+| GET | `/configuration/:key` | ADMIN (JWT + `AdminGuard`; secret values redacted) |
+| GET | `/configuration/:key/history` | ADMIN (JWT + `AdminGuard`; historical values redacted) |
+| POST | `/configuration` | ADMIN (JWT + `AdminGuard`) |
+| DELETE | `/configuration/:id` | ADMIN (JWT + `AdminGuard`) |
+| POST | `/configuration/:id/rollback` | ADMIN (JWT + `AdminGuard`) |
+| POST | `/configuration/promote` | ADMIN (JWT + `AdminGuard`) |
+
+Configuration values have no public runtime allowlist. Public feature-flag
+evaluation remains available; configuration records and history are never
+publicly enumerable. Secret-classified configuration values are redacted in
+configuration and audit responses.
+
 ### Staking
 
 | Method | Route | Authorization |
