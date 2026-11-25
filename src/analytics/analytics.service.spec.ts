@@ -1,158 +1,205 @@
 import { AnalyticsConsentService } from './analytics-consent.service';
 import { AnalyticsService } from './analytics.service';
 import { CURRENT_CONSENT_POLICY_VERSION } from './analytics.schemas';
+import { AnalyticsConsentRecord } from './analytics.types';
 
-describe('AnalyticsService consent & minimization (#669)', () => {
-  let consent: AnalyticsConsentService;
+describe('AnalyticsService consent & minimization', () => {
+  let consent: {
+    get: jest.Mock<Promise<AnalyticsConsentRecord>, [string]>;
+    getSubjectKey: jest.Mock<string, [string]>;
+    setDoNotTrack: jest.Mock<
+      Promise<AnalyticsConsentRecord>,
+      [string, boolean]
+    >;
+    collectIfValid: jest.Mock;
+  };
   let analytics: AnalyticsService;
-
-  beforeEach(() => {
-    consent = new AnalyticsConsentService();
-    analytics = new AnalyticsService(consent);
+  const record = (
+    overrides: Partial<AnalyticsConsentRecord> = {},
+  ): AnalyticsConsentRecord => ({
+    status: 'none',
+    policyVersion: CURRENT_CONSENT_POLICY_VERSION,
+    grantedAt: null,
+    withdrawnAt: null,
+    doNotTrack: false,
+    ...overrides,
   });
 
-  it('does not emit without consent', () => {
-    const r = analytics.emit({
+  beforeEach(() => {
+    consent = {
+      get: jest.fn().mockResolvedValue(record()),
+      getSubjectKey: jest.fn().mockReturnValue('a'.repeat(64)),
+      setDoNotTrack: jest.fn().mockResolvedValue(record({ doNotTrack: true })),
+      collectIfValid: jest.fn(
+        async (subjectId: string, collect: (tx: never) => Promise<unknown>) => {
+          const current = await consent.get(subjectId);
+          if (current.doNotTrack)
+            return { allowed: false, reason: 'dnt' as const };
+          if (current.status === 'withdrawn')
+            return { allowed: false, reason: 'withdrawn' as const };
+          if (
+            current.status !== 'granted' ||
+            current.policyVersion !== CURRENT_CONSENT_POLICY_VERSION
+          )
+            return { allowed: false, reason: 'no_consent' as const };
+          return {
+            allowed: true,
+            value: await collect({} as never),
+          };
+        },
+      ),
+    };
+    analytics = new AnalyticsService(
+      consent as unknown as AnalyticsConsentService,
+    );
+  });
+
+  it('does not emit without durable consent', async () => {
+    const result = await analytics.emit({
       name: 'app_opened',
       schemaVersion: 1,
       subjectId: 'user-1',
       properties: { surface: 'web' },
     });
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.reason).toBe('no_consent');
+
+    expect(result).toEqual({ ok: false, reason: 'no_consent' });
     expect(analytics.getSink()).toHaveLength(0);
   });
 
-  it('emits after grant with minimized payload', () => {
-    consent.grant('user-1');
-    const r = analytics.emit({
+  it('emits minimized data after current-policy consent and pseudonymizes subject', async () => {
+    consent.get.mockResolvedValue(
+      record({
+        status: 'granted',
+        grantedAt: new Date().toISOString(),
+      }),
+    );
+    consent.collectIfValid.mockImplementationOnce(
+      async (subjectId: string, collect: (tx: never) => Promise<unknown>) => {
+        const current = await consent.get(subjectId);
+        if (current.status !== 'granted') {
+          return { allowed: false, reason: 'no_consent' as const };
+        }
+        const value = await collect({} as never);
+        expect(analytics.getSink()).toContain(value);
+        return { allowed: true, value };
+      },
+    );
+    const result = await analytics.emit({
       name: 'app_opened',
       schemaVersion: 1,
-      subjectId: 'user-1',
+      subjectId: 'raw-user-id',
       properties: { surface: 'web', locale: 'en', extra: 'drop-me' },
     });
-    expect(r.ok).toBe(true);
-    if (r.ok) {
-      expect(r.event.properties).toEqual({ surface: 'web', locale: 'en' });
-      expect(r.event.properties).not.toHaveProperty('extra');
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.event.properties).toEqual({ surface: 'web', locale: 'en' });
+      expect(result.event.properties).not.toHaveProperty('extra');
+      expect(result.event.subjectKey).toBe('a'.repeat(64));
+      expect(JSON.stringify(result.event)).not.toContain('raw-user-id');
     }
   });
 
-  it('withdrawal stops future collection', () => {
-    consent.grant('user-1');
-    expect(
+  it('removes a captured event if the consent transaction fails', async () => {
+    consent.get.mockResolvedValue(record({ status: 'granted' }));
+    consent.collectIfValid.mockImplementationOnce(
+      async (_subjectId: string, collect: (tx: never) => Promise<unknown>) => {
+        await collect({} as never);
+        throw new Error('transaction commit failed');
+      },
+    );
+
+    await expect(
       analytics.emit({
         name: 'app_opened',
         schemaVersion: 1,
         subjectId: 'user-1',
-        properties: { surface: 'web' },
-      }).ok,
-    ).toBe(true);
-    consent.withdraw('user-1');
-    const r = analytics.emit({
-      name: 'app_opened',
-      schemaVersion: 1,
-      subjectId: 'user-1',
-      properties: { surface: 'web' },
-    });
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.reason).toBe('withdrawn');
+      }),
+    ).rejects.toThrow('transaction commit failed');
+    expect(analytics.getSink()).toHaveLength(0);
   });
 
-  it('renewed policy version is required for valid consent', () => {
-    consent.grant('user-1', '2020-01-01');
-    const blocked = analytics.emit({
-      name: 'app_opened',
-      schemaVersion: 1,
-      subjectId: 'user-1',
-      properties: { surface: 'web' },
-    });
-    expect(blocked.ok).toBe(false);
-    consent.renew('user-1', CURRENT_CONSENT_POLICY_VERSION);
-    const ok = analytics.emit({
-      name: 'app_opened',
-      schemaVersion: 1,
-      subjectId: 'user-1',
-      properties: { surface: 'web' },
-    });
-    expect(ok.ok).toBe(true);
+  it('blocks withdrawn and stale-policy consent', async () => {
+    consent.get.mockResolvedValue(
+      record({
+        status: 'withdrawn',
+        withdrawnAt: new Date().toISOString(),
+      }),
+    );
+    expect(
+      await analytics.emit({
+        name: 'app_opened',
+        schemaVersion: 1,
+        subjectId: 'user-1',
+      }),
+    ).toEqual({ ok: false, reason: 'withdrawn' });
+
+    consent.get.mockResolvedValue(
+      record({ status: 'granted', policyVersion: 'stale-policy' }),
+    );
+    expect(
+      await analytics.emit({
+        name: 'app_opened',
+        schemaVersion: 1,
+        subjectId: 'user-1',
+      }),
+    ).toEqual({ ok: false, reason: 'no_consent' });
   });
 
-  it('DNT blocks emission', () => {
-    consent.grant('user-1');
-    const r = analytics.emit({
+  it('persists DNT before rejecting the event', async () => {
+    const result = await analytics.emit({
       name: 'app_opened',
       schemaVersion: 1,
       subjectId: 'user-1',
-      properties: { surface: 'web' },
       doNotTrack: true,
     });
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.reason).toBe('dnt');
+
+    expect(result).toEqual({ ok: false, reason: 'dnt' });
+    expect(consent.setDoNotTrack).toHaveBeenCalledWith('user-1', true);
+    expect(analytics.getSink()).toHaveLength(0);
   });
 
-  it('wallet rotation clears consent (fail closed)', () => {
-    consent.grant('wallet-old');
-    consent.rotateSubject('wallet-old', 'wallet-new');
-    expect(
+  it('blocks collection when the durable consent lookup fails', async () => {
+    consent.collectIfValid.mockRejectedValue(new Error('database unavailable'));
+
+    await expect(
       analytics.emit({
         name: 'app_opened',
         schemaVersion: 1,
-        subjectId: 'wallet-old',
-        properties: { surface: 'web' },
-      }).ok,
-    ).toBe(false);
-    expect(
-      analytics.emit({
-        name: 'app_opened',
-        schemaVersion: 1,
-        subjectId: 'wallet-new',
-        properties: { surface: 'web' },
-      }).ok,
-    ).toBe(false);
+        subjectId: 'user-1',
+      }),
+    ).rejects.toThrow('database unavailable');
+    expect(analytics.getSink()).toHaveLength(0);
   });
 
-  it('deletion removes consent and stops collection', () => {
-    consent.grant('user-1');
-    consent.deleteSubject('user-1');
-    const r = analytics.emit({
-      name: 'app_opened',
-      schemaVersion: 1,
-      subjectId: 'user-1',
-      properties: { surface: 'web' },
-    });
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.reason).toBe('no_consent');
-  });
-
-  it('rejects wallet/signature/evidence fields', () => {
-    consent.grant('user-1');
-    const r = analytics.emit({
+  it('rejects wallet, signature, and evidence fields', async () => {
+    consent.get.mockResolvedValue(record({ status: 'granted' }));
+    const result = await analytics.emit({
       name: 'app_opened',
       schemaVersion: 1,
       subjectId: 'user-1',
       properties: { surface: 'web', wallet: 'G...', signature: '0xab' },
     });
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.reason).toBe('forbidden_field');
+
+    expect(result).toEqual({ ok: false, reason: 'forbidden_field' });
     expect(analytics.getSink()).toHaveLength(0);
   });
 
-  it('unknown event or schema version fails closed', () => {
-    consent.grant('user-1');
+  it('rejects unknown events and schema versions', async () => {
+    consent.get.mockResolvedValue(record({ status: 'granted' }));
     expect(
-      analytics.emit({
+      await analytics.emit({
         name: 'not_a_real_event',
         schemaVersion: 1,
         subjectId: 'user-1',
-      }).ok,
-    ).toBe(false);
+      }),
+    ).toEqual({ ok: false, reason: 'unknown_event' });
     expect(
-      analytics.emit({
+      await analytics.emit({
         name: 'app_opened',
         schemaVersion: 99,
         subjectId: 'user-1',
-      }).ok,
-    ).toBe(false);
+      }),
+    ).toEqual({ ok: false, reason: 'schema_mismatch' });
   });
 });

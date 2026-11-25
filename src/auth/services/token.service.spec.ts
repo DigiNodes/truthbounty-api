@@ -830,6 +830,239 @@ describe('TokenService', () => {
         ).rejects.toThrow('Invalid credentials');
         expect(redisService.get).not.toHaveBeenCalled();
       });
+
+      it('concurrent requests: exactly one consumes the nonce', async () => {
+        const binding = {
+          audience: 'claims-service',
+          subject: '0xActor',
+          capability: 'claim:update',
+          resource: 'claim:123',
+          chain: '10',
+          release: 'release-1',
+          deployment: 'deployment-1',
+          artifact: 'artifact-1',
+        };
+        const issued = await service.issueCapabilityToken(binding);
+        const storedBinding = JSON.stringify({
+          aud: binding.audience,
+          sub: binding.subject.toLowerCase(),
+          capability: binding.capability,
+          resource: binding.resource,
+          chain: binding.chain,
+          release: binding.release,
+          deployment: binding.deployment,
+          artifact: binding.artifact,
+        });
+        const basePayload = {
+          aud: binding.audience,
+          sub: binding.subject.toLowerCase(),
+          capability: binding.capability,
+          resource: binding.resource,
+          chain: binding.chain,
+          release: binding.release,
+          deployment: binding.deployment,
+          artifact: binding.artifact,
+          nonce: issued.nonce,
+          type: 'capability' as const,
+          iat: Math.floor(Date.now() / 1000),
+          exp: Math.floor(Date.now() / 1000) + issued.expiresIn,
+        };
+
+        // Both concurrent requests pass JWT verification and binding checks.
+        jwtService.verify
+          .mockReturnValueOnce(basePayload)
+          .mockReturnValueOnce(basePayload);
+
+        // Both pass the revocation check.
+        // Both read the nonce binding (GET returns the stored value).
+        redisService.get
+          .mockResolvedValueOnce(null)           // req1 revocation check
+          .mockResolvedValueOnce(storedBinding)  // req1 nonce binding read
+          .mockResolvedValueOnce(null)           // req2 revocation check
+          .mockResolvedValueOnce(storedBinding); // req2 nonce binding read
+
+        // The Lua compare-and-delete: first call returns 1 (consumed), second returns 0 (already gone).
+        redisService.eval
+          .mockResolvedValueOnce(1)  // first request wins
+          .mockResolvedValueOnce(0); // second request loses (replay)
+
+        const [r1, r2] = await Promise.allSettled([
+          service.validateAndConsumeCapabilityToken(issued.token, binding),
+          service.validateAndConsumeCapabilityToken(issued.token, binding),
+        ]);
+
+        const successes = [r1, r2].filter((r) => r.status === 'fulfilled');
+        const failures  = [r1, r2].filter((r) => r.status === 'rejected');
+        expect(successes).toHaveLength(1);
+        expect(failures).toHaveLength(1);
+        expect((failures[0] as PromiseRejectedResult).reason.message).toBe(
+          'Invalid credentials',
+        );
+      });
+
+      it('fails closed when the eval (nonce consumption) throws (Redis unavailable)', async () => {
+        const binding = {
+          audience: 'claims-service',
+          subject: '0xActor',
+          capability: 'claim:update',
+          resource: 'claim:123',
+          chain: '10',
+          release: 'release-1',
+          deployment: 'deployment-1',
+          artifact: 'artifact-1',
+        };
+        const issued = await service.issueCapabilityToken(binding);
+        const storedBinding = JSON.stringify({
+          aud: binding.audience,
+          sub: binding.subject.toLowerCase(),
+          capability: binding.capability,
+          resource: binding.resource,
+          chain: binding.chain,
+          release: binding.release,
+          deployment: binding.deployment,
+          artifact: binding.artifact,
+        });
+        const payload = {
+          aud: binding.audience,
+          sub: binding.subject.toLowerCase(),
+          capability: binding.capability,
+          resource: binding.resource,
+          chain: binding.chain,
+          release: binding.release,
+          deployment: binding.deployment,
+          artifact: binding.artifact,
+          nonce: issued.nonce,
+          type: 'capability' as const,
+          iat: Math.floor(Date.now() / 1000),
+          exp: Math.floor(Date.now() / 1000) + issued.expiresIn,
+        };
+        jwtService.verify.mockReturnValueOnce(payload);
+        redisService.get
+          .mockResolvedValueOnce(null)           // revocation check
+          .mockResolvedValueOnce(storedBinding); // nonce binding read
+
+        // Simulate Redis going down at the consumption step.
+        redisService.eval.mockRejectedValueOnce(
+          new Error('Redis unavailable (Fail Closed)'),
+        );
+
+        await expect(
+          service.validateAndConsumeCapabilityToken(issued.token, binding),
+        ).rejects.toThrow('Invalid credentials');
+      });
+
+      it('wrong binding fields are rejected before the nonce is consumed', async () => {
+        // Mismatched resource: binding check rejects before any nonce GET.
+        jwtService.verify.mockReturnValueOnce({
+          aud: 'claims-service',
+          sub: '0xactor',
+          capability: 'claim:update',
+          resource: 'claim:other-resource',
+          nonce: 'some-nonce',
+          chain: '10',
+          release: 'release-1',
+          deployment: 'deployment-1',
+          artifact: 'artifact-1',
+          type: 'capability',
+          iat: Math.floor(Date.now() / 1000),
+          exp: Math.floor(Date.now() / 1000) + 60,
+        });
+        jest.clearAllMocks();
+        redisService.get.mockResolvedValue(null);
+        redisService.eval.mockResolvedValue(1);
+
+        await expect(
+          service.validateAndConsumeCapabilityToken('token', {
+            audience: 'claims-service',
+            subject: '0xActor',
+            capability: 'claim:update',
+            resource: 'claim:123',
+            chain: '10',
+            release: 'release-1',
+            deployment: 'deployment-1',
+            artifact: 'artifact-1',
+          }),
+        ).rejects.toThrow('Invalid credentials');
+
+        // The eval (nonce consumption) must not have been called.
+        expect(redisService.eval).not.toHaveBeenCalled();
+      });
+
+      it('missing nonce (nonce not in Redis) fails closed without calling eval', async () => {
+        const binding = {
+          audience: 'claims-service',
+          subject: '0xActor',
+          capability: 'claim:update',
+          resource: 'claim:123',
+          chain: '10',
+          release: 'release-1',
+          deployment: 'deployment-1',
+          artifact: 'artifact-1',
+        };
+        const issued = await service.issueCapabilityToken(binding);
+        const payload = {
+          aud: binding.audience,
+          sub: binding.subject.toLowerCase(),
+          capability: binding.capability,
+          resource: binding.resource,
+          chain: binding.chain,
+          release: binding.release,
+          deployment: binding.deployment,
+          artifact: binding.artifact,
+          nonce: issued.nonce,
+          type: 'capability' as const,
+          iat: Math.floor(Date.now() / 1000),
+          exp: Math.floor(Date.now() / 1000) + issued.expiresIn,
+        };
+        jwtService.verify.mockReturnValueOnce(payload);
+        redisService.get
+          .mockResolvedValueOnce(null)  // revocation check
+          .mockResolvedValueOnce(null); // nonce missing (already consumed or never stored)
+
+        await expect(
+          service.validateAndConsumeCapabilityToken(issued.token, binding),
+        ).rejects.toThrow('Invalid credentials');
+
+        // eval must not be called when nonce is missing.
+        expect(redisService.eval).not.toHaveBeenCalled();
+      });
+
+      it('corrupt nonce JSON fails closed without calling eval', async () => {
+        const binding = {
+          audience: 'claims-service',
+          subject: '0xActor',
+          capability: 'claim:update',
+          resource: 'claim:123',
+          chain: '10',
+          release: 'release-1',
+          deployment: 'deployment-1',
+          artifact: 'artifact-1',
+        };
+        const issued = await service.issueCapabilityToken(binding);
+        const payload = {
+          aud: binding.audience,
+          sub: binding.subject.toLowerCase(),
+          capability: binding.capability,
+          resource: binding.resource,
+          chain: binding.chain,
+          release: binding.release,
+          deployment: binding.deployment,
+          artifact: binding.artifact,
+          nonce: issued.nonce,
+          type: 'capability' as const,
+          iat: Math.floor(Date.now() / 1000),
+          exp: Math.floor(Date.now() / 1000) + issued.expiresIn,
+        };
+        jwtService.verify.mockReturnValueOnce(payload);
+        redisService.get
+          .mockResolvedValueOnce(null)           // revocation check
+          .mockResolvedValueOnce('{not-valid-json'); // corrupt nonce
+
+        await expect(
+          service.validateAndConsumeCapabilityToken(issued.token, binding),
+        ).rejects.toThrow('Invalid credentials');
+        expect(redisService.eval).not.toHaveBeenCalled();
+      });
     });
   });
 });

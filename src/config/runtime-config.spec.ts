@@ -117,6 +117,7 @@ describe('runtime schema', () => {
     ['ABUSE_SIGNALS_WINDOW_SECONDS', '1.5'],
     ['ABUSE_SIGNALS_TRUSTED_PROXY_HOPS', '-1'],
     ['ABUSE_SIGNALS_SUBJECT_SALT', 'private-short-secret'],
+    ['ANALYTICS_CONSENT_SUBJECT_KEY', 'private-short-secret'],
   ])(
     'validates newly integrated setting %s without disclosing its value',
     (key, value) => {
@@ -292,12 +293,12 @@ describe('runtime schema', () => {
     ).toThrow('DEFAULT_LLM_PROVIDER: mock');
   });
   it('rejects unimplemented IPFS providers during runtime validation', () => {
-    expect(() =>
-      parseRuntimeConfig({ IPFS_PROVIDER: 'pinata' }),
-    ).toThrow('IPFS_PROVIDER');
-    expect(() =>
-      parseRuntimeConfig({ IPFS_PROVIDER: 'web3storage' }),
-    ).toThrow('IPFS_PROVIDER');
+    expect(() => parseRuntimeConfig({ IPFS_PROVIDER: 'pinata' })).toThrow(
+      'IPFS_PROVIDER',
+    );
+    expect(() => parseRuntimeConfig({ IPFS_PROVIDER: 'web3storage' })).toThrow(
+      'IPFS_PROVIDER',
+    );
   });
   it.each(['1', '137', '10oops'])(
     'rejects wrong or malformed chain %s',
