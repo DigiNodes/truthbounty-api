@@ -26,7 +26,7 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Primary wallet address — canonical identifier for the user
+  // Primary wallet address â€” canonical identifier for the user
   walletAddress String? @unique
 
   reputation Int @default(0)
@@ -102,7 +102,7 @@ model SybilExplanation {
 // isolated by owner, and support administrative review workflows.
 //
 // Security: additionalEvidenceSummary stores only privacy-safe references or
-// summaries — never raw sensitive evidence (nullifier hashes, proofs, PII).
+// summaries â€” never raw sensitive evidence (nullifier hashes, proofs, PII).
 // Status transitions require authorization (owner can submit, reviewers can
 // resolve). Provenance digest binds appeal to the exact model and inputs.
 // ---------------------------------------------------------------------------
@@ -160,29 +160,6 @@ model SybilAppeal {
   @@index([userId, status])
   @@index([idempotencyKey])
   @@index([modelVersion])
-}
-
-model User {
-  id        String   @id @default(uuid())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Primary wallet address — canonical identifier for the user
-  walletAddress String? @unique
-
-  reputation Int @default(0)
-
-  role UserRole @default(contributor)
-
-  // Sybil Resistance
-  worldcoinVerified   Boolean   @default(false)
-  worldcoinVerifiedAt DateTime?
-
-  wallets              Wallet[]
-  sybilScores          SybilScore[]
-  sybilAppeals         SybilAppeal[]
-  worldIdVerifications WorldIdVerification[]
-  conversations        Conversation[]
 }
 
 model WorldIdVerification {
@@ -358,7 +335,7 @@ model OutboxEvent {
   eventType      String
   // Aggregate identifier for the triggering entity (e.g. notificationId)
   aggregateId    String
-  // Routing metadata only — no private claim or settlement data
+  // Routing metadata only â€” no private claim or settlement data
   payload        String   // JSON-encoded OutboxEventPayload
   // Stable key used by the processor for exactly-once delivery
   idempotencyKey String   @unique
@@ -465,7 +442,7 @@ model ChainEvent {
   // JSON-encoded RawChainLog.rawArgs
   rawArgs         String
 
-  // Decoder version that produced this row — traceable provenance for
+  // Decoder version that produced this row â€” traceable provenance for
   // canonical identity and replay/rollback decisions.
   decoderVersion  String   @default("v1")
   // Release/artifact provenance binding (fail closed on mismatch).
@@ -498,13 +475,13 @@ model ChainEvent {
 // closed. Backfill is served from StreamEvent rows within a bounded window.
 //
 // Security: envelopes carry only routing metadata and a projection payload
-// reference — no secrets, authorization material, or protected rationale.
+// reference â€” no secrets, authorization material, or protected rationale.
 // ---------------------------------------------------------------------------
 
 model StreamSession {
   id String @id @default(uuid())
 
-  // Chain-derived binding — every session is pinned to a single chain,
+  // Chain-derived binding â€” every session is pinned to a single chain,
   // release, deployment block, and artifact checksum.
   chainId          Int
   releaseId        String
@@ -558,7 +535,7 @@ model StreamEvent {
 
   // Reference to the canonical read-model row this envelope projects.
   // The actual payload is resolved from the canonical read model on
-  // delivery — never stored inline here.
+  // delivery â€” never stored inline here.
   projectionRef String
 
   // JSON-encoded routing metadata only (no protected payload).
@@ -657,7 +634,7 @@ model FeatureFlagRollbackTarget {
   targetVersion Int
   targetValue   String
 
-  // Boundary binding — must match the flag's release/schema at apply time
+  // Boundary binding â€” must match the flag's release/schema at apply time
   releaseId        String?
   schemaVersion    String?
   chainId          Int?
@@ -761,7 +738,7 @@ model DeadLetterReplay {
   originalDeadLetterId String
   // SHA-256 of the original payload; replay must match this exactly.
   originalPayloadHash  String
-  // Chain/release binding — replay is rejected if any of these drift.
+  // Chain/release binding â€” replay is rejected if any of these drift.
   chainId              Int
   releaseId            String
   deploymentBlock      BigInt
@@ -816,7 +793,7 @@ model DeadLetterReplayAudit {
 // Raw signed bytes are preserved so provider-specific HMAC/canonicalization
 // can be recomputed exactly. Delivery-ID uniqueness is enforced at the DB
 // level so replays are rejected transactionally. Secrets are never stored
-// here — only opaque key identifiers for rotation bookkeeping.
+// here â€” only opaque key identifiers for rotation bookkeeping.
 // ----------------------------------------------------------------------------
 
 model WebhookProviderConfig {
