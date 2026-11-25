@@ -389,6 +389,186 @@ describe('DisputeReadModelService', () => {
     });
   });
 
+  describe('appeal deadline binding', () => {
+    it('uses only the exact linked finalized appeal round, not the latest claim round', async () => {
+      disputeRepo.rows = [
+        {
+          disputeId: 'claim-0001:round-1',
+          claimId: 'claim-0001',
+          originalRoundId: 'round-1',
+          appealRoundId: 'appeal-1',
+          status: DisputeStatus.RAISED,
+          challengeBond: '1000000000000000000',
+          challengeBondAsset: '0x' + 'a'.repeat(40),
+          deadline: new Date('2026-10-20T00:00:00.000Z'),
+          eventTxHash: '0x' + '1'.repeat(64),
+          eventLogIndex: 0,
+          blockNumber: '24850010',
+          createdAt: new Date('2026-10-15T00:00:00.000Z'),
+          updatedAt: new Date('2026-10-15T00:00:00.000Z'),
+          dataState: DataState.FINALIZED,
+          resolvedOutcome: null,
+        } as ProjectDispute,
+      ];
+      roundRepo.rows = [
+        {
+          roundId: 'unrelated-later-round',
+          claimId: 'claim-0001',
+          roundType: 'first',
+          openedAtBlock: '24850100',
+          appealDeadline: new Date('2030-01-01T00:00:00.000Z'),
+        },
+        {
+          roundId: 'appeal-1',
+          claimId: 'claim-0001',
+          roundType: 'appeal',
+          openedAtBlock: '24850020',
+          appealDeadline: new Date('2099-01-01T00:00:00.000Z'),
+        },
+      ];
+
+      const result = await service.getDetail('claim-0001:round-1');
+      expect(result.data.deadlines.appeal).toBe('2099-01-01T00:00:00.000Z');
+      expect(result.data.appeal.available).toBe(true);
+      expect(result.data.appeal.appealRoundId).toBe('appeal-1');
+    });
+
+    it('fails closed when the linked appeal round has not reached finality', async () => {
+      disputeRepo.rows = [
+        {
+          disputeId: 'claim-0001:round-1',
+          claimId: 'claim-0001',
+          originalRoundId: 'round-1',
+          appealRoundId: 'appeal-1',
+          status: DisputeStatus.RAISED,
+          challengeBond: '1000000000000000000',
+          challengeBondAsset: '0x' + 'a'.repeat(40),
+          deadline: new Date('2026-10-20T00:00:00.000Z'),
+          eventTxHash: '0x' + '1'.repeat(64),
+          eventLogIndex: 0,
+          blockNumber: '24850010',
+          createdAt: new Date('2026-10-15T00:00:00.000Z'),
+          updatedAt: new Date('2026-10-15T00:00:00.000Z'),
+          dataState: DataState.FINALIZED,
+          resolvedOutcome: null,
+        } as ProjectDispute,
+      ];
+      roundRepo.rows = [
+        {
+          roundId: 'appeal-1',
+          claimId: 'claim-0001',
+          roundType: 'appeal',
+          openedAtBlock: '24850020',
+          appealDeadline: new Date('2099-01-01T00:00:00.000Z'),
+        },
+      ];
+      (finalityPolicy as any).classifyByCheckpoint = () => DataState.SAFE;
+
+      const error = await service.getDetail('claim-0001:round-1').catch((e) => e);
+      expect(error.response.code).toBe('STALE_RECONCILIATION');
+      expect(error.response.reason).toBe('appeal_round_not_finalized_or_deadline_missing');
+    });
+
+    it('does not borrow an unrelated round deadline when no appeal round is linked', async () => {
+      disputeRepo.rows = [
+        {
+          disputeId: 'claim-0001:round-1',
+          claimId: 'claim-0001',
+          originalRoundId: 'round-1',
+          appealRoundId: null,
+          status: DisputeStatus.RAISED,
+          challengeBond: '1000000000000000000',
+          challengeBondAsset: '0x' + 'a'.repeat(40),
+          deadline: new Date('2026-10-20T00:00:00.000Z'),
+          eventTxHash: '0x' + '1'.repeat(64),
+          eventLogIndex: 0,
+          blockNumber: '24850010',
+          createdAt: new Date('2026-10-15T00:00:00.000Z'),
+          updatedAt: new Date('2026-10-15T00:00:00.000Z'),
+          dataState: DataState.FINALIZED,
+          resolvedOutcome: null,
+        } as ProjectDispute,
+      ];
+      roundRepo.rows = [
+        {
+          roundId: 'unrelated-appeal',
+          claimId: 'claim-0001',
+          roundType: 'appeal',
+          openedAtBlock: '24850020',
+          appealDeadline: new Date('2099-01-01T00:00:00.000Z'),
+        },
+      ];
+
+      const result = await service.getDetail('claim-0001:round-1');
+      expect(result.data.deadlines.appeal).toBeNull();
+      expect(result.data.appeal.available).toBe(false);
+      expect(result.data.appeal.reason).toBe('no_deadline');
+    });
+
+    it('marks an expired linked appeal window unavailable', async () => {
+      disputeRepo.rows = [
+        {
+          disputeId: 'claim-0001:round-1',
+          claimId: 'claim-0001',
+          originalRoundId: 'round-1',
+          appealRoundId: 'appeal-1',
+          status: DisputeStatus.RAISED,
+          challengeBond: '1000000000000000000',
+          challengeBondAsset: '0x' + 'a'.repeat(40),
+          deadline: new Date('2026-10-20T00:00:00.000Z'),
+          eventTxHash: '0x' + '1'.repeat(64),
+          eventLogIndex: 0,
+          blockNumber: '24850010',
+          createdAt: new Date('2026-10-15T00:00:00.000Z'),
+          updatedAt: new Date('2026-10-15T00:00:00.000Z'),
+          dataState: DataState.FINALIZED,
+          resolvedOutcome: null,
+        } as ProjectDispute,
+      ];
+      roundRepo.rows = [
+        {
+          roundId: 'appeal-1',
+          claimId: 'claim-0001',
+          roundType: 'appeal',
+          openedAtBlock: '24850020',
+          appealDeadline: new Date('2020-01-01T00:00:00.000Z'),
+        },
+      ];
+
+      const result = await service.getDetail('claim-0001:round-1');
+      expect(result.data.deadlines.appeal).toBe('2020-01-01T00:00:00.000Z');
+      expect(result.data.appeal.available).toBe(false);
+      expect(result.data.appeal.reason).toBe('deadline_passed');
+    });
+
+    it('fails closed when a dispute references a missing appeal round', async () => {
+      disputeRepo.rows = [
+        {
+          disputeId: 'claim-0001:round-1',
+          claimId: 'claim-0001',
+          originalRoundId: 'round-1',
+          appealRoundId: 'missing-appeal',
+          status: DisputeStatus.RAISED,
+          challengeBond: '1000000000000000000',
+          challengeBondAsset: '0x' + 'a'.repeat(40),
+          deadline: new Date('2026-10-20T00:00:00.000Z'),
+          eventTxHash: '0x' + '1'.repeat(64),
+          eventLogIndex: 0,
+          blockNumber: '24850010',
+          createdAt: new Date('2026-10-15T00:00:00.000Z'),
+          updatedAt: new Date('2026-10-15T00:00:00.000Z'),
+          dataState: DataState.FINALIZED,
+          resolvedOutcome: null,
+        } as ProjectDispute,
+      ];
+
+      const error = await service.getDetail('claim-0001:round-1').catch((e) => e);
+      expect(error.response.code).toBe('STALE_RECONCILIATION');
+      expect(error.response.failClosed).toBe(true);
+      expect(error.response.reason).toBe('appeal_round_missing_or_ambiguous');
+    });
+  });
+
   describe('phase separation', () => {
     it('provisional disputes have provisional outcome only', async () => {
       disputeRepo.rows = [
@@ -445,6 +625,65 @@ describe('DisputeReadModelService', () => {
       expect(result.data.outcome.provisional).toBeNull();
       expect(result.data.outcome.final).not.toBeNull();
       expect(result.data.outcome.final?.status).toBe('resolved');
+    });
+  });
+
+  describe('terminal state finality and settlement unknowns', () => {
+    it('does not publish a final outcome before the dispute event is finalized', async () => {
+      disputeRepo.rows = [
+        {
+          disputeId: 'claim-0001:round-1',
+          claimId: 'claim-0001',
+          originalRoundId: 'round-1',
+          appealRoundId: null,
+          status: DisputeStatus.RESOLVED,
+          challengeBond: '1000000000000000000',
+          challengeBondAsset: '0x' + 'a'.repeat(40),
+          deadline: new Date('2026-10-20T00:00:00.000Z'),
+          eventTxHash: '0x' + '1'.repeat(64),
+          eventLogIndex: 0,
+          blockNumber: '24850010',
+          createdAt: new Date('2026-10-15T00:00:00.000Z'),
+          updatedAt: new Date('2026-10-15T01:00:00.000Z'),
+          dataState: DataState.OBSERVED,
+          resolvedOutcome: 'rejected',
+        } as ProjectDispute,
+      ];
+      (finalityPolicy as any).classifyByCheckpoint = () => DataState.OBSERVED;
+
+      const result = await service.getDetail('claim-0001:round-1');
+      expect(result.data.phase).toBe('provisional');
+      expect(result.data.outcome.final).toBeNull();
+      expect(result.data.deadlines.settledAt).toBeNull();
+      expect(result.data.bond.disposition).toBe('unknown');
+      expect(result.data.settlement.pending).toBeNull();
+    });
+
+    it('does not infer an expired dispute bond was refunded', async () => {
+      disputeRepo.rows = [
+        {
+          disputeId: 'claim-0001:round-1',
+          claimId: 'claim-0001',
+          originalRoundId: 'round-1',
+          appealRoundId: null,
+          status: DisputeStatus.EXPIRED,
+          challengeBond: '1000000000000000000',
+          challengeBondAsset: '0x' + 'a'.repeat(40),
+          deadline: new Date('2026-10-20T00:00:00.000Z'),
+          eventTxHash: '0x' + '1'.repeat(64),
+          eventLogIndex: 0,
+          blockNumber: '24850010',
+          createdAt: new Date('2026-10-15T00:00:00.000Z'),
+          updatedAt: new Date('2026-10-15T01:00:00.000Z'),
+          dataState: DataState.FINALIZED,
+          resolvedOutcome: null,
+        } as ProjectDispute,
+      ];
+
+      const result = await service.getDetail('claim-0001:round-1');
+      expect(result.data.phase).toBe('finalized');
+      expect(result.data.bond.disposition).toBe('unknown');
+      expect(result.data.deadlines.settledAt).toBeNull();
     });
   });
 

@@ -9,7 +9,11 @@ import {
 } from 'typeorm';
 import { ProjectDispute } from '../entities/project-dispute.entity';
 import { EventCheckpoint } from '../../events/entities/event-checkpoint.entity';
-import { ProjectVerificationRound } from '../../verification/entities/project-verification-round.entity';
+import {
+  ProjectVerificationRound,
+  RoundType,
+} from '../../verification/entities/project-verification-round.entity';
+import { DataState } from '../../common/data-state.enum';
 import { FinalityPolicyService } from '../../../config/finality-policy.service';
 import {
   DISPUTE_DETAIL_READ_MODEL,
@@ -18,7 +22,6 @@ import {
   DISPUTE_READ_MODEL_MAX_LIMIT,
   DISPUTE_READ_MODEL_ORDER,
   DISPUTE_READ_MODEL_VERSION,
-  DisputeDeadlines,
   DisputeReadModelDetailResponse,
   DisputeReadModelErrorBody,
   DisputeReadModelItem,
@@ -36,12 +39,6 @@ import { DisputeReadModelProvenanceService } from './dispute-read-model-provenan
 import { DisputeReadModelFreshnessService } from './dispute-read-model-freshness.service';
 import { toDisputeReadModelItem } from './dispute-read-model-view';
 import { DisputeListQuery } from './dto/dispute-read-model-query.dto';
-
-function toIso(value: Date | string | null | undefined): string | null {
-  if (value === null || value === undefined) return null;
-  const date = value instanceof Date ? value : new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
-}
 
 /**
  * PREWAVE-BE-007 — publishes the versioned dispute register and dispute detail read
@@ -264,48 +261,89 @@ export class DisputeReadModelService {
   ): Promise<DisputeReadModelItem[]> {
     if (rows.length === 0) return [];
 
-    const disputeIds = rows.map((row) => row.disputeId);
     const claimIds = rows.map((row) => row.claimId);
-    const finalizedBlock =
-      freshness.finalizedBlock === null
-        ? null
-        : BigInt(freshness.finalizedBlock);
+    const appealRoundIds = rows
+      .map((row) => row.appealRoundId)
+      .filter((roundId): roundId is string => Boolean(roundId));
     const checkpoint = {
       lastSafeBlock: freshness.safeBlock ?? '0',
       lastFinalizedBlock: freshness.finalizedBlock ?? '0',
     };
 
-    const rounds = await this.roundRepo.find({
-      where: { claimId: In(claimIds) },
-    });
-
-    const latestRoundByClaim = new Map<string, ProjectVerificationRound>();
-    for (const round of rounds) {
-      const current = latestRoundByClaim.get(round.claimId);
-      if (!current || this.blockOf(round) > this.blockOf(current)) {
-        latestRoundByClaim.set(round.claimId, round);
-      }
-    }
+    // An appeal deadline belongs to the exact appeal round linked by the
+    // canonical DisputeRaised projection. Never select the latest round for
+    // the claim: it may be a first round or an unrelated later appeal.
+    const appealRounds =
+      appealRoundIds.length > 0
+        ? await this.roundRepo.find({
+            where: {
+              claimId: In(claimIds),
+              roundId: In(appealRoundIds),
+              roundType: RoundType.APPEAL,
+            },
+          })
+        : [];
+    const appealRoundById = new Map(
+      appealRounds.map((round) => [round.roundId, round]),
+    );
 
     return rows.map((row) => {
-      const round = latestRoundByClaim.get(row.claimId);
+      const appealRound = row.appealRoundId
+        ? appealRoundById.get(row.appealRoundId)
+        : undefined;
+
+      if (row.appealRoundId && !appealRound) {
+        throw this.failClosed(
+          'STALE_RECONCILIATION',
+          HttpStatus.SERVICE_UNAVAILABLE,
+          'The referenced appeal round is not available in the canonical projection',
+          'appeal_round_missing_or_ambiguous',
+          provenance,
+          { disputeId: row.disputeId, appealRoundId: row.appealRoundId },
+        );
+      }
+
+      if (appealRound) {
+        if (appealRound.claimId !== row.claimId) {
+          throw this.failClosed(
+            'STALE_RECONCILIATION',
+            HttpStatus.SERVICE_UNAVAILABLE,
+            'The referenced appeal round belongs to a different claim',
+            'appeal_round_claim_mismatch',
+            provenance,
+            { claimId: row.claimId },
+            { claimId: appealRound.claimId },
+          );
+        }
+
+        const appealRoundState = this.finalityPolicy.classifyByCheckpoint(
+          appealRound.openedAtBlock,
+          checkpoint,
+        );
+        if (appealRoundState !== DataState.FINALIZED || !appealRound.appealDeadline) {
+          throw this.failClosed(
+            'STALE_RECONCILIATION',
+            HttpStatus.SERVICE_UNAVAILABLE,
+            'The referenced appeal round deadline is not finalized and complete',
+            'appeal_round_not_finalized_or_deadline_missing',
+            provenance,
+            { disputeId: row.disputeId, appealRoundId: row.appealRoundId },
+            {
+              dataState: appealRoundState,
+              hasAppealDeadline: Boolean(appealRound.appealDeadline),
+            },
+          );
+        }
+      }
+
       const dataState = this.finalityPolicy.classifyByCheckpoint(
         row.blockNumber,
         checkpoint,
       );
-
-      const deadlines: DisputeDeadlines = {
-        dispute: toIso(row.deadline),
-        appeal: toIso(round?.appealDeadline),
-        settledAt:
-          row.status === 'resolved' || row.status === 'expired'
-            ? toIso(row.updatedAt)
-            : null,
-      };
-
-      // TODO: Integrate with settlement projection when available
+      // Settlement and bond disposition remain explicitly unknown until a
+      // finalized, dispute-bound source with event provenance is available.
       const settlement: DisputeSettlement = {
-        pending: false,
+        pending: null,
         state: null,
         rewardAmount: null,
         refundAmount: null,
@@ -315,7 +353,8 @@ export class DisputeReadModelService {
       return toDisputeReadModelItem(row, {
         provenance,
         dataState,
-        provisionalOutcome: null, // TODO: derive from round outcome
+        appealDeadline: appealRound?.appealDeadline ?? null,
+        provisionalOutcome: null,
         terminalBondDisposition: row.status === 'resolved' ? 'unknown' : null,
         settlement,
       });
