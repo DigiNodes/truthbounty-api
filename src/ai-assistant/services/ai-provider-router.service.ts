@@ -1,4 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   AiChatRequest,
@@ -14,8 +19,16 @@ import {
 } from '../metrics/ai-metrics.service';
 import { AiConfig } from '../config/ai.config';
 import { AppUserRole } from '../../auth/decorators/roles.decorator';
+import {
+  ConfiguredAiProvider,
+  mockProviderAllowed,
+  redactSecrets,
+} from '../../config/ai-provider';
 
-export type AiProviderName = 'openai' | 'mock';
+export type AiProviderName = Extract<ConfiguredAiProvider, 'openai' | 'mock'>;
+
+const isRoutableProvider = (provider: unknown): provider is AiProviderName =>
+  provider === 'openai' || provider === 'mock';
 
 export interface RoutedProvider {
   provider: AiProvider;
@@ -39,6 +52,8 @@ export class AiProviderRouterService {
   private readonly logger = new Logger(AiProviderRouterService.name);
   private readonly providers: Record<AiProviderName, AiProvider>;
   private readonly aiConfig: AiConfig;
+  private readonly mockAllowed: boolean;
+  private readonly secrets: readonly (string | undefined)[];
 
   constructor(
     private readonly openAiProvider: OpenAiProvider,
@@ -49,20 +64,37 @@ export class AiProviderRouterService {
   ) {
     this.providers = { openai: this.openAiProvider, mock: this.mockProvider };
     this.aiConfig = this.configService.get<AiConfig>('ai') as AiConfig;
+    this.mockAllowed = mockProviderAllowed(
+      this.configService.get<string>('NODE_ENV'),
+      this.configService.get<string | boolean>('LOCAL_DEV_MODE'),
+    );
+    this.secrets = [this.configService.get<string>('OPENAI_API_KEY')];
+  }
+
+  private unavailable(detail: string): ServiceUnavailableException {
+    return new ServiceUnavailableException({
+      code: 'AI_PROVIDER_UNAVAILABLE',
+      message: detail,
+    });
   }
 
   private resolvePrimaryName(
     requesterRole?: AppUserRole,
     override?: AiProviderName,
   ): AiProviderName {
-    if (override && requesterRole === 'admin') {
-      return override;
-    }
+    if (!isRoutableProvider(this.aiConfig.provider))
+      throw this.unavailable('Configured AI provider is not supported here.');
+    if (override === 'mock' && !this.mockAllowed)
+      throw new ForbiddenException('Mock provider is not available.');
+    if (override && requesterRole === 'admin') return override;
+    if (this.aiConfig.provider === 'mock' && !this.mockAllowed)
+      throw this.unavailable('Configured AI provider is not available.');
     return this.aiConfig.provider;
   }
 
-  private fallbackNameFor(name: AiProviderName): AiProviderName {
-    return name === 'mock' ? 'openai' : 'mock';
+  private fallbackNameFor(name: AiProviderName): AiProviderName | undefined {
+    if (name === 'mock') return 'openai';
+    return this.mockAllowed ? 'mock' : undefined;
   }
 
   private async checkAvailability(name: AiProviderName): Promise<boolean> {
@@ -87,6 +119,8 @@ export class AiProviderRouterService {
     }
 
     const fallbackName = this.fallbackNameFor(primaryName);
+    if (!fallbackName)
+      throw this.unavailable('Configured AI provider is unavailable.');
     this.logger.warn(
       `Provider "${primaryName}" unavailable, falling back to "${fallbackName}"`,
     );
@@ -116,11 +150,16 @@ export class AiProviderRouterService {
       );
       return { response, provider: provider.name, fallback };
     } catch (error) {
+      const fallbackName = this.fallbackNameFor(provider.name as AiProviderName);
+      const message = error instanceof Error ? error.message : String(error);
       this.logger.error(
-        `Provider "${provider.name}" chat() failed: ${(error as Error).message}`,
+        `Provider "${provider.name}" chat() failed: ${redactSecrets(message, this.secrets)}`,
       );
-      const fallbackProvider =
-        this.providers[this.fallbackNameFor(provider.name as AiProviderName)];
+      if (!fallbackName) {
+        this.metrics.recordRequest(provider.name, endpoint, 'error');
+        throw this.unavailable('Configured AI provider is unavailable.');
+      }
+      const fallbackProvider = this.providers[fallbackName];
       const fallbackStart = Date.now();
       try {
         const response = await fallbackProvider.chat(request);

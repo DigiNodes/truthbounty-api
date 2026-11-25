@@ -1,6 +1,12 @@
 import { LocalFsIpfsProvider } from './ipfs.providers';
 import { readFileSync, promises as fsPromises } from 'fs';
 import path from 'path';
+import { CID } from 'multiformats/cid';
+import { verifyCIDIntegrity } from '../storage/cid-verifier';
+import {
+  EVIDENCE_CID_RAW_CODEC,
+  EVIDENCE_CID_SHA256_MULTIHASH_CODE,
+} from '../storage/evidence-cid.constants';
 
 describe('LocalFsIpfsProvider', () => {
   const tmpDir = path.join(process.cwd(), 'tmp-ipfs-test');
@@ -15,14 +21,41 @@ describe('LocalFsIpfsProvider', () => {
     await fsPromises.rm(tmpDir, { recursive: true, force: true });
   });
 
-  it('uploads buffer deterministically and returns cid', async () => {
+  it('returns a valid CIDv1 for the uploaded bytes', async () => {
     const buf = Buffer.from('hello world');
     const stream = require('stream').Readable.from(buf);
     const res = await provider.add(stream, { filename: 'greeting.txt' });
-    expect(res.cid).toMatch(/^sha256:[0-9a-f]{64}$/);
+    const parsed = CID.parse(res.cid);
+    expect(parsed.version).toBe(1);
+    expect(parsed.code).toBe(EVIDENCE_CID_RAW_CODEC);
+    expect(parsed.multihash.code).toBe(EVIDENCE_CID_SHA256_MULTIHASH_CODE);
+    expect(await verifyCIDIntegrity(buf, res.cid)).toBe(true);
+    expect(await verifyCIDIntegrity(Buffer.from('altered'), res.cid)).toBe(false);
     expect(res.size).toBe(buf.length);
 
     const stored = readFileSync(res.path!, 'utf8');
     expect(stored).toBe('hello world');
+  });
+
+  it('returns the same CID for repeated uploads of identical bytes', async () => {
+    const first = await provider.add(
+      require('stream').Readable.from(Buffer.from('repeat')),
+    );
+    const second = await provider.add(
+      require('stream').Readable.from(Buffer.from('repeat')),
+    );
+    expect(second.cid).toBe(first.cid);
+  });
+
+  it('removes partial files when an upload stream fails', async () => {
+    const stream = new (require('stream').Readable)({
+      read() {
+        this.push(Buffer.from('partial'));
+        this.destroy(new Error('interrupted'));
+      },
+    });
+
+    await expect(provider.add(stream)).rejects.toThrow('interrupted');
+    expect(await fsPromises.readdir(tmpDir)).toEqual([]);
   });
 });

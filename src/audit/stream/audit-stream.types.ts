@@ -61,6 +61,16 @@ export interface AuditStreamCheckpoint {
   checkpointHash: string;
 }
 
+
+export interface AuditAppendResult {
+  streamId: string;
+  sequence: number;
+  hash: string;
+}
+
+export interface AuditStreamAppendResult extends AuditAppendResult {}
+
+
 export interface AuditVerificationOptions {
   fromSequence?: number;
   toSequence?: number;
@@ -138,6 +148,7 @@ export const AUDIT_STREAM_DISCLAIMER =
   'Hash-chaining guarantees tamper-evidence and detectability of unauthorized mutations ' +
   'within an append-only audit stream; it does NOT claim decentralized blockchain consensus immutability.';
 
+
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CODE_RE = /^[a-z][a-z0-9_.:-]{0,95}$/i;
@@ -150,17 +161,30 @@ export function validateAuditStreamBinding(
   if (!binding || typeof binding !== 'object') {
     throw new Error('Audit stream binding is required');
   }
+
   const b = binding as Partial<AuditStreamBinding>;
 
   if (!Number.isSafeInteger(b.chainId) || (b.chainId as number) <= 0) {
     throw new Error(`Invalid audit chainId: ${b.chainId}`);
   }
+
+
+  if (!b.releaseId || !UUID_RE.test(b.releaseId)) {
+    throw new Error(`Invalid audit releaseId: ${b.releaseId}`);
+  }
+
+  if (!b.deploymentBlock || !BLOCK_RE.test(b.deploymentBlock)) {
+    throw new Error(`Invalid audit deploymentBlock: ${b.deploymentBlock}`);
+  }
+
+
   if (!b.releaseId || !UUID_RE.test(b.releaseId)) {
     throw new Error(`Invalid audit releaseId: ${b.releaseId}`);
   }
   if (!b.deploymentBlock || !BLOCK_RE.test(b.deploymentBlock)) {
     throw new Error(`Invalid audit deploymentBlock: ${b.deploymentBlock}`);
   }
+
   if (!b.artifactChecksum || !CHECKSUM_RE.test(b.artifactChecksum)) {
     throw new Error(`Invalid audit artifactChecksum: ${b.artifactChecksum}`);
   }
@@ -227,4 +251,26 @@ export function validateRecordPayload(
     resultReference: payload.resultReference ?? null,
     chainContext: validBinding,
   };
+}
+
+
+// Legacy type compatibility
+export interface AuditStreamVerifyResult {
+  valid: boolean;
+  reason?: string;
+  details?: {
+    recordFound: boolean;
+    sequenceValid: boolean;
+    hashValid: boolean;
+    signatureValid: boolean;
+    keyAvailable: boolean;
+  };
+}
+
+export interface AuditStreamKey {
+  keyId: string;
+  algorithm: string;
+  createdAt: Date;
+  revokedAt?: Date;
+  isActive: boolean;
 }
