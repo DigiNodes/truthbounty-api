@@ -1,14 +1,17 @@
+import { base32 } from 'multiformats/bases/base32';
 import { CID } from 'multiformats/cid';
+import { Digest } from 'multiformats/hashes/digest';
 import { sha256 } from 'multiformats/hashes/sha2';
 import { HttpGatewayProvider } from './http-gateway.provider';
 import { IpfsProvider } from './ipfs-provider.interface';
+import { verifyCIDIntegrity } from './cid-verifier';
+import { EVIDENCE_CID_RAW_CODEC } from './evidence-cid.constants';
 import {
   EvidenceBinding,
   IpfsQuorumService,
   ProviderAttempt,
 } from './ipfs-quorum.service';
 
-const RAW_CODEC = 0x55;
 const binding: EvidenceBinding = {
   chainId: 11155420,
   releaseId: 'release-1',
@@ -17,7 +20,10 @@ const binding: EvidenceBinding = {
 };
 
 async function cidFor(bytes: Uint8Array): Promise<string> {
-  return CID.createV1(RAW_CODEC, await sha256.digest(bytes)).toString();
+  return CID.createV1(
+    EVIDENCE_CID_RAW_CODEC,
+    await sha256.digest(bytes),
+  ).toString();
 }
 
 function provider(
@@ -51,6 +57,7 @@ describe('IpfsQuorumService', () => {
     attempts.map((a) => `${a.providerId}:${a.outcome}`);
 
   it('serves verified bytes when quorum agrees', async () => {
+    expect(await verifyCIDIntegrity(Buffer.from(good), cid)).toBe(true);
     const svc = new IpfsQuorumService(
       [provider('a', ok(good)), provider('b', ok(good))],
       { quorum: 2 },
@@ -229,5 +236,37 @@ describe('IpfsQuorumService', () => {
     expect(badBinding.status === 'unavailable' && badBinding.reason).toBe(
       'invalid_binding',
     );
+  });
+
+  it('uses upload CID rules to reject substituted forms', async () => {
+    const hash = await sha256.digest(good);
+    const invalidCids = [
+      CID.createV1(
+        EVIDENCE_CID_RAW_CODEC,
+        Digest.create(0x13, hash.digest),
+      ).toString(),
+      CID.createV1(0x71, hash).toString(),
+      CID.createV0(hash).toString(),
+      CID.createV1(
+        EVIDENCE_CID_RAW_CODEC,
+        Digest.create(0x00, good),
+      ).toString(),
+      base32.encode(Uint8Array.of(0x81)),
+    ];
+    const p = provider('a', ok(good));
+    const svc = new IpfsQuorumService([p], { quorum: 1 });
+
+    for (const invalidCid of invalidCids) {
+      expect(await verifyCIDIntegrity(Buffer.from(good), invalidCid)).toBe(
+        false,
+      );
+      const result = await svc.fetchValidated({ cid: invalidCid, binding });
+      expect(result.status).toBe('unavailable');
+      expect(result.status === 'unavailable' && result.reason).toBe(
+        'invalid_cid',
+      );
+    }
+
+    expect(p.calls).toBe(0);
   });
 });
