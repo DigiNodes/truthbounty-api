@@ -8,7 +8,6 @@ import { RewardDistributionRepository } from './repositories/reward-distribution
 import { RewardSyncService } from './services/reward-sync.service';
 import { BlockchainListenerService } from './services/blockchain-listener.service';
 import { RewardsController } from './rewards.controller';
-import { RewardsService } from './rewards.service';
 import { AuthModule } from '../auth/auth.module';
 
 @Module({
@@ -23,7 +22,6 @@ import { AuthModule } from '../auth/auth.module';
     RewardDistributionRepository,
     RewardSyncService,
     BlockchainListenerService,
-    RewardsService,
   ],
   exports: [RewardSyncService],
 })

@@ -19,6 +19,7 @@ import { IdentityModule } from './identity/identity.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 import throttlerConfig from './config/throttler.config';
+import aiConfig from './ai-assistant/config/ai.config';
 import { WalletThrottlerGuard } from './common/guards/wallet-throttler.guard';
 import { SybilResistanceModule } from './sybil-resistance/sybil-resistance.module';
 import { AggregationModule } from './aggregation/aggregation.module';
@@ -42,6 +43,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { ReputationModule } from './reputation/reputation.module';
 import { GovernanceModule } from './governance/governance.module';
 import { AiAssistantModule } from './ai-assistant/ai-assistant.module';
+import { AnalyticsModule } from './analytics/analytics.module';
 import { AdminModule } from './admin/admin.module';
 import { V2EventsModule } from './v2/events/v2-events.module';
 import { V2EvidenceModule } from './v2/evidence/v2-evidence.module';
@@ -302,6 +304,7 @@ async function createThrottlerStorage(
         throttlerConfig,
         sybilConfig,
         finalityPolicyConfig,
+        aiConfig,
       ],
       ignoreEnvFile: true,
       skipProcessEnv: true,
@@ -384,6 +387,8 @@ async function createThrottlerStorage(
     ReputationModule,
     GovernanceModule,
     AiAssistantModule,
+    // ANALYTICS-CONSENT: durable consent persistence and purge lifecycle
+    AnalyticsModule,
     AdminModule,
     V2EventsModule,
     V2EvidenceModule,
