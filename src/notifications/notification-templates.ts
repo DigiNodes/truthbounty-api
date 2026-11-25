@@ -28,6 +28,20 @@ export function escapeHtml(value: unknown): string {
   return String(value).replace(/[&<>"']/g, (char) => ESCAPE_HTML_ENTITIES[char] ?? char);
 }
 
+const SAFE_URL_PROTOCOLS = new Set(['http:', 'https:', 'mailto:']);
+
+export function sanitizeActionUrl(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const url = value.trim();
+  if (!url || /[\s\\\p{Cc}]/u.test(url)) return undefined;
+  if (url.startsWith('/')) return url.startsWith('//') ? undefined : url;
+  try {
+    return SAFE_URL_PROTOCOLS.has(new URL(url).protocol) ? url : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function escapeMarkdown(value: unknown): string {
   if (value === null || value === undefined) {
     return '';

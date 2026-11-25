@@ -1,5 +1,11 @@
 # Prisma Inventory
 
+> **Runtime status (2026-11-21):** `PrismaService` now requires PostgreSQL and
+> uses `@prisma/adapter-pg`. This does not establish Prisma as the application's
+> sole persistence authority: TypeORM entities, services, and migrations still
+> exist. Treat this as adapter parity, not completion of the persistence
+> consolidation.
+
 Search report for every Prisma reference in this repository, produced for STAB-BE-003
 (issue #517, "Remove Prisma Remnants and Prove the TypeORM-Only Baseline").
 

@@ -1,29 +1,31 @@
+import { CID } from 'multiformats/cid';
+import { sha256 } from 'multiformats/hashes/sha2';
 import { verifyCIDIntegrity } from '../../src/storage/cid-verifier';
-import { computeSHA256 } from '../../src/common/utils/hash.util';
 
 describe('Evidence Integrity Verification', () => {
-  it('accepts valid CID hash match', () => {
+  async function cidFor(buffer: Buffer): Promise<string> {
+    return CID.createV1(0x55, await sha256.digest(buffer)).toString();
+  }
+
+  it('accepts valid CID hash match', async () => {
     const buffer = Buffer.from('truthbounty-test');
-    const hash = computeSHA256(buffer);
+    const cid = await cidFor(buffer);
 
-    const cid = `cid-${hash.slice(0, 16)}`;
-
-    expect(verifyCIDIntegrity(buffer, cid)).toBe(true);
+    expect(await verifyCIDIntegrity(buffer, cid)).toBe(true);
   });
 
-  it('rejects mismatched CID', () => {
+  it('rejects mismatched CID', async () => {
     const buffer = Buffer.from('original');
-    const cid = 'cid-invalidhash';
+    const cid = await cidFor(Buffer.from('different content'));
 
-    expect(verifyCIDIntegrity(buffer, cid)).toBe(false);
+    expect(await verifyCIDIntegrity(buffer, cid)).toBe(false);
   });
 
-  it('detects tampering attempts', () => {
+  it('detects tampering attempts', async () => {
     const buffer = Buffer.from('fileA');
     const tampered = Buffer.from('fileB');
+    const cid = await cidFor(buffer);
 
-    const cid = `cid-${computeSHA256(buffer).slice(0, 16)}`;
-
-    expect(verifyCIDIntegrity(tampered, cid)).toBe(false);
+    expect(await verifyCIDIntegrity(tampered, cid)).toBe(false);
   });
 });

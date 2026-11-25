@@ -71,6 +71,9 @@ jobs:
             exit 1
           fi
 
+      - name: Verify published OpenAPI artifact checksums
+        run: npm run openapi:check
+
       - name: Run linter without modifying the checkout
         run: npx eslint "{src,apps,libs,test}/**/*.ts"
 

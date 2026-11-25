@@ -6,6 +6,7 @@ import { WebSocketService } from './websocket.service';
 import { EmailService } from './email.service';
 import { WebhookService } from './webhook.service';
 import { DeliveryHistoryService } from './delivery-history.service';
+import { NotificationPreferencesService } from './notification-preferences.service';
 import { RedisService } from '../../redis/redis.service';
 import {
   DeliveryChannel,
@@ -73,6 +74,14 @@ describe('NotificationProcessor', () => {
           useValue: { getUserWebhooks: jest.fn().mockResolvedValue([]) },
         },
         { provide: DeliveryHistoryService, useValue: deliveryHistoryService },
+        {
+          provide: NotificationPreferencesService,
+          useValue: {
+            getUserPreferences: jest.fn().mockResolvedValue({
+              emailAddress: 'verified@truthbounty.io',
+            }),
+          },
+        },
         { provide: RedisService, useValue: redisService },
       ],
     }).compile();

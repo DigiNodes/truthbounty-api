@@ -86,6 +86,13 @@ describe('SybilResistanceService', () => {
               create: jest.fn(),
               findFirst: jest.fn(),
             },
+            sybilAppeal: {
+              create: jest.fn(),
+              findUnique: jest.fn(),
+              findMany: jest.fn(),
+              update: jest.fn(),
+              count: jest.fn(),
+            },
           },
         },
         {

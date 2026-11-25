@@ -1208,11 +1208,32 @@ export class AuthorizationPolicyService {
       throw new CapabilityTokenError('revoked', 'Token subject has been revoked');
     }
 
-    // Replay protection: atomically claim the nonce.
+    // Replay protection: atomically claim the nonce (fail closed).
+    // Uses a Lua SET NX EX script so that:
+    //   - The check and write are one atomic Redis command.
+    //   - Two concurrent requests carrying the same nonce result in exactly
+    //     one winner (SET NX returns 1) and one loser (returns 0).
+    //   - Redis unavailability throws, which propagates as a CapabilityTokenError
+    //     below — never silently authorising a replay.
+    // This matches the atomicity guarantee in TokenService.validateAndConsumeCapabilityToken.
     const nonceKey = `${NONCE_KEY_PREFIX}${claims.nonce}`;
     const ttl = Math.max(1, claims.exp - now + CAPABILITY_CLOCK_SKEW);
-    const claimed = await this.redisService.setIfNotExists(nonceKey, '1', ttl);
-    if (!claimed) {
+    let claimed: unknown;
+    try {
+      // SET key '1' EX ttl NX — returns 1 if key was set (new), 0 if it already existed.
+      claimed = await this.redisService.eval(
+        "return redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2], 'NX') == false and 0 or 1",
+        1,
+        nonceKey,
+        '1',
+        String(ttl),
+      );
+    } catch {
+      // Redis unavailable or eval error — fail closed, never authorise.
+      this.auditUse('redis-unavailable', request);
+      throw new CapabilityTokenError('redis_unavailable', 'Nonce store unavailable; cannot verify single-use');
+    }
+    if (Number(claimed) !== 1) {
       this.auditUse('replay', request);
       throw new CapabilityTokenError('replay', 'Token has already been used');
     }

@@ -3,6 +3,7 @@ import { EntityManager } from 'typeorm';
 import { NotificationEventPublisher } from './notification-event-publisher.service';
 import { EventType } from '../enums/event-type.enum';
 import { PublishEventDto } from '../dto/publish-event.dto';
+import { ClaimStakeholderResolver } from './claim-stakeholder-resolver.service';
 
 /**
  * ClaimEventPublisher
@@ -20,7 +21,10 @@ import { PublishEventDto } from '../dto/publish-event.dto';
 export class ClaimEventPublisher {
   private readonly logger = new Logger(ClaimEventPublisher.name);
 
-  constructor(private eventPublisher: NotificationEventPublisher) {}
+  constructor(
+    private eventPublisher: NotificationEventPublisher,
+    private stakeholderResolver: ClaimStakeholderResolver,
+  ) {}
 
   /**
    * Publish claim created event
@@ -34,10 +38,16 @@ export class ClaimEventPublisher {
     amount: number,
     manager: EntityManager,
   ): Promise<void> {
+    const recipientIds = await this.stakeholderResolver.getClaimCreatedRecipients(
+      claimId,
+      creatorId,
+      manager,
+    );
+
     const event: PublishEventDto = {
       eventType: EventType.CLAIM_CREATED,
       aggregateId: claimId,
-      recipientIds: this.getClaimCreatedRecipients(creatorId),
+      recipientIds,
       metadata: {
         claimId,
         creatorId,
@@ -51,7 +61,7 @@ export class ClaimEventPublisher {
     };
 
     await this.eventPublisher.publishEvent(event, manager);
-    this.logger.log(`Published CLAIM_CREATED for claim ${claimId}`);
+    this.logger.log(`Published CLAIM_CREATED for claim ${claimId} to ${recipientIds.length} recipients`);
   }
 
   /**
@@ -64,10 +74,21 @@ export class ClaimEventPublisher {
     changes: Record<string, any>,
     manager: EntityManager,
   ): Promise<void> {
+    const recipientIds = await this.stakeholderResolver.getClaimUpdatedRecipients(
+      claimId,
+      updaterId,
+      manager,
+    );
+
+    if (recipientIds.length === 0) {
+      this.logger.debug(`No recipients for CLAIM_UPDATED event ${claimId}`);
+      return;
+    }
+
     const event: PublishEventDto = {
       eventType: EventType.CLAIM_UPDATED,
       aggregateId: claimId,
-      recipientIds: this.getClaimUpdatedRecipients(claimId),
+      recipientIds,
       metadata: {
         claimId,
         updaterId,
@@ -80,6 +101,7 @@ export class ClaimEventPublisher {
     };
 
     await this.eventPublisher.publishEvent(event, manager);
+    this.logger.log(`Published CLAIM_UPDATED for claim ${claimId} to ${recipientIds.length} recipients`);
   }
 
   /**
@@ -92,10 +114,20 @@ export class ClaimEventPublisher {
     verificationCount: number,
     manager: EntityManager,
   ): Promise<void> {
+    const recipientIds = await this.stakeholderResolver.getClaimResolvedRecipients(
+      claimId,
+      manager,
+    );
+
+    if (recipientIds.length === 0) {
+      this.logger.debug(`No recipients for CLAIM_RESOLVED event ${claimId}`);
+      return;
+    }
+
     const event: PublishEventDto = {
       eventType: EventType.CLAIM_RESOLVED,
       aggregateId: claimId,
-      recipientIds: this.getClaimResolvedRecipients(claimId),
+      recipientIds,
       metadata: {
         claimId,
         title,
@@ -107,6 +139,7 @@ export class ClaimEventPublisher {
     };
 
     await this.eventPublisher.publishEvent(event, manager);
+    this.logger.log(`Published CLAIM_RESOLVED for claim ${claimId} to ${recipientIds.length} recipients`);
   }
 
   /**
@@ -118,10 +151,20 @@ export class ClaimEventPublisher {
     reason: string,
     manager: EntityManager,
   ): Promise<void> {
+    const recipientIds = await this.stakeholderResolver.getClaimArchivedRecipients(
+      claimId,
+      manager,
+    );
+
+    if (recipientIds.length === 0) {
+      this.logger.debug(`No recipients for CLAIM_ARCHIVED event ${claimId}`);
+      return;
+    }
+
     const event: PublishEventDto = {
       eventType: EventType.CLAIM_ARCHIVED,
       aggregateId: claimId,
-      recipientIds: this.getClaimArchivedRecipients(claimId),
+      recipientIds,
       metadata: {
         claimId,
         title,
@@ -131,26 +174,6 @@ export class ClaimEventPublisher {
     };
 
     await this.eventPublisher.publishEvent(event, manager);
-  }
-
-  // Helper methods to determine recipients
-  private getClaimCreatedRecipients(creatorId: string): string[] {
-    // TODO: Query subscribed verifiers, governance, etc.
-    return [creatorId];
-  }
-
-  private getClaimUpdatedRecipients(claimId: string): string[] {
-    // TODO: Query claim stakeholders (creator, verifiers, commenters)
-    return [];
-  }
-
-  private getClaimResolvedRecipients(claimId: string): string[] {
-    // TODO: Query all claim stakeholders
-    return [];
-  }
-
-  private getClaimArchivedRecipients(claimId: string): string[] {
-    // TODO: Query claim stakeholders
-    return [];
+    this.logger.log(`Published CLAIM_ARCHIVED for claim ${claimId} to ${recipientIds.length} recipients`);
   }
 }

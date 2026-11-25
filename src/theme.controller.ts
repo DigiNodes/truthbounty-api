@@ -1,22 +1,50 @@
-import { Controller, Get, Post, Body, Query } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
-import { ThemeService, Theme, ThemePreference } from './theme.service';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import { IsIn, IsOptional } from 'class-validator';
+import { OptionalJwtAuthGuard } from './auth/optional-jwt-auth.guard';
+import { CurrentUser } from './common/decorators/current-user.decorator';
+import { Theme, ThemePreference, ThemeService, THEMES } from './theme.service';
+
+export class SetThemeDto {
+  @IsIn(THEMES)
+  theme: Theme;
+}
+
+export class ToggleThemeDto {
+  @IsOptional()
+  @IsIn(THEMES)
+  currentTheme?: Theme;
+}
+
+interface ThemePrincipal {
+  userId?: string;
+  sub?: string;
+  user?: { id?: string };
+}
 
 @ApiTags('Theme')
+@ApiBearerAuth()
 @Controller('theme')
 export class ThemeController {
   constructor(private readonly themeService: ThemeService) {}
 
   @Get()
+  @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({
     summary: 'Get current theme preference',
     description:
-      'Returns the current theme preference for a user or anonymous session',
-  })
-  @ApiQuery({
-    name: 'userId',
-    required: false,
-    description: 'User ID for authenticated users',
+      'Authenticated requests read the persisted owner-scoped preference. Unauthenticated requests return the client-scoped default without reading shared server state.',
   })
   @ApiResponse({
     status: 200,
@@ -24,28 +52,17 @@ export class ThemeController {
     schema: {
       type: 'object',
       properties: {
-        theme: {
-          type: 'string',
-          enum: ['light', 'dark', 'system'],
-          example: 'dark',
-        },
-        userId: {
-          type: 'string',
-          example: 'user-123',
-        },
-        updatedAt: {
-          type: 'string',
-          format: 'date-time',
-        },
+        theme: { type: 'string', enum: ['light', 'dark', 'system'] },
+        resolved: { type: 'string', enum: ['light', 'dark'] },
       },
     },
   })
-  getTheme(@Query('userId') userId?: string): {
-    theme: Theme;
-    resolved: 'light' | 'dark';
-  } {
-    const theme = this.themeService.getTheme(userId);
-    const resolved = this.themeService.getResolvedTheme(userId);
+  async getTheme(
+    @CurrentUser() principal?: ThemePrincipal,
+  ): Promise<{ theme: Theme; resolved: 'light' | 'dark' }> {
+    const userId = this.resolveUserId(principal);
+    const theme = await this.themeService.getTheme(userId);
+    const resolved = await this.themeService.getResolvedTheme(userId);
 
     return { theme, resolved };
   }
@@ -53,56 +70,64 @@ export class ThemeController {
   @Post()
   @ApiOperation({
     summary: 'Set theme preference',
-    description: 'Sets the theme preference for a user or anonymous session',
+    description:
+      'Persists the preference for the authenticated owner. The theme value is restricted to light, dark or system.',
   })
   @ApiResponse({
     status: 200,
     description: 'Theme preference updated successfully',
     type: Object,
   })
-  setTheme(@Body() body: { theme: Theme; userId?: string }): ThemePreference {
-    return this.themeService.setTheme(body.theme, body.userId);
+  setTheme(
+    @CurrentUser() principal: ThemePrincipal,
+    @Body() body: SetThemeDto,
+  ): Promise<ThemePreference> {
+    return this.themeService.setTheme(body.theme, this.resolveUserId(principal));
   }
 
   @Post('toggle')
   @ApiOperation({
     summary: 'Toggle between light and dark themes',
     description:
-      'Toggles between light and dark themes, ignoring system preference',
+      'Toggles the authenticated owner’s persisted preference. currentTheme is only used by client-scoped callers.',
   })
   @ApiResponse({
     status: 200,
     description: 'Theme toggled successfully',
     type: Object,
   })
-  toggleTheme(@Body() body: { userId?: string }): ThemePreference {
-    return this.themeService.toggleTheme(body.userId);
+  toggleTheme(
+    @CurrentUser() principal: ThemePrincipal,
+    @Body() body: ToggleThemeDto,
+  ): Promise<ThemePreference> {
+    return this.themeService.toggleTheme(
+      this.resolveUserId(principal),
+      body?.currentTheme,
+    );
   }
 
   @Post('reset')
   @ApiOperation({
     summary: 'Reset to system preference',
-    description: 'Resets theme to follow system preference',
+    description: 'Persists the system preference for the authenticated owner.',
   })
   @ApiResponse({
     status: 200,
     description: 'Theme reset to system preference',
     type: Object,
   })
-  resetToSystem(@Body() body: { userId?: string }): ThemePreference {
-    return this.themeService.resetToSystem(body.userId);
+  resetToSystem(
+    @CurrentUser() principal: ThemePrincipal,
+  ): Promise<ThemePreference> {
+    return this.themeService.resetToSystem(this.resolveUserId(principal));
   }
 
   @Get('resolved')
+  @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({
     summary: 'Get resolved theme',
     description:
-      'Returns the actual theme (light/dark) after resolving system preference',
-  })
-  @ApiQuery({
-    name: 'userId',
-    required: false,
-    description: 'User ID for authenticated users',
+      'Returns the actual theme (light/dark) after resolving the system preference.',
   })
   @ApiResponse({
     status: 200,
@@ -110,25 +135,23 @@ export class ThemeController {
     schema: {
       type: 'object',
       properties: {
-        theme: {
-          type: 'string',
-          enum: ['light', 'dark'],
-          example: 'dark',
-        },
+        theme: { type: 'string', enum: ['light', 'dark'] },
       },
     },
   })
-  getResolvedTheme(@Query('userId') userId?: string): {
-    theme: 'light' | 'dark';
-  } {
-    const theme = this.themeService.getResolvedTheme(userId);
+  async getResolvedTheme(
+    @CurrentUser() principal?: ThemePrincipal,
+  ): Promise<{ theme: 'light' | 'dark' }> {
+    const theme = await this.themeService.getResolvedTheme(
+      this.resolveUserId(principal),
+    );
     return { theme };
   }
 
   @Get('stats')
   @ApiOperation({
     summary: 'Get theme usage statistics',
-    description: 'Returns statistics on theme preferences (admin endpoint)',
+    description: 'Counts persisted authenticated preferences only.',
   })
   @ApiResponse({
     status: 200,
@@ -136,13 +159,17 @@ export class ThemeController {
     schema: {
       type: 'object',
       properties: {
-        light: { type: 'number', example: 150 },
-        dark: { type: 'number', example: 200 },
-        system: { type: 'number', example: 50 },
+        light: { type: 'number' },
+        dark: { type: 'number' },
+        system: { type: 'number' },
       },
     },
   })
-  getThemeStats(): { light: number; dark: number; system: number } {
+  getThemeStats(): Promise<{ light: number; dark: number; system: number }> {
     return this.themeService.getThemeStats();
+  }
+
+  private resolveUserId(principal?: ThemePrincipal): string | undefined {
+    return principal?.userId ?? principal?.user?.id ?? principal?.sub ?? undefined;
   }
 }

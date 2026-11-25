@@ -1,6 +1,5 @@
 import { Logger } from '@nestjs/common';
-import { CID } from 'multiformats/cid';
-import { verifyCIDIntegrity } from './cid-verifier';
+import { canonicalizeEvidenceCID, verifyCIDIntegrity } from './cid-verifier';
 import {
   CircuitState,
   ProviderCircuitBreaker,
@@ -321,12 +320,7 @@ export class IpfsQuorumService {
   }
 
   private canonicalize(raw: string): string | null {
-    try {
-      const parsed = CID.parse(raw);
-      return parsed.version === 1 ? parsed.toString() : null;
-    } catch {
-      return null;
-    }
+    return canonicalizeEvidenceCID(raw);
   }
 
   private isValidBinding(binding: EvidenceBinding | undefined): boolean {

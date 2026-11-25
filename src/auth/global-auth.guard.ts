@@ -51,7 +51,7 @@ export class GlobalAuthGuard extends AuthGuard('jwt') {
   ): AuthenticatedPrincipal {
     if (err) {
       throw err instanceof Error
-        ? error
+        ? err
         : new UnauthorizedException('Authentication required');
     }
     if (!user || typeof user !== 'object') {

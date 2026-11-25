@@ -43,6 +43,7 @@ describe('AuthService', () => {
       set: jest.fn().mockResolvedValue(true),
       get: jest.fn().mockResolvedValue(null),
       del: jest.fn().mockResolvedValue(true),
+      eval: jest.fn().mockResolvedValue(1),
       // Atomic consume: returns the stored record only if it matches the
       // expected nonce, deleting it in the same Redis script. Returns null
       // when missing/mismatched and throws on Redis failure (fail closed).

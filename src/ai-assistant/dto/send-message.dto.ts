@@ -23,7 +23,7 @@ export class SendMessageDto {
   @ApiPropertyOptional({
     enum: ['openai', 'mock'],
     description:
-      'Force a specific provider for this call. Only honored for admin users.',
+      'Force a provider for this call. Admin users only; mock is restricted to local/test and authorized development tooling.',
   })
   @IsOptional()
   @IsIn(['openai', 'mock'])
