@@ -2,14 +2,14 @@
 
 ## Overview
 
-This implementation provides persistent theme switching across sessions for the TruthBounty API. It supports user preferences, localStorage persistence, and system preference fallback.
+This implementation provides persistent theme switching across sessions for the TruthBounty API. Authenticated preferences are stored in PostgreSQL and scoped to the authenticated owner. Anonymous preferences are client-scoped only and are never written to shared server storage.
 
 ## Features
 
 - ✅ **Theme Toggle**: Switch between light/dark themes
-- ✅ **LocalStorage Persistence**: Save preferences across browser sessions
+- ✅ **Client-Scoped Anonymous Preferences**: Anonymous callers persist preferences locally
 - ✅ **System Preference Fallback**: Respect user's OS theme preference
-- ✅ **User-Specific Preferences**: Database-backed preferences for authenticated users
+- ✅ **Owner-Scoped Preferences**: One persisted preference per authenticated user
 - ✅ **API Endpoints**: RESTful endpoints for theme management
 
 ## Architecture
@@ -27,6 +27,12 @@ This implementation provides persistent theme switching across sessions for the 
 3. **ThemeModule** (`src/theme.module.ts`)
    - NestJS module configuration
 
+4. **UserThemePreference** (`src/theme.entity.ts`)
+   - TypeORM entity backed by `user_theme_preferences`
+
+5. **Migration** (`src/migrations/1793200000000-PersistUserThemePreferences.ts`)
+   - Creates the owner-scoped table with a database-level theme check constraint
+
 ## API Endpoints
 
 ### Base URL: `/theme`
@@ -34,8 +40,7 @@ This implementation provides persistent theme switching across sessions for the 
 ### GET /theme
 Get current theme preference and resolved theme.
 
-**Query Parameters:**
-- `userId` (optional): User ID for authenticated users
+An authenticated request reads the persisted owner-scoped preference. A request without a valid token returns `system` (resolved to `light`) and does not read shared server state.
 
 **Response:**
 ```json
@@ -47,7 +52,7 @@ Get current theme preference and resolved theme.
 
 **Example:**
 ```bash
-curl "http://localhost:3000/theme?userId=user-123"
+curl -H "Authorization: Bearer <access-token>" http://localhost:3000/theme
 ```
 
 ### POST /theme
@@ -56,10 +61,11 @@ Set theme preference.
 **Request Body:**
 ```json
 {
-  "theme": "dark",
-  "userId": "user-123"  // optional
+  "theme": "dark"
 }
 ```
+
+Only `light`, `dark`, and `system` are accepted. The owner is derived from the authenticated principal; any client-supplied user identifier is ignored.
 
 **Response:**
 ```json
@@ -74,7 +80,8 @@ Set theme preference.
 ```bash
 curl -X POST http://localhost:3000/theme \
   -H "Content-Type: application/json" \
-  -d '{"theme": "dark", "userId": "user-123"}'
+  -H "Authorization: Bearer <access-token>" \
+  -d '{"theme": "dark"}'
 ```
 
 ### POST /theme/toggle
@@ -83,9 +90,11 @@ Toggle between light and dark themes.
 **Request Body:**
 ```json
 {
-  "userId": "user-123"  // optional
+  "currentTheme": "dark"
 }
 ```
+
+`currentTheme` is optional and only used for client-scoped callers; authenticated callers always toggle from the persisted owner preference.
 
 **Response:**
 ```json
@@ -99,13 +108,6 @@ Toggle between light and dark themes.
 ### POST /theme/reset
 Reset to system preference.
 
-**Request Body:**
-```json
-{
-  "userId": "user-123"  // optional
-}
-```
-
 **Response:**
 ```json
 {
@@ -116,10 +118,7 @@ Reset to system preference.
 ```
 
 ### GET /theme/resolved
-Get resolved theme (light/dark after system preference resolution).
-
-**Query Parameters:**
-- `userId` (optional): User ID for authenticated users
+Get resolved theme (light/dark after system preference resolution). Authenticated requests resolve the persisted owner preference; anonymous requests resolve the client-scoped default.
 
 **Response:**
 ```json
@@ -129,7 +128,7 @@ Get resolved theme (light/dark after system preference resolution).
 ```
 
 ### GET /theme/stats
-Get theme usage statistics (admin endpoint).
+Get theme usage statistics. Counts come only from persisted authenticated preferences; anonymous/client-scoped choices are not counted.
 
 **Response:**
 ```json
@@ -156,29 +155,32 @@ interface ThemePreference {
 
 ### Theme Resolution Priority
 
-1. **User Preference** (highest priority)
-   - Stored in database for authenticated users
-   - Stored in localStorage for anonymous users
+1. **Persisted owner preference** (authenticated requests)
+   - Read from `user_theme_preferences` using the verified principal only
 
-2. **System Preference** (fallback)
-   - Detects OS theme preference
-   - Server-side: defaults to 'light'
-   - Client-side: uses `prefers-color-scheme` media query
+2. **Client-scoped preference** (anonymous requests)
+   - Never read from or written to shared server state
+   - Defaults to `system` on the server
 
-3. **Default** (lowest priority)
-   - 'system' (follows system preference)
+3. **System Preference** (fallback)
+   - Server resolves `system` to `light`
+   - Client uses `prefers-color-scheme` to resolve the actual theme
+
+### Default Behavior
+
+Authenticated users without a stored row receive `system`. No row is created on read. The first supported write creates one row for that owner; subsequent writes update that row in place.
 
 ### Storage Strategy
 
 #### Authenticated Users
-- Preferences stored in database
-- Persists across devices and browsers
-- Requires user authentication
+- One row per owner in `user_theme_preferences`
+- Unique owner key prevents duplicates and cross-user reads/writes
+- Database CHECK constraint restricts values to `light`, `dark`, `system`
 
 #### Anonymous Users
-- Preferences stored in localStorage
-- Browser-specific persistence
-- Lost on incognito/private browsing
+- Preferences remain in browser localStorage
+- API reads return `system` and never create shared server state
+- API mutation endpoints require authentication
 
 ### System Preference Detection
 
@@ -226,7 +228,10 @@ export function useTheme() {
   const updateTheme = async (newTheme: Theme) => {
     const response = await fetch('/theme', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${getAccessToken()}`,
+      },
       body: JSON.stringify({ theme: newTheme }),
     });
     const data = await response.json();
@@ -237,8 +242,11 @@ export function useTheme() {
   const toggleTheme = async () => {
     const response = await fetch('/theme/toggle', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${getAccessToken()}`,
+      },
+      body: JSON.stringify({ currentTheme: preference }),
     });
     const data = await response.json();
     setTheme(data.theme);
@@ -250,6 +258,10 @@ export function useTheme() {
 
 function getSystemTheme(): 'light' | 'dark' {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function getAccessToken(): string {
+  return localStorage.getItem('accessToken') ?? '';
 }
 ```
 
@@ -295,102 +307,41 @@ body {
 }
 ```
 
-## Database Schema (Future Enhancement)
+## Database Schema
 
-For persistent user preferences, add this table:
+The `user_theme_preferences` table is created by `1793200000000-PersistUserThemePreferences`:
 
 ```sql
 CREATE TABLE user_theme_preferences (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  "userId" VARCHAR(255) NOT NULL,
   theme VARCHAR(10) NOT NULL CHECK (theme IN ('light', 'dark', 'system')),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-
-  UNIQUE(user_id)
+  "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_user_theme_preferences_user_id ON user_theme_preferences(user_id);
+CREATE UNIQUE INDEX "IDX_user_theme_preferences_userId"
+  ON user_theme_preferences ("userId");
 ```
+
+There is no row for anonymous callers and no row for authenticated users who have never chosen a theme.
 
 ## Testing
 
 ### Unit Tests
 
-```typescript
-describe('ThemeService', () => {
-  let service: ThemeService;
-
-  beforeEach(async () => {
-    const module = await Test.createTestingModule({
-      providers: [ThemeService, ConfigService],
-    }).compile();
-
-    service = module.get<ThemeService>(ThemeService);
-  });
-
-  it('should return default theme when no preference set', () => {
-    const theme = service.getTheme();
-    expect(theme).toBe('system');
-  });
-
-  it('should toggle between light and dark', () => {
-    service.setTheme('light');
-    const result = service.toggleTheme();
-    expect(result.theme).toBe('dark');
-  });
-});
-```
+`src/theme.service.spec.ts` covers owner-scoped reads/writes, validation, anonymous client-scoped behavior, statistics, and concurrent owner isolation.
 
 ### Integration Tests
 
-```typescript
-describe('Theme (e2e)', () => {
-  it('should set and get theme preference', () => {
-    return request(app.getHttpServer())
-      .post('/theme')
-      .send({ theme: 'dark' })
-      .expect(200)
-      .then(response => {
-        expect(response.body.theme).toBe('dark');
-      });
-  });
-
-  it('should toggle theme', () => {
-    return request(app.getHttpServer())
-      .post('/theme/toggle')
-      .send({})
-      .expect(200)
-      .then(response => {
-        expect(['light', 'dark']).toContain(response.body.theme);
-      });
-  });
-});
-```
-
-## Configuration
-
-### Environment Variables
-
-```bash
-# Theme service configuration
-THEME_DEFAULT=system
-THEME_STORAGE_KEY=truthbounty-theme
-```
-
-### Service Configuration
-
-```typescript
-// In theme.service.ts
-private readonly defaultTheme: Theme = process.env.THEME_DEFAULT as Theme || 'system';
-private readonly storageKey = process.env.THEME_STORAGE_KEY || 'truthbounty-theme';
-```
+Authenticated write requests must include a valid access token. Anonymous reads return the `system` default.
 
 ## Performance Considerations
 
-- **Database queries**: Minimal (one query per theme fetch for authenticated users)
-- **localStorage**: Fast browser storage
+- **Database queries**: One read per authenticated fetch; one upsert plus read-back per write
+- **Anonymous callers**: No database queries for reads or client-scoped writes
 - **System detection**: Client-side only (no server overhead)
-- **Caching**: No additional caching needed (preferences rarely change)
+- **Caching**: No process-local cache; the persisted row is the source of truth
 
 ## Security Considerations
 
@@ -407,17 +358,15 @@ private readonly storageKey = process.env.THEME_STORAGE_KEY || 'truthbounty-them
 
 ## Future Enhancements
 
-1. **Database persistence** for authenticated users
-2. **Theme analytics** and usage statistics
-3. **Custom themes** beyond light/dark
-4. **Theme transitions** and animations
-5. **Theme inheritance** for nested components
-6. **SSR support** for server-side rendering
+1. **Custom themes** beyond light/dark/system
+2. **Theme transitions** and animations
+3. **Theme inheritance** for nested components
+4. **SSR support** for server-side rendering
 
 ## Troubleshooting
 
-### Issue: Theme not persisting
-**Solution:** Check localStorage permissions and browser settings
+### Issue: Authenticated theme not persisting
+**Solution:** Confirm the access token is valid and the migration has been applied. Anonymous preferences are client-scoped by design.
 
 ### Issue: System preference not detected
 **Solution:** Implement client-side system preference detection
@@ -430,15 +379,9 @@ private readonly storageKey = process.env.THEME_STORAGE_KEY || 'truthbounty-them
 
 ## Acceptance Criteria Met ✅
 
-- ✅ **Save user theme preference**: Implemented via API and localStorage
-- ✅ **Apply theme on reload**: Persistence across browser sessions
-- ✅ **System preference fallback**: 'system' theme option with OS detection
-- ✅ **Theme toggle functionality**: Toggle endpoint and resolved theme logic
-
----
-
-**Implementation Status:** Complete
-**API Endpoints:** 6 endpoints documented
-**Frontend Integration:** React hook example provided
-**Testing:** Unit and integration test examples included
-**Documentation:** Comprehensive with examples and troubleshooting
+- ✅ **Authenticated persistence**: Owner-scoped row in `user_theme_preferences`
+- ✅ **Default behavior**: `system` for users/clients without a stored preference
+- ✅ **Anonymous handling**: Client-scoped only; no shared server-side state
+- ✅ **Validation**: `light`, `dark`, `system` only, enforced in DTO, service, and database
+- ✅ **Stats**: Counts persisted authenticated records only
+- ✅ **Concurrency**: Unique owner key with atomic upserts (toggle is a single statement), no process-local source of truth

@@ -15,6 +15,10 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { NotificationsService } from '../services/notifications.service';
 import { NotificationPreferencesService } from '../services/notification-preferences.service';
 import { ListNotificationsDto, UpdatePreferencesDto } from '../dto';
+import {
+  NotificationPreferenceResponseDto,
+  toNotificationPreferenceResponse,
+} from '../dto/preferences-response.dto';
 
 @Controller('notifications')
 @UseGuards(JwtAuthGuard)
@@ -73,15 +77,22 @@ export class NotificationsController {
   }
 
   @Get('preferences')
-  async getPreferences(@CurrentUser('id') userId: string) {
-    return this.preferencesService.getUserPreferences(userId);
+  async getPreferences(
+    @CurrentUser('id') userId: string,
+  ): Promise<NotificationPreferenceResponseDto> {
+    const preferences = await this.preferencesService.getUserPreferences(userId);
+    return toNotificationPreferenceResponse(preferences);
   }
 
   @Put('preferences')
   async updatePreferences(
     @CurrentUser('id') userId: string,
     @Body() preferences: UpdatePreferencesDto,
-  ) {
-    return this.preferencesService.updateUserPreferences(userId, preferences);
+  ): Promise<NotificationPreferenceResponseDto> {
+    const updated = await this.preferencesService.updateUserPreferences(
+      userId,
+      preferences,
+    );
+    return toNotificationPreferenceResponse(updated);
   }
 }

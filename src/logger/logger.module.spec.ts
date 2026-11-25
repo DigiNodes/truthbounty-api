@@ -1,26 +1,22 @@
 import { ConfigService } from '@nestjs/config';
 import { makePinoOptions } from './logger.module';
 
-describe('LoggerModule Pino options', () => {
-  it('includes IPFS and API-key redaction paths', () => {
-    const mockConfig: Partial<ConfigService> = {
-      get: jest.fn().mockImplementation((key: string, def?: any) => {
-        if (key === 'NODE_ENV') return 'development';
-        return def;
-      }),
-    } as unknown as ConfigService;
+describe('pino redaction configuration', () => {
+  const config = {
+    get: jest.fn((key: string) =>
+      key === 'LOG_LEVEL' ? 'debug' : key === 'npm_package_version' ? '1.0.0' : undefined,
+    ),
+  } as unknown as ConfigService;
 
-    const opts = makePinoOptions(mockConfig as ConfigService);
-    expect(opts).toBeDefined();
-    const paths = opts.pinoHttp.redact.paths;
-    expect(Array.isArray(paths)).toBe(true);
+  it('redacts webhook secrets from structured logs at any nesting depth', () => {
+    const options = makePinoOptions(config);
+    const paths = options.pinoHttp.redact.paths as string[];
 
-    // Ensure common API key locations are redacted
-    expect(paths).toContain('req.headers.x-api-key');
-    expect(paths).toContain('req.headers.api-key');
-    expect(paths).toContain('req.body.apiKey');
-    expect(paths).toContain('req.body.ipfsApiKey');
-    expect(paths).toContain('req.body.pinataApiKey');
-    expect(paths).toContain('config.ipfs.apiKey');
+    expect(paths).toContain('req.body.webhookConfig.secret');
+    expect(paths).toContain('req.body.secret');
+    expect(paths).toContain('beforeState.webhookConfig.secret');
+    expect(paths).toContain('afterState.webhookConfig.secret');
+    expect(paths).toContain('**.secret');
+    expect(options.pinoHttp.redact.censor).toBe('[REDACTED]');
   });
 });

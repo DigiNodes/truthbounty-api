@@ -4,6 +4,9 @@ import { Repository } from 'typeorm';
 import { NotificationTemplate } from '../entities/notification-template.entity';
 import { EventType } from '../enums/event-type.enum';
 import { DeliveryChannel } from '../interfaces/notification.types';
+import { escapeHtml, sanitizeActionUrl } from '../notification-templates';
+
+const URL_ATTRIBUTE_START = /\b(?:href|src)\s*=\s*["']?$/i;
 
 export interface RenderedNotification {
   title?: string;
@@ -73,7 +76,7 @@ export class TemplateRenderer {
     const subject = template.subjectTemplate
       ? this.interpolate(template.subjectTemplate, context)
       : this.generateSubject(eventType);
-    const html = template.htmlTemplate ? this.interpolate(template.htmlTemplate, context) : null;
+    const html = template.htmlTemplate ? this.interpolateHtml(template.htmlTemplate, context) : null;
     const markdown = template.markdownTemplate
       ? this.interpolate(template.markdownTemplate, context)
       : null;
@@ -84,7 +87,7 @@ export class TemplateRenderer {
       body,
       html: html || this.htmlEscape(body),
       markdown: markdown || body,
-      actionUrl: context.actionUrl,
+      actionUrl: sanitizeActionUrl(context.actionUrl),
       channel,
     };
   }
@@ -120,7 +123,7 @@ export class TemplateRenderer {
       body,
       html: this.htmlEscape(body),
       markdown: body,
-      actionUrl: context.actionUrl,
+      actionUrl: sanitizeActionUrl(context.actionUrl),
       channel,
     };
   }
@@ -177,6 +180,25 @@ export class TemplateRenderer {
       const value = this.getNestedValue(context, key);
       return value !== undefined ? String(value) : match;
     });
+  }
+
+  private interpolateHtml(
+    template: string,
+    context: Record<string, unknown>,
+  ): string {
+    return template.replace(
+      /\{\{(\w+(?:\.\w+)*)\}\}/g,
+      (match: string, key: string, offset: number) => {
+        const value = this.getNestedValue(context, key) as unknown;
+        if (value === undefined) return match;
+        const isUrlAttribute = URL_ATTRIBUTE_START.test(
+          template.slice(0, offset),
+        );
+        return escapeHtml(
+          isUrlAttribute ? (sanitizeActionUrl(value) ?? '') : value,
+        );
+      },
+    );
   }
 
   /**

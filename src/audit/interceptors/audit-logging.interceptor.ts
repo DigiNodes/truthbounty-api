@@ -16,6 +16,10 @@ import {
   AUDIT_LOG_KEY,
   AuditMetadata,
 } from '../decorators/audit-log.decorator';
+import {
+  redactObject,
+  redactSensitiveData,
+} from '../../common/utils/redaction.util';
 
 @Injectable()
 export class AuditLoggingInterceptor implements NestInterceptor {
@@ -49,7 +53,8 @@ export class AuditLoggingInterceptor implements NestInterceptor {
 
     let beforeState: Record<string, any> | undefined;
     if (metadata.captureBeforeState) {
-      beforeState = this.extractState(args[0]);
+      // Snapshots may contain webhook secrets; redact before they reach audit storage.
+      beforeState = redactObject(this.extractState(args[0])) as Record<string, any>;
     }
 
     return next.handle().pipe(
@@ -57,7 +62,7 @@ export class AuditLoggingInterceptor implements NestInterceptor {
         try {
           let afterState: Record<string, any> | undefined;
           if (metadata.captureAfterState) {
-            afterState = this.extractState(result);
+            afterState = redactObject(this.extractState(result)) as Record<string, any>;
           }
 
           const userId = this.extractUserId(args);
@@ -70,10 +75,12 @@ export class AuditLoggingInterceptor implements NestInterceptor {
             userId,
             walletAddress,
             description: metadata.descriptionTemplate
-              ? this.interpolateDescription(metadata.descriptionTemplate, {
-                  result,
-                  args,
-                })
+              ? redactSensitiveData(
+                  this.interpolateDescription(metadata.descriptionTemplate, {
+                    result,
+                    args,
+                  }),
+                )
               : undefined,
             beforeState,
             afterState,
@@ -83,7 +90,9 @@ export class AuditLoggingInterceptor implements NestInterceptor {
             },
           });
         } catch (error) {
-          this.logger.error(`Failed to audit log action: ${error.message}`);
+          this.logger.error(
+            `Failed to audit log action: ${redactSensitiveData(error.message)}`,
+          );
           // Don't throw - auditing should not break the application
         }
       }),
@@ -95,15 +104,17 @@ export class AuditLoggingInterceptor implements NestInterceptor {
             entityId,
             userId: this.extractUserId(args),
             walletAddress: this.extractWalletAddress(args),
-            description: `Failed: ${error.message}`,
+            description: `Failed: ${redactSensitiveData(error.message)}`,
             metadata: {
               method: context.getClass().name,
               handler: context.getHandler().name,
-              error: error.message,
+              error: redactSensitiveData(error.message),
             },
           });
         } catch (auditError) {
-          this.logger.error(`Failed to audit log error: ${auditError.message}`);
+          this.logger.error(
+            `Failed to audit log error: ${redactSensitiveData(auditError.message)}`,
+          );
         }
         throw error;
       }),

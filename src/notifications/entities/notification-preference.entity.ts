@@ -146,7 +146,11 @@ export class NotificationPreference {
   emailAddress?: string;
 
   /**
-   * Webhook configuration for custom integrations
+   * Webhook configuration for custom integrations.
+   *
+   * `secret` is write-only and holds an AES-256-GCM envelope (never plaintext).
+   * It is set exclusively through WebhookPreferencesService and is never
+   * serialized into API responses (PREWAVE-BE-169).
    */
   @Column({ type: 'jsonb', nullable: true })
   webhookConfig?: {
@@ -155,7 +159,7 @@ export class NotificationPreference {
     events?: string[]; // EventTypes to webhook
     retryAttempts?: number;
     timeout?: number; // ms
-  };
+  } | null;
 
   /**
    * Push notification configuration

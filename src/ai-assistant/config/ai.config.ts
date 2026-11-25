@@ -1,8 +1,9 @@
 import { getRuntimeEnvironment } from '../../config/runtime-config';
+import { ConfiguredAiProvider } from '../../config/ai-provider';
 import { registerAs } from '@nestjs/config';
 
 export interface AiConfig {
-  provider: 'openai' | 'mock';
+  provider: ConfiguredAiProvider;
   openai: {
     apiKey: string | undefined;
     baseUrl: string;
@@ -21,7 +22,12 @@ export interface AiConfig {
 }
 
 export default registerAs('ai', (): AiConfig => ({
-  provider: (getRuntimeEnvironment().AI_PROVIDER as 'openai' | 'mock') || 'mock',
+  provider:
+    (getRuntimeEnvironment().AI_PROVIDER as ConfiguredAiProvider | undefined) ||
+    (getRuntimeEnvironment().DEFAULT_LLM_PROVIDER as
+      | ConfiguredAiProvider
+      | undefined) ||
+    'mock',
   openai: {
     apiKey: getRuntimeEnvironment().OPENAI_API_KEY,
     baseUrl: getRuntimeEnvironment().OPENAI_BASE_URL || 'https://api.openai.com/v1',

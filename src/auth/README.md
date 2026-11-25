@@ -2,7 +2,7 @@
 
 ## Overview
 
-The TruthBounty API implements wallet-signature based JWT authentication to secure all mutating endpoints (POST, PATCH, PUT, DELETE). Read-only endpoints (GET) remain public by default.
+The TruthBounty API implements wallet-signature based JWT authentication to secure mutating endpoints. Read-only endpoints are public by default unless a route declares an authentication and role guard.
 
 ## Architecture
 
@@ -20,6 +20,7 @@ The TruthBounty API implements wallet-signature based JWT authentication to secu
 - **GlobalAuthGuard**: Automatically protects all mutation endpoints
 - **JwtStrategy**: Passport strategy for JWT validation
 - **Public Decorator**: Marks endpoints as publicly accessible
+- **RolesGuard**: Enforces app-user roles on explicitly protected read and write routes
 
 ## Usage
 
@@ -106,8 +107,23 @@ Content-Type: application/json
 
 ### JWT Token
 - Signed with HMAC-SHA256 algorithm
-- Configurable expiration (default: 7 days)
-- Contains wallet address and user ID
+- Ordinary access tokens require `type: access`, the configured issuer and audience, and bound address, subject, user ID, and JTI claims
+- Capability tokens are not accepted by Passport; only capability-specific validation accepts them
+- Configurable access-token expiration (default: 15 minutes)
+- Refresh tokens are opaque, single-use values whose SHA-256 hashes and session metadata are stored in Redis
+- Failed session-index persistence rolls back the newly stored session and fails login
+
+### SIWE and legacy wallet login
+- The login path classifies signed SIWE messages from their content and invokes strict EIP-4361 verification.
+- SIWE domain, origin, chain, statement, signer, nonce, and time policy are enforced from server configuration.
+- Malformed SIWE messages cannot fall back to legacy verification.
+- Legacy `Sign in to TruthBounty: <nonce>` challenges remain supported.
+- Both formats use atomic, single-use Redis challenge consumption.
+
+### Support requests
+- `POST /support/requests` remains public and returns only a submission reference and status.
+- Listing, lookup, and deletion require an authenticated `moderator` or `admin` app-user role; the service enforces the same policy.
+- Privileged actions are audited without logging request content or contact details.
 
 ### Global Protection
 - All POST, PATCH, PUT, DELETE endpoints require authentication
@@ -121,6 +137,8 @@ Add to `.env`:
 ```env
 # JWT Secret (CHANGE THIS IN PRODUCTION!)
 JWT_SECRET=your-super-secret-jwt-key-change-in-production
+JWT_ACCESS_AUDIENCE=truthbounty-api
+JWT_ISSUER=truthbounty-api
 
 # JWT token expiration time
 JWT_EXPIRATION=7d
@@ -144,6 +162,9 @@ JWT_EXPIRATION=7d
 
 ### Auth-Protected Endpoints
 - `GET /auth/profile` - Get authenticated user profile
+- `GET /support/requests` - List support requests (`moderator` or `admin`)
+- `GET /support/requests/:id` - Retrieve a support request (`moderator` or `admin`)
+- `DELETE /support/requests/:id` - Delete a support request (`moderator` or `admin`)
 
 ## Testing
 

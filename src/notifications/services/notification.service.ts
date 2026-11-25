@@ -114,7 +114,9 @@ export class NotificationService {
         continue;
       }
 
-      delivery.status = DeliveryStatus.DELIVERED;
+      // Recording an attempt is not a delivery: only the channel worker may
+      // mark a row DELIVERED, after a provider-confirmed send (#613).
+      delivery.status = DeliveryStatus.PENDING;
       await this.deliveryRepo.save(delivery);
     }
 

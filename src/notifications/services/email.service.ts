@@ -44,13 +44,16 @@ export class EmailService {
     );
 
     if (!this.smtpConfigured) {
-      this.logger.log(
-        `[SIMULATED] Email would be sent to ${recipientEmail}: ${notification.title}`,
+      // A delivery is only DELIVERED after a provider-confirmed send. A missing
+      // provider is a fail-closed configuration error, never a synthetic
+      // success (#613).
+      this.logger.error(
+        `Cannot email notification ${notification.id}: SMTP is not configured`,
       );
       return {
-        success: true,
-        status: DeliveryStatus.DELIVERED,
-        deliveredAt: new Date(),
+        success: false,
+        status: DeliveryStatus.FAILED,
+        error: 'Email provider not configured',
       };
     }
 

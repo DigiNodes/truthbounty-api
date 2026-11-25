@@ -1,3 +1,4 @@
+import { ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AiProviderRouterService } from './ai-provider-router.service';
 import { AiAssistantCache } from '../cache/ai-assistant.cache';
@@ -153,6 +154,32 @@ describe('AiProviderRouterService', () => {
     const result = await router.chat(request, 'chat', 'contributor', 'openai');
 
     expect(result.provider).toBe('mock');
+  });
+
+  it('fails closed instead of falling back to mock in deployed environments', async () => {
+    const configService = {
+      get: jest.fn((key: string) => {
+        if (key === 'ai') return { provider: 'openai' };
+        if (key === 'NODE_ENV') return 'production';
+        return undefined;
+      }),
+    } as unknown as ConfigService;
+    const deployedRouter = new AiProviderRouterService(
+      openAiProvider,
+      mockProvider,
+      cache as unknown as AiAssistantCache,
+      metrics as unknown as AiMetricsService,
+      configService,
+    );
+    openAiProvider.isAvailable.mockResolvedValue(false);
+
+    await expect(deployedRouter.chat(request, 'chat')).rejects.toThrow(
+      ServiceUnavailableException,
+    );
+    expect(mockProvider.chat).not.toHaveBeenCalled();
+    await expect(
+      deployedRouter.chat(request, 'chat', 'admin', 'mock'),
+    ).rejects.toThrow('Mock provider is not available.');
   });
 
   it('caches provider availability checks instead of probing every request', async () => {

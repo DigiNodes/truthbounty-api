@@ -70,10 +70,18 @@ export class SiweService {
     const { domain, address, uri, chainId, nonce, statement } = params;
 
     const issuedAt = new Date().toISOString();
-    const expirationMs = this.configService.get<number>(
+    const configuredTtl = this.configService.get<number | string>(
       'AUTH_NONCE_TTL_MS',
       5 * 60 * 1000,
     );
+    const parsedTtl =
+      typeof configuredTtl === 'number'
+        ? configuredTtl
+        : Number.parseInt(configuredTtl, 10);
+    const expirationMs =
+      Number.isFinite(parsedTtl) && parsedTtl > 0
+        ? parsedTtl
+        : 5 * 60 * 1000;
     const expirationTime =
       params.expirationTime ??
       new Date(Date.now() + expirationMs).toISOString();

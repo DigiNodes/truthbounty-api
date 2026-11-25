@@ -40,6 +40,21 @@ describe('SybilResistanceController', () => {
       getAppeals: jest
         .fn()
         .mockResolvedValue([{ appealId: 'app-1', status: 'RESOLVED' }]),
+      getAppealById: jest.fn().mockResolvedValue({
+        appealId: 'app-1',
+        userId: mockUserId,
+        status: 'RESOLVED',
+        reason: 'Valid justification',
+      }),
+      reviewAppeal: jest.fn().mockResolvedValue({
+        appealId: 'app-1',
+        userId: mockUserId,
+        status: 'RESOLVED',
+      }),
+      getAppealsWithFilters: jest.fn().mockResolvedValue({
+        appeals: [{ appealId: 'app-1', status: 'RESOLVED' }],
+        total: 1,
+      }),
       getModelVersions: jest
         .fn()
         .mockReturnValue([{ version: '1.0.0' }, { version: '2.0.0' }]),
@@ -152,6 +167,105 @@ describe('SybilResistanceController', () => {
       const res = await controller.getAppeals(mockUserId);
       expect(res).toHaveLength(1);
       expect(service.getAppeals).toHaveBeenCalledWith(mockUserId);
+    });
+  });
+
+  describe('getAppealById', () => {
+    it('returns appeal for owner', async () => {
+      const res = await controller.getAppealById('app-1', {
+        id: mockUserId,
+      });
+      expect(res.appealId).toBe('app-1');
+      expect(service.getAppealById).toHaveBeenCalledWith(
+        'app-1',
+        mockUserId,
+        false,
+      );
+    });
+
+    it('returns appeal for reviewer with elevated access', async () => {
+      const res = await controller.getAppealById('app-1', {
+        id: 'admin-1',
+        role: 'admin',
+      });
+      expect(res.appealId).toBe('app-1');
+      expect(service.getAppealById).toHaveBeenCalledWith('app-1', 'admin-1', true);
+    });
+
+    it('throws BadRequestException for empty appealId', async () => {
+      await expect(
+        controller.getAppealById('', { id: mockUserId }),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('reviewAppeal', () => {
+    it('reviews appeal with valid status', async () => {
+      const res = await controller.reviewAppeal(
+        'app-1',
+        { status: 'RESOLVED', reviewNotes: 'Score corrected' },
+        { id: 'admin-1' },
+      );
+      expect(res.appealId).toBe('app-1');
+      expect(service.reviewAppeal).toHaveBeenCalledWith(
+        'app-1',
+        'admin-1',
+        'RESOLVED',
+        'Score corrected',
+      );
+    });
+
+    it('throws BadRequestException for invalid status', async () => {
+      await expect(
+        controller.reviewAppeal(
+          'app-1',
+          { status: 'INVALID' as any },
+          { id: 'admin-1' },
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('throws BadRequestException for empty appealId', async () => {
+      await expect(
+        controller.reviewAppeal(
+          '',
+          { status: 'RESOLVED' },
+          { id: 'admin-1' },
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('listAppeals', () => {
+    it('lists appeals with default filters', async () => {
+      const res = await controller.listAppeals();
+      expect(res.appeals).toHaveLength(1);
+      expect(res.total).toBe(1);
+      expect(service.getAppealsWithFilters).toHaveBeenCalledWith({
+        status: undefined,
+        userId: undefined,
+        modelVersion: undefined,
+        limit: 50,
+        offset: 0,
+      });
+    });
+
+    it('lists appeals with custom filters', async () => {
+      const res = await controller.listAppeals(
+        'RESOLVED' as any,
+        'usr-1' as any,
+        '1.0.0' as any,
+        10 as any,
+        5 as any,
+      );
+      expect(res.appeals).toHaveLength(1);
+      expect(service.getAppealsWithFilters).toHaveBeenCalledWith({
+        status: 'RESOLVED',
+        userId: 'usr-1',
+        modelVersion: '1.0.0',
+        limit: 10,
+        offset: 5,
+      });
     });
   });
 

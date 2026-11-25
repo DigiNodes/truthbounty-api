@@ -5,6 +5,9 @@ import { DeliveryHistory } from '../entities/delivery-history.entity';
 import { DeliveryChannel, DeliveryStatus } from '../interfaces/notification.types';
 import { RedisService } from '../../redis/redis.service';
 
+const DEFAULT_DELIVERY_HISTORY_PAGE_SIZE = 50;
+const MAX_DELIVERY_HISTORY_PAGE_SIZE = 100;
+
 /**
  * DeliveryTracker
  * 
@@ -182,15 +185,36 @@ export class DeliveryTracker {
   async getUserDeliveryHistory(
     userId: string,
     skip: number = 0,
-    take: number = 50,
+    take: number = DEFAULT_DELIVERY_HISTORY_PAGE_SIZE,
   ): Promise<{ items: DeliveryHistory[]; total: number }> {
-    // TODO: This requires a join to notifications table
-    // Placeholder for now
-    const [items, total] = await this.deliveryHistoryRepository.findAndCount({
-      skip,
-      take,
-      order: { createdAt: 'DESC' },
-    });
+    const normalizedSkip = Number.isFinite(skip)
+      ? Math.max(0, Math.floor(skip))
+      : 0;
+    const normalizedTake = Number.isFinite(take)
+      ? Math.min(MAX_DELIVERY_HISTORY_PAGE_SIZE, Math.max(1, Math.floor(take)))
+      : DEFAULT_DELIVERY_HISTORY_PAGE_SIZE;
+
+    const query = this.deliveryHistoryRepository
+      .createQueryBuilder('history')
+      .innerJoin('history.notification', 'notification')
+      .where('notification.userId = :userId', { userId })
+      .select([
+        'history.id',
+        'history.notificationId',
+        'history.channel',
+        'history.status',
+        'history.retryAttempts',
+        'history.lastRetryAt',
+        'history.deliveredAt',
+        'history.failureReason',
+        'history.createdAt',
+      ])
+      .orderBy('history.createdAt', 'DESC')
+      .addOrderBy('history.id', 'DESC')
+      .skip(normalizedSkip)
+      .take(normalizedTake);
+
+    const [items, total] = await query.getManyAndCount();
 
     return { items, total };
   }

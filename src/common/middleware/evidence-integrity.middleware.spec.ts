@@ -1,3 +1,6 @@
+import { CID } from 'multiformats/cid';
+import { Digest } from 'multiformats/hashes/digest';
+import { sha256 } from 'multiformats/hashes/sha2';
 import { EvidenceIntegrityMiddleware } from './evidence-integrity.middleware';
 import * as cidVerifier from '../../storage/cid-verifier';
 
@@ -14,6 +17,10 @@ describe('EvidenceIntegrityMiddleware', () => {
       status: jest.fn().mockReturnThis(),
       json: jest.fn().mockReturnThis(),
     };
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   it('should call next() when no file is present', async () => {
@@ -96,6 +103,29 @@ describe('EvidenceIntegrityMiddleware', () => {
 
     await middleware.use(mockReq, mockRes, mockNext);
 
+    expect(mockNext).not.toHaveBeenCalled();
+  });
+
+  it('enforces the evidence CID contract for uploaded content', async () => {
+    const buffer = Buffer.from('uploaded evidence');
+    const hash = await sha256.digest(buffer);
+    const validCid = CID.createV1(0x55, hash).toString();
+    mockReq = { file: { buffer }, body: { cid: validCid } };
+
+    await middleware.use(mockReq, mockRes, mockNext);
+    expect(mockNext).toHaveBeenCalledTimes(1);
+
+    mockNext.mockClear();
+    mockRes.status.mockClear();
+    const substitutedCid = CID.createV1(
+      0x55,
+      Digest.create(0x13, hash.digest),
+    ).toString();
+    mockReq.body.cid = substitutedCid;
+
+    await middleware.use(mockReq, mockRes, mockNext);
+
+    expect(mockRes.status).toHaveBeenCalledWith(400);
     expect(mockNext).not.toHaveBeenCalled();
   });
 });

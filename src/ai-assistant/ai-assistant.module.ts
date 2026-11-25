@@ -6,9 +6,10 @@ import { RagService } from './services/rag.service';
 import { SafetyGuardrailService } from './services/safety-guardrail.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { RedisModule } from '../redis/redis.module';
+import { AnalyticsModule } from '../analytics/analytics.module';
 
 @Module({
-  imports: [PrismaModule, RedisModule],
+  imports: [PrismaModule, RedisModule, AnalyticsModule],
   controllers: [AiAssistantController],
   providers: [
     AiAssistantService,
