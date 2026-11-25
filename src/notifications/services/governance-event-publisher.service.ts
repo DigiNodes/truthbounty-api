@@ -3,6 +3,7 @@ import { EntityManager } from 'typeorm';
 import { NotificationEventPublisher } from './notification-event-publisher.service';
 import { EventType } from '../enums/event-type.enum';
 import { PublishEventDto } from '../dto/publish-event.dto';
+import { GovernanceParticipantResolver } from './governance-participant-resolver.service';
 
 /**
  * GovernanceEventPublisher
@@ -20,7 +21,10 @@ import { PublishEventDto } from '../dto/publish-event.dto';
 export class GovernanceEventPublisher {
   private readonly logger = new Logger(GovernanceEventPublisher.name);
 
-  constructor(private eventPublisher: NotificationEventPublisher) {}
+  constructor(
+    private eventPublisher: NotificationEventPublisher,
+    private participantResolver: GovernanceParticipantResolver,
+  ) {}
 
   /**
    * Publish governance proposal created event
@@ -33,8 +37,13 @@ export class GovernanceEventPublisher {
     votingDeadline: Date,
     manager: EntityManager,
   ): Promise<void> {
-    // Get all governance participants
-    const recipientIds = await this.getGovernanceParticipants();
+    // Get eligible participants (async, no manager needed for this query)
+    const recipientIds = await this.participantResolver.getProposalCreatedParticipants(proposalId);
+
+    if (recipientIds.length === 0) {
+      this.logger.warn(`No governance participants found for proposal ${proposalId}`);
+      return;
+    }
 
     const event: PublishEventDto = {
       eventType: EventType.GOVERNANCE_PROPOSAL_CREATED,
@@ -53,7 +62,7 @@ export class GovernanceEventPublisher {
     };
 
     await this.eventPublisher.publishEvent(event, manager);
-    this.logger.log(`Published GOVERNANCE_PROPOSAL_CREATED for proposal ${proposalId}`);
+    this.logger.log(`Published GOVERNANCE_PROPOSAL_CREATED for ${proposalId} to ${recipientIds.length} participants`);
   }
 
   /**
@@ -65,7 +74,12 @@ export class GovernanceEventPublisher {
     timeRemaining: string, // e.g., "6 hours"
     manager: EntityManager,
   ): Promise<void> {
-    const recipientIds = await this.getGovernanceParticipants();
+    const recipientIds = await this.participantResolver.getVoteReminderParticipants(proposalId);
+
+    if (recipientIds.length === 0) {
+      this.logger.debug(`No eligible recipients for vote reminder ${proposalId}`);
+      return;
+    }
 
     const event: PublishEventDto = {
       eventType: EventType.GOVERNANCE_VOTE_REMINDER,
@@ -81,6 +95,7 @@ export class GovernanceEventPublisher {
     };
 
     await this.eventPublisher.publishEvent(event, manager);
+    this.logger.log(`Published GOVERNANCE_VOTE_REMINDER for ${proposalId} to ${recipientIds.length} participants`);
   }
 
   /**
@@ -121,7 +136,12 @@ export class GovernanceEventPublisher {
     againstVotes: number,
     manager: EntityManager,
   ): Promise<void> {
-    const recipientIds = await this.getGovernanceParticipants();
+    const recipientIds = await this.participantResolver.getVoteClosedParticipants(proposalId);
+
+    if (recipientIds.length === 0) {
+      this.logger.warn(`No eligible recipients for vote closed ${proposalId}`);
+      return;
+    }
 
     const event: PublishEventDto = {
       eventType: EventType.GOVERNANCE_VOTE_CLOSED,
@@ -139,6 +159,7 @@ export class GovernanceEventPublisher {
     };
 
     await this.eventPublisher.publishEvent(event, manager);
+    this.logger.log(`Published GOVERNANCE_VOTE_CLOSED for ${proposalId} to ${recipientIds.length} participants`);
   }
 
   /**
@@ -150,7 +171,12 @@ export class GovernanceEventPublisher {
     action: string,
     manager: EntityManager,
   ): Promise<void> {
-    const recipientIds = await this.getGovernanceParticipants();
+    const recipientIds = await this.participantResolver.getProposalExecutedParticipants(proposalId);
+
+    if (recipientIds.length === 0) {
+      this.logger.warn(`No eligible recipients for proposal executed ${proposalId}`);
+      return;
+    }
 
     const event: PublishEventDto = {
       eventType: EventType.GOVERNANCE_PROPOSAL_EXECUTED,
@@ -166,12 +192,6 @@ export class GovernanceEventPublisher {
     };
 
     await this.eventPublisher.publishEvent(event, manager);
-  }
-
-  // Helper
-  private async getGovernanceParticipants(): Promise<string[]> {
-    // TODO: Query users with active governance participation
-    // (voted in last 30 days, have staked tokens, etc.)
-    return [];
+    this.logger.log(`Published GOVERNANCE_PROPOSAL_EXECUTED for ${proposalId} to ${recipientIds.length} participants`);
   }
 }
