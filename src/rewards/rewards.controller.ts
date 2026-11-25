@@ -1,99 +1,44 @@
+
+import { Controller, Get, GoneException } from '@nestjs/common';
 import {
-  Controller,
-  Get,
-  Post,
-  Body,
-  Patch,
-  Param,
-  Delete,
-  UseGuards,
-} from '@nestjs/common';
-import {
-  ApiTags,
   ApiOperation,
   ApiResponse,
-  ApiParam,
-  ApiBearerAuth,
+  ApiTags,
 } from '@nestjs/swagger';
-import { RewardsService } from './rewards.service';
-import { CreateRewardDto } from './dto/create-reward.dto';
-import { UpdateRewardDto } from './dto/update-reward.dto';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
 
-/**
- * RewardsController — authorization aligned with the V2 API Authorization Matrix.
- *
- * READ routes  → PUBLIC (chain-derived reward projections are openly readable).
- * WRITE routes → ROLE(admin) only.
- *   Rationale: Reward records are projections of on-chain events. Any write through
- *   this API is a local projection update, not a protocol-authoritative settlement.
- *   Only admins may trigger such projection adjustments; the smart contract remains
- *   the sole source of truth for finalized reward state.
- *
- * @see src/auth/authorization-matrix.ts
- */
 @ApiTags('rewards')
 @Controller('rewards')
 export class RewardsController {
-  constructor(private readonly rewardsService: RewardsService) {}
-
-  // ── READ (public) ────────────────────────────────────────────────────────
+  private readonly deprecationMessage =
+    'The legacy rewards API has been deprecated. Reward data must be read from the V2 canonical projections. Use GET /api/v2/claims/{claimId}/rewards with the appropriate chain context. The legacy collection and ID-based endpoints have no direct V2 equivalent.';
 
   @Get()
-  @ApiOperation({ summary: 'Get all rewards' })
-  @ApiResponse({ status: 200, description: 'List of rewards' })
-  findAll() {
-    return this.rewardsService.findAll();
+  @ApiOperation({
+    summary: 'Deprecated legacy rewards collection',
+    description:
+      'This legacy endpoint is deprecated. Use the V2 claim reward projection where applicable.',
+    deprecated: true,
+  })
+  @ApiResponse({
+    status: 410,
+    description: 'The legacy rewards endpoint has been permanently deprecated.',
+  })
+  findAll(): never {
+    throw new GoneException(this.deprecationMessage);
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get reward by ID' })
-  @ApiParam({ name: 'id', description: 'Reward ID' })
-  @ApiResponse({ status: 200, description: 'Reward details' })
-  @ApiResponse({ status: 404, description: 'Reward not found' })
-  findOne(@Param('id') id: string) {
-    return this.rewardsService.findOne(+id);
-  }
-
-  // ── WRITE (admin only) ────────────────────────────────────────────────────
-
-  @Post()
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('admin')
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Create a reward projection (admin only)' })
-  @ApiResponse({ status: 201, description: 'Reward created' })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({ status: 403, description: 'Admin role required' })
-  create(@Body() createRewardDto: CreateRewardDto) {
-    return this.rewardsService.create(createRewardDto);
-  }
-
-  @Patch(':id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('admin')
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Update a reward projection (admin only)' })
-  @ApiParam({ name: 'id', description: 'Reward ID' })
-  @ApiResponse({ status: 200, description: 'Reward updated' })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({ status: 403, description: 'Admin role required' })
-  update(@Param('id') id: string, @Body() updateRewardDto: UpdateRewardDto) {
-    return this.rewardsService.update(+id, updateRewardDto);
-  }
-
-  @Delete(':id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('admin')
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Remove a reward projection (admin only)' })
-  @ApiParam({ name: 'id', description: 'Reward ID' })
-  @ApiResponse({ status: 200, description: 'Reward removed' })
-  @ApiResponse({ status: 401, description: 'Unauthorized' })
-  @ApiResponse({ status: 403, description: 'Admin role required' })
-  remove(@Param('id') id: string) {
-    return this.rewardsService.remove(+id);
+  @ApiOperation({
+    summary: 'Deprecated legacy reward lookup',
+    description:
+      'This legacy endpoint is deprecated. There is no direct V2 equivalent for the legacy reward ID.',
+    deprecated: true,
+  })
+  @ApiResponse({
+    status: 410,
+    description: 'The legacy rewards endpoint has been permanently deprecated.',
+  })
+  findOne(): never {
+    throw new GoneException(this.deprecationMessage);
   }
 }

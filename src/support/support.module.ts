@@ -1,15 +1,19 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { Admin } from '../admin/entities/admin.entity';
-import { AdminGuard } from '../admin/guards/admin.guard';
-import { RolesGuard } from '../admin/guards/roles.guard';
 import { SupportController } from './support.controller';
 import { SupportRequestService } from './support.service';
+import { SupportEncryptionService } from './support-encryption.service';
+import { SupportRetentionJob } from './support-retention.job';
+import { SupportRequest } from './entities/support-request.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Admin])],
+  imports: [TypeOrmModule.forFeature([SupportRequest])],
   controllers: [SupportController],
-  providers: [SupportRequestService, AdminGuard, RolesGuard],
+  providers: [
+    SupportRequestService,
+    SupportEncryptionService,
+    SupportRetentionJob,
+  ],
   exports: [SupportRequestService],
 })
 export class SupportModule {}

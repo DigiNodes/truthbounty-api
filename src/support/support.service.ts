@@ -1,6 +1,15 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, LessThanOrEqual, MoreThan } from 'typeorm';
 import { randomUUID } from 'crypto';
 import { CreateSupportRequestDto } from './dto/create-support-request.dto';
+import { SupportRequest } from './entities/support-request.entity';
+import { SupportEncryptionService } from './support-encryption.service';
 
 export interface SupportRequestRecord {
   id: string;
@@ -18,10 +27,20 @@ export interface SupportRequestRecord {
   retentionDays: number;
 }
 
-export interface DeleteSupportRequestResult {
-  deleted: boolean;
-  id: string;
-  reference?: string;
+export interface SupportStaffActor {
+  address?: string;
+  userId?: string;
+  sub?: string;
+  user?: {
+    id?: string;
+    role?: string;
+  };
+}
+
+export interface SupportRequestSubmission {
+  reference: string;
+  status: 'submitted' | 'duplicate';
+  duplicate: boolean;
 }
 
 @Injectable()
@@ -30,110 +49,165 @@ export class SupportRequestService {
   private readonly retentionDays = 30;
   private readonly maxRequestsPerContact = 5;
   private readonly duplicateWindowMs = 24 * 60 * 60 * 1000;
-  private readonly requests = new Map<string, SupportRequestRecord>();
-  private readonly fingerprints = new Map<string, SupportRequestRecord>();
-  private readonly requestFingerprints = new Map<string, string>();
 
-  createSupportRequest(input: CreateSupportRequestDto): SupportRequestRecord {
+  constructor(
+    @InjectRepository(SupportRequest)
+    private readonly supportRequestRepository: Repository<SupportRequest>,
+    private readonly encryptionService: SupportEncryptionService,
+  ) {}
+
+  async createSupportRequest(
+    input: CreateSupportRequestDto,
+  ): Promise<SupportRequestSubmission> {
     const normalized = this.normalizeRequest(input);
-    const fingerprint = this.computeFingerprint(normalized);
+    const fingerprintKey = this.encryptionService.computeFingerprintKey(normalized);
 
-    const duplicate = this.findDuplicate(fingerprint);
+    // Check for duplicate by fingerprint (atomic via unique constraint)
+    const duplicate = await this.findDuplicate(fingerprintKey);
     if (duplicate) {
-      this.logger.warn(
-        `Duplicate support request suppressed for contact ${normalized.contact}`,
-      );
+      this.logger.warn('Duplicate support request suppressed');
       return {
-        ...duplicate,
+        reference: duplicate.reference,
         status: 'duplicate',
         duplicate: true,
-        duplicateOf: duplicate.reference,
       };
     }
 
-    this.assertQuota(normalized.contact);
+    // Check quota for this contact (need to decrypt and compare)
+    await this.assertQuota(normalized.contact);
 
     const now = new Date();
-    const record: SupportRequestRecord = {
-      id: randomUUID(),
-      reference: `SUP-${now.getTime().toString(36).toUpperCase()}`,
+    const id = randomUUID();
+    const reference = `SUP-${now.getTime().toString(36).toUpperCase()}`;
+
+    // Encrypt sensitive fields
+    const encryptedContact = this.encryptionService.encrypt(normalized.contact);
+    const encryptedDescription = this.encryptionService.encrypt(
+      normalized.description,
+    );
+
+    const entity = this.supportRequestRepository.create({
+      id,
+      reference,
       category: normalized.category,
-      contact: normalized.contact,
-      description: normalized.description,
+      encryptedContact,
+      encryptedDescription,
       release: normalized.release,
       diagnostics: normalized.diagnostics,
+      fingerprintKey,
       status: 'submitted',
       duplicate: false,
       duplicateOf: null,
-      createdAt: now.toISOString(),
       expiresAt: new Date(
         now.getTime() + this.retentionDays * 24 * 60 * 60 * 1000,
-      ).toISOString(),
+      ),
       retentionDays: this.retentionDays,
-    };
+    });
 
-    this.requests.set(record.id, record);
-    this.fingerprints.set(fingerprint, record);
-    this.requestFingerprints.set(record.id, fingerprint);
-    return record;
+    try {
+      await this.supportRequestRepository.save(entity);
+      this.logger.log(`Support request created: ${reference}`);
+      return {
+        reference,
+        status: 'submitted',
+        duplicate: false,
+      };
+    } catch (error) {
+      // Handle unique constraint violation (race condition on duplicate)
+      if (error.code === '23505' && error.constraint === 'UQ_support_requests_fingerprintKey') {
+        this.logger.warn('Duplicate support request detected on save (race condition)');
+        const existing = await this.supportRequestRepository.findOne({
+          where: { fingerprintKey },
+        });
+        if (existing) {
+          return {
+            reference: existing.reference,
+            status: 'duplicate',
+            duplicate: true,
+          };
+        }
+      }
+      throw error;
+    }
   }
 
-  getSupportRequest(id: string): SupportRequestRecord | undefined {
-    return this.requests.get(id);
-  }
+  async getSupportRequest(
+    id: string,
+    actor: SupportStaffActor,
+  ): Promise<SupportRequestRecord | undefined> {
+    this.assertSupportStaff(actor);
+    this.audit('read', id, actor);
 
-  listSupportRequests(): SupportRequestRecord[] {
-    return Array.from(this.requests.values());
-  }
+    const entity = await this.supportRequestRepository.findOne({
+      where: { id },
+    });
 
-  /**
-   * Targeted hard-delete (privacy-preserving erasure) for a single support request.
-   *
-   * Policy:
-   * - Immediately removes the target record from the active store and clears its
-   *   associated deduplication fingerprint so a subsequent legitimate submission
-   *   is not suppressed as a duplicate.
-   * - Distinct from `cleanupExpiredSupportRequests()`, which only handles
-   *   time-based retention expiration.
-   * - Returns `{ deleted: true, id, reference }` only after the target record
-   *   and its deduplication index entry have been removed.
-   * - Returns `{ deleted: false, id }` when no active record exists for `id`.
-   */
-  deleteSupportRequest(id: string): DeleteSupportRequestResult {
-    const record = this.requests.get(id);
-    if (!record) {
-      return { deleted: false, id };
+    if (!entity) {
+      return undefined;
     }
 
-    const removed = this.requests.delete(id);
-    if (!removed) {
-      return { deleted: false, id };
+    return this.decryptRecord(entity);
+  }
+
+  async listSupportRequests(
+    actor: SupportStaffActor,
+  ): Promise<SupportRequestRecord[]> {
+    this.assertSupportStaff(actor);
+
+    const entities = await this.supportRequestRepository.find({
+      order: { createdAt: 'DESC' },
+      take: 100, // Limit to prevent unbounded queries
+    });
+
+    this.audit('list', `${entities.length} records`, actor);
+
+    return entities.map((entity) => this.decryptRecord(entity));
+  }
+
+  async deleteSupportRequest(id: string, actor: SupportStaffActor): Promise<boolean> {
+    this.assertSupportStaff(actor);
+
+    const entity = await this.supportRequestRepository.findOne({
+      where: { id },
+    });
+
+    if (!entity) {
+      this.audit('delete-miss', id, actor);
+      return false;
     }
 
-    this.removeFingerprintForRecord(id);
+    await this.supportRequestRepository.remove(entity);
+    this.audit('delete', id, actor);
+    return true;
+  }
+
+  async cleanupExpiredSupportRequests(): Promise<string[]> {
+    const now = new Date();
+
+    // Find expired records
+    const expired = await this.supportRequestRepository.find({
+      where: {
+        expiresAt: LessThanOrEqual(now),
+        status: 'submitted', // Only clean up active records
+      },
+      select: ['id', 'reference'],
+    });
+
+    if (expired.length === 0) {
+      return [];
+    }
+
+    const expiredIds = expired.map((r) => r.id);
+    const expiredRefs = expired.map((r) => r.reference);
+
+    // Delete expired records
+    await this.supportRequestRepository.delete({
+      id: expiredIds as any,
+    });
 
     this.logger.log(
-      `Deleted support request ${record.id} (reference=${record.reference})`,
+      `Cleaned up ${expiredIds.length} expired support requests: ${expiredRefs.join(', ')}`,
     );
-
-    return {
-      deleted: true,
-      id: record.id,
-      reference: record.reference,
-    };
-  }
-
-  cleanupExpiredSupportRequests(): string[] {
-    const expiredIds: string[] = [];
-    const now = Date.now();
-
-    for (const [id, record] of this.requests.entries()) {
-      if (new Date(record.expiresAt).getTime() <= now) {
-        expiredIds.push(id);
-        this.requests.delete(id);
-        this.removeFingerprintForRecord(id);
-      }
-    }
 
     return expiredIds;
   }
@@ -181,51 +255,64 @@ export class SupportRequestService {
     };
   }
 
-  private assertQuota(contact: string): void {
-    const recent = Array.from(this.requests.values()).filter((record) => {
-      if (record.contact !== contact) return false;
-      const age = Date.now() - new Date(record.createdAt).getTime();
-      return age <= this.duplicateWindowMs;
+  private async assertQuota(contact: string): Promise<void> {
+    // Since contact is encrypted, we need to fetch recent requests and decrypt
+    // to check quota. This is less efficient than indexing plaintext but
+    // preserves privacy.
+    const cutoff = new Date(Date.now() - this.duplicateWindowMs);
+
+    const recentRequests = await this.supportRequestRepository.find({
+      where: {
+        createdAt: MoreThan(cutoff),
+        status: 'submitted',
+      },
+      select: ['id', 'encryptedContact'],
     });
 
-    if (recent.length >= this.maxRequestsPerContact) {
+    // Decrypt and count matching contacts
+    let matchCount = 0;
+    for (const req of recentRequests) {
+      try {
+        const decryptedContact = this.encryptionService.decrypt(
+          req.encryptedContact,
+        );
+        if (decryptedContact === contact) {
+          matchCount++;
+        }
+      } catch (error) {
+        // Skip records that fail to decrypt (corruption or key rotation)
+        this.logger.warn(
+          `Failed to decrypt contact for quota check: ${req.id}`,
+        );
+      }
+    }
+
+    if (matchCount >= this.maxRequestsPerContact) {
       throw new BadRequestException(
         'Support request quota exceeded. Please wait before submitting another request for this contact.',
       );
     }
   }
 
-  private findDuplicate(fingerprint: string): SupportRequestRecord | undefined {
-    const existing = this.fingerprints.get(fingerprint);
-    if (!existing) return undefined;
+  private async findDuplicate(
+    fingerprintKey: string,
+  ): Promise<SupportRequest | undefined> {
+    const existing = await this.supportRequestRepository.findOne({
+      where: { fingerprintKey },
+    });
+
+    if (!existing) {
+      return undefined;
+    }
 
     const age = Date.now() - new Date(existing.createdAt).getTime();
     if (age > this.duplicateWindowMs) {
-      this.fingerprints.delete(fingerprint);
-      if (this.requestFingerprints.get(existing.id) === fingerprint) {
-        this.requestFingerprints.delete(existing.id);
-      }
+      // Expired duplicate - remove it
+      await this.supportRequestRepository.delete({ id: existing.id });
       return undefined;
     }
 
     return existing;
-  }
-
-  private computeFingerprint(input: {
-    category: string;
-    contact: string;
-    description: string;
-    release?: string;
-    diagnostics: string[];
-  }): string {
-    const normalized = JSON.stringify({
-      category: input.category,
-      contact: input.contact.toLowerCase(),
-      description: input.description.trim(),
-      release: input.release?.trim() ?? '',
-      diagnostics: [...input.diagnostics].sort(),
-    });
-    return Buffer.from(normalized).toString('base64url');
   }
 
   private assertSafeDiagnostic(value: string): string {
@@ -286,5 +373,51 @@ export class SupportRequestService {
   private filteredText(value: string | undefined): string {
     if (typeof value !== 'string') return '';
     return value.replace(/\s+/g, ' ').trim();
+  }
+
+  private assertSupportStaff(actor: SupportStaffActor): void {
+    if (!['moderator', 'admin'].includes(actor?.user?.role ?? '')) {
+      throw new ForbiddenException('Support staff access required');
+    }
+  }
+
+  private audit(action: string, target: string, actor: SupportStaffActor): void {
+    const actorId =
+      actor.userId ?? actor.user?.id ?? actor.sub ?? 'authenticated-staff';
+    this.logger.log(`Support request ${action}; actor=${actorId}; target=${target}`);
+  }
+
+  /**
+   * Decrypt a SupportRequest entity into a SupportRequestRecord.
+   * Omits encrypted fields from logs and returns decrypted contact/description.
+   */
+  private decryptRecord(entity: SupportRequest): SupportRequestRecord {
+    try {
+      const contact = this.encryptionService.decrypt(entity.encryptedContact);
+      const description = this.encryptionService.decrypt(
+        entity.encryptedDescription,
+      );
+
+      return {
+        id: entity.id,
+        reference: entity.reference,
+        category: entity.category,
+        contact,
+        description,
+        release: entity.release,
+        diagnostics: entity.diagnostics,
+        status: entity.status,
+        duplicate: entity.duplicate,
+        duplicateOf: entity.duplicateOf,
+        createdAt: entity.createdAt.toISOString(),
+        expiresAt: entity.expiresAt.toISOString(),
+        retentionDays: entity.retentionDays,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to decrypt support request ${entity.id}: ${error.message}`,
+      );
+      throw new Error('Failed to decrypt support request data');
+    }
   }
 }
