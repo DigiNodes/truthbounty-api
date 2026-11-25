@@ -43,6 +43,7 @@ describe('AuthService', () => {
       set: jest.fn().mockResolvedValue(true),
       get: jest.fn().mockResolvedValue(null),
       del: jest.fn().mockResolvedValue(true),
+      eval: jest.fn().mockResolvedValue(1),
     };
 
     siweService = {
@@ -170,7 +171,12 @@ describe('AuthService', () => {
       expect(result.refreshToken).toBe('mock-jti.mock-refresh-value');
       expect(result.expiresIn).toBe(900);
       expect(result.user).toEqual({ id: 'user-123', address: lower });
-      expect(redisService.del).toHaveBeenCalledWith(`auth:nonce:${lower}`);
+      expect(redisService.eval).toHaveBeenCalledWith(
+        expect.stringContaining("redis.call('DEL', KEYS[1])"),
+        1,
+        `auth:nonce:${lower}`,
+        expect.any(String),
+      );
     });
 
     it('rejects tampered nonce', async () => {
@@ -189,7 +195,7 @@ describe('AuthService', () => {
         } as any),
       ).rejects.toBeInstanceOf(UnauthorizedException);
 
-      expect(redisService.del).not.toHaveBeenCalled();
+      expect(redisService.eval).not.toHaveBeenCalled();
       expect(jwtService.sign).not.toHaveBeenCalled();
     });
 
@@ -366,7 +372,7 @@ describe('AuthService', () => {
           message: `Sign in to TruthBounty: ${nonce}`,
         } as any),
       ).rejects.toThrow('Invalid credentials');
-      expect(redisService.del).toHaveBeenCalled();
+      expect(redisService.eval).toHaveBeenCalled();
     });
 
     it('returns token pair when user has no wallet yet (anonymous auth)', async () => {
@@ -385,6 +391,67 @@ describe('AuthService', () => {
 
       expect(result.user.id).toBeNull();
       expect(result.accessToken).toBe('mock-access-token');
+    });
+
+    it('routes SIWE messages through strict configured verification', async () => {
+      const address = '0xAaBbCc';
+      const nonce = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ123456';
+      const message =
+        'app.truthbounty.com wants you to sign in with your Ethereum account:\n0xaabbcc\n\nSign in to TruthBounty — decentralized news verification\n\nURI: https://app.truthbounty.com\nVersion: 1\nChain ID: 10\nNonce: ABCDEFGHIJKLMNOPQRSTUVWXYZ123456\nIssued At: 2026-11-20T20:00:00.000Z';
+
+      siweService.verifySiwe.mockResolvedValueOnce({
+        success: true,
+        address: address.toLowerCase(),
+        data: { address: address.toLowerCase() },
+      });
+      siweService.parseMessage.mockReturnValueOnce({
+        address: address.toLowerCase(),
+        nonce,
+      });
+      redisService.get.mockResolvedValueOnce(makeRecord(nonce));
+      (verifyMessage as jest.Mock).mockClear();
+
+      const result = await authService.login({
+        address,
+        signature: '0xsig',
+        message,
+      } as any);
+
+      expect(result.user.address).toBe(address.toLowerCase());
+      expect(siweService.verifySiwe).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message,
+          expectedStatement:
+            'Sign in to TruthBounty — decentralized news verification',
+          supportedChainIds: [10],
+        }),
+      );
+      expect(verifyMessage).not.toHaveBeenCalled();
+      expect(tokenService.generateTokenPair).toHaveBeenCalledWith(
+        address.toLowerCase(),
+        null,
+      );
+    });
+
+    it('never falls back to legacy verification for a malformed SIWE message', async () => {
+      const message =
+        'app.truthbounty.com wants you to sign in with your Ethereum account:\nmalformed';
+      siweService.verifySiwe.mockResolvedValueOnce({
+        success: false,
+        error: 'AUTH_FAILED',
+      });
+      (verifyMessage as jest.Mock).mockClear();
+
+      await expect(
+        authService.login({
+          address: '0xAaBbCc',
+          signature: '0xsig',
+          message,
+        } as any),
+      ).rejects.toThrow('Invalid credentials');
+
+      expect(verifyMessage).not.toHaveBeenCalled();
+      expect(redisService.get).not.toHaveBeenCalled();
     });
   });
 
@@ -462,19 +529,22 @@ describe('AuthService', () => {
     it('should return user info for a valid non-blacklisted token', async () => {
       tokenService.isBlacklisted.mockResolvedValueOnce(false);
       prisma.wallet.findFirst.mockResolvedValueOnce({
-        address: '0xabcd',
+        address: `0x${'a'.repeat(40)}`,
         user: { id: 'user-1' },
       } as any);
 
       const result = await authService.validateToken({
-        address: '0xabcd',
+        address: `0x${'a'.repeat(40)}`,
         userId: 'user-1',
         sub: 'user-1',
         jti: 'test-jti',
+        type: 'access',
+        aud: 'truthbounty-api',
+        iss: 'truthbounty-api',
       });
 
       expect(result).toEqual({
-        address: '0xabcd',
+        address: `0x${'a'.repeat(40)}`,
         userId: 'user-1',
         user: { id: 'user-1' },
         jti: 'test-jti',
@@ -486,8 +556,13 @@ describe('AuthService', () => {
       tokenService.isBlacklisted.mockResolvedValueOnce(true);
 
       const result = await authService.validateToken({
-        address: '0xabcd',
+        address: `0x${'a'.repeat(40)}`,
         jti: 'blacklisted-jti',
+        userId: null,
+        sub: `0x${'a'.repeat(40)}`,
+        type: 'access',
+        aud: 'truthbounty-api',
+        iss: 'truthbounty-api',
       });
 
       expect(result).toBeNull();
@@ -498,18 +573,35 @@ describe('AuthService', () => {
       prisma.wallet.findFirst.mockResolvedValueOnce(null);
 
       const result = await authService.validateToken({
-        address: '0xabcd',
+        address: `0x${'a'.repeat(40)}`,
         userId: null,
-        sub: '0xabcd',
+        sub: `0x${'a'.repeat(40)}`,
+        jti: 'wallet-jti',
+        type: 'access',
+        aud: 'truthbounty-api',
+        iss: 'truthbounty-api',
       });
 
       expect(result).toEqual({
-        address: '0xabcd',
+        address: `0x${'a'.repeat(40)}`,
         userId: null,
         user: null,
-        jti: undefined,
-        sub: '0xabcd',
+        jti: 'wallet-jti',
+        sub: `0x${'a'.repeat(40)}`,
       });
+    });
+
+    it('rejects capability JWT claims before resolving a principal', async () => {
+      const result = await authService.validateToken({
+        address: `0x${'a'.repeat(40)}`,
+        sub: `0x${'a'.repeat(40)}`,
+        type: 'capability',
+        aud: 'narrow-operation',
+      });
+
+      expect(result).toBeNull();
+      expect(prisma.wallet.findFirst).not.toHaveBeenCalled();
+      expect(tokenService.isBlacklisted).not.toHaveBeenCalled();
     });
   });
 });

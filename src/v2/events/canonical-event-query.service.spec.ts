@@ -26,13 +26,18 @@ describe('CanonicalEventQueryService', () => {
   });
 
   it('returns empty results for an empty event-name set', async () => {
-    const result = await service.findAfter([], null, 25);
+    const result = await service.findAfter([], { chainId: 10 }, null, 25);
     expect(result).toEqual([]);
     expect(repo.createQueryBuilder).not.toHaveBeenCalled();
   });
 
   it('returns empty results for non-positive batch sizes', async () => {
-    const result = await service.findAfter(['EvidenceRegistered'], null, 0);
+    const result = await service.findAfter(
+      ['EvidenceRegistered'],
+      { chainId: 10 },
+      null,
+      0,
+    );
     expect(result).toEqual([]);
     expect(repo.createQueryBuilder).not.toHaveBeenCalled();
   });
@@ -50,11 +55,16 @@ describe('CanonicalEventQueryService', () => {
 
     const rows = await service.findAfter(
       ['EvidenceRegistered', 'EvidenceRemoved'],
+      { chainId: 10 },
       { blockNumber: '100', logIndex: 2 },
       50,
     );
 
     expect(rows).toEqual([{ id: '1' }]);
+    expect(qb.andWhere).toHaveBeenCalledWith(
+      'e.chainId = :chainId',
+      { chainId: 10 },
+    );
     expect(qb.andWhere).toHaveBeenCalledWith(
       '(e.blockNumber > :blockNumber OR (e.blockNumber = :blockNumber AND e.logIndex > :logIndex))',
       {
@@ -77,11 +87,13 @@ describe('CanonicalEventQueryService', () => {
 
     await service.findAfter(
       ['EvidenceRegistered'],
+      { chainId: 10 },
       { blockNumber: 100n, logIndex: 8 },
       25,
     );
     await service.findAfter(
       ['EvidenceRegistered'],
+      { chainId: 10 },
       { blockNumber: 200, logIndex: 3 },
       25,
     );
@@ -102,5 +114,15 @@ describe('CanonicalEventQueryService', () => {
         logIndex: 3,
       },
     );
+  });
+
+  it('fails closed for missing or unsupported chain scope', async () => {
+    await expect(
+      service.findAfter(['EvidenceRegistered'], null as never, null, 25),
+    ).rejects.toThrow('chain scope is required');
+    await expect(
+      service.findAfter(['EvidenceRegistered'], { chainId: 137 }, null, 25),
+    ).rejects.toThrow('chain scope is required');
+    expect(repo.createQueryBuilder).not.toHaveBeenCalled();
   });
 });
