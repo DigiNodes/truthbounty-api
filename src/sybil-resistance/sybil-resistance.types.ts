@@ -50,6 +50,20 @@ export interface FeatureProvenance {
   };
 }
 
+export interface ClaimAccuracyProvenance {
+  status: 'finalized' | 'unavailable';
+  source: 'canonical_events';
+  chainId?: number;
+  releaseId?: string;
+  contractAddress?: string;
+  finalizedThroughBlock?: number;
+  observedAt: string | null;
+  canonicalEventCount: number;
+  eligibleEvaluationCount: number;
+  exclusions: Record<string, number>;
+  reason?: string;
+}
+
 /**
  * Raw signal data for Sybil scoring
  */
@@ -66,6 +80,7 @@ export interface SybilSignals {
   stakingFinalizedBlock?: number;
   claimsVotedOn: number;
   claimsCorrect: number;
+  accuracyProvenance?: ClaimAccuracyProvenance;
   featuresObservedAt?: {
     worldcoin?: Date;
     walletAge?: Date;
