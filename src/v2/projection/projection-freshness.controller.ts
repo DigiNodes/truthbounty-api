@@ -1,4 +1,9 @@
-import { Controller, Get, Param } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Public } from '../../decorators/public.decorator';
 import { ProjectionFreshnessService } from './projection-freshness.service';
@@ -28,6 +33,30 @@ export class ProjectionFreshnessController {
   })
   async listFreshness() {
     return this.freshness.listFreshness();
+  }
+
+  /**
+   * Fail-closed readiness gate (#453): 200 only when every tracked projector
+   * is healthy, 503 with the blocking projectors otherwise. Read-only.
+   */
+  @Get('readiness')
+  @ApiOperation({
+    summary: 'Evaluate the fail-closed projection readiness gate',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Every tracked projector is healthy and fresh.',
+  })
+  @ApiResponse({
+    status: 503,
+    description: 'At least one projector blocks readiness (fail-closed).',
+  })
+  async getReadiness() {
+    const gate = await this.freshness.getReadinessGate();
+    if (!gate.ready) {
+      throw new ServiceUnavailableException(gate);
+    }
+    return gate;
   }
 
   @Get('freshness/:projectorName')
