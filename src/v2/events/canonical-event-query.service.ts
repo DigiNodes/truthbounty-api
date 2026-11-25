@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CanonicalEvent } from './entities/canonical-event.entity';
+import { CanonicalEventScope } from './canonical-event-scope';
 
 /**
  * Read-only access to canonical events for downstream V2 projectors
@@ -39,9 +40,16 @@ export class CanonicalEventQueryService {
    */
   async findAfter(
     eventNames: string[],
+    scope: CanonicalEventScope,
     after: { blockNumber: string | number | bigint; logIndex: number } | null,
     limit: number,
   ): Promise<CanonicalEvent[]> {
+    if (
+      !scope ||
+      (scope.chainId !== 10 && scope.chainId !== 11155420)
+    ) {
+      throw new Error('A supported canonical event chain scope is required');
+    }
     if (!Array.isArray(eventNames) || eventNames.length === 0) return [];
     if (!Number.isInteger(limit) || limit <= 0) return [];
 
@@ -57,7 +65,8 @@ export class CanonicalEventQueryService {
 
     const qb = this.events
       .createQueryBuilder('e')
-      .where('e.eventName IN (:...eventNames)', { eventNames })
+      .where('e.chainId = :chainId', { chainId: scope.chainId })
+      .andWhere('e.eventName IN (:...eventNames)', { eventNames })
       .orderBy('e.blockNumber', 'ASC')
       .addOrderBy('e.logIndex', 'ASC')
       .limit(limit);

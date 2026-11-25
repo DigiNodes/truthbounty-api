@@ -3,11 +3,13 @@ import {
   Logger,
   NotFoundException,
   Optional,
+  ConflictException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { StakeEvent } from '../staking/entities/stake-event.entity';
 import { StakingEventType } from '../staking/types/staking-event.type';
@@ -34,9 +36,6 @@ export class SybilResistanceService {
   // Model and Provenance sub-services
   private readonly modelRegistry: SybilModelRegistry;
   private readonly provenanceService: SybilProvenanceService;
-
-  // In-memory appeals registry
-  private readonly appeals = new Map<string, SybilAppealRecord[]>();
 
   // Weighting constants for default backward-compatibility (sum to 1.0)
   private readonly WORLDCOIN_WEIGHT = 0.3;
@@ -201,6 +200,7 @@ export class SybilResistanceService {
 
   /**
    * Submit an appeal against a Sybil score calculation
+   * Appeals are persisted to the database with idempotency protection
    */
   async submitAppeal(
     userId: string,
@@ -222,6 +222,41 @@ export class SybilResistanceService {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
       throw new NotFoundException(`User ${userId} not found`);
+    }
+
+    // Generate idempotency key: hash of userId + reason prefix (first 100 chars) + time window (5 min buckets)
+    // This prevents duplicate appeals for the same issue within a 5-minute window
+    const timeWindow = Math.floor(Date.now() / (5 * 60 * 1000)); // 5-minute buckets
+    const reasonPrefix = appealRequest.reason.trim().substring(0, 100);
+    const idempotencyInput = `${userId}:${reasonPrefix}:${timeWindow}`;
+    const idempotencyKey = createHash('sha256')
+      .update(idempotencyInput)
+      .digest('hex');
+
+    // Check for existing appeal with same idempotency key
+    const existingAppeal = await this.prisma.sybilAppeal.findUnique({
+      where: { idempotencyKey },
+    });
+
+    if (existingAppeal) {
+      this.logger.log(
+        `Duplicate appeal detected for user ${userId}, returning existing appeal ${existingAppeal.appealId}`,
+      );
+      // Return existing appeal record in the expected format
+      return {
+        appealId: existingAppeal.appealId,
+        userId: existingAppeal.userId,
+        status: existingAppeal.status as any,
+        reason: existingAppeal.reason,
+        previousScore: existingAppeal.previousScore,
+        previousRiskScore: existingAppeal.previousRiskScore,
+        newScore: existingAppeal.newScore,
+        newRiskScore: existingAppeal.newRiskScore,
+        modelVersion: existingAppeal.modelVersion,
+        recomputedAt: existingAppeal.recomputedAt.toISOString(),
+        provenanceDigest: existingAppeal.provenanceDigest,
+        additionalEvidenceSummary: existingAppeal.additionalEvidenceSummary,
+      };
     }
 
     // Get latest score
@@ -258,40 +293,226 @@ export class SybilResistanceService {
     });
 
     const status = recomputed.score > previousScore ? 'RESOLVED' : 'UPHELD';
+    const appealId = randomUUID();
+    const recomputedAt = new Date();
 
-    const appealRecord: SybilAppealRecord = {
-      appealId: randomUUID(),
-      userId,
-      status,
-      reason: appealRequest.reason.trim(),
-      previousScore,
-      previousRiskScore,
-      newScore: recomputed.score,
-      newRiskScore: recomputed.riskScore,
-      modelVersion: recomputed.version,
-      recomputedAt: new Date().toISOString(),
-      provenanceDigest: recomputed.provenanceDigest,
-      additionalEvidenceSummary: appealRequest.additionalEvidence
-        ? JSON.stringify(appealRequest.additionalEvidence)
-        : undefined,
-    };
+    // Sanitize additional evidence to ensure no sensitive data is stored
+    let evidenceSummary: string | undefined;
+    if (appealRequest.additionalEvidence) {
+      const sanitized = { ...appealRequest.additionalEvidence };
+      // Remove any potential sensitive fields
+      delete sanitized.nullifierHash;
+      delete sanitized.proof;
+      delete sanitized.privateKey;
+      delete sanitized.seedPhrase;
+      delete sanitized.walletAddresses;
+      evidenceSummary = JSON.stringify(sanitized);
+    }
 
-    const userAppeals = this.appeals.get(userId) || [];
-    userAppeals.push(appealRecord);
-    this.appeals.set(userId, userAppeals);
+    // Persist appeal to database
+    const appeal = await this.prisma.sybilAppeal.create({
+      data: {
+        appealId,
+        userId,
+        status,
+        reason: appealRequest.reason.trim(),
+        previousScore,
+        previousRiskScore,
+        newScore: recomputed.score,
+        newRiskScore: recomputed.riskScore,
+        modelVersion: recomputed.version,
+        recomputedAt,
+        provenanceDigest: recomputed.provenanceDigest,
+        additionalEvidenceSummary: evidenceSummary,
+        idempotencyKey,
+      },
+    });
 
     this.logger.log(
-      `Appeal ${appealRecord.appealId} for user ${userId}: status=${status}, prevScore=${previousScore}, newScore=${recomputed.score}`,
+      `Appeal ${appealId} for user ${userId}: status=${status}, prevScore=${previousScore}, newScore=${recomputed.score}`,
     );
 
-    return appealRecord;
+    return {
+      appealId: appeal.appealId,
+      userId: appeal.userId,
+      status: appeal.status as any,
+      reason: appeal.reason,
+      previousScore: appeal.previousScore,
+      previousRiskScore: appeal.previousRiskScore,
+      newScore: appeal.newScore,
+      newRiskScore: appeal.newRiskScore,
+      modelVersion: appeal.modelVersion,
+      recomputedAt: appeal.recomputedAt.toISOString(),
+      provenanceDigest: appeal.provenanceDigest,
+      additionalEvidenceSummary: appeal.additionalEvidenceSummary,
+    };
   }
 
   /**
    * Get all appeals history for a user
+   * Returns appeals from the database, ordered by most recent first
    */
   async getAppeals(userId: string): Promise<SybilAppealRecord[]> {
-    return Promise.resolve(this.appeals.get(userId) || []);
+    const appeals = await this.prisma.sybilAppeal.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return appeals.map((appeal) => ({
+      appealId: appeal.appealId,
+      userId: appeal.userId,
+      status: appeal.status as any,
+      reason: appeal.reason,
+      previousScore: appeal.previousScore,
+      previousRiskScore: appeal.previousRiskScore,
+      newScore: appeal.newScore,
+      newRiskScore: appeal.newRiskScore,
+      modelVersion: appeal.modelVersion,
+      recomputedAt: appeal.recomputedAt.toISOString(),
+      provenanceDigest: appeal.provenanceDigest,
+      additionalEvidenceSummary: appeal.additionalEvidenceSummary,
+    }));
+  }
+
+  /**
+   * Get a specific appeal by ID with authorization checks
+   * Only the owner or authorized reviewers can access full appeal details
+   */
+  async getAppealById(
+    appealId: string,
+    requestingUserId: string,
+    isReviewer: boolean = false,
+  ): Promise<SybilAppealRecord> {
+    const appeal = await this.prisma.sybilAppeal.findUnique({
+      where: { appealId },
+    });
+
+    if (!appeal) {
+      throw new NotFoundException(`Appeal ${appealId} not found`);
+    }
+
+    // Authorization: only owner or reviewer can access
+    if (appeal.userId !== requestingUserId && !isReviewer) {
+      throw new NotFoundException(`Appeal ${appealId} not found`);
+    }
+
+    return {
+      appealId: appeal.appealId,
+      userId: appeal.userId,
+      status: appeal.status as any,
+      reason: appeal.reason,
+      previousScore: appeal.previousScore,
+      previousRiskScore: appeal.previousRiskScore,
+      newScore: appeal.newScore,
+      newRiskScore: appeal.newRiskScore,
+      modelVersion: appeal.modelVersion,
+      recomputedAt: appeal.recomputedAt.toISOString(),
+      provenanceDigest: appeal.provenanceDigest,
+      additionalEvidenceSummary: appeal.additionalEvidenceSummary,
+    };
+  }
+
+  /**
+   * Review an appeal (admin/reviewer only)
+   * Updates appeal status and records reviewer identity
+   */
+  async reviewAppeal(
+    appealId: string,
+    reviewerId: string,
+    newStatus: 'UPHELD' | 'RESOLVED' | 'REJECTED',
+    reviewNotes?: string,
+  ): Promise<SybilAppealRecord> {
+    const appeal = await this.prisma.sybilAppeal.findUnique({
+      where: { appealId },
+    });
+
+    if (!appeal) {
+      throw new NotFoundException(`Appeal ${appealId} not found`);
+    }
+
+    // Prevent status transitions from terminal states
+    if (appeal.reviewerId && appeal.reviewedAt) {
+      throw new ConflictException(
+        `Appeal ${appealId} has already been reviewed and cannot be modified`,
+      );
+    }
+
+    const updated = await this.prisma.sybilAppeal.update({
+      where: { appealId },
+      data: {
+        status: newStatus,
+        reviewerId,
+        reviewedAt: new Date(),
+        reviewNotes: reviewNotes || null,
+      },
+    });
+
+    this.logger.log(
+      `Appeal ${appealId} reviewed by ${reviewerId}: status=${newStatus}`,
+    );
+
+    return {
+      appealId: updated.appealId,
+      userId: updated.userId,
+      status: updated.status as any,
+      reason: updated.reason,
+      previousScore: updated.previousScore,
+      previousRiskScore: updated.previousRiskScore,
+      newScore: updated.newScore,
+      newRiskScore: updated.newRiskScore,
+      modelVersion: updated.modelVersion,
+      recomputedAt: updated.recomputedAt.toISOString(),
+      provenanceDigest: updated.provenanceDigest,
+      additionalEvidenceSummary: updated.additionalEvidenceSummary,
+    };
+  }
+
+  /**
+   * Get appeals with pagination and filtering (admin/reviewer only)
+   */
+  async getAppealsWithFilters(
+    filters: {
+      status?: string;
+      userId?: string;
+      modelVersion?: string;
+      limit?: number;
+      offset?: number;
+    } = {},
+  ): Promise<{ appeals: SybilAppealRecord[]; total: number }> {
+    const { status, userId, modelVersion, limit = 50, offset = 0 } = filters;
+
+    const where: any = {};
+    if (status) where.status = status;
+    if (userId) where.userId = userId;
+    if (modelVersion) where.modelVersion = modelVersion;
+
+    const [appeals, total] = await Promise.all([
+      this.prisma.sybilAppeal.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        skip: offset,
+      }),
+      this.prisma.sybilAppeal.count({ where }),
+    ]);
+
+    return {
+      appeals: appeals.map((appeal) => ({
+        appealId: appeal.appealId,
+        userId: appeal.userId,
+        status: appeal.status as any,
+        reason: appeal.reason,
+        previousScore: appeal.previousScore,
+        previousRiskScore: appeal.previousRiskScore,
+        newScore: appeal.newScore,
+        newRiskScore: appeal.newRiskScore,
+        modelVersion: appeal.modelVersion,
+        recomputedAt: appeal.recomputedAt.toISOString(),
+        provenanceDigest: appeal.provenanceDigest,
+        additionalEvidenceSummary: appeal.additionalEvidenceSummary,
+      })),
+      total,
+    };
   }
 
   /**

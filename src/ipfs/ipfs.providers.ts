@@ -4,6 +4,12 @@ import path from 'path';
 import { pipeline } from 'stream/promises';
 import crypto from 'crypto';
 import { Readable, Transform } from 'stream';
+import { CID } from 'multiformats/cid';
+import { Digest } from 'multiformats/hashes/digest';
+import {
+  EVIDENCE_CID_RAW_CODEC,
+  EVIDENCE_CID_SHA256_MULTIHASH_CODE,
+} from '../storage/evidence-cid.constants';
 import { IpfsProvider, IpfsAddResult, IPFS_PROVIDER } from './interfaces';
 import { IpfsConfigService } from './ipfs.config';
 
@@ -38,18 +44,24 @@ export class LocalFsIpfsProvider implements IpfsProvider {
       },
     });
 
-    await pipeline(stream, transform, writeStream);
+    try {
+      await pipeline(stream, transform, writeStream);
 
-    const digest = hash.digest('hex');
-    const cid = `sha256:${digest}`;
+      const digest = hash.digest();
+      const cid = CID.createV1(
+        EVIDENCE_CID_RAW_CODEC,
+        Digest.create(
+          EVIDENCE_CID_SHA256_MULTIHASH_CODE,
+          new Uint8Array(digest),
+        ),
+      ).toString();
+      const finalPath = path.join(this.storagePath, digest.toString('hex'));
 
-    const finalName = `${digest}`;
-    const finalPath = path.join(this.storagePath, finalName);
-
-    // move tmp file to final location (atomic on same fs)
-    await fsPromises.rename(tmpPath, finalPath);
-
-    return { cid, size, path: finalPath };
+      await fsPromises.rename(tmpPath, finalPath);
+      return { cid, size, path: finalPath };
+    } finally {
+      await fsPromises.rm(tmpPath, { force: true });
+    }
   }
 
   getUrl(cid: string): string | undefined {
@@ -68,7 +80,6 @@ export const ipfsProviderFactory = {
       return new LocalFsIpfsProvider(storage) as IpfsProvider;
     }
 
-    // Placeholder: other providers (e.g. http client) can be added here
     throw new Error(`Unsupported IPFS provider: ${provider}`);
   },
   inject: [IpfsConfigService],
