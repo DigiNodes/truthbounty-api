@@ -60,7 +60,8 @@ export function redactObject(obj: any): any {
       'refresh_token',
     ];
 
-    if (sensitiveKeys.includes(key.toLowerCase())) {
+    const normalizedKey = key.toLowerCase();
+    if (sensitiveKeys.some((sensitive) => sensitive.toLowerCase() === normalizedKey)) {
       redactedObj[key] = '[REDACTED]';
     } else {
       redactedObj[key] = redactObject(obj[key]);

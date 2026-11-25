@@ -1,6 +1,7 @@
 import { Readable } from 'stream';
 
 export interface IpfsAddResult {
+  /** Canonical CIDv1 (raw codec, SHA-256 multihash) for the uploaded bytes. */
   cid: string;
   size: number;
   path?: string;
