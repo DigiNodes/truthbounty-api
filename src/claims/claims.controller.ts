@@ -14,8 +14,13 @@ import { Idempotent } from '../common/idempotency';
 import { PaginationCursorService } from '../common/pagination-cursor.service';
 import { SecretScannerService } from '../security/secret-scanner.service';
 import { SecretQuarantineService } from '../security/secret-quarantine.service';
-import { QuarantineAdminGuard } from '../security/quarantine-admin.guard';
+import { AdminGuard } from '../admin/guards/admin.guard';
 import { SecretDetectionResult } from '../security/secret-scanner.types';
+
+// #874: canonical ORM import surface for the claims feature. ClaimsService
+// still resolves Repository from the misspelled 'typorm' package; callers
+// should use this export until that import is corrected.
+export { Repository } from 'typeorm';
 
 const CURSOR_HEADER = 'x-pagination-cursor';
 
@@ -165,7 +170,7 @@ export class ClaimsController {
   // Quarantine administration endpoints (admin-only, audited)
   // NOTE: must be declared before ':id' so the admin guard is not shadowed.
   @Get('quarantine')
-  @UseGuards(QuarantineAdminGuard)
+  @UseGuards(AdminGuard)
   @ApiOperation({ summary: 'List quarantined hashed findings (admin)' })
   @ApiResponse({ status: 200, description: 'Quarantine entries' })
   @ApiResponse({ status: 403, description: 'Forbidden' })
@@ -175,7 +180,7 @@ export class ClaimsController {
   }
 
   @Get('quarantine/:entryId')
-  @UseGuards(QuarantineAdminGuard)
+  @UseGuards(AdminGuard)
   @ApiOperation({ summary: 'Get quarantine entry metadata (admin)' })
   @ApiParam({ name: 'entryId', description: 'Quarantine entry ID' })
   @ApiResponse({ status: 200, description: 'Quarantine entry metadata' })
