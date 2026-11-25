@@ -127,13 +127,12 @@ and do not mutate claim state.
 
 ### Rewards
 
-| Method | Route | Authorization |
-|-------|-------|--------------|
-| GET | `/rewards` | PUBLIC |
-| GET | `/rewards/:id` | PUBLIC |
-| POST | `/rewards` | ROLE(admin) |
-| PATCH | `/rewards/:id` | ROLE(admin) |
-| DELETE | `/rewards/:id` | ROLE(admin) |
+| Method | Route | Authorization | Behavior |
+|-------|-------|--------------|----------|
+| GET | `/rewards` | PUBLIC | Deprecated; returns 410 Gone |
+| GET | `/rewards/:id` | PUBLIC | Deprecated; returns 410 Gone |
+
+No POST, PATCH, or DELETE routes are exposed for legacy rewards.
 
 ### Staking
 

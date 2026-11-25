@@ -68,6 +68,9 @@ export function makePinoOptions(configService: ConfigService) {
           'req.body.password',
           'req.body.token',
           'req.body.privateKey',
+          'req.body.secret',
+          'req.body.newSecret',
+          'req.body.webhookConfig.secret',
           // IPFS provider / pinning service secrets
           'req.body.apiKey',
           'req.body.api_key',
@@ -76,6 +79,11 @@ export function makePinoOptions(configService: ConfigService) {
           // generic config locations (when configs are logged)
           'config.ipfs.apiKey',
           'config.ipfs.api_key',
+          // audit snapshots and any nested secret-like field
+          'beforeState.webhookConfig.secret',
+          'afterState.webhookConfig.secret',
+          '**.secret',
+          '**.privateKey',
         ],
         censor: '[REDACTED]',
       },

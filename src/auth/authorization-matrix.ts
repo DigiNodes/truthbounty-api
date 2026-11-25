@@ -40,6 +40,11 @@
  * │ GET    /auth/profile                            │ AUTHN                                    │
  * │ DELETE /auth/sessions/:address                  │ AUTHN + AdminOnly (env-list gate)        │
  * ├─────────────────────────────────────────────────┼──────────────────────────────────────────┤
+ * │ POST   /support/requests                         │ PUBLIC (validated support submission)   │
+ * │ GET    /support/requests                         │ ROLE(moderator,admin)                    │
+ * │ GET    /support/requests/:id                     │ ROLE(moderator,admin)                    │
+ * │ DELETE /support/requests/:id                     │ ROLE(moderator,admin)                    │
+ * ├─────────────────────────────────────────────────┼──────────────────────────────────────────┤
  * │ GET    /claims/latest                           │ PUBLIC                                   │
  * │ GET    /claims/user/:wallet                     │ PUBLIC                                   │
  * │ GET    /claims/:id                              │ PUBLIC                                   │
