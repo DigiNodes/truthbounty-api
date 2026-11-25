@@ -18,7 +18,7 @@
     "pretype-check": "npm run generate:prisma",
     "type-check": "tsc --noEmit",
     "prebuild": "npm run generate:prerequisites && npm run type-check",
-    "build": "nest build",
+    "build": "node init && nest build",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",

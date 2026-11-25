@@ -8,7 +8,6 @@ import {
   Repository,
 } from 'typeorm';
 import { ProjectDispute } from '../entities/project-dispute.entity';
-import { EventCheckpoint } from '../../events/entities/event-checkpoint.entity';
 import {
   ProjectVerificationRound,
   RoundType,
@@ -396,22 +395,4 @@ export class DisputeReadModelService {
     return new HttpException(body, status);
   }
 
-  private blockOf(round: ProjectVerificationRound): bigint {
-    return this.safeBigInt(round.openedAtBlock) ?? 0n;
-  }
-
-  private safeBigInt(value: unknown): bigint | null {
-    if (value === null || value === undefined) return null;
-    try {
-      if (typeof value === 'bigint') return value;
-      if (typeof value === 'number') {
-        return Number.isFinite(value) ? BigInt(Math.trunc(value)) : null;
-      }
-      if (typeof value !== 'string') return null;
-      const text = value.trim();
-      return text === '' ? null : BigInt(text);
-    } catch {
-      return null;
-    }
-  }
 }
