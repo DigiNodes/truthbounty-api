@@ -3,6 +3,7 @@
 ## Overview
 
 The Profiling Service integrates seamlessly with existing observability modules across the TruthBounty backend:
+
 - **BE-011 Metrics Service** (`src/metrics`): Prometheus gauge & histogram collection.
 - **BE-027 API Usage Analytics** (`src/analytics`): Operational analytics and request statistics.
 - **BE-030 Health Diagnostics** (`src/health`): Liveness, readiness, and resource diagnostics.
@@ -40,6 +41,7 @@ The `/profiler/metrics` endpoint provides JSON latency percentiles which can be 
 The `/metrics` endpoint (`src/metrics`) exposes standard Prometheus text format directly, including the infrastructure/queue/blockchain gauges added under BE-016 (see below) — these can be scraped by Prometheus and wired into Grafana panels or Alertmanager rules without any additional conversion step.
 
 ### Key Monitoring Thresholds
+
 - **Target Average API Response Time**: `< 100ms`
 - **Target p95 API Latency**: `< 250ms`
 - **Target p99 API Latency**: `< 500ms`
@@ -48,7 +50,8 @@ The `/metrics` endpoint (`src/metrics`) exposes standard Prometheus text format 
 
 ---
 
- feat/be-016-monitoring-api
+feat/be-016-monitoring-api
+
 ## BE-016: Protocol Health & System Monitoring API
 
 BE-016 asked for a broad (~5-6 day) monitoring surface spanning health endpoints,
@@ -135,6 +138,7 @@ Recommendation: treat this as the "make the infra/queue/blockchain data
 that already exists inside HealthService actually alertable" slice of
 BE-016, and track the remaining sections above as their own,
 appropriately-scoped follow-up issues rather than one epic.
+
 ## Indexer Health & Projection Metrics (V2-BE-032)
 
 The API exposes indexer lag, finality, and projection health signals for the
@@ -156,4 +160,47 @@ unhealthy` status. Alert thresholds and remediation steps are documented in
 [docs/indexer-runbook.md](indexer-runbook.md). Exposed values never include
 credentials, user data, or live RPC endpoints.
 
- main
+main
+
+## Metric naming, units, ownership and exposure
+
+Every series on `GET /metrics` follows the same naming rules so a name is also
+its unit:
+
+| Suffix               | Unit            | Example                                                           |
+| -------------------- | --------------- | ----------------------------------------------------------------- |
+| `_total`             | monotonic count | `http_requests_total`                                             |
+| `_seconds`           | seconds         | `http_request_duration_seconds`                                   |
+| `_bytes`             | bytes           | `process_memory_usage_bytes`                                      |
+| `_microseconds`      | microseconds    | `process_cpu_usage_microseconds`                                  |
+| `_blocks` / `_block` | chain height    | `blockchain_indexing_lag_blocks`, `blockchain_last_indexed_block` |
+
+Ownership sits with the module that registers the metric: `src/metrics` (HTTP,
+process, queue, blockchain), `src/metrics/indexer-metrics.service.ts` (indexer
+health), `src/audit` (audit trail), `src/notifications` (delivery) and
+`src/ai-assistant` (AI usage). Each registration's `help` string states the
+unit and meaning.
+
+Exposure: `/metrics` is operational data and is gated by `MetricsAuthGuard`,
+which requires `Authorization: Bearer $METRICS_TOKEN` whenever `METRICS_TOKEN`
+is set (see [../METRICS_SECURITY.md](../METRICS_SECURITY.md)). Indexer metrics
+are emitted pre-sanitised — no credentials, user data or live RPC URLs.
+
+### Label and cardinality policy
+
+Labels are the only way a scrape can blow up, so identifiers are never labels.
+`src/metrics/metrics-label-policy.ts` is the single source of truth and is
+applied by `MetricsService.incrementCounter` / `setGauge`, the route label, and
+the CI budget check:
+
+- **Key allowlist** — only the bounded keys in `BOUNDED_LABEL_KEYS` may be
+  attached; everything else is dropped. `UNBOUNDED_LABEL_KEYS` (wallet, address,
+  claim id, CID, URL, error/reason text, hashes, `*id`) are rejected explicitly.
+- **Value guard** — values that look like an EVM address, tx/block hash, IPFS
+  CID, URL, free-text error or a secret (`sk-`, `AKIA`, JWT, PEM) collapse to
+  `other`. Each label admits at most `MAX_VALUES_PER_LABEL` distinct values
+  before the remainder also collapse to `other`.
+- **Budget** — `assertCardinalityBudget` fails the build when a scrape exceeds
+  `CARDINALITY_BUDGET` series. `src/metrics/tests/metrics-label-policy.spec.ts`
+  covers wallet/claim/error injection, high-cardinality load, secret canaries,
+  histogram boundaries and the scrape endpoint.
