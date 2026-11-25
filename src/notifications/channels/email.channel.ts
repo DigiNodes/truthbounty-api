@@ -5,6 +5,7 @@ import { NotificationChannel, ChannelDeliveryResult, RenderedNotificationPayload
 import { DeliveryChannel } from '../interfaces/notification.types';
 import { PreferenceEnforcer } from '../services/preference-enforcer.service';
 import { firstValueFrom } from 'rxjs';
+import { escapeHtml, sanitizeActionUrl } from '../notification-templates';
 
 /**
  * EmailChannel
@@ -235,6 +236,7 @@ export class EmailChannel implements NotificationChannel {
    * Build HTML email with header, body, footer, and unsubscribe link
    */
   private buildHtmlEmail(body: string, actionUrl?: string, unsubscribeToken?: string): string {
+    const safeActionUrl = sanitizeActionUrl(actionUrl);
     return `
 <!DOCTYPE html>
 <html>
@@ -261,8 +263,8 @@ export class EmailChannel implements NotificationChannel {
         <div class="content">
             ${body}
             ${
-              actionUrl
-                ? `<a href="${actionUrl}" class="cta-button">View More</a>`
+              safeActionUrl
+                ? `<a href="${escapeHtml(safeActionUrl)}" class="cta-button">View More</a>`
                 : ''
             }
         </div>

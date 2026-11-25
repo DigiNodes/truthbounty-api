@@ -71,5 +71,6 @@ describe('AiAssistantService', () => {
     });
     expect(result.message).toBeDefined();
     expect(result.metadata.provider).toBe('mock');
+    expect(result.metadata.model).toBe('mock');
   });
 });
