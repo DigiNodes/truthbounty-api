@@ -217,7 +217,7 @@ describe('NotificationService', () => {
   });
 
   describe('processDelivery', () => {
-    it('should process pending deliveries and mark them as delivered', async () => {
+    it('should record pending deliveries without claiming them delivered', async () => {
       const notifWithDeliveries = {
         ...mockNotification,
         deliveries: [{ ...mockDelivery }],

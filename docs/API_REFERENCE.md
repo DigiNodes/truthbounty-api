@@ -365,18 +365,23 @@ Event indexer management.
 
 ### Rewards
 
-Reward management.
+The legacy rewards API has been deprecated. The collection and ID-based
+endpoints return `410 Gone`. There is no direct V2 equivalent for legacy
+reward IDs.
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/rewards` | Create a new reward |
-| GET | `/rewards` | Get all rewards |
-| GET | `/rewards/:id` | Get reward by ID |
-| PATCH | `/rewards/:id` | Update reward |
-| DELETE | `/rewards/:id` | Delete reward |
+Reward data must be read from the canonical V2 claim projections where
+applicable.
 
-**Path Parameters:**
--  `:id` - Reward ID
+| Method | Endpoint | Status | Description |
+|--------|----------|--------|-------------|
+| GET | `/rewards` | 410 Gone | Deprecated legacy rewards collection |
+| GET | `/rewards/:id` | 410 Gone | Deprecated legacy reward lookup |
+
+**Migration:**
+- Use `GET /api/v2/claims/:claimId/rewards` for the V2 reward projection.
+- The V2 endpoint is claim-scoped; legacy reward IDs are not interchangeable
+  with claim IDs.
+- The legacy API no longer supports creating, updating, or deleting rewards.
 
 ---
 
