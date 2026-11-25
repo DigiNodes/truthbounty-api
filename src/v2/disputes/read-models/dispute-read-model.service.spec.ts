@@ -567,6 +567,49 @@ describe('DisputeReadModelService', () => {
       expect(error.response.failClosed).toBe(true);
       expect(error.response.reason).toBe('appeal_round_missing_or_ambiguous');
     });
+
+    it('fails closed when the linked appeal round is duplicated in the projection', async () => {
+      disputeRepo.rows = [
+        {
+          disputeId: 'claim-0001:round-1',
+          claimId: 'claim-0001',
+          originalRoundId: 'round-1',
+          appealRoundId: 'appeal-1',
+          status: DisputeStatus.RAISED,
+          challengeBond: '1000000000000000000',
+          challengeBondAsset: '0x' + 'a'.repeat(40),
+          deadline: new Date('2026-10-20T00:00:00.000Z'),
+          eventTxHash: '0x' + '1'.repeat(64),
+          eventLogIndex: 0,
+          blockNumber: '24850010',
+          createdAt: new Date('2026-10-15T00:00:00.000Z'),
+          updatedAt: new Date('2026-10-15T00:00:00.000Z'),
+          dataState: DataState.FINALIZED,
+          resolvedOutcome: null,
+        } as ProjectDispute,
+      ];
+      roundRepo.rows = [
+        {
+          roundId: 'appeal-1',
+          claimId: 'claim-0001',
+          roundType: 'appeal',
+          openedAtBlock: '24850020',
+          appealDeadline: new Date('2099-01-01T00:00:00.000Z'),
+        },
+        {
+          roundId: 'appeal-1',
+          claimId: 'claim-0001',
+          roundType: 'appeal',
+          openedAtBlock: '24850021',
+          appealDeadline: new Date('2099-01-02T00:00:00.000Z'),
+        },
+      ];
+
+      const error = await service.getDetail('claim-0001:round-1').catch((e) => e);
+      expect(error.response.code).toBe('STALE_RECONCILIATION');
+      expect(error.response.failClosed).toBe(true);
+      expect(error.response.reason).toBe('appeal_round_missing_or_ambiguous');
+    });
   });
 
   describe('phase separation', () => {
