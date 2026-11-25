@@ -283,16 +283,23 @@ export class DisputeReadModelService {
             },
           })
         : [];
-    const appealRoundById = new Map(
-      appealRounds.map((round) => [round.roundId, round]),
-    );
+    // Round IDs are scoped to a claim. Keep the composite identity and
+    // reject duplicate canonical rows instead of silently selecting one.
+    const appealRoundsByKey = new Map<string, ProjectVerificationRound[]>();
+    for (const round of appealRounds) {
+      const key = `${round.claimId}:${round.roundId}`;
+      const matches = appealRoundsByKey.get(key) ?? [];
+      matches.push(round);
+      appealRoundsByKey.set(key, matches);
+    }
 
     return rows.map((row) => {
-      const appealRound = row.appealRoundId
-        ? appealRoundById.get(row.appealRoundId)
-        : undefined;
+      const linkedRounds = row.appealRoundId
+        ? appealRoundsByKey.get(`${row.claimId}:${row.appealRoundId}`) ?? []
+        : [];
+      const appealRound = linkedRounds.length === 1 ? linkedRounds[0] : undefined;
 
-      if (row.appealRoundId && !appealRound) {
+      if (row.appealRoundId && linkedRounds.length !== 1) {
         throw this.failClosed(
           'STALE_RECONCILIATION',
           HttpStatus.SERVICE_UNAVAILABLE,
