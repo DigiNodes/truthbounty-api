@@ -26,6 +26,13 @@ import { NotificationProcessor } from './services/notification.processor';
 import { Notification } from './entities/notification.entity';
 import { NotificationPreference } from './entities/notification-preference.entity';
 import { DeliveryHistory } from './entities/delivery-history.entity';
+import { SmtpConfigService } from './channels/smtp-config.service';
+import { FcmConfigService } from './channels/fcm-config.service';
+import { Claim } from '../claims/entities/claim.entity';
+import { Evidence } from '../claims/entities/evidence.entity';
+import { Vote } from '../governance/entities/proposal.entity';
+import { ClaimStakeholderResolver } from './services/claim-stakeholder-resolver.service';
+import { GovernanceParticipantResolver } from './services/governance-participant-resolver.service';
 
 @Module({
   imports: [
@@ -33,6 +40,9 @@ import { DeliveryHistory } from './entities/delivery-history.entity';
       Notification,
       NotificationPreference,
       DeliveryHistory,
+      Claim,
+      Evidence,
+      Vote,
     ]),
     BullModule.registerQueue(
       {
@@ -77,6 +87,10 @@ import { DeliveryHistory } from './entities/delivery-history.entity';
     WebhookService,
     NotificationProcessor,
     NotificationGateway,
+    SmtpConfigService,
+    FcmConfigService,
+    ClaimStakeholderResolver,
+    GovernanceParticipantResolver,
   ],
   exports: [
     NotificationsService,
