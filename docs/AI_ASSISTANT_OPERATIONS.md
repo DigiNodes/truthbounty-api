@@ -4,8 +4,10 @@
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `AI_PROVIDER` | `mock` | `openai` or `mock`. Defaults to `mock` everywhere so the app and its tests never require a real key. |
-| `OPENAI_API_KEY` | _(unset)_ | Required only when `AI_PROVIDER=openai`. |
+| `AI_PROVIDER` | `mock` | Shared provider selection with `DEFAULT_LLM_PROVIDER`: `openai`, `anthropic` or `mock`. Both names must agree when supplied. Deployed environments require an explicit real provider. |
+| `DEFAULT_LLM_PROVIDER` | `mock` | Provider used by `LlmProviderService`; derived from `AI_PROVIDER` when only that is supplied. `mock` is rejected in staging/production. |
+| `OPENAI_API_KEY` | _(unset)_ | Required in staging/production when the configured provider is `openai`. |
+| `ANTHROPIC_API_KEY` | _(unset)_ | Required in staging/production when the configured provider is `anthropic`. |
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Point at a local OpenAI-compatible server (Ollama/vLLM/LM Studio) to run without a hosted OpenAI account. |
 | `OPENAI_MODEL` | `gpt-4o-mini` | Default model for the OpenAI provider. |
 | `AI_MAX_PROMPT_LENGTH` | `4000` | Runtime re-check backing the DTO's `@MaxLength`. |
@@ -21,9 +23,11 @@
 
 ## Switching providers
 
-Set `AI_PROVIDER=openai` and `OPENAI_API_KEY`. To use a local OpenAI-compatible server instead of hosted OpenAI, also set `OPENAI_BASE_URL` (e.g. `http://localhost:11434/v1` for Ollama). No other configuration changes needed — `AiProviderRouterService` picks up the change on next boot.
+Set one provider name (`AI_PROVIDER` or `DEFAULT_LLM_PROVIDER`) and its matching API key. To use a local OpenAI-compatible server instead of hosted OpenAI, also set `OPENAI_BASE_URL` (e.g. `http://localhost:11434/v1` for Ollama). No other configuration changes needed — `AiProviderRouterService` picks up the change on next boot.
 
-If the configured primary provider is unavailable (network error, bad key), requests automatically fall back to the other provider and the response envelope carries `meta.fallback: true`. Availability checks are cached for `AI_PROVIDER_AVAILABILITY_CACHE_TTL` seconds to avoid probing on every request.
+Startup fails in staging/production when the provider is missing, unsupported, set to `mock`, or lacks its API key. At request time, a missing or failing client returns an explicit `AI_PROVIDER_UNAVAILABLE` response; no fabricated mock text is ever substituted.
+
+In local/test, `mock` returns output explicitly labelled as non-model output. In development it additionally requires `LOCAL_DEV_MODE=true`. Admin `providerOverride=mock` is restricted by the same rule.
 
 ## Seeding the knowledge base
 

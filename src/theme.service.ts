@@ -1,7 +1,19 @@
-import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import {
+  BadRequestException,
+  Injectable,
+  InternalServerErrorException,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import {
+  isTheme,
+  THEMES,
+  Theme,
+  UserThemePreference,
+} from './theme.entity';
 
-export type Theme = 'light' | 'dark' | 'system';
+export { THEMES } from './theme.entity';
+export type { Theme } from './theme.entity';
 
 export interface ThemePreference {
   theme: Theme;
@@ -12,119 +24,112 @@ export interface ThemePreference {
 @Injectable()
 export class ThemeService {
   private readonly defaultTheme: Theme = 'system';
-  private readonly storageKey = 'truthbounty-theme';
 
-  // Server-side preference store (anonymous + per-user). The frontend may
-  // additionally mirror this in localStorage; the service is the source of
-  // truth for the API so set-then-get round-trips are coherent.
-  private anonymousTheme: Theme = this.defaultTheme;
-  private readonly userThemes = new Map<string, Theme>();
+  constructor(
+    @InjectRepository(UserThemePreference)
+    private readonly repository: Repository<UserThemePreference>,
+  ) {}
 
-  constructor(private configService: ConfigService) {}
-
-  /**
-   * Get user's theme preference
-   * Priority: User preference > Default
-   */
-  getTheme(userId?: string): Theme {
-    if (userId) {
-      return this.getUserThemeFromStorage(userId);
-    }
-
-    return this.anonymousTheme;
-  }
-
-  /**
-   * Set user's theme preference
-   */
-  setTheme(theme: Theme, userId?: string): ThemePreference {
-    const preference: ThemePreference = {
-      theme,
-      userId,
-      updatedAt: new Date(),
-    };
-
-    if (userId) {
-      // Store in database for authenticated users
-      this.saveUserThemeToStorage(userId, preference);
-    } else {
-      this.anonymousTheme = theme;
-    }
-
-    return preference;
-  }
-
-  /**
-   * Get resolved theme (light/dark) based on preference
-   * Resolves 'system' to actual light/dark based on system preference
-   */
-  getResolvedTheme(userId?: string): 'light' | 'dark' {
-    const theme = this.getTheme(userId);
-
-    if (theme === 'system') {
-      // Frontend should handle system preference detection
-      // Return light as default for server-side
-      return 'light';
-    }
-
-    return theme;
-  }
-
-  /**
-   * Toggle between light and dark themes
-   * If current is 'system', defaults to 'light'
-   */
-  toggleTheme(userId?: string): ThemePreference {
-    const currentTheme = this.getTheme(userId);
-    const newTheme: Theme = currentTheme === 'light' ? 'dark' : 'light';
-
-    return this.setTheme(newTheme, userId);
-  }
-
-  /**
-   * Reset theme to system preference
-   */
-  resetToSystem(userId?: string): ThemePreference {
-    return this.setTheme('system', userId);
-  }
-
-  /**
-   * Get user theme from persistent storage (database simulation)
-   */
-  private getUserThemeFromStorage(userId: string): Theme {
-    try {
-      // In a real implementation, this would query the database
-      return this.userThemes.get(userId) ?? this.defaultTheme;
-    } catch {
+  async getTheme(userId?: string): Promise<Theme> {
+    if (!userId) {
       return this.defaultTheme;
     }
+
+    const record = await this.repository.findOne({ where: { userId } });
+    return record && isTheme(record.theme) ? record.theme : this.defaultTheme;
   }
 
-  /**
-   * Save user theme to persistent storage (database simulation)
-   */
-  private saveUserThemeToStorage(
-    userId: string,
-    preference: ThemePreference,
-  ): void {
-    try {
-      // In a real implementation, this would save to database
-      this.userThemes.set(userId, preference.theme);
-      console.log(`Theme saved for user ${userId}: ${preference.theme}`);
-    } catch (error) {
-      console.warn(`Failed to save theme for user ${userId}:`, error);
+  async setTheme(theme: Theme, userId?: string): Promise<ThemePreference> {
+    this.assertTheme(theme);
+
+    if (!userId) {
+      return this.clientScopedPreference(theme);
+    }
+
+    return this.persistTheme(userId, theme);
+  }
+
+  async getResolvedTheme(userId?: string): Promise<'light' | 'dark'> {
+    const theme = await this.getTheme(userId);
+    return theme === 'system' ? 'light' : theme;
+  }
+
+  async toggleTheme(
+    userId?: string,
+    currentTheme?: Theme,
+  ): Promise<ThemePreference> {
+    if (!userId) {
+      this.assertTheme(currentTheme ?? this.defaultTheme);
+      const source = currentTheme ?? this.defaultTheme;
+      const nextTheme: Theme = source === 'light' ? 'dark' : 'light';
+      return this.clientScopedPreference(nextTheme);
+    }
+
+    const rows = await this.repository.query(
+      `INSERT INTO "user_theme_preferences" ("userId", "theme")
+       VALUES ($1, $2)
+       ON CONFLICT ("userId") DO UPDATE
+         SET "theme" = CASE WHEN "user_theme_preferences"."theme" = 'light' THEN 'dark' ELSE 'light' END,
+             "updatedAt" = now()
+       RETURNING "theme", "userId", "updatedAt"`,
+      [userId, 'light'],
+    );
+
+    const saved = rows?.[0];
+    if (!saved || !isTheme(saved.theme)) {
+      throw new InternalServerErrorException('Theme preference was not persisted');
+    }
+
+    return {
+      theme: saved.theme,
+      userId: saved.userId,
+      updatedAt: saved.updatedAt,
+    };
+  }
+
+  async resetToSystem(userId?: string): Promise<ThemePreference> {
+    return this.setTheme(this.defaultTheme, userId);
+  }
+
+  async getThemeStats(): Promise<{ light: number; dark: number; system: number }> {
+    const counts = await Promise.all(
+      THEMES.map((theme) => this.repository.count({ where: { theme } })),
+    );
+
+    return {
+      light: counts[0],
+      dark: counts[1],
+      system: counts[2],
+    };
+  }
+
+  private assertTheme(theme: unknown): asserts theme is Theme {
+    if (!isTheme(theme)) {
+      throw new BadRequestException(
+        `Unsupported theme: ${String(theme)}. Supported values are light, dark, system.`,
+      );
     }
   }
 
-  /**
-   * Get theme statistics (for analytics)
-   */
-  getThemeStats(): { light: number; dark: number; system: number } {
-    // In a real implementation, this would aggregate from database
+  private clientScopedPreference(theme: Theme): ThemePreference {
+    return { theme, updatedAt: new Date() };
+  }
+
+  private async persistTheme(
+    userId: string,
+    theme: Theme,
+  ): Promise<ThemePreference> {
+    await this.repository.upsert({ userId, theme }, { conflictPaths: ['userId'] });
+
+    const saved = await this.repository.findOne({ where: { userId } });
+    if (!saved) {
+      throw new InternalServerErrorException('Theme preference was not persisted');
+    }
+
     return {
-      light: 0,
-      dark: 0,
-      system: 0,
+      theme: saved.theme,
+      userId: saved.userId,
+      updatedAt: saved.updatedAt,
     };
   }
 }

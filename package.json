@@ -38,6 +38,7 @@
     "benchmark:compare": "ts-node scripts/compare-benchmarks.ts",
     "test:integration": "DB_TYPE= postgres jest --config ./test/jest-integration.json --runInBand",
     "test:migration-parity": "jest --config ./test/jest-integration.json --runInBand --testPathPattern migration-parity",
+    "test:security-evidence": "node --test scripts/dependency-audit.test.mjs",
     "security:dependencies": "node scripts/dependency-audit.mjs",
     "config:generate": "ts-node --project tsconfig.runtime-config.json --transpile-only scripts/generate-runtime-config.ts",
     "config:check": "ts-node --project tsconfig.runtime-config.json --transpile-only scripts/generate-runtime-config.ts --check",
@@ -46,10 +47,14 @@
     "audit:export": "ts-node src/scripts/audit-chain.ts export",
     "audit:corruption-report": "ts-node src/scripts/audit-chain.ts corruption-report",
     "projection:rebuild": "ts-node src/scripts/projection-rebuild.ts",
-    "projection:compare": "ts-node src/scripts/projection-compare.ts"
+    "projection:compare": "ts-node src/scripts/projection-compare.ts",
+    "openapi:publish": "node scripts/publish-openapi-artifacts.mjs",
+    "openapi:regenerate": "node scripts/publish-openapi-artifacts.mjs --regenerate",
+    "openapi:check": "node scripts/publish-openapi-artifacts.mjs --check"
   },
   "dependencies": {
-    "@anthropic-ai/sdk: "^0.128.0",
+    "@anthropic-ai/sdk": "^0.128.0",
+    "@prisma/adapter-pg": "^7.10.0",
     "@bull-board/api": "^9.10.1",
     "@bull-board/express": "^9.10.1",
     "@bull-board/nestjs": "^9.10.1",
@@ -68,7 +73,6 @@
     "@nestjs/throttler": "^6.7.1",
     "@nestjs/websockets": "^12.0.0",
     "@prisma/client": "^7.10.0",
-    "@swc/core-linux-x64-gnu": "^1.16.18",
     "@types/pg": "^8.23.1",
     "axios": "^1.20.0",
     "bullmq": "^6.3.9",

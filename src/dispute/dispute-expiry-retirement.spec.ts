@@ -1,5 +1,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { DataSource, Repository } from 'typeorm';
+import { Dispute, DisputeTrigger } from './entities/dispute.entity';
 import { DEFAULT_CONFIG, DisputeService } from './dispute.service';
 import { DataState } from '../v2/common/data-state.enum';
 import {
@@ -33,6 +35,37 @@ describe('Contract-owned dispute expiry (#868)', () => {
     expect(DEFAULT_CONFIG).not.toHaveProperty('MAX_DISPUTE_DURATION_HOURS');
     expect(DisputeService.prototype).not.toHaveProperty('expireDispute');
     expect(DisputeService.prototype).not.toHaveProperty('getExpiredDisputes');
+  });
+
+  it('preserves the upstream transactional duplicate check when creating disputes', async () => {
+    const query = {
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      getOne: jest.fn().mockResolvedValue(null),
+    };
+    const manager = {
+      findOne: jest.fn().mockResolvedValue({ id: 'existing-dispute' }),
+      getRepository: jest.fn().mockReturnValue({
+        createQueryBuilder: jest.fn().mockReturnValue(query),
+      }),
+      save: jest.fn(),
+    };
+    const transaction = jest.fn(async (callback) => callback(manager));
+    const service = new DisputeService(
+      {} as Repository<Dispute>,
+      { transaction } as unknown as DataSource,
+    );
+
+    await expect(
+      service.createDispute({
+        claimId: 'claim-1',
+        trigger: DisputeTrigger.MANUAL,
+        originalConfidence: 0.4,
+      }),
+    ).rejects.toThrow('An open dispute already exists');
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(manager.save).not.toHaveBeenCalled();
   });
 
   it.each([
