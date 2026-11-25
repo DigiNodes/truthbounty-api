@@ -35,7 +35,7 @@ const production = {
   CAPABILITY_TOKEN_SIGNING_KEY: 'a-distinct-capability-key-for-this-unit-test',
   SIWE_DOMAIN: 'truthbounty.internal',
   ALLOWED_ORIGINS: 'https://app.internal',
-  IPFS_PROVIDER: 'pinata',
+  IPFS_PROVIDER: 'local',
   IPFS_GATEWAY_URL: 'https://ipfs.internal',
   IPFS_API_URL: 'https://ipfs.internal/api',
   SMTP_HOST: 'smtp.internal',
@@ -45,6 +45,7 @@ const production = {
   METRICS_TOKEN: 'metrics-credential',
   AUDIT_HASH_SECRET: 'audit-credential',
   AI_PROVIDER: 'openai',
+  DEFAULT_LLM_PROVIDER: 'openai',
   OPENAI_API_KEY: 'openai-credential',
 };
 
@@ -116,6 +117,7 @@ describe('runtime schema', () => {
     ['ABUSE_SIGNALS_WINDOW_SECONDS', '1.5'],
     ['ABUSE_SIGNALS_TRUSTED_PROXY_HOPS', '-1'],
     ['ABUSE_SIGNALS_SUBJECT_SALT', 'private-short-secret'],
+    ['ANALYTICS_CONSENT_SUBJECT_KEY', 'private-short-secret'],
   ])(
     'validates newly integrated setting %s without disclosing its value',
     (key, value) => {
@@ -227,7 +229,7 @@ describe('runtime schema', () => {
     expect(() => parseRuntimeConfig({ NODE_ENV: 'staging' })).toThrow(
       'CHAIN_ID: required explicitly',
     );
-    expect(() => parseRuntimeConfig(production)).not.toThrow();
+    expect(() => parseRuntimeConfig(production)).toThrow('IPFS_PROVIDER');
   });
   it.each([
     ['LOCAL_DEV_MODE', 'true'],
@@ -242,6 +244,7 @@ describe('runtime schema', () => {
     ['CONTRACT_RELEASE_STRICT', 'false'],
     ['IPFS_PROVIDER', 'local'],
     ['AI_PROVIDER', 'mock'],
+    ['DEFAULT_LLM_PROVIDER', 'mock'],
     ['ALLOWED_ORIGINS', '*'],
     ['RPC_URL', 'http://rpc.internal'],
     ['JWT_SECRET', 'short'],
@@ -249,6 +252,52 @@ describe('runtime schema', () => {
   ])('rejects unsafe production %s', (key, value) => {
     expect(() => parseRuntimeConfig({ ...production, [key]: value })).toThrow(
       key,
+    );
+  });
+  it('unifies the configured LLM provider with the AI provider', () => {
+    const {
+      AI_PROVIDER: _aiProvider,
+      DEFAULT_LLM_PROVIDER: _llmProvider,
+      ...withoutProviders
+    } = production;
+    expect(() => parseRuntimeConfig(withoutProviders)).toThrow(
+      'AI_PROVIDER: required explicitly',
+    );
+    const anthropic = parseRuntimeConfig({
+      ...withoutProviders,
+      DEFAULT_LLM_PROVIDER: 'anthropic',
+      ANTHROPIC_API_KEY: 'anthropic-credential',
+    });
+    expect(anthropic.AI_PROVIDER).toBe('anthropic');
+    expect(anthropic.DEFAULT_LLM_PROVIDER).toBe('anthropic');
+    const derived = parseRuntimeConfig({
+      ...withoutProviders,
+      DEFAULT_LLM_PROVIDER: 'openai',
+    });
+    expect(derived.AI_PROVIDER).toBe('openai');
+    expect(() =>
+      parseRuntimeConfig({
+        ...withoutProviders,
+        DEFAULT_LLM_PROVIDER: 'anthropic',
+      }),
+    ).toThrow('ANTHROPIC_API_KEY');
+    expect(() =>
+      parseRuntimeConfig({
+        ...production,
+        DEFAULT_LLM_PROVIDER: 'anthropic',
+        ANTHROPIC_API_KEY: 'anthropic-credential',
+      }),
+    ).toThrow('conflicts');
+    expect(() =>
+      parseRuntimeConfig({ ...withoutProviders, DEFAULT_LLM_PROVIDER: 'mock' }),
+    ).toThrow('DEFAULT_LLM_PROVIDER: mock');
+  });
+  it('rejects unimplemented IPFS providers during runtime validation', () => {
+    expect(() => parseRuntimeConfig({ IPFS_PROVIDER: 'pinata' })).toThrow(
+      'IPFS_PROVIDER',
+    );
+    expect(() => parseRuntimeConfig({ IPFS_PROVIDER: 'web3storage' })).toThrow(
+      'IPFS_PROVIDER',
     );
   });
   it.each(['1', '137', '10oops'])(

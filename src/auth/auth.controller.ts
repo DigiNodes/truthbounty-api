@@ -159,11 +159,13 @@ export class AuthController {
       service: 'Authentication Gateway',
       features: {
         siwe: true,
+        legacyWalletLogin: true,
         jwt: true,
         refreshTokens: true,
         sessionRevocation: true,
         replayProtection: true,
       },
+      walletLoginFormats: ['siwe', 'legacy'],
       supportedProviders: [
         'MetaMask',
         'Rabby',

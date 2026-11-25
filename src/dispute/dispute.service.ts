@@ -151,52 +151,56 @@ export class DisputeService {
 
     this.validateConfidence(originalConfidence, 'originalConfidence');
 
-    // Single query covering both the open-duplicate check and the cooldown check
-    const [activeDispute, recentDispute] = await Promise.all([
-      this.disputeRepository.findOne({
-        where: { claimId, status: DisputeStatus.OPEN },
-      }),
-      this.disputeRepository
-        .createQueryBuilder('d')
-        .where('d.claimId = :claimId', { claimId })
-        .andWhere('d.createdAt > :cooldownTime', {
-          cooldownTime: this.hoursAgo(this.config.DISPUTE_COOLDOWN_HOURS),
-        })
-        .orderBy('d.createdAt', 'DESC')
-        .getOne(),
-    ]);
+    // #866: the duplicate/cooldown check and the insert run on one
+    // transactional manager, so concurrent callers cannot both pass the check.
+    return this.dataSource.transaction(async (manager) => {
+      const [activeDispute, recentDispute] = await Promise.all([
+        manager.findOne(Dispute, {
+          where: { claimId, status: DisputeStatus.OPEN },
+        }),
+        manager
+          .getRepository(Dispute)
+          .createQueryBuilder('d')
+          .where('d.claimId = :claimId', { claimId })
+          .andWhere('d.createdAt > :cooldownTime', {
+            cooldownTime: this.hoursAgo(this.config.DISPUTE_COOLDOWN_HOURS),
+          })
+          .orderBy('d.createdAt', 'DESC')
+          .getOne(),
+      ]);
 
-    if (activeDispute) {
-      throw new ConflictException(
-        `An open dispute already exists for claim ${claimId} (dispute id: ${activeDispute.id})`,
+      if (activeDispute) {
+        throw new ConflictException(
+          `An open dispute already exists for claim ${claimId} (dispute id: ${activeDispute.id})`,
+        );
+      }
+
+      if (recentDispute) {
+        const elapsed = Date.now() - recentDispute.createdAt.getTime();
+        const remainingHours = (
+          this.config.DISPUTE_COOLDOWN_HOURS -
+          elapsed / 3_600_000
+        ).toFixed(1);
+        throw new BadRequestException(
+          `Dispute cooldown active for claim ${claimId}. ${remainingHours}h remaining.`,
+        );
+      }
+
+      const dispute = manager.create(Dispute, {
+        claimId,
+        trigger,
+        originalConfidence,
+        initiatorId,
+        metadata: metadata ?? {},
+        status: DisputeStatus.OPEN,
+      });
+
+      const saved = await manager.save(dispute);
+      this.logger.log(
+        `Dispute ${saved.id} created for claim ${claimId} — trigger=${trigger}, confidence=${originalConfidence}`,
       );
-    }
-
-    if (recentDispute) {
-      const elapsed = Date.now() - recentDispute.createdAt.getTime();
-      const remainingHours = (
-        this.config.DISPUTE_COOLDOWN_HOURS -
-        elapsed / 3_600_000
-      ).toFixed(1);
-      throw new BadRequestException(
-        `Dispute cooldown active for claim ${claimId}. ${remainingHours}h remaining.`,
-      );
-    }
-
-    const dispute = this.disputeRepository.create({
-      claimId,
-      trigger,
-      originalConfidence,
-      initiatorId,
-      metadata: metadata ?? {},
-      status: DisputeStatus.OPEN,
+      return saved;
     });
-
-    const saved = await this.disputeRepository.save(dispute);
-    this.logger.log(
-      `Dispute ${saved.id} created for claim ${claimId} — trigger=${trigger}, confidence=${originalConfidence}`,
-    );
-    return saved;
   }
 
   // ─── Status transitions ──────────────────────────────────────────────────
@@ -288,6 +292,13 @@ export class DisputeService {
       if (!RESOLVABLE_STATUSES.includes(dispute.status)) {
         throw new BadRequestException(
           `Dispute ${disputeId} is in status ${dispute.status} and cannot be expired`,
+        );
+      }
+
+      // #867: EXPIRED is only reachable after the configured max duration.
+      if (dispute.createdAt > this.hoursAgo(this.config.MAX_DISPUTE_DURATION_HOURS)) {
+        throw new BadRequestException(
+          `Dispute ${disputeId} has not exceeded the ${this.config.MAX_DISPUTE_DURATION_HOURS}h maximum duration`,
         );
       }
 

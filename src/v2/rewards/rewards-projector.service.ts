@@ -12,6 +12,10 @@ import {
   IndexingAnomaly,
   IndexingAnomalyKind,
 } from '../common/entities/indexing-anomaly.entity';
+import {
+  getCanonicalEventScope,
+  scopedProjectorName,
+} from '../events/canonical-event-scope';
 
 const PROJECTOR_NAME = 'v2-rewards';
 const PG_UNIQUE_VIOLATION = '23505';
@@ -121,9 +125,11 @@ export class RewardsProjectorService {
   ) {}
 
   async processNewEvents(batchSize = 100): Promise<ProjectorRunSummary> {
+    const scope = getCanonicalEventScope();
+    const projectorName = scopedProjectorName(PROJECTOR_NAME, scope.chainId);
     const cursorRepo = this.dataSource.getRepository(ProjectorCursor);
     const cursor = await cursorRepo.findOne({
-      where: { projectorName: PROJECTOR_NAME },
+      where: { projectorName },
     });
     const after = cursor
       ? { blockNumber: cursor.lastBlockNumber, logIndex: cursor.lastLogIndex }
@@ -131,6 +137,7 @@ export class RewardsProjectorService {
 
     const events = await this.canonicalEvents.findAfter(
       [...REWARD_ALLOCATION_EVENT_NAMES],
+      scope,
       after,
       batchSize,
     );
@@ -148,7 +155,7 @@ export class RewardsProjectorService {
 
       await cursorRepo.upsert(
         {
-          projectorName: PROJECTOR_NAME,
+          projectorName: scopedProjectorName(PROJECTOR_NAME, event.chainId),
           lastBlockNumber: event.blockNumber,
           lastLogIndex: event.logIndex,
         },

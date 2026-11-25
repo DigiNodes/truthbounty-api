@@ -3,7 +3,6 @@
 export type ConsentStatus = 'granted' | 'withdrawn' | 'none';
 
 export interface AnalyticsConsentRecord {
-  subjectId: string;
   status: ConsentStatus;
   /** Consent policy version the subject accepted. */
   policyVersion: string;
@@ -39,7 +38,8 @@ export type EmitResult =
 export interface MinimizedAnalyticsEvent {
   name: string;
   schemaVersion: number;
-  subjectId: string;
+  /** Stable keyed pseudonym; the raw subject identifier is never collected. */
+  subjectKey: string;
   properties: Record<string, unknown>;
   emittedAt: string;
 }

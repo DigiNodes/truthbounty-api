@@ -135,6 +135,28 @@ describe('SybilResistanceService — PREWAVE-BE-062 Provenance & Production-Read
               create: jest.fn().mockResolvedValue({ id: 'expl-1' }),
               findFirst: jest.fn().mockResolvedValue(null),
             },
+            sybilAppeal: {
+              create: jest.fn().mockImplementation((args) =>
+                Promise.resolve({
+                  id: 'appeal-rec-001',
+                  createdAt: new Date(),
+                  updatedAt: new Date(),
+                  reviewerId: null,
+                  reviewedAt: null,
+                  reviewNotes: null,
+                  ...args.data,
+                }),
+              ),
+              findUnique: jest.fn().mockResolvedValue(null),
+              findMany: jest.fn().mockResolvedValue([]),
+              update: jest.fn().mockImplementation((args) =>
+                Promise.resolve({
+                  id: 'appeal-rec-001',
+                  ...args.data,
+                }),
+              ),
+              count: jest.fn().mockResolvedValue(0),
+            },
           },
         },
         {
@@ -495,7 +517,32 @@ describe('SybilResistanceService — PREWAVE-BE-062 Provenance & Production-Read
       expect(appeal.status).toBe('RESOLVED');
       expect(appeal.provenanceDigest).toBeDefined();
 
-      // Retrieve user appeal history
+      // Verify the appeal was persisted to the database (not in-memory)
+      expect(prisma.sybilAppeal.create).toHaveBeenCalledTimes(1);
+      const createdData = (prisma.sybilAppeal.create as jest.Mock).mock.calls[0][0].data;
+      expect(createdData.userId).toBe(mockUserId);
+      expect(createdData.idempotencyKey).toBeDefined();
+      expect(createdData.provenanceDigest).toBe(appeal.provenanceDigest);
+
+      // Mock findMany to return the persisted appeal (simulating a DB read)
+      jest.spyOn(prisma.sybilAppeal, 'findMany').mockResolvedValueOnce([
+        {
+          appealId: appeal.appealId,
+          userId: mockUserId,
+          status: appeal.status,
+          reason: appeal.reason,
+          previousScore: appeal.previousScore,
+          previousRiskScore: appeal.previousRiskScore,
+          newScore: appeal.newScore,
+          newRiskScore: appeal.newRiskScore,
+          modelVersion: appeal.modelVersion,
+          recomputedAt: new Date(appeal.recomputedAt),
+          provenanceDigest: appeal.provenanceDigest,
+          additionalEvidenceSummary: appeal.additionalEvidenceSummary,
+        },
+      ]);
+
+      // Retrieve user appeal history from the database
       const appeals = await service.getAppeals(mockUserId);
       expect(appeals).toHaveLength(1);
       expect(appeals[0].appealId).toBe(appeal.appealId);

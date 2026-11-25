@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "openapi-artifacts.v1",
+  "artifacts": [
+    {
+      "path": "docs/public-status/openapi.json",
+      "schemaVersion": "public-status.v1",
+      "sizeBytes": 28692,
+      "sha256": "63debd0b6be98037fc55858c0b926f4fa70ddc8ddacf8fb5c8ddba4df8274802"
+    },
+    {
+      "path": "docs/public-status/fixtures.json",
+      "schemaVersion": "public-status.v1",
+      "sizeBytes": 19100,
+      "sha256": "3e3e877f67b7a69c988253b7944286f87412f77d17eba731fda68fc95b06f7d9"
+    },
+    {
+      "path": "docs/public-incidents/openapi.json",
+      "schemaVersion": "public-incidents.v1",
+      "sizeBytes": 15916,
+      "sha256": "175e93b3abd23104e7f3510f8f419b71f636f45febe83595b4b93d7ba60c168f"
+    },
+    {
+      "path": "docs/public-incidents/fixtures.json",
+      "schemaVersion": "public-incidents.v1",
+      "sizeBytes": 7720,
+      "sha256": "58514285c964f015e03f2a48894a950c311759f7e3e29710e6a0ae240756d1bd"
+    }
+  ]
+}

@@ -8,6 +8,7 @@ import { WebSocketService } from './websocket.service';
 import { EmailService } from './email.service';
 import { WebhookService } from './webhook.service';
 import { DeliveryHistoryService } from './delivery-history.service';
+import { NotificationPreferencesService } from './notification-preferences.service';
 import {
   DeliveryChannel,
   DeliveryStatus,
@@ -36,6 +37,7 @@ export class NotificationProcessor extends WorkerHost {
     private readonly emailService: EmailService,
     private readonly webhookService: WebhookService,
     private readonly deliveryHistoryService: DeliveryHistoryService,
+    private readonly preferencesService: NotificationPreferencesService,
     private readonly redisService: RedisService,
   ) {
     super();
@@ -143,11 +145,27 @@ export class NotificationProcessor extends WorkerHost {
       case DeliveryChannel.WEBSOCKET:
         return this.webSocketService.broadcastNotification(notification);
 
-      case DeliveryChannel.EMAIL:
+      case DeliveryChannel.EMAIL: {
+        // Only ever send to the recipient stored on the user's notification
+        // preferences. Never fall back to a placeholder address (#613).
+        const recipientEmail = await this.preferencesService
+          .getUserPreferences(notification.userId)
+          .then((preferences) => preferences?.emailAddress || null)
+          .catch(() => null);
+
+        if (!recipientEmail) {
+          return {
+            success: false,
+            status: DeliveryStatus.FAILED,
+            error: 'No verified recipient email on record',
+          };
+        }
+
         return this.emailService.sendNotificationEmail(
           notification,
-          'user@example.com',
+          recipientEmail,
         );
+      }
 
       case DeliveryChannel.WEBHOOK:
         const userWebhooks = await this.webhookService.getUserWebhooks(

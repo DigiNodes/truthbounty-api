@@ -5,6 +5,8 @@ import { NotificationChannel, ChannelDeliveryResult, RenderedNotificationPayload
 import { PreferenceEnforcer } from '../services/preference-enforcer.service';
 import { DeliveryChannel } from '../interfaces/notification.types';
 import { narrowDeliveryError } from '../delivery/delivery-error';
+import { validateTargetUrl } from '../../common/security/ssrf/ssrf-url-validator';
+import { WebhookSecretCipher } from '../services/webhook-secret-cipher.service';
 import { firstValueFrom } from 'rxjs';
 import { timeout } from 'rxjs/operators';
 import * as crypto from 'crypto';
@@ -34,6 +36,7 @@ export class WebhookChannel implements NotificationChannel {
     private httpService: HttpService,
     private configService: ConfigService,
     private preferenceEnforcer: PreferenceEnforcer,
+    private webhookSecretCipher: WebhookSecretCipher,
   ) {
     this.webhookTimeout = this.configService.get<number>(
       'WEBHOOK_TIMEOUT_MS',
@@ -73,11 +76,20 @@ export class WebhookChannel implements NotificationChannel {
         return { success: true, deliveryTimestamp: new Date() };
       }
 
-      // Validate URL
+      // Validate URL (format + SSRF policy, matching #850). Error messages are
+      // generic so a URL containing embedded credentials is never echoed.
       if (!this.isValidWebhookUrl(webhookUrl)) {
         return {
           success: false,
           error: 'Invalid webhook URL',
+        };
+      }
+      try {
+        validateTargetUrl(webhookUrl);
+      } catch {
+        return {
+          success: false,
+          error: 'Webhook URL blocked by SSRF policy',
         };
       }
 
@@ -103,8 +115,13 @@ export class WebhookChannel implements NotificationChannel {
       };
 
       if (preferences.webhookConfig.secret) {
+        // Stored value is an encrypted envelope; decrypt only in memory for
+        // signature generation. The plaintext is never logged or returned.
+        const signingSecret = this.webhookSecretCipher.decrypt(
+          preferences.webhookConfig.secret,
+        );
         const signature = crypto
-          .createHmac('sha256', preferences.webhookConfig.secret)
+          .createHmac('sha256', signingSecret)
           .update(JSON.stringify(webhookPayload))
           .digest('hex');
         headers['X-Webhook-Signature'] = `sha256=${signature}`;
@@ -118,8 +135,9 @@ export class WebhookChannel implements NotificationChannel {
           .pipe(timeout(webhookTimeout)),
       );
 
+      // Never log the destination URL: it can contain embedded tokens.
       this.logger.debug(
-        `Webhook sent to ${webhookUrl} for ${payload.userId} (status: ${response.status})`,
+        `Webhook delivered for ${payload.userId} (status: ${response.status})`,
       );
 
       return {

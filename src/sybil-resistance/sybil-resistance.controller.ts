@@ -5,13 +5,20 @@ import {
   Param,
   Body,
   BadRequestException,
+  Query,
+  UseGuards,
+  NotFoundException,
 } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { SybilResistanceService } from './sybil-resistance.service';
 import {
   RecomputeScoreOptions,
   SybilAppealRequestDto,
 } from './sybil-resistance.types';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 
 @ApiTags('sybil')
 @Controller('sybil')
@@ -93,6 +100,81 @@ export class SybilResistanceController {
       throw new BadRequestException('User ID is required');
     }
     return this.sybilResistanceService.getAppeals(userId);
+  }
+
+  /**
+   * Get a specific appeal by ID (owner or authorized reviewer only)
+   */
+  @Get('appeals/:appealId')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get a specific appeal (owner or reviewer only)' })
+  async getAppealById(
+    @Param('appealId') appealId: string,
+    @CurrentUser() user: { id?: string; role?: string },
+  ) {
+    if (!appealId || appealId.trim() === '') {
+      throw new BadRequestException('Appeal ID is required');
+    }
+    const requestingUserId = user?.id || '';
+    const isReviewer =
+      user?.role === 'admin' || user?.role === 'moderator';
+    return this.sybilResistanceService.getAppealById(
+      appealId,
+      requestingUserId,
+      isReviewer,
+    );
+  }
+
+  /**
+   * Review an appeal — admin/moderator only
+   */
+  @Post('appeals/:appealId/review')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'moderator')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Review an appeal (admin/moderator only)' })
+  async reviewAppeal(
+    @Param('appealId') appealId: string,
+    @Body() body: { status: 'UPHELD' | 'RESOLVED' | 'REJECTED'; reviewNotes?: string },
+    @CurrentUser() user: { id?: string },
+  ) {
+    if (!appealId || appealId.trim() === '') {
+      throw new BadRequestException('Appeal ID is required');
+    }
+    if (!body?.status || !['UPHELD', 'RESOLVED', 'REJECTED'].includes(body.status)) {
+      throw new BadRequestException('Valid status (UPHELD, RESOLVED, or REJECTED) is required');
+    }
+    return this.sybilResistanceService.reviewAppeal(
+      appealId,
+      user?.id || '',
+      body.status,
+      body.reviewNotes,
+    );
+  }
+
+  /**
+   * List appeals with filters — admin/moderator only
+   */
+  @Get('appeals')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'moderator')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List appeals with filters (admin/moderator only)' })
+  async listAppeals(
+    @Query('status') status?: string,
+    @Query('userId') userId?: string,
+    @Query('modelVersion') modelVersion?: string,
+    @Query('limit') limit?: number,
+    @Query('offset') offset?: number,
+  ) {
+    return this.sybilResistanceService.getAppealsWithFilters({
+      status,
+      userId,
+      modelVersion,
+      limit: limit ? Number(limit) : 50,
+      offset: offset ? Number(offset) : 0,
+    });
   }
 
   /**

@@ -82,6 +82,14 @@ Template resolution fails closed. An event whose type is not present in the cano
 ### Escaping and Variables
 Placeholders are filled from event payloads treated as untrusted input. Values are escaped for the target channel: HTML escaping for `HTML` bodies, Markdown escaping for `Markdown` bodies, and plain-text sanitization for subjects and text bodies. Missing template variables cause rendering to fail closed rather than emitting partial output.
 
+#### Stored HTML templates (`TemplateRenderer`)
+- Markup in a stored `htmlTemplate` is authored, trusted content and is kept as written.
+- Every `{{variable}}` value interpolated into `htmlTemplate` is untrusted. It is HTML-escaped (`&`, `<`, `>`, `"`, `'`), so it renders as text in both element-text and quoted-attribute positions.
+- When a value is the start of an `href` or `src` attribute, it must also pass `sanitizeActionUrl`; otherwise the attribute is left empty.
+- There is no trusted-HTML escape hatch for interpolated values: event context can never inject markup.
+- `actionUrl` returned by the renderer, and the call-to-action link built by the email channel, go through `sanitizeActionUrl`. It allows only `http:`, `https:`, `mailto:` and root-relative `/path` URLs, and rejects `javascript:`, `data:`, other schemes, protocol-relative `//host` URLs, and values containing whitespace, backslashes or control characters.
+- Subject, plaintext body and Markdown output are not HTML-escaped by the renderer.
+
 ## Future Extensibility
 The modular architecture permits drop-in integrations for SMS, Slack, Discord, Telegram, and AI-generated summaries without modifying the core queue processor.
 
@@ -123,3 +131,24 @@ All outbound webhook payloads use a versioned envelope. The envelope version is 
 
 ### Required Tests
 - Receiver timeout, 2xx/4xx/5xx handling, redirect rejection, duplicate delivery, key rotation, SSRF target rejection, and bounded retry behavior.
+## Module convergence and truthful delivery outcomes (PREWAVE-BE-018)
+
+- Exactly one production notification module is registered:
+  `src/notifications/notifications.module.ts`. The duplicate
+  `notifications.module.new.ts`, the legacy `notification.module.ts`
+  (which imported the non-existent `@instanct/nestjs/common` package and a
+  missing `notification.service`), and its `notification.controller.ts` and
+  `notification.processor.ts` have been removed.
+- The production worker is `src/notifications/services/notification.processor.ts`
+  on the `notifications` queue. No second consumer or provider is registered.
+- Email delivery resolves the recipient from the user's notification
+  preferences (`NotificationPreferencesService.getUserPreferences().emailAddress`).
+  There is no placeholder fallback: an unresolved recipient fails closed with
+  `No verified recipient email on record`.
+- A missing email provider is a failure (`Email provider not configured`), not a
+  simulated success. A delivery row is marked `DELIVERED` only after a
+  provider-confirmed send; `NotificationService.processDelivery()` records
+  attempts as `PENDING` and never claims delivery on its own.
+- Push remains explicitly unimplemented and is reported as `FAILED` with
+  `Push notifications not implemented`, so it can never be recorded as
+  delivered.

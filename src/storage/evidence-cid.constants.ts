@@ -1,0 +1,7 @@
+export const EVIDENCE_CID_VERSION = 1;
+export const EVIDENCE_CID_RAW_CODEC = 0x55;
+export const EVIDENCE_CID_CODEC_ALLOWLIST = Object.freeze([
+  EVIDENCE_CID_RAW_CODEC,
+] as const);
+export const EVIDENCE_CID_SHA256_MULTIHASH_CODE = 0x12;
+export const EVIDENCE_CID_SHA256_DIGEST_LENGTH = 32;
