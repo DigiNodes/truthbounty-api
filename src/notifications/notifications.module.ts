@@ -33,6 +33,7 @@ import { Evidence } from '../claims/entities/evidence.entity';
 import { Vote } from '../governance/entities/proposal.entity';
 import { ClaimStakeholderResolver } from './services/claim-stakeholder-resolver.service';
 import { GovernanceParticipantResolver } from './services/governance-participant-resolver.service';
+import { UnsubscribeTokenService } from './services/unsubscribe-token.service';
 
 @Module({
   imports: [
@@ -91,6 +92,7 @@ import { GovernanceParticipantResolver } from './services/governance-participant
     FcmConfigService,
     ClaimStakeholderResolver,
     GovernanceParticipantResolver,
+    UnsubscribeTokenService,
   ],
   exports: [
     NotificationsService,
@@ -100,6 +102,7 @@ import { GovernanceParticipantResolver } from './services/governance-participant
     WebhookSecretCipher,
     DeliveryHistoryService,
     NotificationGateway,
+    UnsubscribeTokenService,
   ],
 })
 export class NotificationsModule {}
