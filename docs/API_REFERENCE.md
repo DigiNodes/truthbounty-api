@@ -244,6 +244,33 @@ Sybil resistance scoring.
 
 ---
 
+### Admin Authentication
+
+Admin login binds the authentication attempt to the wallet principal of the verified JWT. The caller-supplied request body is not an identity source.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/admin/auth/login` | Authenticate the verified JWT principal as an admin |
+
+**Authorization:** Requires `Authorization: Bearer <token>`. The wallet address is derived exclusively from the verified JWT principal (`request.user`).
+
+**Request Body:** None. The legacy `address` field is not part of the contract. If supplied for compatibility, it must exactly match (after normalization) the verified principal address; any mismatch is rejected before admin lookup or state change.
+
+**Responses:**
+
+| Status | Description |
+|--------|-------------|
+| `200` | Verified principal matches an active admin; login metadata (`lastLoginAt`) updated after successful authentication |
+| `400` | Malformed or mismatched body address |
+| `401` | Missing, malformed, revoked, or expired JWT principal |
+| `403` | Non-admin or inactive identity; response is identical for unknown and inactive admins (non-enumerating) |
+
+**Notes:**
+- `lastLoginAt` is updated only after the principal is matched to an active admin and the session operation has succeeded.
+- This endpoint does not issue an admin session by itself and does not bypass the admin-plane guard or role hierarchy.
+
+---
+
 ### Blockchain
 
 Blockchain event indexing and state management.
@@ -338,18 +365,23 @@ Event indexer management.
 
 ### Rewards
 
-Reward management.
+The legacy rewards API has been deprecated. The collection and ID-based
+endpoints return `410 Gone`. There is no direct V2 equivalent for legacy
+reward IDs.
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/rewards` | Create a new reward |
-| GET | `/rewards` | Get all rewards |
-| GET | `/rewards/:id` | Get reward by ID |
-| PATCH | `/rewards/:id` | Update reward |
-| DELETE | `/rewards/:id` | Delete reward |
+Reward data must be read from the canonical V2 claim projections where
+applicable.
 
-**Path Parameters:**
--  `:id` - Reward ID
+| Method | Endpoint | Status | Description |
+|--------|----------|--------|-------------|
+| GET | `/rewards` | 410 Gone | Deprecated legacy rewards collection |
+| GET | `/rewards/:id` | 410 Gone | Deprecated legacy reward lookup |
+
+**Migration:**
+- Use `GET /api/v2/claims/:claimId/rewards` for the V2 reward projection.
+- The V2 endpoint is claim-scoped; legacy reward IDs are not interchangeable
+  with claim IDs.
+- The legacy API no longer supports creating, updating, or deleting rewards.
 
 ---
 
