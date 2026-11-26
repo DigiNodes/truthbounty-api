@@ -65,6 +65,20 @@ const isUnsafeHostname = (hostname: string): boolean => {
 };
 
 /**
+ * Detect C0/C1 control characters and HTML angle brackets in a raw provider
+ * string. Implemented with char codes rather than a regex so the intent is
+ * explicit and `no-control-regex` does not need to be suppressed.
+ */
+const hasUnsafeUrlCharacters = (value: string): boolean => {
+  for (let i = 0; i < value.length; i++) {
+    const code = value.charCodeAt(i);
+    if (code <= 0x1f || (code >= 0x7f && code <= 0x9f)) return true;
+    if (code === 0x3c || code === 0x3e) return true; // '<' or '>'
+  }
+  return false;
+};
+
+/**
  * High-level IPFS service providing deterministic, provider-agnostic uploads.
  * - Accepts streams to remain memory-safe
  * - Returns deterministic content-addressed IDs (CID-like)
@@ -127,7 +141,7 @@ export class IpfsService {
     const raw = urlStr.trim();
     if (!raw) return undefined;
 
-    if (/[\u0000-\u001f\u007f-\u009f<>]/.test(raw)) {
+    if (hasUnsafeUrlCharacters(raw)) {
       this.logGatewayRejection('unsafe_characters');
       return undefined;
     }
