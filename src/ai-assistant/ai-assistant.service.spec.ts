@@ -3,10 +3,16 @@ import { AiAssistantService } from './ai-assistant.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { LlmProviderService } from './llm-provider.service';
 import { RagService } from './rag.service';
+import { SafetyGuardrailService } from './safety-guardrail.service';
+import { AnalyticsConsentService } from '../analytics/analytics-consent.service';
 
 describe('AiAssistantService', () => {
   let service: AiAssistantService;
   let prismaService: PrismaService;
+  let analyticsConsent: {
+    collectIfValid: jest.Mock;
+    getSubjectKey: jest.Mock;
+  };
 
   beforeEach(async () => {
     const mockPrismaService = {
@@ -27,6 +33,10 @@ describe('AiAssistantService', () => {
         create: jest.fn().mockResolvedValue({}),
       },
     };
+    analyticsConsent = {
+      collectIfValid: jest.fn().mockResolvedValue({ allowed: false }),
+      getSubjectKey: jest.fn((subjectId: string) => `hmac:${subjectId}`),
+    };
 
     const mockLlmProvider = {
       generateResponse: jest.fn().mockResolvedValue({
@@ -38,7 +48,14 @@ describe('AiAssistantService', () => {
     };
 
     const mockRagService = {
-      retrieveContext: jest.fn().mockResolvedValue('mock context'),
+      retrieveContext: jest.fn().mockResolvedValue({
+        context: 'mock context',
+        citations: [],
+      }),
+    };
+
+    const mockSafetyGuardrail = {
+      checkContent: jest.fn().mockReturnValue({ flagged: false }),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -47,6 +64,8 @@ describe('AiAssistantService', () => {
         { provide: PrismaService, useValue: mockPrismaService },
         { provide: LlmProviderService, useValue: mockLlmProvider },
         { provide: RagService, useValue: mockRagService },
+        { provide: SafetyGuardrailService, useValue: mockSafetyGuardrail },
+        { provide: AnalyticsConsentService, useValue: analyticsConsent },
       ],
     }).compile();
 
@@ -72,5 +91,26 @@ describe('AiAssistantService', () => {
     expect(result.message).toBeDefined();
     expect(result.metadata.provider).toBe('mock');
     expect(result.metadata.model).toBe('mock');
+    expect((prismaService as any).aiUsageMetric.create).not.toHaveBeenCalled();
+  });
+
+  it('records AI usage metrics only inside a valid consent transaction', async () => {
+    analyticsConsent.collectIfValid.mockImplementation(
+      async (
+        _subjectId: string,
+        collect: (tx: PrismaService) => Promise<unknown>,
+      ) => ({
+        allowed: true,
+        value: await collect(prismaService),
+      }),
+    );
+
+    await service.sendMessage('user-1', 'conv-1', { content: 'Hello' });
+
+    expect(analyticsConsent.collectIfValid).toHaveBeenCalledWith(
+      'user-1',
+      expect.any(Function),
+    );
+    expect((prismaService as any).aiUsageMetric.create).toHaveBeenCalled();
   });
 });
