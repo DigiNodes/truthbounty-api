@@ -72,7 +72,6 @@ import { GracefulShutdownService } from './common/lifecycle/graceful-shutdown.se
 import { NotificationsModule as OutboundWebhooksNotificationsModule } from './notifications/notifications.module';
 import { AbuseSignalsModule } from './abuse-signals/abuse-signals.module';
 import { AbuseSignalInterceptor } from './abuse-signals/abuse-signal.interceptor';
-import { WebhooksModule } from './webhooks/webhooks.module';
 
 // In-memory storage for development (no Redis needed)
 class ThrottlerMemoryStorage {

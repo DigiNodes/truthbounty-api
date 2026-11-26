@@ -26,6 +26,11 @@ function harness(retention?: unknown) {
   const head = Object.freeze({ id: 1, lastSequence: '6', lastHash: 'old-hash' });
   const manager = {
     findOneOrFail: jest.fn().mockResolvedValue(head),
+    getRepository: jest.fn(() => ({
+      createQueryBuilder: () => ({
+        where: () => ({ getOne: async () => null }),
+      }),
+    })),
     query: jest.fn().mockResolvedValue([{ timestamp: new Date('2026-11-21T12:00:00Z') }]),
     create: jest.fn((entity: new () => object, value: object) =>
       Object.assign(new entity(), value)),
@@ -101,5 +106,40 @@ describe('durable audit required by AI budget overrides', () => {
     manager.query.mockResolvedValue([{ timestamp: 'invalid' }]);
     await expect(service.log(context())).rejects.toThrow('clock');
     expect(manager.save).not.toHaveBeenCalled();
+  });
+
+  it('stores replay attempts using the existing administrative audit schema', async () => {
+    const { manager, service } = harness();
+    const { actorId, correlationId, targetId } = context();
+    const chainContext = {
+      chainId: 10,
+      releaseId: 'release-1',
+      deploymentBlock: '100',
+      artifactChecksum: 'a'.repeat(64),
+    };
+    const result = await service.replayDeadLetter({
+      actorId,
+      correlationId,
+      capability: 'dead_letter.replay',
+      reason: 'Verify the original operation',
+      messageId: targetId,
+      originalPayloadHash: 'b'.repeat(64),
+      chainContext,
+      dryRun: true,
+      batchSize: 1,
+    });
+
+    expect(manager.save.mock.calls[0][0]).toMatchObject({
+      eventId: result.auditEventId,
+      actorId,
+      actorType: 'user',
+      action: 'dead_letter_replay',
+      actionCategory: AdminActionCategory.SYSTEM_OPERATIONS,
+      targetId,
+      requestReference: correlationId,
+      resultReference: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      chainContext,
+      outcome: 'attempted',
+    });
   });
 });

@@ -169,7 +169,7 @@ and migration-history gates remain maintainer-owned.
 
 Set one provider name (`AI_PROVIDER` or `DEFAULT_LLM_PROVIDER`) and its matching API key. To use a local OpenAI-compatible server instead of hosted OpenAI, also set `OPENAI_BASE_URL` (e.g. `http://localhost:11434/v1` for Ollama). No other configuration changes needed — `AiProviderRouterService` picks up the change on next boot.
 
-Startup fails in staging/production when the provider is missing, unsupported, set to `mock`, or lacks its API key. At request time, a missing or failing client returns an explicit `AI_PROVIDER_UNAVAILABLE` response; no fabricated mock text is ever substituted.
+Startup fails in staging/production when the provider is missing, unsupported, set to `mock`, or lacks its API key. The provider service raises `AI_PROVIDER_UNAVAILABLE` (HTTP 503) when the selected client is missing. A paid dispatch failure is reconciled as `provider_error` before the service raises `AI_PROVIDER_ERROR` (HTTP 502).
 
 In local/test, `mock` returns output explicitly labelled as non-model output. In development it additionally requires `LOCAL_DEV_MODE=true`. Admin `providerOverride=mock` is restricted by the same rule.
 
