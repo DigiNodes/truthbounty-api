@@ -12,6 +12,7 @@ import { AppService } from './app.service';
 import { RewardsModule } from './rewards/rewards.module';
 import blockchainConfig from './config/blockchain.config';
 import sybilConfig from './config/sybil.config';
+import { EnvironmentValidationService } from './config/environment-validation.service';
 import finalityPolicyConfig from './config/finality-policy.config';
 import { FinalityPolicyModule } from './config/finality-policy.module';
 import { BlockchainModule } from './blockchain/blockchain.module';
