@@ -212,6 +212,23 @@ export class SupportRequestService {
     return expiredIds;
   }
 
+  private removeFingerprintForRecord(id: string): void {
+    const trackedFingerprint = this.requestFingerprints.get(id);
+    if (trackedFingerprint) {
+      const indexed = this.fingerprints.get(trackedFingerprint);
+      if (!indexed || indexed.id === id) {
+        this.fingerprints.delete(trackedFingerprint);
+      }
+      this.requestFingerprints.delete(id);
+    }
+
+    for (const [fingerprint, indexed] of this.fingerprints.entries()) {
+      if (indexed.id === id) {
+        this.fingerprints.delete(fingerprint);
+      }
+    }
+  }
+
   private normalizeRequest(input: CreateSupportRequestDto): Required<Pick<CreateSupportRequestDto, 'category' | 'contact' | 'description' | 'release'>> & {
       diagnostics: string[];
     } {
