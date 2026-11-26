@@ -292,6 +292,7 @@ export class SybilProvenanceService {
     };
 
     // 4. Accuracy Provenance (Claims History)
+    const claimsHistory = signals.claimsHistory;
     const accuracyObserved =
       signals.featuresObservedAt?.accuracy ||
       (signals.claimsVotedOn > 0 ? now : null);
@@ -300,7 +301,8 @@ export class SybilProvenanceService {
       maxFreshnessMs,
       now,
     );
-    const isAccuracyMissing = signals.claimsVotedOn === 0;
+    const isAccuracyMissing =
+      signals.claimsVotedOn === 0 || claimsHistory?.status === 'unavailable';
     if (isAccuracyMissing) missingFeatures.push('accuracy');
     if (!isAccuracyMissing && accuracyFreshness.isStale)
       staleFeatures.push('accuracy');
@@ -317,6 +319,15 @@ export class SybilProvenanceService {
       details: {
         claimsVotedOn: signals.claimsVotedOn,
         claimsCorrect: signals.claimsCorrect,
+        status: claimsHistory?.status ?? 'unavailable',
+        chainId: claimsHistory?.chainId,
+        releaseId: claimsHistory?.releaseId,
+        verificationContractAddress: claimsHistory?.verificationContractAddress,
+        finalizedThroughBlock: claimsHistory?.finalizedThroughBlock,
+        canonicalEventCount: claimsHistory?.canonicalEventCount,
+        eligibleEvaluationCount: claimsHistory?.eligibleEvaluationCount,
+        excluded: claimsHistory?.excluded ?? {},
+        reason: claimsHistory?.reason,
       },
     };
 

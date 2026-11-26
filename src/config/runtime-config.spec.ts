@@ -45,6 +45,7 @@ const production = {
   METRICS_TOKEN: 'metrics-credential',
   AUDIT_HASH_SECRET: 'audit-credential',
   AI_PROVIDER: 'openai',
+  DEFAULT_LLM_PROVIDER: 'openai',
   OPENAI_API_KEY: 'openai-credential',
 };
 
@@ -116,6 +117,7 @@ describe('runtime schema', () => {
     ['ABUSE_SIGNALS_WINDOW_SECONDS', '1.5'],
     ['ABUSE_SIGNALS_TRUSTED_PROXY_HOPS', '-1'],
     ['ABUSE_SIGNALS_SUBJECT_SALT', 'private-short-secret'],
+    ['ANALYTICS_CONSENT_SUBJECT_KEY', 'private-short-secret'],
   ])(
     'validates newly integrated setting %s without disclosing its value',
     (key, value) => {
@@ -242,6 +244,7 @@ describe('runtime schema', () => {
     ['CONTRACT_RELEASE_STRICT', 'false'],
     ['IPFS_PROVIDER', 'local'],
     ['AI_PROVIDER', 'mock'],
+    ['DEFAULT_LLM_PROVIDER', 'mock'],
     ['ALLOWED_ORIGINS', '*'],
     ['RPC_URL', 'http://rpc.internal'],
     ['JWT_SECRET', 'short'],
@@ -251,13 +254,51 @@ describe('runtime schema', () => {
       key,
     );
   });
+  it('unifies the configured LLM provider with the AI provider', () => {
+    const {
+      AI_PROVIDER: _aiProvider,
+      DEFAULT_LLM_PROVIDER: _llmProvider,
+      ...withoutProviders
+    } = production;
+    expect(() => parseRuntimeConfig(withoutProviders)).toThrow(
+      'AI_PROVIDER: required explicitly',
+    );
+    const anthropic = parseRuntimeConfig({
+      ...withoutProviders,
+      DEFAULT_LLM_PROVIDER: 'anthropic',
+      ANTHROPIC_API_KEY: 'anthropic-credential',
+    });
+    expect(anthropic.AI_PROVIDER).toBe('anthropic');
+    expect(anthropic.DEFAULT_LLM_PROVIDER).toBe('anthropic');
+    const derived = parseRuntimeConfig({
+      ...withoutProviders,
+      DEFAULT_LLM_PROVIDER: 'openai',
+    });
+    expect(derived.AI_PROVIDER).toBe('openai');
+    expect(() =>
+      parseRuntimeConfig({
+        ...withoutProviders,
+        DEFAULT_LLM_PROVIDER: 'anthropic',
+      }),
+    ).toThrow('ANTHROPIC_API_KEY');
+    expect(() =>
+      parseRuntimeConfig({
+        ...production,
+        DEFAULT_LLM_PROVIDER: 'anthropic',
+        ANTHROPIC_API_KEY: 'anthropic-credential',
+      }),
+    ).toThrow('conflicts');
+    expect(() =>
+      parseRuntimeConfig({ ...withoutProviders, DEFAULT_LLM_PROVIDER: 'mock' }),
+    ).toThrow('DEFAULT_LLM_PROVIDER: mock');
+  });
   it('rejects unimplemented IPFS providers during runtime validation', () => {
-    expect(() =>
-      parseRuntimeConfig({ IPFS_PROVIDER: 'pinata' }),
-    ).toThrow('IPFS_PROVIDER');
-    expect(() =>
-      parseRuntimeConfig({ IPFS_PROVIDER: 'web3storage' }),
-    ).toThrow('IPFS_PROVIDER');
+    expect(() => parseRuntimeConfig({ IPFS_PROVIDER: 'pinata' })).toThrow(
+      'IPFS_PROVIDER',
+    );
+    expect(() => parseRuntimeConfig({ IPFS_PROVIDER: 'web3storage' })).toThrow(
+      'IPFS_PROVIDER',
+    );
   });
   it.each(['1', '137', '10oops'])(
     'rejects wrong or malformed chain %s',
