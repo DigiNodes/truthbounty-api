@@ -153,6 +153,23 @@ describe('AuditTrailService', () => {
   });
 
   describe('log', () => {
+    it('redacts configuration values before persisting audit records', async () => {
+      await service.log({
+        actionType: AuditActionType.CONFIG_UPDATED,
+        entityType: AuditEntityType.CONFIGURATION,
+        entityId: 'config-1',
+        beforeState: { value: 'AUDIT_SECRET_CANARY' },
+        afterState: { value: 'AUDIT_SECRET_CANARY' },
+      });
+
+      expect(repository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          beforeState: { value: '[REDACTED]' },
+          afterState: { value: '[REDACTED]' },
+        }),
+      );
+    });
+
     it('should create and save a chained audit log entry', async () => {
       const input = {
         actionType: AuditActionType.CLAIM_CREATED,
@@ -181,6 +198,25 @@ describe('AuditTrailService', () => {
       // The chain tip must advance so the next write links to this one.
       expect(chainState.lastSequence).toBe(1);
       expect(chainState.lastHash).toEqual(expect.any(String));
+    });
+
+    it('redacts historical configuration values from audit responses', async () => {
+      repository.find.mockResolvedValue([
+        mockAuditLog({
+          entityType: AuditEntityType.CONFIGURATION,
+          beforeState: { value: 'LEGACY_AUDIT_CANARY' },
+          afterState: { value: 'LEGACY_AUDIT_CANARY' },
+        }),
+      ]);
+
+      const logs = await service.getEntityAuditLogs(
+        AuditEntityType.CONFIGURATION,
+        'config-1',
+      );
+
+      expect(JSON.stringify(logs)).not.toContain('LEGACY_AUDIT_CANARY');
+      expect(logs[0].beforeState).toEqual({ value: '[REDACTED]' });
+      expect(logs[0].afterState).toEqual({ value: '[REDACTED]' });
     });
 
     it('should use provided severity and category', async () => {

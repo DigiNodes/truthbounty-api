@@ -1,10 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { AnalyticsConsentService } from './analytics-consent.service';
-import {
-  ANALYTICS_SCHEMAS,
-  CURRENT_CONSENT_POLICY_VERSION,
-  isForbiddenKey,
-} from './analytics.schemas';
+import type { ConsentCollectionResult } from './analytics-consent.service';
+import { ANALYTICS_SCHEMAS, isForbiddenKey } from './analytics.schemas';
 import {
   AnalyticsEventInput,
   EmitResult,
@@ -30,30 +27,12 @@ export class AnalyticsService {
     this.sink.length = 0;
   }
 
-  emit(input: AnalyticsEventInput): EmitResult {
+  async emit(input: AnalyticsEventInput): Promise<EmitResult> {
     const { name, schemaVersion, subjectId } = input;
 
     if (input.doNotTrack === true) {
-      this.consent.setDoNotTrack(subjectId, true);
+      await this.consent.setDoNotTrack(subjectId, true);
       return { ok: false, reason: 'dnt' };
-    }
-
-    const record = this.consent.get(subjectId);
-    if (record.doNotTrack) {
-      return { ok: false, reason: 'dnt' };
-    }
-    if (record.status === 'none') {
-      return { ok: false, reason: 'no_consent' };
-    }
-    if (record.status === 'withdrawn') {
-      return { ok: false, reason: 'withdrawn' };
-    }
-    // Granted but policy version mismatch → treat as no valid consent
-    if (record.policyVersion !== CURRENT_CONSENT_POLICY_VERSION) {
-      // Allow if caller renewed to current; otherwise block
-      if (!this.consent.hasValidConsent(subjectId, CURRENT_CONSENT_POLICY_VERSION)) {
-        return { ok: false, reason: 'no_consent' };
-      }
     }
 
     const versions = ANALYTICS_SCHEMAS[name];
@@ -74,7 +53,10 @@ export class AnalyticsService {
 
     const properties: Record<string, unknown> = {};
     for (const key of allowlist) {
-      if (Object.prototype.hasOwnProperty.call(raw, key) && raw[key] !== undefined) {
+      if (
+        Object.prototype.hasOwnProperty.call(raw, key) &&
+        raw[key] !== undefined
+      ) {
         properties[key] = raw[key];
       }
     }
@@ -82,11 +64,27 @@ export class AnalyticsService {
     const event: MinimizedAnalyticsEvent = {
       name,
       schemaVersion,
-      subjectId,
+      subjectKey: this.consent.getSubjectKey(subjectId),
       properties,
       emittedAt: new Date().toISOString(),
     };
-    this.sink.push(event);
-    return { ok: true, event };
+    let captured = false;
+    let result: ConsentCollectionResult<MinimizedAnalyticsEvent>;
+    try {
+      result = await this.consent.collectIfValid(subjectId, async () => {
+        this.sink.push(event);
+        captured = true;
+        return event;
+      });
+    } catch (error) {
+      if (captured) {
+        const index = this.sink.lastIndexOf(event);
+        if (index >= 0) this.sink.splice(index, 1);
+      }
+      throw error;
+    }
+    if (!result.allowed) return { ok: false, reason: result.reason };
+
+    return { ok: true, event: result.value };
   }
-  }
+}

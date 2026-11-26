@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { BlockList, isIP } from 'node:net';
 import { Readable } from 'stream';
+import { redactSensitiveData } from '../common/utils/redaction.util';
 import { IPFS_PROVIDER, IpfsAddResult, IpfsProvider } from './interfaces';
 
 type AddressFamily = 'ipv4' | 'ipv6';
