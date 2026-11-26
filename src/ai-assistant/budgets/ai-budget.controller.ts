@@ -91,7 +91,7 @@ export class AiBudgetController {
   @ApiOperation({ summary: 'Revoke a user budget bonus for future admissions' })
   async revokeOverride(
     @CurrentUser() principal: AuthenticatedPrincipal,
-    @Param('id', new ParseUUIDPipe({ version: 'all' })) id: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
     @Body() input: AiBudgetChangeReferenceDto,
   ) {
     return this.admin.revokeOverride(getAiBudgetActor(principal), id, input);

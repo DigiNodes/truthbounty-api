@@ -259,10 +259,18 @@ describe('AI budget administration', () => {
   });
 
   it.each([
-    [], [rules[0]], [...rules, rules[0]],
-    rules.map((rule) => ({ ...rule, tokenLimit: '9000000000000000001' })),
-    rules.map((rule) => ({ ...rule, scope: 'client' })),
-  ])('rejects incomplete, duplicate or malformed policies', async (invalid) => {
+    { name: 'no rules', invalid: [] },
+    { name: 'missing rules', invalid: [rules[0]] },
+    { name: 'duplicate rules', invalid: [...rules, rules[0]] },
+    {
+      name: 'an out-of-range token limit',
+      invalid: rules.map((rule) => ({ ...rule, tokenLimit: '9000000000000000001' })),
+    },
+    {
+      name: 'an unknown scope',
+      invalid: rules.map((rule) => ({ ...rule, scope: 'client' })),
+    },
+  ])('rejects a policy with $name', async ({ invalid }) => {
     const { db, service } = setup();
     await expect(service.activatePolicy(actor, { rules: invalid as readonly AiBudgetRule[], changeReference: 'OPS-818' }))
       .rejects.toThrow(BadRequestException);
