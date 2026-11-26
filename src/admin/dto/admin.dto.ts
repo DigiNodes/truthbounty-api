@@ -28,13 +28,6 @@ export class UpdateAdminStatusDto {
   isActive: boolean;
 }
 
-export class AdminLoginDto {
-  @ApiProperty({ description: 'Admin login wallet address' })
-  @IsString()
-  @IsNotEmpty()
-  address: string;
-}
-
 export class AdminResponseDto {
   @ApiProperty()
   id: string;

@@ -133,9 +133,14 @@ export class AdminService {
     return saved;
   }
 
+  /**
+   * Records a successful admin login for an already-verified wallet principal.
+   * Only active admins are eligible; inactive or unknown identities are
+   * rejected with the same non-enumerating response.
+   */
   async recordLogin(walletAddress: string): Promise<Admin> {
     const admin = await this.adminRepo.findOne({
-      where: { walletAddress: walletAddress.toLowerCase() },
+      where: { walletAddress: walletAddress.toLowerCase(), isActive: true },
     });
 
     if (!admin) {
