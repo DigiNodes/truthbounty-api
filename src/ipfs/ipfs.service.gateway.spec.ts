@@ -137,9 +137,29 @@ describe('IpfsService gateway sanitization', () => {
     expect(warning).not.toContain(rawUrl);
   });
 
+  it('does not log provider-derived hostnames containing tenant canaries', () => {
+    const rawUrl =
+      'https://TENANT-HOST-CANARY.gateway.example.com:8443/private/path?token=HOST_QUERY_CANARY';
+    const svc = new IpfsService({ getUrl: () => rawUrl } as any);
+    const warnSpy = jest
+      .spyOn(svc['logger'], 'warn')
+      .mockImplementation(() => undefined);
+
+    expect(svc.getGatewayUrl('QmTest')).toBeUndefined();
+
+    const warning = warnSpy.mock.calls.flat().join(' ');
+    expect(warning).toContain('(unsupported_port)');
+    expect(warning).not.toContain('TENANT-HOST-CANARY');
+    expect(warning).not.toContain('gateway.example.com');
+    expect(warning).not.toContain('private/path');
+    expect(warning).not.toContain('HOST_QUERY_CANARY');
+  });
+
   it('rejects unsafe and malformed URLs without echoing provider data', () => {
     const rawUrls = [
       'https://gateway.example.com/\u0001private?token=CONTROL_CANARY',
+      'https://gateway.example.com/\u0085private?token=C1_CANARY',
+      'https://gateway.example.com/<script>?token=ANGLE_CANARY',
       'https://gateway.example.com/%E0%A4%A?token=ENCODING_CANARY',
       'https://10.0.0.1/private/path?token=PRIVATE_CANARY',
       'ftp://gateway.example.com/private/path?token=SCHEME_CANARY',
@@ -156,7 +176,7 @@ describe('IpfsService gateway sanitization', () => {
       const warning = warnSpy.mock.calls.flat().join(' ');
       expect(warning).not.toContain(rawUrl);
       expect(warning).not.toMatch(
-        /CONTROL_CANARY|ENCODING_CANARY|PRIVATE_CANARY|SCHEME_CANARY/,
+        /CONTROL_CANARY|C1_CANARY|ANGLE_CANARY|ENCODING_CANARY|PRIVATE_CANARY|SCHEME_CANARY/,
       );
       expect(warning).not.toContain('/private/path');
       expect(warning).not.toContain('token=');
