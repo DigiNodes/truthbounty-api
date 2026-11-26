@@ -115,7 +115,7 @@
  * │ GET    /v2/verification/*                       │ PUBLIC (read-only chain projections)     │
  * │ GET    /v2/disputes/*                           │ PUBLIC (read-only chain projections)     │
  * ├─────────────────────────────────────────────────┼──────────────────────────────────────────┤
- * │ POST   /admin/auth/login                        │ PUBLIC (returns admin identity only)     │
+ * │ POST   /admin/auth/login                        │ AUTHN (identity bound to verified JWT principal; body address, if any, must match) │
  * │ All other /admin/* routes                       │ ADMIN(varies, see AdminController)       │
  * └─────────────────────────────────────────────────┴──────────────────────────────────────────┘
  *
