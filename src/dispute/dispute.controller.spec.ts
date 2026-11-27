@@ -1,4 +1,4 @@
-﻿jest.mock('../prisma/prisma.service', () => ({ PrismaService: class {} }));
+jest.mock('../prisma/prisma.service', () => ({ PrismaService: class {} }));
 import { Test } from '@nestjs/testing';
 import { INestApplication, UnauthorizedException } from '@nestjs/common';
 import request from 'supertest';
@@ -16,6 +16,7 @@ describe('dispute HTTP authority boundary', () => {
     review: jest.fn(),
     workflows: jest.fn().mockResolvedValue([]),
   };
+  const snapshot = jest.fn().mockResolvedValue({ items: [] });
   beforeAll(async () => {
     const module = await Test.createTestingModule({
       controllers: [DisputeController],
@@ -26,7 +27,7 @@ describe('dispute HTTP authority boundary', () => {
           provide: DisputeProjectionService,
           useValue: {
             release: () => ({}),
-            snapshot: async () => ({ items: [] }),
+            snapshot,
           },
         },
       ],
@@ -63,6 +64,21 @@ describe('dispute HTTP authority boundary', () => {
   });
   afterAll(async () => {
     await app.close();
+  });
+
+  it('retires the age-based expiry route without reading or mutating disputes', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/disputes/expired')
+      .expect(410);
+    expect(response.body).toMatchObject({
+      statusCode: 410,
+      code: 'LOCAL_DISPUTE_EXPIRY_RETIRED',
+      replacement: '/api/v2/dispute-read-models?status=expired',
+    });
+    expect(snapshot).not.toHaveBeenCalled();
+    for (const method of Object.values(store)) {
+      expect(method).not.toHaveBeenCalled();
+    }
   });
 
   it('leaves public projections readable but requires verified identity for requests', async () => {

@@ -1,6 +1,7 @@
-﻿import {
+import {
   Body,
   Controller,
+  GoneException,
   Get,
   Param,
   Patch,
@@ -48,11 +49,24 @@ export class DisputeController {
 
   @Get('expired')
   @ApiOperation({
-    summary:
-      'Read contract-expired disputes; never infer expiry from a local clock',
+    summary: 'Retired local expiry query',
+    deprecated: true,
+    description:
+      'Elapsed local age does not establish protocol expiry. Use the canonical ' +
+      'V2 dispute read model with status=expired and inspect its finality metadata.',
   })
-  getExpired() {
-    return this.disputeService.getExpiredDisputes();
+  @ApiResponse({
+    status: 410,
+    description: 'Local dispute expiry has been retired',
+  })
+  async getExpired(): Promise<never> {
+    throw new GoneException({
+      statusCode: 410,
+      code: 'LOCAL_DISPUTE_EXPIRY_RETIRED',
+      message:
+        'Dispute expiry is derived from canonical contract events, not local age.',
+      replacement: '/api/v2/dispute-read-models?status=expired',
+    });
   }
 
   @Get('claim/:claimId')

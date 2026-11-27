@@ -18,7 +18,9 @@ change uses Prisma for the new workflow table and does not register the legacy
 - Legacy `resolve` and `reject` routes return 410, including for administrators.
   Internal `expireDispute` also refuses local expiry. Clients must stop sending
   terminal commands and submit any protocol transaction to the contract.
-- GET routes return an envelope containing `release`, `finalized`, and `items`.
+- `GET /disputes/expired` retains the upstream HTTP 410 response and points to
+  `/api/v2/dispute-read-models?status=expired`; it performs no reads or writes.
+- Other GET routes return an envelope containing `release`, `finalized`, and `items`.
   Claim detail additionally returns separate `workflows`. No old local status,
   confidence, outcome, or timestamp is promoted to protocol evidence. The legacy
   table remains untouched for archival purposes but is not queried by this module.
