@@ -16,9 +16,13 @@ describe('ConversationService', () => {
   let usageAnalyticsService: any;
   let cache: any;
 
-  const buildService = () => {
+  const buildService = (redactBeforeStore = false) => {
     const configService = {
-      get: jest.fn().mockReturnValue({ redactBeforeStore: false }),
+      get: jest.fn((key: string) => {
+        if (key === 'ai') return { redactBeforeStore };
+        if (key === 'NODE_ENV') return 'development';
+        return undefined;
+      }),
     } as unknown as ConfigService;
 
     return new ConversationService(
@@ -154,6 +158,63 @@ describe('ConversationService', () => {
         flagged: false,
         safetyBlocked: false,
       });
+    });
+
+    it('redacts user and assistant content before persistence when enabled', async () => {
+      service = buildService(true);
+      safetyGuardrailService = {
+        redact: jest.fn((content: string) => ({
+          text: content.includes('secret')
+            ? content.replace(/secret/g, '[REDACTED]')
+            : content,
+          redacted: content.includes('secret'),
+        })),
+      };
+      const redactingService = new ConversationService(
+        conversationRepository,
+        messageRepository,
+        promptOrchestrationService,
+        safetyGuardrailService,
+        usageAnalyticsService,
+        cache,
+        {
+          get: jest.fn((key: string) =>
+            key === 'ai'
+              ? { redactBeforeStore: true }
+              : key === 'NODE_ENV'
+                ? 'development'
+                : undefined,
+          ),
+        } as unknown as ConfigService,
+      );
+
+      promptOrchestrationService.generateReply.mockResolvedValue({
+        content: 'The secret is [REDACTED].',
+        citations: [],
+        provider: 'mock',
+        model: 'mock-model',
+        promptTokens: 1,
+        completionTokens: 1,
+        totalTokens: 2,
+        latencyMs: 1,
+        fallback: false,
+        flagged: false,
+        safetyBlocked: false,
+      });
+
+      await redactingService.sendMessage(
+        'user-1',
+        'contributor',
+        'conv-1',
+        { content: 'My secret password=hunter2' },
+      );
+
+      expect(messageRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          role: expect.anything(),
+          content: expect.not.stringContaining('hunter2'),
+        }),
+      );
     });
 
     it('persists the user and assistant messages, updates conversation totals, and logs usage', async () => {

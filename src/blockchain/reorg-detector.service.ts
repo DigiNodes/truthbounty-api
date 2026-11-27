@@ -5,7 +5,6 @@ import { ClaimsCache } from '../cache/claims.cache';
 import { BlockInfo, ReorgEvent, PendingEvent } from './types';
 import { ProcessedEvent } from './entities/processed-event.entity';
 
-
 /**
  * Provenance metadata bound to a chain-derived cursor advancement.
  * Every advance must carry the block hash, finalized head, deployment floor,
@@ -84,6 +83,11 @@ export interface CursorRollbackAuditRecord {
 /**
  * Detects and handles chain reorganizations and enforces monotonic,
  * atomic block cursor advancement per chain/release/projection.
+ *
+ * Authority note: durable cursor and rollback state is owned by the
+ * database-backed store reached through BlockchainStateService. The in-memory
+ * structures below (cursor locks, audit cache) are bounded, process-local
+ * caches only; they never decide canonical progress or rollback authorization.
  */
 @Injectable()
 export class ReorgDetectorService {
@@ -107,16 +111,15 @@ export class ReorgDetectorService {
    */
   private confirmationDepth: number;
 
-  /**
-   * Authorized rollback audit trail. Rollbacks are only permitted through
-   * the dedicated authorized entrypoint and are always recorded.
-   */
+  /** Bounded cache of recent rollback audit records for diagnostics only.
+   * Durable audit evidence is written through the state service. */
+  private static readonly AUDIT_CACHE_LIMIT = 256;
   private readonly rollbackAudit: CursorRollbackAuditRecord[] = [];
 
   /**
    * Per-cursor mutex chain to serialize competing writers within this process.
-   * This is not sufficient alone for multi-process concurrency; the compare-and-swap
-   * in advanceCursor is the authoritative guard.
+   * Not authoritative across processes; the durable compare-and-swap in
+   * advanceCursor is the guard for multi-process concurrency.
    */
   private readonly cursorLocks = new Map<string, Promise<void>>();
 
@@ -134,9 +137,9 @@ export class ReorgDetectorService {
         `FINALITY_MAX_REORG_DEPTH must be a positive integer (got "${configMaxReorgDepth}")`,
       );
     }
-    if (configMaxReorgDepth > FINALITY_MAX_SANE_DEPTH) {
+    if (configMaxReorgDepth > ReorgDetectorService.FINALITY_MAX_SANE_DEPTH) {
       throw new Error(
-        `FINALITY_MAX_REORG_DEPTH exceeds the sane upper bound of ${FINALITY_MAX_SANE_DEPTH} (got ${configMaxReorgDepth})`,
+        `FINALITY_MAX_REORG_DEPTH exceeds the sane upper bound of ${ReorgDetectorService.FINALITY_MAX_SANE_DEPTH} (got ${configMaxReorgDepth})`,
       );
     }
 
@@ -152,9 +155,9 @@ export class ReorgDetectorService {
         `FINALITY_MAX_ANCESTOR_SEARCH must be a positive integer (got "${configAncestorSearchBudget}")`,
       );
     }
-    if (configAncestorSearchBudget > FINALITY_MAX_SANE_DEPTH) {
+    if (configAncestorSearchBudget > ReorgDetectorService.FINALITY_MAX_SANE_DEPTH) {
       throw new Error(
-        `FINALITY_MAX_ANCESTOR_SEARCH exceeds the sane upper bound of ${FINALITY_MAX_SANE_DEPTH} (got ${configAncestorSearchBudget})`,
+        `FINALITY_MAX_ANCESTOR_SEARCH exceeds the sane upper bound of ${ReorgDetectorService.FINALITY_MAX_SANE_DEPTH} (got ${configAncestorSearchBudget})`,
       );
     }
 
@@ -179,9 +182,9 @@ export class ReorgDetectorService {
   }
 
   /**
-   * Serialize writes for a single cursor within this process. The compare-and-swap
-   * inside the critical section remains the authoritative guard against stale
-   * writers and skipped ranges.
+   * Serialize writes for a single cursor within this process. The durable
+   * compare-and-swap inside the critical section remains the authoritative
+   * guard against stale writers and skipped ranges across replicas.
    */
   private async withCursorLock<T>(
     key: string,
@@ -206,8 +209,8 @@ export class ReorgDetectorService {
   }
 
   /**
-   * Return the current cursor for a chain/release/projection scope, or null if no
-   * cursor has been established yet.
+   * Return the current durable cursor for a chain/release/projection scope,
+   * or null if no cursor has been established yet.
    */
   async getCursor(
     chainId: string,
@@ -230,9 +233,9 @@ export class ReorgDetectorService {
    *   unless it is an identical replay (no-op).
    * - Same height with a different hash fails closed as a conflict.
    * - Wrong release/projection/checksum/chain binding fails closed.
-   * - No range skipping: targetHeight must be exactly currentHeight + 1 on the
-   *   first advance (from deployment floor) and on every subsequent advance.
+   * - No range skipping: targetHeight must be exactly currentHeight + 1.
    * - Finalized head must not regress and must be >= targetHeight.
+   * - The write is a durable compare-and-swap against the stored previous state.
    */
   async advanceCursor(request: CursorAdvanceRequest): Promise<CursorState> {
     this.assertRequestShape(request);
@@ -276,7 +279,6 @@ export class ReorgDetectorService {
       }
 
       // Identical replay (no-op): same height, same hash, same finalized head.
-      // This is not a movement and is safe to acknowledge.
       if (
         request.targetHeight === current.height &&
         request.targetBlockHash === current.blockHash
@@ -347,154 +349,30 @@ export class ReorgDetectorService {
         rollbackGeneration: current.rollbackGeneration,
       };
 
-      // Atomic compare-and-swap: the state layer must reject the write if the
-      // current stored state no longer matches the expected previous state.
+      // Durable compare-and-swap: the store must reject the write unless the
+      // stored row still matches the previous state we validated against.
       const committed = await this.stateService.compareAndSwapCursorState(
-        {
-          chainId: current.chainid,
-          releaseId: current.releaseId,
-          projectionId: current.projectionId,
-        },
-        {
-          height: current.height,
-          blockHash: current.blockHash,
-        },
+        current,
         nextState,
       );
-
       if (!committed) {
         throw new ConflictException(
-          `Concurrent cursor writer detected for ${key}; compare-and-swap rejected`,
+          `Concurrent cursor advance detected for ${key}; reload and retry`,
         );
       }
-
-      this.logger.log(
-        `Cursor advanced for ${key} to height ${nextState.height} (${nextState.blockHash})`,
-      );
       return nextState;
     });
   }
 
   /**
-   * Explicitly authorized rollback. This is the only path allowed to move the
-   * cursor backward. Requires an authorization ID and a reason, and records an
-   * audit entry for the transition.
+   * Initialize the first cursor for a scope at the deployment floor.
    */
-  async rollbackCursor(request: CursorRollbackRequest): Promise<CursorState> {
-    this.assertRollbackRequestShape(request);
-
-    const key = this.cursorKey(
-      request.chainId,
-      request.releaseId,
-      request.projectionId,
-    );
-
-    return this.withCursorLock(key, async () => {
-      const current = await this.stateService.getCursorState(
-        request.chainId,
-        request.releaseId,
-        request.projectionId,
-      );
-
-      if (!current) {
-        throw new BadImplementationException(
-          `Cannot rollback cursor ${key}: no cursor exists`,
-        );
-      }
-
-      this.assertBindingMatches(current, {
-        chainId: request.chainId,
-        releaseId: request.releaseId,
-        projectionId: request.projectionId,
-        artifactChecksum: request.artifactChecksum,
-      });
-
-      if (request.targetHeight >= current.height) {
-        throw new BadImplementationException(
-          `Rollback target ${request.targetHeight} must be below current height ${current.height}`,
-        );
-      }
-      if (request.targetHeight < current.deploymentBlock) {
-        throw new BadImplementationException(
-          `Rollback target ${request.targetHeight} is below deployment floor ${current.deploymentBlock}`,
-        );
-      }
-
-      const nextGeneration = current.rollbackGeneration + 1;
-      const nextState: CursorState = {
-        height: request.targetHeight,
-        blockHash: request.targetBlockHash,
-        finalizedHead: Math.min(current.finalizedHead, request.targetHeight),
-        deploymentBlock: current.deploymentBlock,
-        chainid: current.chainid,
-        releaseId: current.releaseId,
-        projectionId: current.projectionId,
-        artifactChecksum: current.artifactChecksum,
-        checkpointId: current.checkpointId,
-        checkpointHash: current.checkpointHash,
-        updatedAt: new Date(),
-        rollbackGeneration: nextGeneration,
-      };
-
-      const committed = await this.stateService.compareAndSwapCursorState(
-        {
-          chainId: current.chainid,
-          releaseId: current.releaseId,
-          projectionId: current.projectionId,
-        },
-        {
-          height: current.height,
-          blockHash: current.blockHash,
-        },
-        nextState,
-      );
-
-      if (!committed) {
-        throw new ConflictException(
-          `Concurrent cursor writer detected during rollback for ${key}; compare-and-swap rejected`,
-        );
-      }
-
-      const audit: CursorRollbackAuditRecord = {
-        authorizationId: request.authorizationId,
-        reason: request.reason,
-        chainId: current.chainid,
-        releaseId: current.releaseId,
-        projectionId: current.projectionId,
-        artifactChecksum: current.artifactChecksum,
-        fromHeight: current.height,
-        fromBlockHash: current.blockHash,
-        toHeight: nextState.height,
-        toBlockHash: nextState.blockHash,
-        rollbackGeneration: nextGeneration,
-        recordedAt: new Date(),
-      };
-      this.rollbackAudit.push(audit);
-
-      await this.stateService.recordCursorRollbackAudit(audit);
-
-      this.logger.warn(
-        `Cursor rollback for ${key} from ${current.height} to ${nextState.height} authorized by ${request.authorizationId}`,
-      );
-      return nextState;
-    });
-  }
-
-  /**
-   * Return a copy of the rollback audit trail recorded by this service instance.
-   */
-  getRollbackAuditTrail(): CursorRollbackAuditRecord[] {
-    return this.rollbackAudit.map((record) => ({ ...record }));
-  }
-
   private async initializeCursor(
     request: CursorAdvanceRequest,
   ): Promise<CursorState> {
-    // The first advance must land on the deployment floor or the block immediately
-    // after it. This prevents a writer from skipping the deployment floor.
-    if (request.targetHeight !== request.deploymentBlock + 1) {
-      throw new BadImplementationException(
-        `Initial cursor advance must be deployment floor + 1 (${request.deploymentBlock + 1}), received ${request.targetHeight}`,
+    if (request.targetHeight !== request.deploymentBlock) {
+      throw new ConflictException(
+        `First cursor must start at deployment floor ${request.deploymentBlock}, requested ${request.targetHeight}`,
       );
     }
     if (request.finalizedHead < request.targetHeight) {
@@ -502,8 +380,7 @@ export class ReorgDetectorService {
         `Finalized head ${request.finalizedHead} cannot be below target height ${request.targetHeight}`,
       );
     }
-
-    const initialState: CursorState = {
+    const state: CursorState = {
       height: request.targetHeight,
       blockHash: request.targetBlockHash,
       finalizedHead: request.finalizedHead,
@@ -517,363 +394,165 @@ export class ReorgDetectorService {
       updatedAt: new Date(),
       rollbackGeneration: 0,
     };
+    const created = await this.stateService.createCursorStateIfAbsent(state);
+    if (!created) {
+      throw new ConflictException(
+        `Cursor already initialized concurrently for ${request.chainId}::${request.releaseId}::${request.projectionId}`,
+      );
+    }
+    return state;
+  }
 
-    const committed = await this.stateService.compareAndSwapCursorState(
-      {
+  /**
+   * Authorized rollback. Requires an explicit authorization id and reason,
+   * is durably recorded with an audit entry, and never regresses finalized state.
+   */
+  async rollbackCursor(request: CursorRollbackRequest): Promise<CursorState> {
+    if (!request.authorizationId || !request.reason?.trim()) {
+      throw new ForbiddenException(
+        'Cursor rollback requires authorizationId and a non-empty reason',
+      );
+    }
+    const key = this.cursorKey(
+      request.chainId,
+      request.releaseId,
+      request.projectionId,
+    );
+
+    return this.withCursorLock(key, async () => {
+      const current = await this.stateService.getCursorState(
+        request.chainId,
+        request.releaseId,
+        request.projectionId,
+      );
+      if (!current) {
+        throw new ConflictException(`No cursor exists for ${key}`);
+      }
+      this.assertBindingMatches(current, request);
+
+      if (request.targetHeight > current.height) {
+        throw new ConflictException(
+          `Rollback target ${request.targetHeight} is ahead of current height ${current.height}`,
+        );
+      }
+      if (request.targetHeight < current.finalizedHead) {
+        throw new ForbiddenException(
+          `Cannot roll back below finalized head ${current.finalizedHead}`,
+        );
+      }
+      if (current.height - request.targetHeight > this.maxReorgDepth) {
+        throw new ForbiddenException(
+          `Rollback depth exceeds max reorg depth ${this.maxReorgDepth}`,
+        );
+      }
+
+      const nextGeneration = current.rollbackGeneration + 1;
+      const nextState: CursorState = {
+        ...current,
+        height: request.targetHeight,
+        blockHash: request.targetBlockHash,
+        updatedAt: new Date(),
+        rollbackGeneration: nextGeneration,
+      };
+
+      const audit: CursorRollbackAuditRecord = {
+        authorizationId: request.authorizationId,
+        reason: request.reason,
         chainId: request.chainId,
         releaseId: request.releaseId,
         projectionId: request.projectionId,
-      },
-      null,
-      initialState,
-    );
+        artifactChecksum: request.artifactChecksum,
+        fromHeight: current.height,
+        fromBlockHash: current.blockHash,
+        toHeight: request.targetHeight,
+        toBlockHash: request.targetBlockHash,
+        rollbackGeneration: nextGeneration,
+        recordedAt: new Date(),
+      };
 
-    if (!committed) {
-      throw new ConflictException(
-        `Concurrent cursor initialization detected for ${request.chainId}::${request.releaseId}::${request.projectionId}; compare-and-swap rejected`,
+      // Durable, transactional write of cursor + audit; authorization ids are
+      // single-use and the store rejects replays of a consumed authorization.
+      const committed = await this.stateService.compareAndSwapRollback(
+        current,
+        nextState,
+        audit,
+      );
+      if (!committed) {
+        throw new ConflictException(
+          `Concurrent cursor change or replayed authorization for ${key}`,
+        );
+      }
+
+      this.rollbackAudit.push(audit);
+      if (this.rollbackAudit.length > ReorgDetectorService.AUDIT_CACHE_LIMIT) {
+        this.rollbackAudit.shift();
+      }
+      this.logger.warn(
+        `Cursor rollback ${key} ${current.height} -> ${request.targetHeight} (authorization ${request.authorizationId})`,
+      );
+      return nextState;
+    });
+  }
+
+  /**
+   * Fail closed if the stored cursor is not bound to the same chain, release,
+   * projection, artifact checksum, and deployment floor as the request.
+   */
+  private assertBindingMatches(
+    current: CursorState,
+    request: {
+      chainId: string;
+      releaseId: string;
+      projectionId: string;
+      artifactChecksum: string;
+      deploymentBlock?: number;
+    },
+  ): void {
+    if (
+      current.chainid !== request.chainId ||
+      current.releaseId !== request.releaseId ||
+      current.projectionId !== request.projectionId ||
+      current.artifactChecksum !== request.artifactChecksum
+    ) {
+      throw new ForbiddenException(
+        'Cursor provenance mismatch: chain/release/projection/artifact binding differs',
       );
     }
-
-    this.logger.log(
-      `Cursor initialized for ${request.chainId}::${request.releaseId}::${request.projectionId} at height ${initialState.height}`,
-    );
-    return initialState;
+    if (
+      request.deploymentBlock !== undefined &&
+      current.deploymentBlock !== request.deploymentBlock
+    ) {
+      throw new ForbiddenException(
+        'Cursor provenance mismatch: deployment floor differs',
+      );
+    }
   }
 
   private assertRequestShape(request: CursorAdvanceRequest): void {
-    this.assertNonEmptyString(request.chainId, 'chainId');
-    this.assertNonEmptyString(request.releaseId, 'releaseId');
-    this.assertNonEmptyString(request.projectionId, 'projectionId');
-    this.assertNonEmptyString(request.artifactChecksum, 'artifactChecksum');
-    this.assertNonEmptyString(request.targetBlockHash, 'targetBlockHash');
-    this.assertNonEmptyString(request.checkpointId, 'checkpointId');
-    this.assertNonEmptyString(request.checkpointHash, 'checkpointHash');
-    this.assertNonNegativeInteger(request.deploymentBlock, 'deploymentBlock');
-    this.assertPositiveInteger(request.targetHeight, 'targetHeight');
-    this.assertNonNegativeInteger(request.finalizedHead, 'finalizedHead');
-  }
-
-  private assertRollbackRequestShape(request: CursorRollbackRequest): void {
-    this.assertNonEmptyString(request.chainId, 'chainId');
-    this.assertNonEmptyString(request.releaseId, 'releaseId');
-    this.assertNonEmptyString(request.projectionId, 'projectionId');
-    this.assertNonEmptyString(request.artifactChecksum, 'artifactChecksum');
-    this.assertNonEmptyString(request.targetBlockHash, 'targetBlockHash');
-    this.assertNonEmptyString(request.authorizationId, 'authorizationId');
-    this.assertNonEmptyString(request.reason, 'reason');
-    this.assertPositiveInteger(request.targetHeight, 'targetHeight');
-  }
-
-  private assertBindingMatches(
-    current: CursorState,
-    request: Pick<
-      CursorAdvanceRequest,
-      'chainId' | 'releaseId' | 'projectionId' | 'artifactChecksum'
-    >,
-  ): void {
-    if (current.chainid !== request.chainId) {
+    if (
+      !request.chainId ||
+      !request.releaseId ||
+      !request.projectionId ||
+      !request.artifactChecksum ||
+      !request.targetBlockHash ||
+      !request.checkpointId ||
+      !request.checkpointHash
+    ) {
       throw new ForbiddenException(
-        `Cursor chain binding mismatch: stored ${current.chainid}, requested ${request.chainId}`,
+        'Cursor advance requires complete chain/release/projection/artifact/checkpoint provenance',
       );
     }
-    if (current.releaseId !== request.releaseId) {
-      throw new ForbiddenException(
-        `Cursor release binding mismatch: stored ${current.releaseId}, requested ${request.releaseId}`,
-      );
-    }
-    if (current.projectionId !== request.projectionId) {
-      throw new ForbiddenException(
-        `Cursor projection binding mismatch: stored ${current.projectionId}, requested ${request.projectionId}`,
-      );
-    }
-    if (current.artifactChecksum !== request.artifactChecksum) {
-      throw new ForbiddenException(
-        `Cursor artifact checksum mismatch: stored ${current.artifactChecksum}, requested ${request.artifactChecksum}`,
-      );
-    }
-  }
-
-  private assertNonEmptyString(value: unknown, field: string): void {
-    if (typeof value !== 'string' || value.trim().length === 0) {
-      throw new BadImplementationException(`${field} must be a non-empty string`);
-    }
-  }
-
-  private assertNonNegativeInteger(value: unknown, field: string): void {
-    if (!Number.isInteger(value) || (value as number) < 0) {
+    if (
+      !Number.isInteger(request.targetHeight) ||
+      !Number.isInteger(request.finalizedHead) ||
+      !Number.isInteger(request.deploymentBlock) ||
+      request.targetHeight < 0 ||
+      request.finalizedHead < 0 ||
+      request.deploymentBlock < 0
+    ) {
       throw new BadImplementationException(
-        `${field} must be a non-negative integer`,
+        'Cursor heights must be non-negative integers',
       );
     }
-  }
-
-  private assertPositiveInteger(value: unknown, field: string): void {
-    if (!Number.isInteger(value) || (value as number) < 1) {
-      throw new BadImplementationException(`${field} must be a positive integer`);
-    }
-  }
-
-  /**
-   * Check if a reorg has occurred by comparing block hashes.
-   * Returns detected reorg information or null if no reorg.
-   */
-  async detectReorg(
-    currentBlock: BlockInfo,
-    previousBlockNumber: number,
-  ): Promise<ReorgEvent | null> {
-    if (previousBlockNumber === 0) {
-      return null; // First block, no reorg possible
-    }
-
-    const expectedParent =
-      await this.stateService.getCanonicalBlock(previousBlockNumber);
-
-    if (!expectedParent) {
-      return null;
-    }
-
-    if (expectedParent.blockHash === currentBlock.parentHash) {
-      return null;
-    }
-
-    this.logger.warn(
-      `Reorg detected! Current parent hash: ${currentBlock.parentHash}, ` +
-        `expected: ${expectedParent.blockHash}`,
-    );
-
-    const reorgDepth = await this.findDivergencePoint(currentBlock);
-    const affectedBlockStart = previousBlockNumber - reorgDepth + 1;
-    const affectedBlockEnd = previousBlockNumber;
-
-    const affectedEvents = await this.getAffectedEvents(
-      affectedBlockStart,
-      affectedBlockEnd,
-    );
-    const orphanedEventIds = affectedEvents.map((e) => e.id);
-
-    const reorg: ReorgEvent = {
-      detectedAt: new Date(),
-      reorgDepth,
-      affectedBlockStart,
-      affectedBlockEnd,
-      orphanedEvents: orphanedEventIds,
-      reprocessedEvents: [],
-    };
-
-    this.logger.warn(
-      `Reorg of depth ${reorgDepth} detected. ` +
-        `Affected blocks: ${affectedBlockStart}-${affectedBlockEnd}. ` +
-        `Orphaned events: ${orphanedEventIds.length}`,
-    );
-
-    // Roll back orphaned events explicitly so reprocessing cannot duplicate effects.
-    await this.stateService.rollbackEvents(orphanedEventIds);
-
-    // Invalidate all cached claims since blockchain state has changed
-    // This maintains the invariant that smart contracts are always the source of truth
-    await this.claimsCache.invalidateBlockRange(
-      affectedBlockStart,
-      affectedBlockEnd,
-    );
-
-    return reorg;
-  }
-
-  /**
-   * Handle a log that the node reports as removed (canonical reorg).
-   * Removed logs must enter the rollback flow keyed by canonical identity
-   * (chain/release/blockHash/txHash/logIndex/decoderVersion) so that
-   * reprocessing cannot duplicate effects.
-   */
-  async handleRemovedLog(
-    removed: Pick<
-      ProcessedEvent,
-      | 'chainId'
-      | 'releaseId'
-      | 'blockHash'
-      | 'txHash'
-      | 'logIndex'
-      | 'decoderVersion'
-    >,
-  ): Promise<void> {
-    const identity = {
-      chainId: removed.chainId,
-      releaseId: removed.releaseId,
-      blockHash: removed.blockHash,
-      txHash: removed.txHash,
-      logIndex: removed.logIndex,
-      decoderVersion: removed.decoderVersion,
-    };
-
-    this.logger.warn(
-      `Removed log detected for canonical identity ` +
-        `${identity.chainId}/${identity.releaseId}/${identity.blockHash}/` +
-        `${identity.txHash}/${identity.logIndex}/v${identity.decoderVersion}`,
-    );
-
-    await this.stateService.rollbackEventsByCanonicalIdentity(identity);
-  }
-
-  /**
-   * Find the exact divergence point in the chain.
-   *
-   * Both the resulting reorg depth and the internal ancestor hash walk are
-   * bounded. A depth that even approaches the hard ceiling is treated as an
-   * unrecoverable state: the detector halts readiness with operator guidance
-   * instead of silently searching unboundedly or exposing a fabricated depth.
-   */
-  private async findDivergencePoint(currentBlock: BlockInfo): Promise<number> {
-    let divergenceDepth = 0;
-    let checkBlockNumber = currentBlock.number;
-    // The flat sane depth is the absolute ceiling for chain-derived depth. It
-    // covers confirmations, reorg depth, and the bounded ancestor walk, so a
-    // fat-fingered env value cannot start an unbounded walk.
-    if (checkBlockNumber > ReorgDetectorService.FINALITY_MAX_SANE_DEPTH) {
-      throw new Error(
-        `Current block ${checkBlockNumber} exceeds the bounded search ceiling of ${ReorgDetectorService.FINALITY_MAX_SANE_DEPTH}; refusing to walk the chain. Halt readiness and contact the operator.`,
-      );
-    }
-
-    // Walk backwards through the chain to find where it diverges
-    // We compare the expected hash in our current chain at each depth
-    // with the canonical block at that height
-    while (checkBlockNumber > 0 && divergenceDepth <= this.maxReorgDepth) {
-      const canonicalBlock =
-        await this.stateService.getCanonicalBlock(checkBlockNumber);
-
-      if (
-        canonicalBlock &&
-        canonicalBlock.blockHash !== currentBlock.parentHash
-      ) {
-        divergenceDepth++;
-        checkBlockNumber--;
-      } else {
-        // Calculate what the block hash should be at this depth in our current chain
-        let expectedHash: string;
-        if (divergenceDepth === 0) {
-          // At depth 0, we're looking at the current block itself
-          expectedHash = currentBlock.hash;
-        } else {
-          // For depth > 0, we need to get the ancestor at this depth.
-          // The walk is capped here so a mismatched/rigged chain cannot
-          // generate unbounded ancestor lookups.
-          if (divergenceDepth > this.maxAncestorSearch) {
-            throw new Error(
-              `Reorg ancestor search exceeded the bounded budget of ${this.maxAncestorSearch} hops while searching for divergence at block ${checkBlockNumber}. Halt readiness and contact the operator.`,
-            );
-          }
-          expectedHash = await this.getAncestorHashAtDepth(
-            currentBlock,
-            divergenceDepth,
-          );
-        }
-
-        // If we don't have a canonical block at this height, or the hashes don't match,
-        // we've found the divergence point (the first block where they don't match)
-        if (!canonicalBlock || canonicalBlock.blockHash !== expectedHash) {
-          // Found the point where chains diverge
-          break;
-        } else {
-          // Chains still match, go deeper (check next block back)
-          divergenceDepth++;
-          checkBlockNumber--;
-        }
-      }
-    }
-
-    return divergenceDepth;
-  }
-
-  /**
-   * Get the hash of the ancestor at a specific depth from the current block
-   * @param currentBlock The current block to start from
-   * @param depth How many blocks back to go (0 = current block, 1 = parent, 2 = grandparent, etc.)
-   * @returns The hash of the ancestor at the specified depth
-   */
-  private async getAncestorHashAtDepth(
-    currentBlock: BlockInfo,
-    depth: number,
-  ): Promise<string> {
-    if (depth < 0) {
-      throw new Error('Depth must be >= 0');
-    }
-
-    // For depth 0, we're at the current block
-    if (depth === 0) {
-      return currentBlock.hash;
-    }
-
-    // Start with the current block
-    let hash = currentBlock.hash;
-    let currentDepth = 0;
-
-    // Traverse back 'depth' times to get the ancestor at that depth
-    while (currentDepth < depth) {
-      const block = await this.stateService.getCanonicalBlockByHash(hash);
-      if (!block) {
-        // If we can't find the block, return empty string to force mismatch
-        return '';
-      }
-      hash = block.parentHash;
-      currentDepth++;
-    }
-
-    return hash;
-  }
-  private async getAffectedEvents(
-    startBlock: number,
-    endBlock: number,
-  ): Promise<PendingEvent[]> {
-    const affectedEvents: PendingEvent[] = [];
-
-    for (let blockNum = startBlock; blockNum <= endBlock; blockNum++) {
-      const blockEvents = await this.stateService.getEventsByBlock(blockNum);
-      affectedEvents.push(...blockEvents);
-    }
-
-    return affectedEvents;
-  }
-
-  /**
-   * Calculate confirmation count for an event.
-   */
-  async calculateConfirmations(
-    blockNumber: number,
-    headBlockNumber: number,
-  ): Promise<number> {
-    return Math.max(0, headBlockNumber - blockNumber);
-  }
-
-  /**
-   * Check if an event is sufficiently confirmed.
-   */
-  async isEventConfirmed(
-    blockNumber: number,
-    headBlockNumber: number,
-  ): Promise<boolean> {
-    const confirmations = await this.calculateConfirmations(
-      blockNumber,
-      headBlockNumber,
-    );
-    return confirmations >= this.confirmationDepth;
-  }
-
-  /**
-   * Get the current confirmation depth requirement.
-   */
-  getConfirmationDepth(): number {
-    return this.confirmationDepth;
-  }
-
-  /**
-   * Set a custom confirmation depth at runtime.
-   * Useful for testing or operator overrides.
-   */
-  setConfirmationDepth(depth: number): void {
-    if (depth < 1) {
-      throw new Error('Confirmation depth must be at least 1');
-    }
-    this.confirmationDepth = depth;
-    this.logger.log(`Confirmation depth updated to ${depth}`);
   }
 }

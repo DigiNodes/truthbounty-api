@@ -547,7 +547,7 @@ and is not repeated here.
 | Dependency | Degraded behaviour (read it here) | Recovery | Verify with |
 | ---------- | --------------------------------- | -------- | ----------- |
 | **PostgreSQL** | Fail closed. `/health/ready` → 503; `GET /health` reports `database` `unhealthy` with a `failureReason`. No reads are served from cache to "stay up". | Restore connectivity, or fail over per your HA setup. Confirm the pool recovers (`diagnostics.database.poolTotal` / `poolIdle` / `poolActive` / `poolWaiting` in `GET /health`). Then `npm run migration:run` to confirm the schema is fully applied — a restore from backup can land the schema behind the code. | `/health/ready` 200, `database` `healthy`, `migrationsPending` 0 |
-| **Redis** | Fail open. Caching bypassed, reads hit the database. Two documented consequences: (i) `RedisService.setnx` returns `true` when Redis is down, so the fast idempotency guard is skipped and `NotificationProcessor` falls back to the DB guard — correct, slower, no duplicate deliveries; (ii) `createThrottlerStorage` falls back to in-memory throttler storage, so **rate limits become per-instance and weaker**. | Restore Redis (`redis-cli ping`). `RedisService` stops retrying after 3 attempts, so the client must be re-established by a process restart, not left to retry. Restart the process so caches and the throttler storage are rebuilt cleanly. Watch for a thundering-herd cache refill afterwards. | `/health` `redis` `healthy`; `redis-cli ping`; rate limiting effective cluster-wide again (do not verify by hammering the API — verify by reading the storage the process selected) |
+| **Redis** | Fail open for caches, fail closed for distributed claims. `RedisService.setnx` returns `false` when Redis is down or errors: no caller may interpret that as an acquired claim. Durable notification claims are decided only by the PostgreSQL `delivery_history` row, so delivery remains correct but slower. `createThrottlerStorage` still falls back to in-memory throttler storage, so **rate limits become per-instance and weaker**. | Restore Redis (`redis-cli ping`). `RedisService` stops retrying after 3 attempts, so the client must be re-established by a process restart, not left to retry. Restart the process so caches and the throttler storage are rebuilt cleanly. Watch for a thundering-herd cache refill afterwards. | `/health` `redis` `healthy`; `redis-cli ping`; rate limiting effective cluster-wide again (do not verify by hammering the API — verify by reading the storage the process selected) |
 | **BullMQ queues** | Fail closed on reachability — but note the health check tests *reachability*, not depth. A healthy queue with a huge backlog still reports `healthy`. | Inspect depth at `/admin/queues` or `GET /admin/protocol/queues` (`waiting`, `active`, `completed`, `failed`, `delayed`, `paused` per queue, plus `totalWaiting`/`totalActive`/`totalFailed`). Retry failed jobs: `POST /admin/protocol/queues/retry-failed?queueName=<queue>`. Pause while fixing a consumer: `POST /admin/protocol/services/control` with `serviceType: "queue"`, `action: "pause"`, `queueName: "<queue>"`. | Queue depth falling; `failed` counter falling; `totalWaiting` trending to 0 |
 | **Indexer / RPC** | Fail closed on missing cursors. `degraded` when projection lag, the RPC failure rate in window, or dead letters exceed their thresholds; `unhealthy` when head/finalized/RPC counters are missing. | Follow [../indexer-runbook.md](../indexer-runbook.md) §Remediation steps. Then reprocess if events were lost (§5.3). | `GET /health/indexer` back to `healthy`; `projectionLag` within threshold; `indexer_dead_letters_total` flat |
 | **Notifications** | Fail open. `degraded` when queue depth exceeds the 1000 threshold checked by `checkNotifications`. | If the backlog is compounding, `disable_notifications` stops new work at the source; then recover the channel (SMTP, webhook receiver) and drain. Coordinate with comms — users stop hearing from the API entirely while it is disabled. | `GET /health` `notifications` `healthy`; queue depth falling |
@@ -576,24 +576,35 @@ cover and which matter when you are recovering rather than investigating:
    **deterministic** `jobId: 'outbox-${idempotencyKey}'`. Batches of 50 per poll
    (`BATCH_SIZE`), poller on `CronExpression.EVERY_5_SECONDS`
    (`OutboxScheduler`).
-2. **The deterministic `jobId` is what makes redelivery tricky.** The
-   idempotency key is `sha256(eventType:aggregateId:channel:sortedRecipientIds)`.
-   If a completed job with that id is still retained (BullMQ keeps the last 100
-   completed jobs), re-adding the same id will not create a second job — so
-   resetting an outbox row to `PENDING` after its job already ran and completed
-   may re-queue nothing at all. Conversely if the job was trimmed, the re-add
-   creates a fresh job. **Therefore, after a redelivery reset, confirm the
-   outcome rather than assuming it:** check the row's `status`/`jobId` and the
-   notification's delivery history, not just that the reset SQL returned success.
-3. **The idempotency guards are layered, and only one is authoritative.** The
-   Redis `SETNX` guard (`idempotency:notification:${key}`, 24h TTL) is a fast
-   path; the database guard (`DeliveryHistory.findByIdempotencyKey`) is
-   authoritative. If Redis was unavailable, `setnx` returns `true` and the DB
-   guard decides. A redelivery reset that clears the `SETNX` key but not the
-   `DeliveryHistory` row will still be suppressed — correctly. If you are
-   redelivering **because** the previous delivery genuinely failed, confirm the
-   `DeliveryHistory` status is not `DELIVERED` before resetting, or you will
-   chase a delivery that is being correctly suppressed.
+ 2. **The deterministic `jobId` is what makes redelivery tricky.** The event key
+    is derived from canonical per-delivery keys
+    (`sha256(eventType:recipientId:channel:aggregateId)`), sorted so recipient
+    publication order is irrelevant. If a completed job with that id is still
+    retained (BullMQ keeps the last 100 completed jobs), re-adding the same id
+    will not create a second job — so resetting an outbox row to `PENDING` after
+    its job already ran and completed may re-queue nothing at all. Conversely if
+    the job was trimmed, the re-add creates a fresh job. **Therefore, after a
+    redelivery reset, confirm the outcome rather than assuming it:** check the
+    row's `status`/`jobId` and the notification's delivery history, not just
+    that the reset SQL returned success.
+ 3. **The idempotency guards are layered, and only one is authoritative.** The
+    Redis keys (`delivery:claim:*`, `delivery:delivered:*`) are hints only. The
+    unique `delivery_history.idempotencyKey` row with its `claimId` fencing token
+    and `claimExpiresAt` lease is authoritative. A failed Redis SETNX returns
+    `false` and never grants permission to send; the database claim decides.
+    Clearing Redis keys without clearing a `DELIVERED` row will still be
+    suppressed — correctly.
+ 4. **Claim recovery policy.** `pending`/`failed`/`retrying`/`expired` rows may
+    be re-claimed by the shared retry policy. A crash after claim but before the
+    provider call leaves `processing` until the short claim lease expires (60s
+    by default). If the provider may have accepted the delivery but the worker
+    could not confirm it, the row stays `processing` with
+    `providerUnconfirmed = true` for a longer lease (5 minutes by default);
+    recovery must reuse the same provider idempotency key (`X-Idempotency-Key`
+    for webhooks). Only `delivered` and `permanent_failure` are terminal. Do not
+    manually clear `providerUnconfirmed` to force a resend — reconcile with the
+    provider first.
+
 
 Dead-letter triage, alert thresholds (`outbox_pending_count > 500`,
 `outbox_dead_letter_count > 10`) and the metrics

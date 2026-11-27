@@ -301,7 +301,11 @@ export class BlockchainController {
       success: true,
       scenario: payload.scenario,
       votes: testVotes,
-      resolution,
+      advisory: {
+        kind: 'offchain-vote-simulation',
+        authoritative: false,
+        result: resolution,
+      },
     };
   }
 

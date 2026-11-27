@@ -14,8 +14,8 @@ import {
 /**
  * Weighted Vote Resolution Service
  *
- * Implements reputation-weighted voting for claim resolution in TruthBounty protocol.
- * Converts individual verification votes into authoritative claim outcomes.
+ * Calculates advisory reputation-weighted vote analytics for simulations.
+ * This service does not decide or persist protocol claim outcomes.
  *
  * Key Features:
  * - Reputation-based vote weighting
@@ -38,7 +38,7 @@ export class WeightedVoteResolutionService {
   };
 
   /**
-   * Resolve a claim using weighted voting
+   * Calculate an advisory result from weighted votes for simulation only.
    * @param votes Array of verification votes for the claim
    * @param config Optional resolution configuration
    * @returns Claim resolution result with confidence metrics

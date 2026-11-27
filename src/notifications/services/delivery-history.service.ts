@@ -6,7 +6,16 @@ import { ListNotificationsDto } from '../dto';
 import {
   DeliveryStatus,
   DeliveryChannel,
+  DeliveryClaimContext,
 } from '../interfaces/notification.types';
+import {
+  acquireDeliveryClaim,
+  confirmDeliveryClaim,
+  failDeliveryClaim,
+  markDeliveryClaimUncertain,
+  resolveDeliveryKey,
+  retryDeliveryClaim,
+} from '../delivery/delivery-claim';
 
 @Injectable()
 export class DeliveryHistoryService {
@@ -42,6 +51,70 @@ export class DeliveryHistoryService {
     return this.deliveryHistoryRepository.findOne({
       where: { idempotencyKey },
     });
+  }
+
+  async acquireClaim(context: DeliveryClaimContext) {
+    return acquireDeliveryClaim(this.deliveryHistoryRepository, context);
+  }
+
+  async confirmClaim(
+    idempotencyKey: string,
+    claimId?: string,
+    metadata?: Record<string, unknown>,
+  ) {
+    return confirmDeliveryClaim(
+      this.deliveryHistoryRepository,
+      idempotencyKey,
+      claimId,
+      metadata,
+    );
+  }
+
+  async failClaim(
+    idempotencyKey: string,
+    claimId: string | undefined,
+    reason: string,
+    terminal = false,
+  ) {
+    return failDeliveryClaim(
+      this.deliveryHistoryRepository,
+      idempotencyKey,
+      claimId,
+      reason,
+      terminal,
+    );
+  }
+
+  async retryClaim(
+    idempotencyKey: string,
+    claimId: string | undefined,
+    retryAttempt: number,
+    reason?: string,
+  ) {
+    return retryDeliveryClaim(
+      this.deliveryHistoryRepository,
+      idempotencyKey,
+      claimId,
+      retryAttempt,
+      reason,
+    );
+  }
+
+  async markClaimUncertain(
+    idempotencyKey: string,
+    claimId: string | undefined,
+    reason: string,
+  ) {
+    return markDeliveryClaimUncertain(
+      this.deliveryHistoryRepository,
+      idempotencyKey,
+      claimId,
+      reason,
+    );
+  }
+
+  resolveClaimKey(context: DeliveryClaimContext): string {
+    return resolveDeliveryKey(context);
   }
 
   async updateDeliveryStatus(

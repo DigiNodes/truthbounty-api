@@ -12,6 +12,7 @@ import { EventCheckpoint } from './entities/event-checkpoint.entity';
 import { RawLog, IngestOutcome } from './interfaces/canonical-event.interface';
 import { IndexerConfigService } from '../../config/indexer-config.service';
 import { EventQuarantineService } from './event-quarantine.service';
+import { CanonicalEventQueryService } from './canonical-event-query.service';
 
 /** Postgres unique_violation error code. */
 const PG_UNIQUE_VIOLATION = '23505';
@@ -65,6 +66,7 @@ export class CanonicalEventsService {
     private readonly decoder: EventDecoderService,
     private readonly indexerConfig: IndexerConfigService,
     private readonly quarantine: EventQuarantineService,
+    private readonly projectorScope: CanonicalEventQueryService,
   ) {}
 
   private getFinalizedBlock(currentEventBlock: bigint): bigint {
@@ -94,6 +96,7 @@ export class CanonicalEventsService {
       return { status: 'quarantined', reason: QuarantineReason.DECODE_ERROR };
     }
 
+    this.projectorScope.assertEventInScope(log.chainId, log.blockNumber);
     const resolution = await this.artifacts.resolveDetailed(
       log.chainId,
       log.address,
@@ -119,6 +122,12 @@ export class CanonicalEventsService {
       });
       return { status: 'quarantined', reason: QuarantineReason.ABI_MISMATCH };
     }
+
+    this.projectorScope.assertEventInScope(
+      log.chainId,
+      log.blockNumber,
+      resolution.artifactVersion,
+    );
 
     const decoded = this.decoder.decode(log, resolution.iface);
     if (decoded.status === 'unknown_signature') {

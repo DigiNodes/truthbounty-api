@@ -5,3 +5,13 @@ export { WebSocketService } from './websocket.service';
 export { EmailService } from './email.service';
 export { WebhookService } from './webhook.service';
 export { NotificationProcessor } from './notification.processor';
+export {
+  UnsubscribeTokenService,
+  UnsubscribeTokenError,
+  InvalidUnsubscribeTokenError,
+  ExpiredUnsubscribeTokenError,
+  ReplayUnsubscribeTokenError,
+  UnsubscribeTokenClaims,
+  GenerateUnsubscribeTokenOptions,
+  ConsumeUnsubscribeTokenResult,
+} from './unsubscribe-token.service';

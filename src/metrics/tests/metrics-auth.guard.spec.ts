@@ -3,6 +3,7 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { timingSafeEqualUtf8 } from '../../common/utils/timing-safe.util';
 import { MetricsAuthGuard } from '../metrics-auth.guard';
 
 describe('MetricsAuthGuard', () => {
@@ -10,8 +11,10 @@ describe('MetricsAuthGuard', () => {
   let configService: { get: jest.Mock };
   let context: ExecutionContext;
 
-  const buildContext = (authorization?: string) => {
-    const request: { headers: Record<string, string | undefined> } = {
+  const buildContext = (authorization?: string | string[]) => {
+    const request: {
+      headers: { authorization?: string | string[] };
+    } = {
       headers: {},
     };
     if (authorization !== undefined) {
@@ -110,6 +113,57 @@ describe('MetricsAuthGuard', () => {
       context = buildContext('Bearer wrong-token');
 
       expect(() => guard.canActivate(context)).toThrow(UnauthorizedException);
+    });
+
+    it('rejects a token with a different byte length', () => {
+      setEnv({ METRICS_TOKEN: 'secret-token' });
+      context = buildContext('Bearer short');
+
+      expect(() => guard.canActivate(context)).toThrow(UnauthorizedException);
+    });
+
+    it.each([
+      'Bearer secret-token extra',
+      'Bearer  secret-token',
+      'bearer secret-token',
+      'Bearer secret-token,other-token',
+    ])('rejects malformed or ambiguous bearer values: %p', (authorization) => {
+      setEnv({ METRICS_TOKEN: 'secret-token' });
+      context = buildContext(authorization);
+
+      expect(() => guard.canActivate(context)).toThrow(UnauthorizedException);
+    });
+
+    it('rejects repeated Authorization values represented as an array', () => {
+      setEnv({ METRICS_TOKEN: 'secret-token' });
+      context = buildContext(['Bearer secret-token', 'Bearer secret-token']);
+
+      expect(() => guard.canActivate(context)).toThrow(UnauthorizedException);
+    });
+
+    it('does not expose either token in authentication failures', () => {
+      const configured = 'configured-metrics-secret';
+      const supplied = 'supplied-metrics-secret';
+      setEnv({ METRICS_TOKEN: configured });
+      context = buildContext(`Bearer ${supplied}`);
+
+      let error: unknown;
+      try {
+        guard.canActivate(context);
+      } catch (caught) {
+        error = caught;
+      }
+      expect(error).toBeInstanceOf(UnauthorizedException);
+      expect(String(error)).not.toContain(configured);
+      expect(String(error)).not.toContain(supplied);
+    });
+
+    it('uses the shared UTF-8 helper safely for equal and unequal byte lengths', () => {
+      expect(timingSafeEqualUtf8('metrics-✓', 'metrics-✓')).toBe(true);
+      expect(timingSafeEqualUtf8('metrics-✓', 'metrics-✗')).toBe(false);
+      expect(() =>
+        timingSafeEqualUtf8('short', 'much-longer-token'),
+      ).not.toThrow();
     });
   });
 });

@@ -301,20 +301,26 @@ export class BackgroundJobsDto {
 }
 
 export class ProtocolActivityDto {
-  @ApiProperty()
+  @ApiProperty({
+    description:
+      'Count of API claim records; this is not a canonical on-chain claim count',
+  })
   totalClaims: number;
 
-  @ApiProperty()
-  activeClaims: number;
+  @ApiProperty({ nullable: true })
+  activeClaims: number | null;
 
-  @ApiProperty()
-  finalizedClaims: number;
+  @ApiProperty({ nullable: true })
+  finalizedClaims: number | null;
 
-  @ApiProperty()
-  pendingClaims: number;
+  @ApiProperty({ nullable: true })
+  pendingClaims: number | null;
 
-  @ApiProperty()
-  resolvedClaims: number;
+  @ApiProperty({ nullable: true })
+  resolvedClaims: number | null;
+
+  @ApiProperty({ enum: ['unavailable'] })
+  claimStateProjection: 'unavailable';
 }
 
 export class PaginatedResponseDto<T> {

@@ -20,6 +20,24 @@ export class ReleaseProvenanceDto {
   releaseId: string;
 
   @ApiProperty({
+    description: 'Approved contract artifact version used for event decoding',
+    example: '2.0.0-rc.3',
+  })
+  artifactVersion: string;
+
+  @ApiProperty({
+    description: 'Approved contract that emits the canonical claim submission event',
+    example: '0x0000000000000000000000000000000000001001',
+  })
+  claimRegistryAddress: string;
+
+  @ApiProperty({
+    description: 'Approved contract that emits the canonical verdict event',
+    example: '0x0000000000000000000000000000000000001002',
+  })
+  verdictContractAddress: string;
+
+  @ApiProperty({
     description: 'Deployment block of the release',
     example: 24850000,
   })
@@ -153,21 +171,42 @@ export class EvidenceAvailabilityDto {
   latestBlockNumber: string | null;
 }
 
+export class ClaimOutcomeValueDto {
+  @ApiProperty()
+  state: string;
+
+  @ApiPropertyOptional({
+    description: 'Settlement timestamp, if present',
+    nullable: true,
+  })
+  settledAt: string | null;
+
+  @ApiProperty({
+    description:
+      'Opaque uint8 from the canonical VerdictSettled event; null until that event is finalized',
+    type: String,
+    nullable: true,
+  })
+  verdictCode: string | null;
+}
+
 export class ClaimOutcomeDto {
   @ApiProperty({ enum: ['provisional', 'finalized'] })
   phase: string;
 
   @ApiPropertyOptional({
     description: 'Non-final outcome; null once finalized',
+    type: ClaimOutcomeValueDto,
     nullable: true,
   })
-  provisional: { state: string; settledAt: string | null } | null;
+  provisional: ClaimOutcomeValueDto | null;
 
   @ApiPropertyOptional({
     description: 'Final outcome; null while provisional',
+    type: ClaimOutcomeValueDto,
     nullable: true,
   })
-  final: { state: string; settledAt: string | null } | null;
+  final: ClaimOutcomeValueDto | null;
 }
 
 export class ClaimReadModelItemDto {

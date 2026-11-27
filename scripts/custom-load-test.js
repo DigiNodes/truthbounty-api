@@ -13,27 +13,18 @@ const runTest = async () => {
     const executeRequest = () => {
         return new Promise((resolve) => {
             const reqStart = Date.now();
-            const data = JSON.stringify({
-                claimId: `claim-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-                data: "Test Claim Data",
-                source: "node-load-test"
-            });
             const req = http.request({
                 hostname: 'localhost',
                 port: 3000,
-                path: '/claims',
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Content-Length': data.length
-                }
+                path: '/api/v2/claim-read-models?limit=20',
+                method: 'GET'
             }, (res) => {
                 let body = '';
                 res.on('data', chunk => body += chunk);
                 res.on('end', () => {
                     const duration = Date.now() - reqStart;
                     latencies.push(duration);
-                    if (res.statusCode === 201) {
+                    if (res.statusCode === 200) {
                         successCount++;
                     } else {
                         errorCount++;
@@ -46,7 +37,6 @@ const runTest = async () => {
                 errorCount++;
                 resolve();
             });
-            req.write(data);
             req.end();
         });
     };
