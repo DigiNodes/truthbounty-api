@@ -15,9 +15,12 @@ import { StakeEvent } from '../staking/entities/stake-event.entity';
 import { StakingEventType } from '../staking/types/staking-event.type';
 import { SybilModelRegistry } from './sybil-model-registry';
 import { SybilProvenanceService } from './sybil-provenance.service';
+import { ClaimAccuracyService } from './claim-accuracy.service';
 import {
   CalculationDetails,
   ChainArtifactAuthority,
+  ClaimAccuracyProvenance,
+  SybilModelConfig,
   InvalidFeatureBoundsException,
   MissingFeatureException,
   PublicSybilScoreView,
@@ -58,6 +61,8 @@ export class SybilResistanceService {
     modelRegistry?: SybilModelRegistry,
     @Optional()
     provenanceService?: SybilProvenanceService,
+    @Optional()
+    private readonly claimAccuracyService?: ClaimAccuracyService,
   ) {
     this.modelRegistry = modelRegistry || new SybilModelRegistry();
     this.provenanceService = provenanceService || new SybilProvenanceService();
@@ -554,7 +559,7 @@ export class SybilResistanceService {
    */
   private async gatherSignals(
     user: { id: string; worldcoinVerified?: boolean; createdAt?: Date } | null,
-    wallets: Array<{ address?: string; linkedAt: Date }>,
+    wallets: Array<{ address?: string; chain?: string; linkedAt: Date }>,
     authority?: ChainArtifactAuthority,
   ): Promise<SybilSignals> {
     const now = Date.now();
@@ -627,8 +632,25 @@ export class SybilResistanceService {
       }
     }
 
-    const claimsVotedOn = 0;
-    const claimsCorrect = 0;
+    let claimsVotedOn = 0;
+    let claimsCorrect = 0;
+    let claimsHistory: ClaimAccuracyProvenance = {
+      status: 'unavailable',
+      observedAt: null,
+      reason: 'source-not-configured',
+    };
+    let claimsObservedAt: Date | null = null;
+
+    if (this.claimAccuracyService) {
+      const accuracy = await this.claimAccuracyService.deriveAccuracy(
+        wallets,
+        authority,
+      );
+      claimsVotedOn = accuracy.claimsVotedOn;
+      claimsCorrect = accuracy.claimsCorrect;
+      claimsHistory = accuracy.provenance;
+      claimsObservedAt = accuracy.observedAt;
+    }
 
     return {
       worldcoinVerified,
@@ -643,6 +665,10 @@ export class SybilResistanceService {
       stakingFinalizedBlock: authority?.finalizedThroughBlock,
       claimsVotedOn,
       claimsCorrect,
+      claimsHistory,
+      featuresObservedAt: {
+        accuracy: claimsObservedAt ?? undefined,
+      },
     };
   }
 

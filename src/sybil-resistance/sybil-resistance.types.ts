@@ -51,6 +51,26 @@ export interface FeatureProvenance {
 }
 
 /**
+ * Status of the canonical claim-history read used for accuracy.
+ * `unavailable` means no finalized checkpoint/source could be resolved; it is
+ * never equivalent to a verified zero-accuracy history.
+ */
+export type ClaimAccuracyHistoryStatus = 'finalized' | 'unavailable';
+
+export interface ClaimAccuracyProvenance {
+  status: ClaimAccuracyHistoryStatus;
+  chainId?: number;
+  releaseId?: string;
+  verificationContractAddress?: string;
+  finalizedThroughBlock?: number;
+  observedAt?: string | null;
+  canonicalEventCount?: number;
+  eligibleEvaluationCount?: number;
+  excluded?: Record<string, number>;
+  reason?: string;
+}
+
+/**
  * Raw signal data for Sybil scoring
  */
 export interface SybilSignals {
@@ -66,6 +86,7 @@ export interface SybilSignals {
   stakingFinalizedBlock?: number;
   claimsVotedOn: number;
   claimsCorrect: number;
+  claimsHistory?: ClaimAccuracyProvenance;
   featuresObservedAt?: {
     worldcoin?: Date;
     walletAge?: Date;

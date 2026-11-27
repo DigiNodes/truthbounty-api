@@ -32,7 +32,6 @@ describe('DisputeController — Authorization Matrix', () => {
       .fn()
       .mockResolvedValue({ id: 'dispute-1', status: 'rejected' }),
     getDisputeByClaimId: jest.fn().mockResolvedValue(null),
-    getExpiredDisputes: jest.fn().mockResolvedValue([]),
     findAll: jest
       .fn()
       .mockResolvedValue({ items: [], total: 0, limit: 50, offset: 0 }),
@@ -63,10 +62,18 @@ describe('DisputeController — Authorization Matrix', () => {
     expect(result).toEqual({ items: [], total: 0, limit: 50, offset: 0 });
   });
 
-  it('getExpired() calls service and returns results', async () => {
-    const result = await controller.getExpired();
-    expect(mockDisputeService.getExpiredDisputes).toHaveBeenCalled();
-    expect(result).toEqual([]);
+  it('getExpired() retires the age-based query without reading or mutating disputes', async () => {
+    await expect(controller.getExpired()).rejects.toMatchObject({
+      status: 410,
+      response: {
+        statusCode: 410,
+        code: 'LOCAL_DISPUTE_EXPIRY_RETIRED',
+        replacement: '/api/v2/dispute-read-models?status=expired',
+      },
+    });
+    for (const method of Object.values(mockDisputeService)) {
+      expect(method).not.toHaveBeenCalled();
+    }
   });
 
   it('getByClaimId() calls service and returns dispute', async () => {
@@ -131,7 +138,9 @@ describe('DisputeController — RolesGuard enforcement', () => {
     getClass: () => ({}),
     switchToHttp: () => ({
       getRequest: () => ({
-        user: role ? { user: { role } } : null,
+        user: role
+          ? { address: `0x${'1'.repeat(40)}`, user: { role } }
+          : null,
       }),
     }),
   });

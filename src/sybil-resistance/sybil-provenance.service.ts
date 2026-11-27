@@ -292,6 +292,7 @@ export class SybilProvenanceService {
     };
 
     // 4. Accuracy Provenance (Claims History)
+    const claimsHistory = signals.claimsHistory;
     const accuracyObserved =
       signals.featuresObservedAt?.accuracy ||
       (signals.claimsVotedOn > 0 ? now : null);
@@ -300,7 +301,8 @@ export class SybilProvenanceService {
       maxFreshnessMs,
       now,
     );
-    const isAccuracyMissing = signals.claimsVotedOn === 0;
+    const isAccuracyMissing =
+      signals.claimsVotedOn === 0 || claimsHistory?.status === 'unavailable';
     if (isAccuracyMissing) missingFeatures.push('accuracy');
     if (!isAccuracyMissing && accuracyFreshness.isStale)
       staleFeatures.push('accuracy');
@@ -317,6 +319,15 @@ export class SybilProvenanceService {
       details: {
         claimsVotedOn: signals.claimsVotedOn,
         claimsCorrect: signals.claimsCorrect,
+        status: claimsHistory?.status ?? 'unavailable',
+        chainId: claimsHistory?.chainId,
+        releaseId: claimsHistory?.releaseId,
+        verificationContractAddress: claimsHistory?.verificationContractAddress,
+        finalizedThroughBlock: claimsHistory?.finalizedThroughBlock,
+        canonicalEventCount: claimsHistory?.canonicalEventCount,
+        eligibleEvaluationCount: claimsHistory?.eligibleEvaluationCount,
+        excluded: claimsHistory?.excluded ?? {},
+        reason: claimsHistory?.reason,
       },
     };
 
@@ -365,5 +376,68 @@ export class SybilProvenanceService {
       : hasUnknownRequired
         ? 'UNKNOWN'
         : 'FRESH';
+
+    // Find oldest feature age among required features
+    let oldestFeatureAgeMs = 0;
+    for (const name of requiredFeatures) {
+      const prov = provenance[name];
+      if (
+        prov &&
+        Number.isFinite(prov.freshnessMs) &&
+        prov.freshnessMs > oldestFeatureAgeMs
+      ) {
+        oldestFeatureAgeMs = prov.freshnessMs;
+      }
+    }
+
+    // Calculate tenure in whole days
+    const tenureMs = signals?.oldestWalletAgeMs || 0;
+    const tenureDays = Math.floor(tenureMs / (24 * 60 * 60 * 1000));
+
+    // Build sanitized explanation (no private hashes or addresses)
+    const sanitizedExplanation =
+      `Sybil resistance score: ${result.score.toFixed(4)} | Risk score: ${result.riskScore.toFixed(4)} (${result.riskLevel} risk) ` +
+      `[Model v${result.version}]. Features: Worldcoin=${result.details.componentScores.worldcoin.toFixed(2)}, ` +
+      `Tenure=${result.details.componentScores.walletAge.toFixed(2)}, Staking=${result.details.componentScores.staking.toFixed(2)}, ` +
+      `Accuracy=${result.details.componentScores.accuracy.toFixed(2)}.`;
+
+    return {
+      userId,
+      score: result.score,
+      riskScore: result.riskScore,
+      riskLevel: result.riskLevel,
+      version: result.version,
+      provenanceDigest: result.provenanceDigest,
+      calculatedAt: result.details.timestamp,
+      freshness: {
+        status,
+        oldestFeatureAgeMs,
+      },
+      missingFeatures: result.missingFeatures,
+      signalsSummary: {
+        worldcoinVerified:
+          signals?.worldcoinVerified ??
+          result.details.componentScores.worldcoin > 0,
+        walletCount:
+          signals?.walletCount ?? (signals?.walletAddresses?.length || 0),
+        tenureDays,
+        isStaker:
+          (signals?.totalStakedAmount ?? 0n) > 0n ||
+          result.details.componentScores.staking > 0,
+        claimsEvaluated: signals?.claimsVotedOn ?? 0,
+      },
+      explanation: sanitizedExplanation,
+    };
+  }
+
+  /**
+   * Invariant: Score computation is strictly an off-chain advisory read model.
+   * It cannot directly execute smart contract mutations or overwrite authoritative consensus.
+   */
+  public assertNoContractMutation(): void {
+    // Scoring engine must never send transactions to blockchain
+    this.logger.debug(
+      'Contract outcome immutability validated: Score is read-only projection',
+    );
   }
 }

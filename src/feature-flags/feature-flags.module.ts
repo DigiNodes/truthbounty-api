@@ -5,6 +5,8 @@ import { FeatureFlagsService } from './feature-flags.service';
 import { ConfigurationService } from './configuration.service';
 import { FeatureFlagsController } from './feature-flags.controller';
 import { FeatureFlag } from './entities/feature-flag.entity';
+import { FeatureFlagVersion } from './entities/feature-flag-version.entity';
+import { FeatureFlagAuditEvent } from './entities/feature-flag-audit-event.entity';
 import { ConfigurationValue } from './entities/configuration-value.entity';
 import { ConfigurationHistory } from './entities/configuration-history.entity';
 import { FeatureFlagsMetricsService } from './metrics/feature-flag.metrics';
@@ -13,6 +15,8 @@ import { FeatureFlagsMetricsService } from './metrics/feature-flag.metrics';
   imports: [
     TypeOrmModule.forFeature([
       FeatureFlag,
+      FeatureFlagVersion,
+      FeatureFlagAuditEvent,
       ConfigurationValue,
       ConfigurationHistory,
     ]),

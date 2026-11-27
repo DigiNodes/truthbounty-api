@@ -64,7 +64,8 @@ export class AdminGuard implements CanActivate {
       throw new ForbiddenException('Authentication required for admin access');
     }
 
-    const principal = (request as AuthenticatedRequest).use;
+    const authenticatedRequest = request as AuthenticatedRequest;
+    const principal = authenticatedRequest.user ?? authenticatedRequest.use;
     if (!principal) {
       this.logger.warn('Admin access denied: no authenticated user');
       throw new ForbiddenException('Authentication required for admin access');

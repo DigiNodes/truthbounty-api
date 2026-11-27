@@ -69,6 +69,54 @@ export interface AuditQueryFilters {
   limit?: number;
 }
 
+const redactConfigurationAuditPayload = (payload: unknown): unknown => {
+  if (Array.isArray(payload)) {
+    return payload.map(redactConfigurationAuditPayload);
+  }
+
+  if (payload instanceof Date) {
+    return payload;
+  }
+
+  if (payload === null || typeof payload !== 'object') {
+    return payload;
+  }
+
+  return Object.fromEntries(
+    Object.entries(payload).map(([key, value]) => [
+      key,
+      key.toLowerCase() === 'value' ||
+      /password|passwd|secret|token|credential|api[-_]?key|authorization|private[-_]?key/i.test(
+        key,
+      )
+        ? '[REDACTED]'
+        : redactConfigurationAuditPayload(value),
+    ]),
+  );
+};
+
+const redactConfigurationAuditRecord = <
+  T extends {
+    entityType?: AuditEntityType;
+    beforeState?: unknown;
+    afterState?: unknown;
+    metadata?: unknown;
+  },
+>(
+  record: T,
+): T => {
+  if (record.entityType !== AuditEntityType.CONFIGURATION) {
+    return record;
+  }
+
+  return {
+    ...record,
+    beforeState: redactConfigurationAuditPayload(record.beforeState),
+    afterState: redactConfigurationAuditPayload(record.afterState),
+    metadata: redactConfigurationAuditPayload(record.metadata),
+  } as T;
+};
+
 @Injectable()
 export class AuditTrailService implements OnModuleInit {
   private readonly logger = new Logger(AuditTrailService.name);
@@ -254,6 +302,7 @@ export class AuditTrailService implements OnModuleInit {
       const saved: AuditLog[] = [];
 
       for (const record of records) {
+        const sanitizedRecord = redactConfigurationAuditRecord(record);
         sequence += 1;
         const entity = auditRepo.create({
           // `id`/`createdAt` are normally left for the DB to generate, but
@@ -262,9 +311,9 @@ export class AuditTrailService implements OnModuleInit {
           // are assigned client-side here so the full record, including
           // its own id and timestamp, is known and hashed before the one
           // and only insert.
-          id: (record as any).id || randomUUID(),
-          createdAt: (record as any).createdAt || new Date(),
-          ...record,
+          id: (sanitizedRecord as any).id || randomUUID(),
+          createdAt: (sanitizedRecord as any).createdAt || new Date(),
+          ...sanitizedRecord,
           previousHash,
           chainSequence: sequence,
         });
@@ -291,11 +340,12 @@ export class AuditTrailService implements OnModuleInit {
     entityType: AuditEntityType,
     entityId: string,
   ): Promise<AuditLog[]> {
-    return this.auditLogRepo.find({
+    const logs = await this.auditLogRepo.find({
       where: { entityType, entityId },
       order: { createdAt: 'DESC' },
       relations: { user: true },
     });
+    return logs.map(redactConfigurationAuditRecord);
   }
 
   async getUserAuditLogs(
@@ -311,7 +361,7 @@ export class AuditTrailService implements OnModuleInit {
       relations: { user: true },
     });
 
-    return { logs, total };
+    return { logs: logs.map(redactConfigurationAuditRecord), total };
   }
 
   async getActionAuditLogs(
@@ -327,7 +377,7 @@ export class AuditTrailService implements OnModuleInit {
       relations: { user: true },
     });
 
-    return { logs, total };
+    return { logs: logs.map(redactConfigurationAuditRecord), total };
   }
 
   async query(filters: AuditQueryFilters): Promise<AuditQueryResult> {
@@ -410,7 +460,13 @@ export class AuditTrailService implements OnModuleInit {
 
     const totalPages = Math.ceil(total / limit);
 
-    return { logs, total, page, limit, totalPages };
+    return {
+      logs: logs.map(redactConfigurationAuditRecord),
+      total,
+      page,
+      limit,
+      totalPages,
+    };
   }
 
   async getAuditLogsByDateRange(
@@ -431,7 +487,7 @@ export class AuditTrailService implements OnModuleInit {
       .take(limit)
       .getManyAndCount();
 
-    return { logs, total };
+    return { logs: logs.map(redactConfigurationAuditRecord), total };
   }
 
   async getAuditSummary(
@@ -486,17 +542,19 @@ export class AuditTrailService implements OnModuleInit {
   async getAuditLogsByCorrelationId(
     correlationId: string,
   ): Promise<AuditLog[]> {
-    return this.auditLogRepo.find({
+    const logs = await this.auditLogRepo.find({
       where: { correlationId },
       order: { createdAt: 'ASC' },
     });
+    return logs.map(redactConfigurationAuditRecord);
   }
 
   async getAuditLogsByEventId(eventId: string): Promise<AuditLog | null> {
-    return this.auditLogRepo.findOne({
+    const log = await this.auditLogRepo.findOne({
       where: { eventId },
       relations: { user: true },
     });
+    return log ? redactConfigurationAuditRecord(log) : null;
   }
 
   /**

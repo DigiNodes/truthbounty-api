@@ -10,7 +10,7 @@
     "npm": ">=10 <12"
   },
   "scripts": {
-    "generate:prisma": "prisma generate",
+    "generate:prisma": "prisma generate --config prisma.generate.config.ts",
     "generate:prisma:migrate": "prisma migrate deploy",
     "generate:prerequisites": "npm run generate:prisma",
     "parity:report": "node scripts/parity-report.mjs",
@@ -18,7 +18,7 @@
     "pretype-check": "npm run generate:prisma",
     "type-check": "tsc --noEmit",
     "prebuild": "npm run generate:prerequisites && npm run type-check",
-    "build": "nest build",
+    "build": "node init && nest build",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
@@ -38,6 +38,7 @@
     "benchmark:compare": "ts-node scripts/compare-benchmarks.ts",
     "test:integration": "DB_TYPE= postgres jest --config ./test/jest-integration.json --runInBand",
     "test:migration-parity": "jest --config ./test/jest-integration.json --runInBand --testPathPattern migration-parity",
+    "test:security-evidence": "node --test scripts/dependency-audit.test.mjs",
     "security:dependencies": "node scripts/dependency-audit.mjs",
     "config:generate": "ts-node --project tsconfig.runtime-config.json --transpile-only scripts/generate-runtime-config.ts",
     "config:check": "ts-node --project tsconfig.runtime-config.json --transpile-only scripts/generate-runtime-config.ts --check",
@@ -72,7 +73,6 @@
     "@nestjs/throttler": "^6.7.1",
     "@nestjs/websockets": "^12.0.0",
     "@prisma/client": "^7.10.0",
-    "@swc/core-linux-x64-gnu": "^1.16.18",
     "@types/pg": "^8.23.1",
     "axios": "^1.20.0",
     "bullmq": "^6.3.9",

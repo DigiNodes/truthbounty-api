@@ -8,9 +8,9 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 import { SiweService } from './services/siwe.service';
 import { SiweNonceService } from './siwe-nonce.service';
 import { SiweVerificationService } from './siwe-verification.service';
-import { TokenService } from './services/token.service';
+import { TokenService, JwtCapabilityTokenGuard } from './services/token.service';
 import { WalletRateLimiterService } from './wallet-rate-limiter.service';
-import { AuthorizationPolicyService } from './authorization-policy.service';
+import { AuthorizationPolicyService, CapabilityTokenGuard } from './authorization-policy.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { OptionalJwtAuthGuard } from './optional-jwt-auth.guard';
@@ -51,6 +51,8 @@ import { ServiceAuthGuard } from './guards/service-auth.guard';
     AdminGuard,
     RolesGuard,
     ServiceAuthGuard,
+    CapabilityTokenGuard,
+    JwtCapabilityTokenGuard,
   ],
   exports: [
     AuthService,
@@ -60,6 +62,8 @@ import { ServiceAuthGuard } from './guards/service-auth.guard';
     TokenService,
     WalletRateLimiterService,
     AuthorizationPolicyService,
+    CapabilityTokenGuard,
+    JwtCapabilityTokenGuard,
     JwtAuthGuard,
     OptionalJwtAuthGuard,
     AdminGuard,

@@ -1,4 +1,9 @@
-import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import { ForbiddenException, Get, UnauthorizedException } from '@nestjs/common';
+import {
+  GUARDS_METADATA,
+  METHOD_METADATA,
+  PATH_METADATA,
+} from '@nestjs/common/constants';
 import { Reflector } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
 import { AuditController } from './audit-log.controller';
@@ -7,6 +12,8 @@ import { ComplianceService } from '../services/compliance.service';
 import { SecurityMonitoringService } from '../services/security-monitoring.service';
 import { AuditMetricsService } from '../services/audit-metrics.service';
 import { AuditQueueService } from '../services/audit-queue.service';
+import { ExportCursorService } from '../services/export-cursor.service';
+import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { AdminGuard } from '../../admin/guards/admin.guard';
 import { RolesGuard as AdminRolesGuard } from '../../admin/guards/roles.guard';
 import {
@@ -14,6 +21,7 @@ import {
   AdminRoleHierarchy,
 } from '../../admin/entities/admin.entity';
 import { ROLES_KEY } from '../../admin/decorators/roles.decorator';
+import { IS_PUBLIC_KEY } from '../../decorators/public.decorator';
 
 /**
  * Unit tests for AuditController authorization (V2 API Authorization Matrix).
@@ -50,6 +58,12 @@ describe('AuditController — Authorization Matrix', () => {
     placeLegalHold: jest.fn().mockResolvedValue(5),
     removeLegalHold: jest.fn().mockResolvedValue(5),
     verifyIntegrity: jest.fn().mockResolvedValue({ valid: true }),
+    verifyChain: jest.fn().mockResolvedValue({
+      valid: true,
+      checkedCount: 10,
+      firstSequence: 1,
+      lastSequence: 10,
+    }),
     getRetentionStatus: jest.fn().mockResolvedValue({ retentionDays: 90 }),
   };
 
@@ -76,6 +90,10 @@ describe('AuditController — Authorization Matrix', () => {
     updateStorageMetrics: jest.fn().mockResolvedValue(undefined),
   };
   const mockAuditQueue = { getQueueStats: jest.fn().mockResolvedValue({}) };
+  const mockExportCursor = {
+    fetchPage: jest.fn().mockResolvedValue({}),
+    cancelCursor: jest.fn().mockResolvedValue(undefined),
+  };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -89,8 +107,11 @@ describe('AuditController — Authorization Matrix', () => {
         },
         { provide: AuditMetricsService, useValue: mockAuditMetrics },
         { provide: AuditQueueService, useValue: mockAuditQueue },
+        { provide: ExportCursorService, useValue: mockExportCursor },
       ],
     })
+      .overrideGuard(JwtAuthGuard)
+      .useValue({ canActivate: () => true })
       .overrideGuard(AdminGuard)
       .useValue({ canActivate: () => true })
       .overrideGuard(AdminRolesGuard)
@@ -195,6 +216,22 @@ describe('AuditController — Authorization Matrix', () => {
     expect(mockAuditMetrics.updateStorageMetrics).toHaveBeenCalled();
     expect(result.data).toHaveProperty('storage');
     expect(result.data).toHaveProperty('queue');
+  });
+
+  it('verifyChain() delegates to auditTrailService.verifyChain with sequence bounds', async () => {
+    const result = await controller.verifyChain('1', '10', 'req-1');
+    expect(mockAuditTrail.verifyChain).toHaveBeenCalledWith({
+      fromSequence: 1,
+      toSequence: 10,
+    });
+    expect(result.success).toBe(true);
+    expect(result.data).toEqual({
+      valid: true,
+      checkedCount: 10,
+      firstSequence: 1,
+      lastSequence: 10,
+    });
+    expect(result.requestId).toBe('req-1');
   });
 });
 
@@ -492,5 +529,163 @@ describe('AdminGuard (DB-backed) — fail-closed invariants for audit routes', (
     await expect(
       guard.canActivate(makeCtx({ address: '0xunknown' }) as any),
     ).rejects.toThrow(ForbiddenException);
+  });
+});
+
+/**
+ * Authorization contract for GET /audit/integrity/chain/verify and
+ * controller-level route metadata invariant across all AuditController routes.
+ */
+describe('AuditController — GET /audit/integrity/chain/verify & Route Metadata Invariant', () => {
+  const reflector = new Reflector();
+
+  const findUnannotatedRoutes = (controllerClass: new (...args: any[]) => any): string[] => {
+    const proto = controllerClass.prototype;
+    const missing: string[] = [];
+
+    for (const prop of Object.getOwnPropertyNames(proto)) {
+      if (prop === 'constructor') continue;
+      const descriptor = Object.getOwnPropertyDescriptor(proto, prop);
+      if (!descriptor || typeof descriptor.value !== 'function') continue;
+
+      const handler = descriptor.value;
+      const httpMethod = Reflect.getMetadata(METHOD_METADATA, handler);
+      if (httpMethod === undefined) continue;
+
+      const roles = reflector.getAllAndOverride<AdminRole[]>(ROLES_KEY, [
+        handler,
+        controllerClass,
+      ]);
+      const isPublic = reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
+        handler,
+        controllerClass,
+      ]);
+
+      const hasExplicitRoles = Array.isArray(roles) && roles.length > 0;
+      if (!hasExplicitRoles && isPublic !== true) {
+        const routePath = Reflect.getMetadata(PATH_METADATA, handler) ?? '';
+        missing.push(`${prop} (${String(routePath)})`);
+      }
+    }
+
+    return missing;
+  };
+
+  it('applies JwtAuthGuard, AdminGuard, and RolesGuard at controller level', () => {
+    const guards = Reflect.getMetadata(GUARDS_METADATA, AuditController) ?? [];
+    expect(guards).toEqual([JwtAuthGuard, AdminGuard, AdminRolesGuard]);
+  });
+
+  it('annotates verifyChain with explicit security_analyst+ admin roles', () => {
+    const roles = Reflect.getMetadata(
+      ROLES_KEY,
+      AuditController.prototype.verifyChain,
+    );
+    expect(roles).toEqual([
+      AdminRole.SUPER_ADMIN,
+      AdminRole.ADMINISTRATOR,
+      AdminRole.SECURITY_ANALYST,
+    ]);
+
+    const isPublic = Reflect.getMetadata(
+      IS_PUBLIC_KEY,
+      AuditController.prototype.verifyChain,
+    );
+    expect(isPublic).toBeUndefined();
+  });
+
+  it('denies anonymous GET /audit/integrity/chain/verify (no authenticated user)', async () => {
+    const adminRepo = { findOne: jest.fn().mockResolvedValue(null) } as any;
+    const adminGuard = new AdminGuard(adminRepo, reflector);
+    const ctx = {
+      getHandler: () => AuditController.prototype.verifyChain,
+      getClass: () => AuditController,
+      switchToHttp: () => ({
+        getRequest: () => ({ method: 'GET', user: undefined }),
+      }),
+    } as any;
+
+    await expect(adminGuard.canActivate(ctx)).rejects.toThrow(
+      UnauthorizedException,
+    );
+  });
+
+  it('denies authenticated non-admin application users on GET /audit/integrity/chain/verify', async () => {
+    const adminRepo = { findOne: jest.fn().mockResolvedValue(null) } as any;
+    const adminGuard = new AdminGuard(adminRepo, reflector);
+    const ctx = {
+      getHandler: () => AuditController.prototype.verifyChain,
+      getClass: () => AuditController,
+      switchToHttp: () => ({
+        getRequest: () => ({
+          method: 'GET',
+          user: { id: 'user-1', address: '0xnonadmin', role: 'contributor' },
+        }),
+      }),
+    } as any;
+
+    await expect(adminGuard.canActivate(ctx)).rejects.toThrow(
+      ForbiddenException,
+    );
+  });
+
+  it('allows only permitted admin roles (security_analyst, administrator, super_admin) on verifyChain', () => {
+    const rolesGuard = new AdminRolesGuard(reflector);
+    const makeVerifyChainCtx = (
+      admin: { role: AdminRole; isActive: boolean } | undefined,
+    ) =>
+      ({
+        getHandler: () => AuditController.prototype.verifyChain,
+        getClass: () => AuditController,
+        switchToHttp: () => ({
+          getRequest: () => ({ method: 'GET', admin }),
+        }),
+      }) as any;
+
+    for (const allowedRole of [
+      AdminRole.SECURITY_ANALYST,
+      AdminRole.ADMINISTRATOR,
+      AdminRole.SUPER_ADMIN,
+    ]) {
+      expect(
+        rolesGuard.canActivate(
+          makeVerifyChainCtx({ role: allowedRole, isActive: true }),
+        ),
+      ).toBe(true);
+    }
+
+    for (const deniedRole of [AdminRole.AUDITOR, AdminRole.MODERATOR]) {
+      expect(() =>
+        rolesGuard.canActivate(
+          makeVerifyChainCtx({ role: deniedRole, isActive: true }),
+        ),
+      ).toThrow(ForbiddenException);
+    }
+
+    expect(() =>
+      rolesGuard.canActivate(
+        makeVerifyChainCtx({
+          role: AdminRole.SECURITY_ANALYST,
+          isActive: false,
+        }),
+      ),
+    ).toThrow(ForbiddenException);
+  });
+
+  it('enforces that every AuditController route has explicit authorization metadata', () => {
+    expect(findUnannotatedRoutes(AuditController)).toEqual([]);
+  });
+
+  it('fails the route metadata invariant when an audit endpoint lacks @Roles or @Public', () => {
+    class UnprotectedAuditController {
+      @Get('unprotected-endpoint')
+      unprotectedHandler() {
+        return { ok: true };
+      }
+    }
+
+    expect(findUnannotatedRoutes(UnprotectedAuditController)).toEqual([
+      'unprotectedHandler (unprotected-endpoint)',
+    ]);
   });
 });
