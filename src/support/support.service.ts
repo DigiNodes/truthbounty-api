@@ -4,6 +4,8 @@ import {
   Injectable,
   Logger,
 } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, LessThanOrEqual, MoreThan } from 'typeorm';
 import { randomUUID, randomBytes, createHmac } from 'crypto';
 import { CreateSupportRequestDto } from './dto/create-support-request.dto';
 import { SupportRequest } from './entities/support-request.entity';
@@ -194,17 +196,21 @@ export class SupportRequestService {
     if (expired.length === 0) {
       return [];
     }
-  }
 
-  for (const [fingerprint, record] of this.fingerprints.entries()) {
-    if (new Date(record.expiresAt).getTime() <= now) {
-      this.fingerprints.delete(fingerprint);
-    }
-  }
+    const expiredIds = expired.map((r) => r.id);
+    const expiredRefs = expired.map((r) => r.reference);
 
-  this.logger.log(`Expired support records cleaned: ${expiredIds.length}`);
-  return expiredIds;
-}
+    // Delete expired records
+    await this.supportRequestRepository.delete({
+      id: expiredIds as any,
+    });
+
+    this.logger.log(
+      `Cleaned up ${expiredIds.length} expired support requests: ${expiredRefs.join(', ')}`,
+    );
+
+    return expiredIds;
+  }
 
   private normalizeRequest(input: CreateSupportRequestDto): Required<Pick<CreateSupportRequestDto, 'category' | 'contact' | 'description' | 'release'>> & {
       diagnostics: string[];

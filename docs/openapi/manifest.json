@@ -4,26 +4,26 @@
     {
       "path": "docs/public-status/openapi.json",
       "schemaVersion": "public-status.v1",
-      "sizeBytes": 28692,
-      "sha256": "63debd0b6be98037fc55858c0b926f4fa70ddc8ddacf8fb5c8ddba4df8274802"
+      "sizeBytes": 29686,
+      "sha256": "fbb383ebefae09b03f537e42fd7e849c721fc4e36d5d78821093c53d7d4313a1"
     },
     {
       "path": "docs/public-status/fixtures.json",
       "schemaVersion": "public-status.v1",
-      "sizeBytes": 19100,
-      "sha256": "3e3e877f67b7a69c988253b7944286f87412f77d17eba731fda68fc95b06f7d9"
+      "sizeBytes": 19784,
+      "sha256": "973974b9b333349bf097e5c192739fbefc4931ac648f186fd048c0846c50c28f"
     },
     {
       "path": "docs/public-incidents/openapi.json",
       "schemaVersion": "public-incidents.v1",
-      "sizeBytes": 15916,
-      "sha256": "175e93b3abd23104e7f3510f8f419b71f636f45febe83595b4b93d7ba60c168f"
+      "sizeBytes": 16431,
+      "sha256": "bc610cf366561e0841991b354c731f31ed724b899a2a907f65601008697c1cfb"
     },
     {
       "path": "docs/public-incidents/fixtures.json",
       "schemaVersion": "public-incidents.v1",
-      "sizeBytes": 7720,
-      "sha256": "58514285c964f015e03f2a48894a950c311759f7e3e29710e6a0ae240756d1bd"
+      "sizeBytes": 7969,
+      "sha256": "fc35a93bfb3bc0fffd3ea97c0364309dc9ce7ade6e748ccd228b062c95e5c0cc"
     }
   ]
 }
