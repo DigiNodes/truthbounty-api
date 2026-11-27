@@ -1,12 +1,11 @@
 import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
-  Logger,
-  ForbiddenException,
-  ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { AnalyticsConsentService } from '../../analytics/analytics-consent.service';
 import { LlmProviderService } from './llm-provider.service';
 import { RagService } from './rag.service';
 import { SafetyGuardrailService } from './safety-guardrail.service';
@@ -14,7 +13,6 @@ import { CreateConversationDto, SendMessageDto } from '../dto/ai-assistant.dto';
 
 @Injectable()
 export class AiAssistantService {
-  private readonly logger = new Logger(AiAssistantService.name);
   private readonly mutationClaims = new Map<string, number>();
 
   constructor(
@@ -22,13 +20,12 @@ export class AiAssistantService {
     private llmProvider: LlmProviderService,
     private ragService: RagService,
     private safetyGuardrail: SafetyGuardrailService,
-    private readonly analyticsConsent: AnalyticsConsentService,
   ) {}
 
   async createConversation(userId: string, dto: CreateConversationDto) {
     return this.prisma.conversation.create({
       data: {
-        userId: this.analyticsConsent.getSubjectKey(userId),
+        userId,
         title: dto.title || 'New Conversation',
       },
     });
@@ -66,6 +63,7 @@ export class AiAssistantService {
     userId: string,
     conversationId: string,
     dto: SendMessageDto,
+    idempotencyKey?: string,
   ) {
     const conversation = await this.prisma.conversation.findUnique({
       where: { id: conversationId },
@@ -83,7 +81,18 @@ export class AiAssistantService {
 
     // #879: claim the mutation before the first write so a retried request
     // cannot append a second user message and LLM response.
-    const claimKey = `${userId}:${conversationId}:${dto.content}`;
+    if (
+      idempotencyKey !== undefined &&
+      (typeof idempotencyKey !== 'string' ||
+        !/^[A-Za-z0-9._~-]{1,128}$/.test(idempotencyKey))
+    ) {
+      throw new BadRequestException('Invalid Idempotency-Key header');
+    }
+    const claim =
+      idempotencyKey === undefined
+        ? ['content', dto.content]
+        : ['key', idempotencyKey];
+    const claimKey = JSON.stringify([userId, conversationId, ...claim]);
     const claimedAt = this.mutationClaims.get(claimKey);
     if (claimedAt !== undefined && Date.now() - claimedAt < 60_000) {
       throw new ConflictException('Duplicate message request');
@@ -94,7 +103,7 @@ export class AiAssistantService {
     const safetyCheck = this.safetyGuardrail.checkContent(dto.content);
 
     // 1. Save user message
-    const userMessage = await this.prisma.message.create({
+    await this.prisma.message.create({
       data: {
         conversationId,
         role: 'user',
@@ -133,7 +142,7 @@ export class AiAssistantService {
         orderBy: { createdAt: 'desc' },
         take: 10, // Short-term conversation memory limit
       })
-    ).reverse();
+    ).toReversed();
 
     // 3. RAG Retrieval
     const { context, citations } = await this.ragService.retrieveContext(
@@ -162,7 +171,9 @@ ${context}
     const startTime = Date.now();
 
     // 5. Orchestrate LLM request
-    const llmResponse = await this.llmProvider.generateResponse(messagesToLlm);
+    const llmResponse = await this.llmProvider.generateResponse(messagesToLlm, {
+      userId,
+    });
 
     const latencyMs = Date.now() - startTime;
 
@@ -181,29 +192,6 @@ ${context}
       data: { updatedAt: new Date() },
     });
 
-    // Optional user-linked usage metrics require a current consent check and
-    // are written under the same subject lock as withdrawal and rotation.
-    try {
-      await this.analyticsConsent.collectIfValid(userId, (tx) =>
-        tx.aiUsageMetric.create({
-          data: {
-            userId,
-            provider: llmResponse.provider,
-            model: llmResponse.model,
-            promptTokens: llmResponse.usage?.prompt_tokens || 0,
-            completionTokens: llmResponse.usage?.completion_tokens || 0,
-            totalTokens: llmResponse.usage?.total_tokens || 0,
-            latencyMs,
-          },
-        }),
-      );
-    } catch (error) {
-      this.logger.error(
-        'Optional AI usage metric was skipped because consent or persistence could not be verified',
-        error instanceof Error ? error.name : 'Unknown error',
-      );
-    }
-
     // Standardized API response
     return {
       message: assistantMessage,
@@ -211,11 +199,17 @@ ${context}
         provider: llmResponse.provider,
         model: llmResponse.model,
         latencyMs,
-        tokens: llmResponse.usage?.total_tokens || 0,
+        tokens: llmResponse.accounting
+          ? llmResponse.accounting.actualTokens
+          : llmResponse.usage?.total_tokens ?? null,
+        usageState: llmResponse.accounting?.state ?? 'mock',
+        chargedTokens: llmResponse.accounting?.chargedTokens ?? null,
+        chargedSpendUsdNanos:
+          llmResponse.accounting?.chargedSpendUsdNanos ?? null,
+        priceVersion: llmResponse.accounting?.priceVersion ?? null,
         citations,
       },
     };
-
   }
 
   async deleteConversation(userId: string, conversationId: string) {

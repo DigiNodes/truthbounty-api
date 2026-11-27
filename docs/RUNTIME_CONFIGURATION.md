@@ -2,7 +2,7 @@
 
 Generated from `src/config/runtime-schema.ts`; run `npm run config:generate`.
 
-Staging/production require explicitly supplied deployment settings. All supplied values are validated; empty values and simultaneous aliases are errors. Runtime values are snapshotted once before Nest bootstrap. Restart after configuration changes.
+Staging/production require explicitly supplied deployment settings. Empty values are accepted only where documented. Use one name per alias group. Runtime values are snapshotted once before Nest bootstrap. Restart after configuration changes.
 
 A release file must match `CONTRACT_RELEASE_SHA256`, `CONTRACT_RELEASE_ID`, `CHAIN_ID` and `CONTRACT_RELEASE_DEPLOYMENT_BLOCK`. This boundary pins metadata; the prerequisite canonical-manifest validator owns ABI/event/freshness and network verification.
 
@@ -122,21 +122,21 @@ Legacy `RELEASE_MANIFEST_MAX_AGE_MS` must migrate to `CONTRACT_RELEASE_MAX_AGE_D
 | IPFS_LOCAL_STORAGE_PATH | non-empty string | data/ipfs | no | - |
 | IPFS_GATEWAY_URL | URL (https:, http:) | (unset) | no | - |
 | IPFS_API_URL | URL (https:, http:) | (unset) | no | - |
-
-`IPFS_PROVIDER=local` stores evidence on the local filesystem and emits a valid
-CIDv1 (raw codec, SHA-256). It is development/test-only and is rejected in
-staging/production. Pinata and Web3.Storage are not currently implemented;
-their settings are not accepted as provider choices.
 | SMTP_HOST | hostname or IP address (without scheme, credentials or port) | (unset) | yes | - |
 | SMTP_PORT | integer 1..65535 | 587 | no | - |
+| SMTP_SECURE | true or false | false | no | - |
 | SMTP_USER | non-empty string | (unset) | yes | - |
 | SMTP_PASSWORD | non-empty string | (unset) | yes | SMTP_PASS |
 | SMTP_FROM | non-empty string | (unset) | yes | EMAIL_FROM, NOTIFICATION_EMAIL_FROM |
+| SMTP_FROM_NAME | non-empty string | TruthBounty | no | - |
+| SMTP_CONNECTION_TIMEOUT | integer 1..9007199254740991 | 10000 | no | - |
+| SMTP_GREETINGS_TIMEOUT | integer 1..9007199254740991 | 5000 | no | - |
 | NOTIFICATION_QUEUE_DELAY | integer 0..9007199254740991 | 0 | no | - |
 | NOTIFICATION_MAX_RETRIES | integer 0..100 | 5 | no | - |
 | NOTIFICATION_RETRY_DELAY | integer 1..9007199254740991 | 2000 | no | - |
 | AI_PROVIDER | openai / anthropic / mock | mock | no | - |
 | DEFAULT_LLM_PROVIDER | openai / anthropic / mock | mock | no | - |
+| AI_BUDGET_OPERATOR_IDS | comma-separated distinct UUIDs (empty denies all operators) |  | no | - |
 | OPENAI_API_KEY | non-empty string | (unset) | no | - |
 | ANTHROPIC_API_KEY | non-empty string | (unset) | no | - |
 | OPENAI_BASE_URL | URL (https:, http:) | https://api.openai.com/v1 | no | - |
@@ -164,6 +164,8 @@ their settings are not accepted as provider choices.
 | LOG_REDACT_RPC_URLS | true or false | true | no | - |
 | JWT_SECRET | non-empty string | (unset) | yes | - |
 | JWT_EXPIRATION | positive duration with s, m, h or d unit | 15m | no | - |
+| JWT_ACCESS_AUDIENCE | non-empty string | truthbounty-api | no | - |
+| JWT_ISSUER | non-empty string | truthbounty-api | no | - |
 | REFRESH_TOKEN_EXPIRATION | positive duration with s, m, h or d unit | 7d | no | - |
 | SIWE_DOMAIN | non-empty string | (unset) | yes | - |
 | IDEMPOTENCY_ENABLED | true or false | true | no | - |
@@ -208,6 +210,7 @@ their settings are not accepted as provider choices.
 | CACHE_GOVERNANCE_TTL | integer 1..9007199254740991 | 3600 | no | - |
 | CACHE_REPUTATION_TTL | integer 1..9007199254740991 | 3600 | no | - |
 | CACHE_VERSION | non-empty string | v1 | no | - |
+| SUPPORT_ENCRYPTION_KEY | 64 hexadecimal characters for support request encryption | (unset) | no | - |
 | AUTH_NONCE_TTL_MS | integer 1..9007199254740991 | 300000 | no | - |
 | SIWE_ORIGIN | URL (https:, http:) | (unset) | no | - |
 | SERVICE_API_KEY | non-empty string | (unset) | no | - |
@@ -228,6 +231,8 @@ their settings are not accepted as provider choices.
 | MAILGUN_DOMAIN | non-empty string | (unset) | no | - |
 | FCM_PROJECT_ID | non-empty string | (unset) | no | - |
 | FCM_SERVER_KEY | non-empty string | (unset) | no | - |
+| FCM_SERVICE_ACCOUNT_PATH | path to the Firebase service account JSON file | (unset) | no | - |
+| FCM_SERVICE_ACCOUNT_JSON | inline Firebase service account JSON | (unset) | no | - |
 | WEBHOOK_REQUIRE_HTTPS | true or false | true | no | - |
 | WEBHOOK_TIMEOUT_MS | integer 1..9007199254740991 | 10000 | no | - |
 | WEBHOOK_SECRET_KEYS | JSON object mapping webhook secret key IDs to base64url-encoded 32-byte AES-GCM keys | (unset) | no | - |

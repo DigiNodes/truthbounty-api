@@ -98,6 +98,13 @@
  * │ POST   /audit/legal-hold/*                      │ ADMIN(administrator)                     │
  * │ PATCH  /audit/legal-hold/:id/remove             │ ADMIN(administrator)                     │
  * ├─────────────────────────────────────────────────┼──────────────────────────────────────────┤
+ * │ GET    /ai/budgets/me                           │ AUTHN + current linked user only         │
+ * │ POST   /ai/budgets/admin/prices                 │ ROLE(admin) + AI_BUDGET_OPERATOR_IDS      │
+ * │ POST   /ai/budgets/admin/policies               │ ROLE(admin) + AI_BUDGET_OPERATOR_IDS      │
+ * │ POST   /ai/budgets/admin/coverage               │ ROLE(admin) + AI_BUDGET_OPERATOR_IDS      │
+ * │ POST   /ai/budgets/admin/overrides              │ ROLE(admin) + AI_BUDGET_OPERATOR_IDS      │
+ * │ POST   /ai/budgets/admin/overrides/:id/revoke    │ ROLE(admin) + AI_BUDGET_OPERATOR_IDS      │
+ * ├─────────────────────────────────────────────────┼──────────────────────────────────────────┤
  * │ GET    /analytics/*                             │ ROLE(moderator,admin) or ADMIN(auditor)  │
  * ├─────────────────────────────────────────────────┼──────────────────────────────────────────┤
  * │ GET    /metrics                                 │ Bearer METRICS_TOKEN                     │
@@ -515,3 +522,31 @@ export function authorizeTopicSubscription(
   }
   return { ok: true, topic, visibility: 'protected' };
 }
+/** Budget administration is a distinct app-admin AND server-operator grant. */
+export interface AiBudgetRouteAuthorization {
+  readonly method: 'GET' | 'POST';
+  readonly path: string;
+  readonly guards: readonly string[];
+  readonly owner?: 'current-user';
+  readonly appRole?: 'admin';
+  readonly operatorAllowlist?: 'AI_BUDGET_OPERATOR_IDS';
+}
+
+/** Guards also revalidate linked principal IDs; the service repeats operator authorization. */
+export const AI_BUDGET_AUTHORIZATION_MATRIX: readonly AiBudgetRouteAuthorization[] = Object.freeze([
+  Object.freeze({
+    method: 'GET', path: '/ai/budgets/me',
+    guards: Object.freeze(['JwtAuthGuard']), owner: 'current-user',
+  }),
+  ...[
+    '/ai/budgets/admin/prices',
+    '/ai/budgets/admin/policies',
+    '/ai/budgets/admin/coverage',
+    '/ai/budgets/admin/overrides',
+    '/ai/budgets/admin/overrides/:id/revoke',
+  ].map((path): AiBudgetRouteAuthorization => Object.freeze({
+    method: 'POST', path,
+    guards: Object.freeze(['JwtAuthGuard', 'RolesGuard', 'AiBudgetOperatorGuard']),
+    appRole: 'admin', operatorAllowlist: 'AI_BUDGET_OPERATOR_IDS',
+  })),
+]);

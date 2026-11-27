@@ -165,22 +165,25 @@ export class AdminAuditService {
     request: DeadLetterReplayRequest,
   ): Promise<DeadLetterReplayResult> {
     this.assertPostgres();
-    const reason = this.assertReplayRequest(request);
+    this.assertReplayRequest(request);
     const idempotencyKey = this.replayIdempotencyKey(request);
+    const resultReference = this.replayResultReference(idempotencyKey);
 
     return this.source.transaction(async (tx) => {
-      // Serialize replay attempts for this original message.
+      // Lock the audit head before reading the replay record so another
+      // transaction cannot append the same replay between the check and write.
+      await this.lockHead(tx);
       const existing = await tx
         .getRepository(AdminAuditLog)
         .createQueryBuilder('audit')
-        .where("audit.resultReference = :key", { key: idempotencyKey })
+        .where('audit.resultReference = :key', { key: resultReference })
         .getOne();
       if (existing) {
         throw new Error('Duplicate replay rejected');
       }
 
       const attemptId = await this.append(
-        this.replayAuditInput(request, reason, idempotencyKey, 'attempted'),
+        this.replayAuditInput(request, resultReference, 'attempted'),
         tx,
       );
 
@@ -199,7 +202,7 @@ export class AdminAuditService {
       // the attempt record; this service only ensures the audit chain and
       // idempotency guard are in place before effects are applied.
       const successId = await this.append(
-        this.replayAuditInput(request, reason, idempotencyKey, 'success'),
+        this.replayAuditInput(request, resultReference, 'success'),
         tx,
       );
       return {
@@ -340,7 +343,7 @@ export class AdminAuditService {
     });
   }
 
-  private assertReplayRequest(request: DeadLetterReplayRequest): string {
+  private assertReplayRequest(request: DeadLetterReplayRequest): void {
     if (!request || typeof request !== 'object') {
       throw new Error('Replay request required');
     }
@@ -387,25 +390,22 @@ export class AdminAuditService {
       throw new Error('Replay batch size out of bounds');
     }
     this.assertChainContext(request.chainContext);
-    return reason;
   }
 
   private assertChainContext(context: AdminAuditLogInput['chainContext']): void {
     if (!context || typeof context !== 'object') {
       throw new Error('Replay requires a chain context');
     }
-    const { chainId, releaseId, deploymentBlock, artifactChecksum } =
-      context as Record<string, unknown>;
-    if (typeof chainId !== 'string' || !chainId.trim()) {
+    const { chainId, releaseId, deploymentBlock, artifactChecksum } = context;
+    if (!Number.isSafeInteger(chainId) || chainId <= 0) {
       throw new Error('Replay requires a chain id');
     }
     if (typeof releaseId !== 'string' || !releaseId.trim()) {
       throw new Error('Replay requires a release id');
     }
     if (
-      typeof deploymentBlock !== 'number' ||
-      !Number.isSafeInteger(deploymentBlock) ||
-      deploymentBlock < 0
+      typeof deploymentBlock !== 'string' ||
+      !/^\d+$/.test(deploymentBlock)
     ) {
       throw new Error('Replay requires a deployment block');
     }
@@ -417,11 +417,11 @@ export class AdminAuditService {
     }
     // Fail closed on stale release: the context must match the active release.
     const activeReleaseId = this.config.get<string>('RELEASE_ID');
-    const activeChainId = this.config.get<string>('CHAIN_ID');
+    const activeChainId = this.config.get<string | number>('CHAIN_ID');
     if (activeReleaseId && releaseId !== activeReleaseId) {
       throw new Error('Replay rejected: stale release');
     }
-    if (activeChainId && chainId !== activeChainId) {
+    if (activeChainId !== undefined && chainId !== Number(activeChainId)) {
       throw new Error('Replay rejected: chain id mismatch');
     }
   }
@@ -432,30 +432,39 @@ export class AdminAuditService {
       .digest('hex');
   }
 
+  private replayResultReference(idempotencyKey: string): string {
+    // The audit result reference is a UUID. Keep the version and variant bits
+    // fixed and derive the remaining bits from the replay digest.
+    return [
+      idempotencyKey.slice(0, 8),
+      idempotencyKey.slice(8, 12),
+      '8' + idempotencyKey.slice(13, 16),
+      '8' + idempotencyKey.slice(17, 20),
+      idempotencyKey.slice(20, 32),
+    ].join('-');
+  }
+
   private replayAuditInput(
     request: DeadLetterReplayRequest,
-    reason: string,
-    idempotencyKey: string,
+    resultReference: string,
     outcome: AdminAuditOutcome,
   ): AdminAuditLogInput {
     return {
-      eventId: randomUUID(),
       actorId: request.actorId,
+      actorType: 'user',
+      action: AdminActionType.DEAD_LETTER_REPLAY,
+      actionCategory: AdminActionCategory.SYSTEM_OPERATIONS,
+      targetType: 'dead_letter_message',
+      targetId: request.messageId,
+      capability: request.capability,
+      authoritySource: 'policy',
+      authorityReference: request.actorId,
+      requestReference: request.correlationId,
       correlationId: request.correlationId,
-      action: 'dead_letter_replay' as AdminActionType,
-      category: 'operations' as AdminActionCategory,
-      severity: 'high' as AdminAuditSeverity,
+      severity: AdminAuditSeverity.HIGH,
       outcome,
-      reason,
       chainContext: request.chainContext,
-      resultReference: idempotencyKey,
-      metadata: {
-        messageId: request.messageId,
-        originalPayloadHash: request.originalPayloadHash.toLowerCase(),
-        capability: request.capability,
-        dryRun: request.dryRun,
-        batchSize: request.batchSize,
-      },
+      resultReference,
     };
   }
 
@@ -491,23 +500,48 @@ export class AdminAuditService {
       .digest('hex');
   }
 
+  private lockHead(manager: EntityManager): Promise<AdminAuditHead> {
+    return manager.findOneOrFail(AdminAuditHead, {
+      where: { id: 1 },
+      lock: { mode: 'pessimistic_write' },
+    });
+  }
+
   private async append(
     input: AdminAuditLogInput,
     manager: EntityManager,
   ): Promise<string> {
-    const head = await manager.findOneOrFail(AdminAuditHead, { id: 1 });
+    const head = await this.lockHead(manager);
+    const [clock] = await manager.query('SELECT clock_timestamp() AS timestamp');
+    const timestamp = clock?.timestamp instanceof Date ?
+      new Date(clock.timestamp.getTime()) : new Date(clock?.timestamp);
+    if (!Number.isFinite(timestamp.getTime())) {
+      throw new Error('Invalid administrative audit database clock');
+    }
+    const days = Number(this.config.get<number | string>('ADMIN_AUDIT_RETENTION_DAYS') ?? 365);
+    if (!Number.isInteger(days) || days < 1 || days > 3650) {
+      throw new Error('Invalid administrative audit retention configuration');
+    }
     const sequence = BigInt(head.lastSequence) + 1n;
-    const row = manager.create(AdminAuditLog, {
+    const unsigned = manager.create(AdminAuditLog, {
       ...input,
-      eventId: input.eventId ?? randomUUID(),
+      eventId: randomUUID(),
+      timestamp,
+      retentionUntil: new Date(timestamp.getTime() + days * 86400000),
+      severity: input.severity ?? AdminAuditSeverity.MEDIUM,
       chainSequence: sequence.toString(),
       previousHash: head.lastHash,
     });
-    row.integrityHash = this.hash(row);
+    const row = manager.create(AdminAuditLog, {
+      ...unsigned,
+      integrityHash: this.hash(unsigned),
+    });
     await manager.save(row);
-    head.lastSequence = sequence.toString();
-    head.lastHash = row.integrityHash;
-    await manager.save(head);
+    await manager.save(manager.create(AdminAuditHead, {
+      ...head,
+      lastSequence: sequence.toString(),
+      lastHash: row.integrityHash,
+    }));
     return row.eventId;
   }
 }

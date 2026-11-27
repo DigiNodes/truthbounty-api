@@ -119,7 +119,9 @@ ${context}
     const startTime = Date.now();
 
     // 5. Orchestrate LLM request
-    const llmResponse = await this.llmProvider.generateResponse(messagesToLlm);
+    const llmResponse = await this.llmProvider.generateResponse(messagesToLlm, {
+      userId,
+    });
 
     const latencyMs = Date.now() - startTime;
 
