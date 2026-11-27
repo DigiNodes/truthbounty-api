@@ -12,7 +12,9 @@ import { ClaimState } from '../../../domain/claim/claimState';
  *  - every item carries explicit `phase` + `dataState` and a
  *    phase-separated `outcome` (provisional is never serialized as final),
  *  - every chain-derived field is bound to the consumed release
- *    (chainId, releaseId, deploymentBlock, artifactChecksum),
+ *    (chainId, releaseId, artifactVersion, claimRegistryAddress,
+ *     verdictContractAddress,
+ *     deploymentBlock, artifactChecksum),
  *  - provenance and freshness accompany every response.
  */
 
@@ -28,14 +30,15 @@ export const CLAIM_READ_MODEL_ORDER = 'claimId:asc';
 export const CLAIM_READ_MODEL_DEFAULT_LIMIT = 20;
 export const CLAIM_READ_MODEL_MAX_LIMIT = 100;
 
-/** Lifecycle states the canonical claim projection can hold. */
-export const CLAIM_READ_MODEL_STATES = Object.values(ClaimState);
+/** States whose event mappings are verified against the bound release. */
+export const CLAIM_READ_MODEL_STATES = [
+  ClaimState.Submitted,
+  ClaimState.Finalized,
+] as const;
 
 /** Terminal lifecycle states — a claim in one of these has no further transition. */
 export const TERMINAL_CLAIM_STATES: readonly string[] = [
   ClaimState.Finalized,
-  ClaimState.Rejected,
-  ClaimState.Reorged,
 ];
 
 export type ClaimReadModelPhase = 'provisional' | 'finalized';
@@ -64,6 +67,9 @@ export type ClaimReadModelErrorCode =
 export interface ReleaseProvenance {
   chainId: number;
   releaseId: string;
+  artifactVersion: string;
+  claimRegistryAddress: string;
+  verdictContractAddress: string;
   deploymentBlock: number;
   artifactChecksum: string;
 }
@@ -113,14 +119,21 @@ export interface ClaimLastEvent {
 }
 
 /**
- * Phase-separated outcome. Exactly one of `provisional` / `final` is non-null:
- * a provisional outcome is never copied into `final`, so a frontend can render
- * "provisional" data without ever presenting it as final.
+ * Phase-separated outcome. Exactly one of `provisional` / `final` is non-null.
+ * The opaque verdict code is exposed only after the settlement event is final.
  */
 export interface ClaimOutcome {
   phase: ClaimReadModelPhase;
-  provisional: { state: string; settledAt: string | null } | null;
-  final: { state: string; settledAt: string | null } | null;
+  provisional: {
+    state: string;
+    settledAt: string | null;
+    verdictCode: string | null;
+  } | null;
+  final: {
+    state: string;
+    settledAt: string | null;
+    verdictCode: string;
+  } | null;
 }
 
 export interface ClaimReadModelItem {
@@ -219,6 +232,9 @@ export const CLAIM_READ_MODEL_DETAIL_RESPONSE_KEYS: readonly string[] = [
 export const CLAIM_READ_MODEL_PROVENANCE_KEYS: readonly string[] = [
   'chainId',
   'releaseId',
+  'artifactVersion',
+  'claimRegistryAddress',
+  'verdictContractAddress',
   'deploymentBlock',
   'artifactChecksum',
 ];

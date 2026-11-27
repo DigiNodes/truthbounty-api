@@ -58,5 +58,5 @@ To prevent high resource overhead in high-throughput environments, configure sam
 ### Forcing Request Profiling via Header
 Engineers can force 100% sampling for specific debugging HTTP requests using the header:
 ```bash
-curl -H "x-profile-request: true" http://localhost:3000/api/claims
+curl -H "x-profile-request: true" "http://localhost:3000/api/v2/claim-read-models?limit=20"
 ```

@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
+import { timingSafeEqualUtf8 } from '../common/utils/timing-safe.util';
 import { isMetricsExplicitlyDisabled } from './metrics-enabled';
 
 @Injectable()
@@ -35,15 +36,24 @@ export class MetricsAuthGuard implements CanActivate {
       throw new UnauthorizedException('Missing authorization header');
     }
 
-    const [scheme, token] = authHeader.split(' ');
-
-    if (scheme !== 'Bearer' || !token) {
+    // Node may expose repeated headers as an array, while some proxies join
+    // them with commas. Neither representation is a single bearer credential.
+    if (typeof authHeader !== 'string') {
       throw new UnauthorizedException(
         'Invalid authorization scheme. Use Bearer token',
       );
     }
 
-    if (token !== metricsToken) {
+    const match = /^Bearer ([^\s]+)$/.exec(authHeader);
+    const token = match?.[1];
+
+    if (!token || token.includes(',')) {
+      throw new UnauthorizedException(
+        'Invalid authorization scheme. Use Bearer token',
+      );
+    }
+
+    if (!timingSafeEqualUtf8(token, metricsToken)) {
       throw new UnauthorizedException('Invalid metrics token');
     }
 

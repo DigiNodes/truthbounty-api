@@ -2,6 +2,8 @@ import { HttpException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { FindOperator, Repository } from 'typeorm';
 import { FinalityPolicyService } from '../../../config/finality-policy.service';
+import { ClaimState } from '../../../domain/claim/claimState';
+import { ArtifactRegistryService } from '../../../v2/events/artifact-registry.service';
 import { DataState } from '../../../v2/common/data-state.enum';
 import { EvidenceStatus } from '../../../v2/evidence/entities/project-evidence.entity';
 import { ClaimReadModelService } from './claim-read-model.service';
@@ -20,6 +22,9 @@ const CONCURRENT_FUTURE = new Date('2030-01-01T00:00:00.000Z');
 const PROVENANCE: ReleaseProvenance = {
   chainId: CHAIN_ID,
   releaseId: RELEASE_ID,
+  artifactVersion: '2.0.0-rc.3',
+  claimRegistryAddress: `0x${'c'.repeat(40)}`,
+  verdictContractAddress: `0x${'b'.repeat(40)}`,
   deploymentBlock: 24850000,
   artifactChecksum: 'f'.repeat(64),
 };
@@ -146,8 +151,11 @@ async function expectFailClosed(
 describe('ClaimReadModelService', () => {
   let service: ClaimReadModelService;
   let claimRepo: FakeRepo<any>;
+  let canonicalEventRepo: FakeRepo<any>;
+  let checkpointRepo: FakeRepo<any>;
   let evidenceRepo: FakeRepo<any>;
   let roundRepo: FakeRepo<any>;
+  let artifactRegistry: { resolve: jest.Mock };
   let provenance: { resolve: jest.Mock };
   let freshness: { snapshot: jest.Mock };
 
@@ -157,15 +165,25 @@ describe('ClaimReadModelService', () => {
 
   beforeEach(() => {
     claimRepo = new FakeRepo();
+    canonicalEventRepo = new FakeRepo();
+    checkpointRepo = new FakeRepo();
     evidenceRepo = new FakeRepo();
     roundRepo = new FakeRepo();
+    artifactRegistry = {
+      resolve: jest.fn(async () => ({
+        artifactVersion: PROVENANCE.artifactVersion,
+      })),
+    };
     provenance = { resolve: jest.fn(() => ({ ...PROVENANCE })) };
     freshness = { snapshot: jest.fn(async () => healthyFreshness()) };
 
     service = new ClaimReadModelService(
       claimRepo as unknown as Repository<any>,
+      canonicalEventRepo as unknown as Repository<any>,
+      checkpointRepo as unknown as Repository<any>,
       evidenceRepo as unknown as Repository<any>,
       roundRepo as unknown as Repository<any>,
+      artifactRegistry as unknown as ArtifactRegistryService,
       provenance as unknown as ClaimReadModelProvenanceService,
       freshness as unknown as ClaimReadModelFreshnessService,
       new FinalityPolicyService(configService),
@@ -180,17 +198,47 @@ describe('ClaimReadModelService', () => {
     settledAt?: Date | null;
     createdAt?: Date;
   }): Promise<void> {
+    const txHash = `0x${'a'.repeat(64)}`;
+    const claimId = options.claimId;
+    const blockNumber = options.blockNumber ?? '24859990';
+    const state = options.state ?? ClaimState.Submitted;
     await claimRepo.save({
-      claimId: options.claimId,
+      claimId,
       chainId: String(CHAIN_ID),
-      state: options.state ?? 'UNDER_VERIFICATION',
-      blockNumber: options.blockNumber ?? '24859990',
-      eventTxHash: '0x' + 'a'.repeat(64),
+      state,
+      blockNumber,
+      eventTxHash: txHash,
       eventIndex: options.eventIndex ?? 0,
       stateChangedAt: new Date('2026-01-01T00:00:00.000Z'),
       settledAt: options.settledAt ?? null,
       createdAt: options.createdAt ?? SNAPSHOT_PAST,
     });
+
+    if (state === ClaimState.Submitted || state === ClaimState.Finalized) {
+      const isFinalized = state === ClaimState.Finalized;
+      const contractAddress = isFinalized
+        ? PROVENANCE.verdictContractAddress
+        : PROVENANCE.claimRegistryAddress;
+      await canonicalEventRepo.save({
+        chainId: CHAIN_ID,
+        contractAddress,
+        artifactVersion: PROVENANCE.artifactVersion,
+        eventName: isFinalized ? 'VerdictSettled' : 'ClaimSubmitted',
+        txHash,
+        logIndex: options.eventIndex ?? 0,
+        blockNumber,
+        claimId,
+        payload: isFinalized
+          ? { finalVerdict: '0' }
+          : { author: `0x${'d'.repeat(40)}`, contentURI: 'ipfs://sample' },
+      });
+      await checkpointRepo.save({
+        chainId: CHAIN_ID,
+        contractAddress,
+        lastSafeBlock: '24860010',
+        lastFinalizedBlock: '24860000',
+      });
+    }
   }
 
   describe('list — provenance, freshness, phase', () => {
@@ -221,7 +269,7 @@ describe('ClaimReadModelService', () => {
       await seedClaim({ claimId: 'claim-0001', state: 'SUBMITTED' });
       await seedClaim({
         claimId: 'claim-0002',
-        state: 'SETTLED',
+        state: 'FINALIZED',
         settledAt: new Date('2025-12-31T00:00:00.000Z'),
       });
 
@@ -233,8 +281,73 @@ describe('ClaimReadModelService', () => {
       expect(provisional.outcome.final).toBeNull();
       expect(finalized.phase).toBe('finalized');
       expect(finalized.outcome.provisional).toBeNull();
-      expect(finalized.outcome.final?.state).toBe('SETTLED');
+      expect(finalized.outcome.final?.state).toBe('FINALIZED');
+      expect(finalized.outcome.final?.verdictCode).toBe('0');
       expect(finalized.dataState).toBe(DataState.FINALIZED);
+    });
+
+    it('never finalizes a claim without its canonical settlement event', async () => {
+      await seedClaim({ claimId: 'claim-missing', state: 'FINALIZED' });
+      canonicalEventRepo.rows = [];
+
+      await expectFailClosed(
+        () => service.getList({ limit: 20 }),
+        503,
+        'STALE_RECONCILIATION',
+        'canonical_claim_event_missing_or_ambiguous',
+      );
+    });
+
+    it('fails closed for lifecycle states without a verified release mapping', async () => {
+      await seedClaim({
+        claimId: 'claim-unmapped-state',
+        state: ClaimState.Review,
+      });
+
+      await expectFailClosed(
+        () => service.getDetail('claim-unmapped-state'),
+        503,
+        'STALE_RECONCILIATION',
+        'unsupported_claim_lifecycle_state',
+      );
+    });
+
+    it('fails closed on a malformed canonical settlement verdict code', async () => {
+      await seedClaim({ claimId: 'claim-malformed', state: 'FINALIZED' });
+      canonicalEventRepo.rows[0].payload.finalVerdict = 'inconclusive';
+
+      await expectFailClosed(
+        () => service.getDetail('claim-malformed'),
+        503,
+        'STALE_RECONCILIATION',
+        'malformed_settlement_event',
+      );
+    });
+
+    it('fails closed when the settlement artifact does not match the release', async () => {
+      await seedClaim({ claimId: 'claim-wrong-artifact', state: 'FINALIZED' });
+      artifactRegistry.resolve.mockResolvedValue({
+        artifactVersion: 'unapproved-version',
+      });
+
+      await expectFailClosed(
+        () => service.getDetail('claim-wrong-artifact'),
+        503,
+        'INVALID_ARTIFACT_VERSION',
+        'claim_event_artifact_mismatch',
+      );
+    });
+
+    it('keeps an unfinalized canonical settlement provisional', async () => {
+      await seedClaim({ claimId: 'claim-unfinalized', state: 'FINALIZED' });
+      checkpointRepo.rows[0].lastFinalizedBlock = '24859989';
+
+      const [item] = (await service.getList({ limit: 20 })).data;
+
+      expect(item.dataState).not.toBe(DataState.FINALIZED);
+      expect(item.phase).toBe('provisional');
+      expect(item.outcome.final).toBeNull();
+      expect(item.outcome.provisional?.verdictCode).toBeNull();
     });
 
     it('reports evidence availability and deadlines from the projections', async () => {
@@ -268,9 +381,9 @@ describe('ClaimReadModelService', () => {
 
     it('filters by canonical lifecycle state', async () => {
       await seedClaim({ claimId: 'claim-0001', state: 'SUBMITTED' });
-      await seedClaim({ claimId: 'claim-0002', state: 'SETTLED' });
+      await seedClaim({ claimId: 'claim-0002', state: 'FINALIZED' });
 
-      const result = await service.getList({ limit: 20, state: 'SETTLED' });
+      const result = await service.getList({ limit: 20, state: 'FINALIZED' });
       expect(result.data.map((i) => i.claimId)).toEqual(['claim-0002']);
     });
   });
@@ -326,7 +439,7 @@ describe('ClaimReadModelService', () => {
 
       const first = await service.getList({
         limit: 1,
-        state: 'UNDER_VERIFICATION',
+        state: ClaimState.Submitted,
       });
       expect(first.pagination.nextCursor).not.toBeNull();
 
@@ -334,7 +447,7 @@ describe('ClaimReadModelService', () => {
         () =>
           service.getList({
             limit: 1,
-            state: 'SETTLED',
+            state: 'FINALIZED',
             cursor: first.pagination.nextCursor as string,
           }),
         400,
@@ -477,8 +590,9 @@ describe('ClaimReadModelService', () => {
       );
 
       // Recovery: the projection is rewound to the common ancestor and the
-      // freshness snapshot is healthy again.
+      // canonical source is re-included and the freshness snapshot is healthy.
       claimRepo.rows[0].blockNumber = '24860005';
+      canonicalEventRepo.rows[0].blockNumber = '24860005';
       freshness.snapshot.mockResolvedValue(healthyFreshness());
 
       const recovered = await service.getList({ limit: 20 });
@@ -491,7 +605,7 @@ describe('ClaimReadModelService', () => {
     it('returns the canonical detail bound to the release', async () => {
       await seedClaim({
         claimId: 'claim-0002',
-        state: 'SETTLED',
+        state: 'FINALIZED',
         settledAt: new Date('2025-12-31T00:00:00.000Z'),
       });
 

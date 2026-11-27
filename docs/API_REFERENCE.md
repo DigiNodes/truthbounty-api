@@ -1,6 +1,9 @@
 # TruthBounty API Documentation
 
-This document provides a comprehensive reference for all API endpoints in the TruthBounty API. TruthBounty is a decentralized news verification infrastructure that allows users to submit claims, provide evidence, resolve disputes, and earn rewards.
+This document provides a reference for the TruthBounty API. TruthBounty is a
+decentralized news verification infrastructure. Claim and evidence protocol
+transitions are submitted by users through their wallets; the API indexes and
+serves finalized canonical projections.
 
 ## Base URL
 
@@ -26,47 +29,36 @@ http://localhost:3000/api
 
 ---
 
-### Claims
+### Claims and evidence
 
-Manage claims and their evidence.
+The protocol is chain-authoritative. The API does not create claims or register,
+replace, or remove evidence. Claims are submitted by the user's wallet; the API
+serves only event-derived projections. Legacy routes remain as migration
+stubs and return `410 Gone` with a canonical replacement path.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/claims/latest` | Get latest claims |
-| GET | `/claims/user/:wallet` | Get claims by user wallet |
-| GET | `/claims/:id` | Get a single claim by ID |
-| POST | `/claims` | Create a new claim |
-| POST | `/claims/:claimId/evidence` | Add evidence to a claim |
-| PUT | `/claims/evidence/:evidenceId` | Update evidence with new version |
-| GET | `/claims/:claimId/evidence` | Get all evidence for a claim |
-| GET | `/claims/:claimId/evidence/latest` | Get latest evidence for a claim |
-| GET | `/claims/evidence/:evidenceId` | Get a single evidence by ID |
+| GET | `/api/v2/claim-read-models` | Canonical, release-bound claim projection |
+| GET | `/api/v2/claim-read-models/:claimId` | Canonical projected claim detail |
+| GET | `/v2/claims/:claimId/evidence` | Canonical event-projected evidence |
+| GET | `/v2/claims/:claimId/evidence/versions` | Canonical projected evidence versions |
+| GET | `/api/v2/claims/*` (legacy feed) | Deprecated compatibility path; returns 410 |
+| GET | `/claims/*` (legacy) | Deprecated compatibility path; returns 410 |
+| POST | `/claims` (legacy) | Returns 410; submit via the user's wallet |
+| POST | `/claims/:claimId/evidence` (legacy) | Returns 410; registration requires wallet transaction |
+| PUT | `/claims/evidence/:evidenceId` (legacy) | Returns 410; replacement requires wallet transaction |
 
-**Query Parameters:**
-- "limit" (optional): Number of results to return (default: 10)
+#### Chain-first lifecycle
 
-**Path Parameters:**
-- `:wallet` - Wallet address
--  `:id` - Claim ID
-- `:claimId` - Claim ID
-- `:evidenceId` - Evidence ID
-
-**Request Body (POST /claims):**
-```json
-{
-  "title": "string",
-  "content": "string",
-  "category": "string",
-  "wallet": "string"
-}
-```
-
-**Request Body (POST /claims/:claimId/evidence):**
-```json
-{
-  "cid": "string"
-}
-```
+1. Prepare and validate any off-chain content; an IPFS CID alone is not
+   protocol registration. This API currently exposes no claim-evidence upload
+   route.
+2. The user's wallet submits the claim or evidence transaction directly to the
+   approved contract. The API never signs or relays it.
+3. Wait for the contract event to reach the configured finality threshold.
+4. Read the resulting state from the canonical projection endpoints above.
+   Until ingestion completes, the claim/evidence may be pending or not found;
+   never treat a submitted transaction or uploaded CID as projected state.
 
 ---
 
@@ -534,40 +526,40 @@ Conversational AI assistance over protocol knowledge, with context retrieval, st
 
 ---
 
-## Claim Lifecycle Errors (V1)
+## Claim State and Finality
 
-Claim lifecycle operations fail closed with stable, versioned, typed error codes. Clients MUST switch on the code field and MuST NOT parse human-readable messages. Internal details (SQL / stack traces / raw chain payloads) iss never returned.
+The API does not expose a claim-verdict or finalization write operation.
+`POST /claims` creates claim metadata only; client-supplied `verdict`,
+`confidenceScore`, or `finalized` fields do not set protocol state.
 
-### Error Envelope
+The release-bound, read-only endpoints are:
 
-All claim lifecycle errors return the standard envelope with a typed error object:
+| Method | Route | Behavior |
+|--------|-------|----------|
+| GET | `/api/v2/claim-read-models` | Read-only list with projection freshness and release provenance |
+| GET | `/api/v2/claim-read-models/:claimId` | Read-only claim projection with the same provenance |
+| GET | `/api/v2/claims` and `/api/v2/claims/:id` | Deprecated metadata-only feed; does not publish verdict/finality |
 
-```json
-{
-  "success": false,
-  "requestId": "string",
-  "timestamp": "ISO-8601 string",
-  "data": null,
-  "error": {
-    "code": "CANONICAL_CLAIM_NOT_FOUND",
-    "code": "CANONICAL_CLAIM_NOT_FOUND",
-    "version": "v1",
-    "message": "Claim not found",
-    "details": {
-      "claimId": "string",
-      "chainId": "number",
-      "releaseId": "string",
-      "deploymentBlock": "number",
-      "artifactChecksum": "string"
-    },
-    "retryable": false
-  }
-}
-```
+A `FINALIZED` row is served as finalized only when its source identity matches
+one canonical `VerdictSettled` event, the event's artifact version and verdict
+contract address match the configured release provenance (and `SUBMITTED` rows
+must match the configured claim-registry address), the event has a
+valid opaque verdict code, and that contract's finalized checkpoint covers the
+event block. Otherwise the API fails closed or keeps the outcome provisional.
+The opaque decimal `verdictCode` is included only after finality and is never
+interpreted as a verdict label until the pinned release's mapping is verified.
 
-### Error Codes
+Read-model release configuration must include
+`CLAIM_READ_MODEL_ARTIFACT_VERSION` and
+`CLAIM_READ_MODEL_CLAIM_REGISTRY_ADDRESS` plus
+`CLAIM_READ_MODEL_VERDICT_CONTRACT_ADDRESS` in addition to the chain, release,
+deployment block, and artifact checksum. Missing or mismatched provenance
+returns a fail-closed error.
 
-All codes are prefixed and versioned (`v1`). The code is stable across patch releases; changes to code semantics require a new version prefix.
+The former `GET /claims/read-model/:claimId` and
+`POST /claims/read-model/:claimId/reproject` routes were removed. The latter
+replayed an unversioned lifecycle-event table and was not a safe canonical
+projection input. No compatibility alias is retained.
 
 | HTTP Status | Code | Meaning | Retryable |
 |-------------|------|---------|----------|

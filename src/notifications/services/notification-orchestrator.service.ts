@@ -5,36 +5,25 @@ import {
   parseDeliveryChannel,
 } from '../delivery/delivery-channel';
 import { PreferenceEnforcer } from './preference-enforcer.service';
-import { TemplateRenderer, RenderedNotification } from './template-renderer.service';
+import {
+  TemplateRenderer,
+  RenderedNotification,
+} from './template-renderer.service';
 import { DeliveryTracker } from './delivery-tracker.service';
 import { EventType } from '../enums/event-type.enum';
 import { NotificationChannel } from '../channels/channel.interface';
-import * as crypto from 'crypto';
-import {
-  NotificationDeliveryResult,
-  RecipientDeliveryResult,
-  ChannelDeliveryOutcome,
-  DeliveryOutcome,
-  aggregateRecipientResult,
-  aggregateNotificationResult,
-  successOutcome,
-  skippedOutcome,
-  retryableFailureOutcome,
-  terminalFailureOutcome,
-  channelUnavailableOutcome,
-} from '../delivery/delivery-outcome';
-import { narrowDeliveryError } from '../delivery/delivery-error';
+import { buildDeliveryIdempotencyKey } from '../delivery/delivery-idempotency-key';
 
 /**
  * NotificationOrchestrator
- * 
+ *
  * High-level orchestration service that:
  * 1. Loads user preferences
  * 2. Renders notification templates
  * 3. Selects delivery channels
  * 4. Enforces constraints (quiet hours, rate limits, etc.)
  * 5. Tracks delivery results
- * 
+ *
  * Acts as the coordinator between preference enforcement, templating,
  * and channel delivery.
  */
@@ -54,7 +43,10 @@ export class NotificationOrchestrator {
   /**
    * Register a delivery channel implementation
    */
-  registerChannel(channel: DeliveryChannel | string, implementation: NotificationChannel): void {
+  registerChannel(
+    channel: DeliveryChannel | string,
+    implementation: NotificationChannel,
+  ): void {
     const canonical = requireDeliveryChannel(channel);
     this.channels.set(canonical, implementation);
     this.logger.log(`Registered delivery channel: ${canonical}`);
@@ -62,7 +54,7 @@ export class NotificationOrchestrator {
 
   /**
    * Orchestrate notification delivery for an event
-   * 
+   *
    * @param eventType Type of event that triggered notification
    * @param recipientIds User IDs to notify
    * @param metadata Event metadata for templating
@@ -112,24 +104,12 @@ export class NotificationOrchestrator {
   ): Promise<ChannelDeliveryOutcome[]> {
     this.logger.debug(`Delivering ${eventType} to user ${userId}`);
 
-    // Generate idempotency key for this delivery
-    const idempotencyKey = this.generateDeliveryIdempotencyKey(eventType, userId, metadata);
-
-    // Check idempotency (prevent duplicate delivery)
-    const shouldProceed = await this.deliveryTracker.checkIdempotency(idempotencyKey);
-    if (!shouldProceed) {
-      this.logger.debug(`Idempotent delivery suppressed for ${userId}`);
-      // Return skipped outcome for all potential channels
-      return [
-        skippedOutcome(DeliveryChannel.IN_APP, 'Duplicate delivery prevented by idempotency guard'),
-      ];
-    }
-
     // Get user preferences
     const preferences = await this.preferenceEnforcer.getPreferences(userId);
 
     // Get enabled channels for user
-    const enabledChannels = await this.preferenceEnforcer.getEnabledChannels(userId);
+    const enabledChannels =
+      await this.preferenceEnforcer.getEnabledChannels(userId);
 
     if (enabledChannels.length === 0) {
       this.logger.debug(`User ${userId} has no enabled notification channels`);
@@ -157,14 +137,7 @@ export class NotificationOrchestrator {
 
     // Render templates and send via channels
     const deliveryPromises = enabledChannels.map((channel) =>
-      this.deliverViaChannel(
-        channel,
-        userId,
-        eventType,
-        metadata,
-        preferences,
-        idempotencyKey,
-      ),
+      this.deliverViaChannel(channel, userId, eventType, metadata, preferences),
     );
 
     const results = await Promise.allSettled(deliveryPromises);
@@ -198,11 +171,20 @@ export class NotificationOrchestrator {
     eventType: EventType,
     metadata: Record<string, any>,
     preferences: any,
-    idempotencyKey: string,
-  ): Promise<ChannelDeliveryOutcome> {
+  ): Promise<void> {
+    const idempotencyKey = this.generateDeliveryIdempotencyKey(
+      eventType,
+      userId,
+      channel,
+      metadata,
+    );
+
     try {
       // Check if channel is enabled
-      const isEnabled = await this.preferenceEnforcer.isChannelEnabled(userId, channel);
+      const isEnabled = await this.preferenceEnforcer.isChannelEnabled(
+        userId,
+        channel,
+      );
       if (!isEnabled) {
         this.logger.debug(`Channel ${channel} disabled for user ${userId}`);
         return skippedOutcome(channel, 'Channel disabled for user');
@@ -231,6 +213,23 @@ export class NotificationOrchestrator {
         );
       }
 
+      // One durable claim per recipient and channel. Redis failures cannot
+      // grant permission to send; DeliveryTracker uses the DB as the boundary.
+      const shouldProceed = await this.deliveryTracker.checkIdempotency({
+        idempotencyKey,
+        notificationId: metadata.notificationId,
+        eventType,
+        recipientId: userId,
+        channel,
+        aggregateId: metadata.aggregateId,
+      });
+      if (!shouldProceed) {
+        this.logger.debug(
+          `Idempotent delivery suppressed for ${userId} via ${channel}`,
+        );
+        return;
+      }
+
       // Render template for this channel
       const rendered = await this.templateRenderer.render(
         eventType,
@@ -238,6 +237,25 @@ export class NotificationOrchestrator {
         metadata,
         preferences.language,
       );
+
+      // Get channel implementation
+      const canonical = requireDeliveryChannel(channel);
+      const channelImpl = this.channels.get(canonical);
+      if (!channelImpl) {
+        this.logger.warn(
+          `No implementation registered for channel: ${canonical}`,
+        );
+        return;
+      }
+
+      // Check if channel config is valid
+      const config = await channelImpl.validateConfig(userId);
+      if (!config.valid) {
+        this.logger.warn(
+          `Channel ${channel} config invalid for ${userId}: ${config.errors.join(', ')}`,
+        );
+        return;
+      }
 
       // Deliver via channel
       this.logger.debug(`Delivering ${eventType} to ${userId} via ${channel}`);
@@ -247,6 +265,7 @@ export class NotificationOrchestrator {
         rendered,
         eventType,
         metadata,
+        idempotencyKey,
       });
 
       // Track result and return structured outcome
@@ -279,14 +298,9 @@ export class NotificationOrchestrator {
           0,
           { source: 'orchestrator', timestamp: new Date(), kind: error.kind },
         );
-
-        this.logger.warn(`Failed to deliver to ${userId} via ${channel}: ${result.error}`);
-
-        if (error.disposition === 'retryable') {
-          return retryableFailureOutcome(channel, error.kind, error.message, 0, idempotencyKey);
-        } else {
-          return terminalFailureOutcome(channel, error.kind, error.message, idempotencyKey);
-        }
+        this.logger.warn(
+          `Failed to deliver to ${userId} via ${channel}: ${result.error}`,
+        );
       }
     } catch (error) {
       this.logger.error(
@@ -336,10 +350,15 @@ export class NotificationOrchestrator {
   private generateDeliveryIdempotencyKey(
     eventType: EventType,
     userId: string,
+    channel: DeliveryChannel,
     metadata: Record<string, any>,
   ): string {
-    const combined = `${eventType}:${userId}:${metadata.aggregateId || ''}`;
-    return crypto.createHash('sha256').update(combined).digest('hex');
+    return buildDeliveryIdempotencyKey({
+      eventType,
+      recipientId: userId,
+      channel,
+      aggregateId: metadata.aggregateId,
+    });
   }
 
   /**

@@ -34,8 +34,10 @@ export class ClaimFeedQueryDto {
   limit: number = CLAIM_FEED_DEFAULT_LIMIT;
 
   @ApiPropertyOptional({
-    description: 'Filter by lifecycle state',
+    description:
+      'Deprecated: state filtering is available from /api/v2/claim-read-models only',
     enum: CLAIM_FEED_STATES,
+    deprecated: true,
   })
   @IsOptional()
   @IsString()

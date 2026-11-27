@@ -21,11 +21,8 @@ export class JobsProcessor extends WorkerHost {
         const deletedCount = await this.jobsService.cleanupSybilHistory();
         return { deletedCount };
       }
-      // V2 Architecture: COMPUTE_SCORES and COMPUTE_REPUTATION jobs removed
-      // These jobs previously contained backend-authoritative logic that
-      // automatically finalized claims based on backend calculations.
-      // In V2, all claim state transitions must come from on-chain events
-      // projected by the V2 projectors, not from backend calculations.
+      // COMPUTE_SCORES and COMPUTE_REPUTATION jobs were removed; no job may
+      // derive protocol claim state from off-chain calculations.
       default:
         throw new Error(`Unknown job name: ${job.name}`);
     }

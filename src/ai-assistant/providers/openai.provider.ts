@@ -100,7 +100,7 @@ export class OpenAiProvider implements AiProvider {
       return true;
     } catch (error) {
       this.logger.warn(
-        `OpenAI availability check failed: ${(error as Error).message}`,
+        'OpenAI availability check failed',
       );
       return false;
     }

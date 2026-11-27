@@ -6,7 +6,7 @@ describe('DashboardService', () => {
   let incidentRepo: any;
   let reportRepo: any;
   let auditLogRepo: any;
-  let claimRepo: any;
+  let claimReadModelRepo: any;
   let jobsService: any;
   let notificationService: any;
   let redisService: any;
@@ -28,7 +28,7 @@ describe('DashboardService', () => {
     auditLogRepo = {
       createQueryBuilder: jest.fn(),
     };
-    claimRepo = {
+    claimReadModelRepo = {
       count: jest.fn().mockResolvedValue(3),
     };
     jobsService = {
@@ -51,7 +51,7 @@ describe('DashboardService', () => {
       incidentRepo,
       reportRepo,
       auditLogRepo,
-      claimRepo,
+      claimReadModelRepo,
       jobsService,
       notificationService,
       redisService,
@@ -102,6 +102,8 @@ describe('DashboardService', () => {
     expect(summary.infrastructure.queues.totalWaiting).toBe(2);
     expect(summary.notifications.delivered).toBe(4);
     expect(summary.api.totalRequests).toBe(120);
-    expect(summary.protocol.activeClaims).toBe(3);
+    expect(summary.protocol.activeClaims).toBeNull();
+    expect(summary.protocol.finalizedClaims).toBeNull();
+    expect(summary.protocol.claimStateProjection).toBe('unavailable');
   });
 });

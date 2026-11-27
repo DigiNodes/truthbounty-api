@@ -40,20 +40,15 @@
  * │ GET    /auth/profile                            │ AUTHN                                    │
  * │ DELETE /auth/sessions/:address                  │ AUTHN + AdminOnly (env-list gate)        │
  * ├─────────────────────────────────────────────────┼──────────────────────────────────────────┤
- * │ POST   /support/requests                         │ PUBLIC (validated support submission)   │
- * │ GET    /support/requests                         │ ROLE(moderator,admin)                    │
- * │ GET    /support/requests/:id                     │ ROLE(moderator,admin)                    │
- * │ DELETE /support/requests/:id                     │ ROLE(moderator,admin)                    │
- * ├─────────────────────────────────────────────────┼──────────────────────────────────────────┤
- * │ GET    /claims/latest                           │ PUBLIC                                   │
- * │ GET    /claims/user/:wallet                     │ PUBLIC                                   │
- * │ GET    /claims/:id                              │ PUBLIC                                   │
- * │ POST   /claims                                  │ AUTHN (any authenticated user)           │
- * │ POST   /claims/:claimId/evidence                │ AUTHN (any authenticated user)           │
- * │ PUT    /claims/evidence/:evidenceId             │ AUTHN (any authenticated user)           │
- * │ GET    /claims/:claimId/evidence                │ PUBLIC                                   │
- * │ GET    /claims/:claimId/evidence/latest         │ PUBLIC                                   │
- * │ GET    /claims/evidence/:evidenceId             │ PUBLIC                                   │
+ * │ GET    /api/v2/claim-read-models                │ PUBLIC (canonical projection)            │
+ * │ GET    /api/v2/claim-read-models/:claimId       │ PUBLIC (canonical projection)            │
+ * │ GET    /v2/claims/:claimId/evidence             │ PUBLIC (event projection)                │
+ * │ GET    /api/v2/claims/* (legacy feed)           │ PUBLIC (deprecated; always 410)           │
+ * │ GET    /claims/* (legacy)                       │ PUBLIC (deprecated; always 410)           │
+ * │ POST   /claims (legacy)                         │ AUTHN (deprecated; always 410)            │
+ * │ Claim/evidence transactions                     │ USER WALLET → APPROVED CONTRACT           │
+ * │ POST   /claims/:claimId/evidence (legacy)       │ AUTHN (deprecated; always 410)            │
+ * │ PUT    /claims/evidence/:evidenceId (legacy)    │ AUTHN (deprecated; always 410)            │
  * ├─────────────────────────────────────────────────┼──────────────────────────────────────────┤
  * │ POST   /disputes                                │ AUTHN (any authenticated user)           │
  * │ PATCH  /disputes/:id/start-review               │ ROLE(moderator,admin)                    │
@@ -117,6 +112,11 @@
  * ├─────────────────────────────────────────────────┼──────────────────────────────────────────┤
  * │ POST   /admin/auth/login                        │ AUTHN (identity bound to verified JWT principal; body address, if any, must match) │
  * │ All other /admin/* routes                       │ ADMIN(varies, see AdminController)       │
+ * ├─────────────────────────────────────────────────┼──────────────────────────────────────────┤
+ * │ POST   /api/v2/internal/notifications/events    │ SERVICE or AUTHN + AdminOnly             │
+ * │ POST   /api/v2/internal/notifications/events/batch │ SERVICE or AUTHN + AdminOnly          │
+ * │ POST   /api/v2/internal/notifications/events/status/:eventId │ SERVICE, ADMIN, or AUTHN (owner/recipient) │
+ * │ POST   /api/v2/internal/notifications/events/metrics │ SERVICE or AUTHN + AdminOnly        │
  * └─────────────────────────────────────────────────┴──────────────────────────────────────────┘
  *
  * FAILURE-CLOSED INVARIANTS

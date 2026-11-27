@@ -3,14 +3,9 @@
  * they appear in the decoded ABI args) that populate the shared normalized
  * columns (actor/claimId/roundId/asset/amount) on CanonicalEvent.
  *
- * ASSUMPTION FLAGGED FOR REVIEW: V2-BE-008 (approved artifact import) has not
- * landed, so there is no frozen ABI to read real argument names from yet.
- * The argument names below follow the naming used throughout the V2 issue
- * descriptions themselves (actor, claimId, roundId, asset, amount) and are
- * intended as the contract-facing convention this pipeline expects; they are
- * expected to be reconciled against the real approved ABI once V2-BE-008
- * lands. Nothing here changes protocol meaning: it only says where to find
- * each field's value in whatever the approved ABI turns out to expose.
+ * The claim lifecycle mappings below use argument names from the pinned
+ * Optimism Sepolia release ABI. Other V2 mappings still include assumptions
+ * that must be reconciled against their approved artifacts.
  *
  * Fields consumed from the free-form `payload` JSON by downstream
  * projectors (not part of this shared-column mapping, since they aren't
@@ -32,6 +27,11 @@ export interface EventFieldMapping {
 }
 
 export const EVENT_SCHEMA_REGISTRY: Record<string, EventFieldMapping> = {
+  // Claim lifecycle events and argument names are pinned by the release ABI.
+  ClaimSubmitted: { actor: 'author', claimId: 'claimId' },
+  ClaimStatusChanged: { claimId: 'claimId' },
+  VerdictSettled: { claimId: 'claimId' },
+
   // Evidence lifecycle (V2-BE-013)
   EvidenceRegistered: { actor: 'submitter', claimId: 'claimId' },
   EvidenceReplaced: { actor: 'submitter', claimId: 'claimId' },

@@ -24,10 +24,9 @@ import {
  *    appeal filed on one replica can be seen by another, and so an action
  *    survives the process that created it.
  *
- * The default {@link InMemoryAbuseSignalStore} keeps the module free of any new
- * external dependency while it is in observe-only mode. Deployments that turn
- * enforcement on bind a shared implementation to {@link ABUSE_SIGNAL_STORE};
- * until then nothing here is a single point of failure for live traffic.
+ * {@link InMemoryAbuseSignalStore} remains available as a bounded test and
+ * evaluation cache. The production module binds a TypeORM implementation to
+ * {@link ABUSE_SIGNAL_STORE}, so decisions and actions survive restarts.
  */
 
 /** Injection token for the abuse signal store. */

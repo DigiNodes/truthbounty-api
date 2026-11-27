@@ -134,8 +134,34 @@ export class IpfsService {
    * - Return a normalized URL string or undefined for unsafe values
    */
   private sanitizeGatewayUrl(urlStr: string): string | undefined {
-    if (typeof urlStr !== 'string') {
-      this.logGatewayRejection('invalid_type');
+    try {
+      // Trim and disallow characters commonly used in XSS vectors in the raw provider string
+      const raw = typeof urlStr === 'string' ? urlStr.trim() : '';
+      if (!raw) return undefined;
+
+      const unsafePattern = /[<>\r\n]/;
+      if (unsafePattern.test(raw)) return undefined;
+
+      const url = new URL(raw);
+
+      // Only allow http(s)
+      if (url.protocol !== 'http:' && url.protocol !== 'https:')
+        return undefined;
+
+      // Gateway URLs must not target private infrastructure or carry credentials.
+      if (
+        url.username ||
+        url.password ||
+        (url.port !== '' && url.port !== '80' && url.port !== '443') ||
+        isUnsafeHostname(url.hostname)
+      ) {
+        return undefined;
+      }
+
+      // Return normalized URL (this will percent-encode parts as needed)
+      return url.toString();
+    } catch {
+      this.logger.warn('Invalid gateway URL from provider');
       return undefined;
     }
 
