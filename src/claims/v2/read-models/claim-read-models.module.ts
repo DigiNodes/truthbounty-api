@@ -4,6 +4,8 @@ import { ClaimReadModel } from '../../entities/claim-read-model.entity';
 import { EventCheckpoint } from '../../../v2/events/entities/event-checkpoint.entity';
 import { ProjectEvidence } from '../../../v2/evidence/entities/project-evidence.entity';
 import { ProjectVerificationRound } from '../../../v2/verification/entities/project-verification-round.entity';
+import { CanonicalEvent } from '../../../v2/events/entities/canonical-event.entity';
+import { V2EventsModule } from '../../../v2/events/v2-events.module';
 import { ClaimReadModelController } from './claim-read-model.controller';
 import { ClaimReadModelService } from './claim-read-model.service';
 import { ClaimReadModelProvenanceService } from './claim-read-model-provenance.service';
@@ -19,8 +21,10 @@ import { ClaimReadModelFreshnessService } from './claim-read-model-freshness.ser
  */
 @Module({
   imports: [
+    V2EventsModule,
     TypeOrmModule.forFeature([
       ClaimReadModel,
+      CanonicalEvent,
       EventCheckpoint,
       ProjectEvidence,
       ProjectVerificationRound,

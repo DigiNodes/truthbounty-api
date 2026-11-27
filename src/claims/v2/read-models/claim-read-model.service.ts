@@ -8,6 +8,11 @@ import {
   Repository,
 } from 'typeorm';
 import { ClaimReadModel } from '../../entities/claim-read-model.entity';
+import { ClaimState } from '../../../domain/claim/claimState';
+import { ArtifactRegistryService } from '../../../v2/events/artifact-registry.service';
+import { CanonicalEvent } from '../../../v2/events/entities/canonical-event.entity';
+import { EventCheckpoint } from '../../../v2/events/entities/event-checkpoint.entity';
+import { DataState } from '../../../v2/common/data-state.enum';
 import {
   EvidenceStatus,
   ProjectEvidence,
@@ -70,10 +75,15 @@ export class ClaimReadModelService {
   constructor(
     @InjectRepository(ClaimReadModel)
     private readonly readModelRepo: Repository<ClaimReadModel>,
+    @InjectRepository(CanonicalEvent)
+    private readonly canonicalEventRepo: Repository<CanonicalEvent>,
+    @InjectRepository(EventCheckpoint)
+    private readonly checkpointRepo: Repository<EventCheckpoint>,
     @InjectRepository(ProjectEvidence)
     private readonly evidenceRepo: Repository<ProjectEvidence>,
     @InjectRepository(ProjectVerificationRound)
     private readonly roundRepo: Repository<ProjectVerificationRound>,
+    private readonly artifactRegistry: ArtifactRegistryService,
     private readonly provenanceService: ClaimReadModelProvenanceService,
     private readonly freshnessService: ClaimReadModelFreshnessService,
     private readonly finalityPolicy: FinalityPolicyService,
@@ -270,6 +280,10 @@ export class ClaimReadModelService {
   ): Promise<ClaimReadModelItem[]> {
     if (rows.length === 0) return [];
 
+    const eventCheckpoints = await this.resolveCanonicalClaimEvents(
+      rows,
+      provenance,
+    );
     const claimIds = rows.map((row) => row.claimId);
     const finalizedBlock =
       freshness.finalizedBlock === null
@@ -305,9 +319,11 @@ export class ClaimReadModelService {
     return rows.map((row) =>
       toClaimReadModelItem(row, {
         provenance,
+        canonicalVerdictCode:
+          eventCheckpoints.get(row.claimId)?.verdictCode ?? null,
         dataState: this.finalityPolicy.classifyByCheckpoint(
           row.blockNumber,
-          checkpoint,
+          eventCheckpoints.get(row.claimId)?.checkpoint ?? checkpoint,
         ),
         evidence: this.summarizeEvidence(
           evidenceByClaim.get(row.claimId) ?? [],
@@ -319,6 +335,155 @@ export class ClaimReadModelService {
         ),
       }),
     );
+  }
+
+  private async resolveCanonicalClaimEvents(
+    rows: ClaimReadModel[],
+    provenance: ReleaseProvenance,
+  ): Promise<
+    Map<
+      string,
+      {
+        checkpoint: { lastSafeBlock: string; lastFinalizedBlock: string };
+        verdictCode: string | null;
+      }
+    >
+  > {
+    const supportedRows = rows.map((row) => {
+      if (row.state === ClaimState.Submitted) {
+        return {
+          row,
+          eventName: 'ClaimSubmitted',
+          contractAddress: provenance.claimRegistryAddress,
+        };
+      }
+      if (row.state === ClaimState.Finalized) {
+        return {
+          row,
+          eventName: 'VerdictSettled',
+          contractAddress: provenance.verdictContractAddress,
+        };
+      }
+      throw this.failClosed(
+        'STALE_RECONCILIATION',
+        HttpStatus.SERVICE_UNAVAILABLE,
+        'Claim lifecycle state has no verified mapping in the bound release',
+        'unsupported_claim_lifecycle_state',
+        provenance,
+      );
+    });
+    const txHashes = [...new Set(supportedRows.map(({ row }) => row.eventTxHash))];
+    const events = await this.canonicalEventRepo.find({
+      where: {
+        chainId: provenance.chainId,
+        txHash: In(txHashes),
+        eventName: In(['ClaimSubmitted', 'VerdictSettled']),
+      },
+    });
+    const checkpoints = await this.checkpointRepo.find({
+      where: { chainId: provenance.chainId },
+    });
+    const result = new Map<
+      string,
+      {
+        checkpoint: { lastSafeBlock: string; lastFinalizedBlock: string };
+        verdictCode: string | null;
+      }
+    >();
+
+    for (const { row, eventName, contractAddress } of supportedRows) {
+      const matches = events.filter(
+        (event) =>
+          event.txHash.toLowerCase() === row.eventTxHash.toLowerCase() &&
+          event.logIndex === row.eventIndex &&
+          event.claimId?.toLowerCase() === row.claimId.toLowerCase() &&
+          event.blockNumber === String(row.blockNumber) &&
+          event.eventName === eventName,
+      );
+      if (matches.length !== 1) {
+        throw this.failClosed(
+          'STALE_RECONCILIATION',
+          HttpStatus.SERVICE_UNAVAILABLE,
+          'Claim projection has no unique matching canonical source event',
+          'canonical_claim_event_missing_or_ambiguous',
+          provenance,
+        );
+      }
+
+      const event = matches[0];
+      const artifact = await this.artifactRegistry.resolve(
+        event.chainId,
+        event.contractAddress,
+      );
+      if (
+        event.contractAddress.toLowerCase() !== contractAddress.toLowerCase() ||
+        !artifact ||
+        artifact.artifactVersion !== event.artifactVersion ||
+        event.artifactVersion !== provenance.artifactVersion
+      ) {
+        throw this.failClosed(
+          'INVALID_ARTIFACT_VERSION',
+          HttpStatus.SERVICE_UNAVAILABLE,
+          'Claim event is not bound to the approved release artifact',
+          'claim_event_artifact_mismatch',
+          provenance,
+        );
+      }
+
+      let outcomeCode: string | null = null;
+      if (eventName === 'VerdictSettled') {
+        const rawVerdictCode = event.payload?.finalVerdict;
+        if (
+          typeof rawVerdictCode !== 'string' ||
+          !/^(0|[1-9]\d*)$/.test(rawVerdictCode) ||
+          BigInt(rawVerdictCode) > 255n
+        ) {
+          throw this.failClosed(
+            'STALE_RECONCILIATION',
+            HttpStatus.SERVICE_UNAVAILABLE,
+            'Canonical settlement event has a malformed verdict code',
+            'malformed_settlement_event',
+            provenance,
+          );
+        }
+        outcomeCode = rawVerdictCode;
+      }
+
+      const checkpoint = checkpoints.find(
+        (candidate) =>
+          candidate.contractAddress.toLowerCase() ===
+          event.contractAddress.toLowerCase(),
+      );
+      if (!checkpoint) {
+        throw this.failClosed(
+          'STALE_RECONCILIATION',
+          HttpStatus.SERVICE_UNAVAILABLE,
+          'Canonical claim event has no contract finality checkpoint',
+          'claim_event_checkpoint_missing',
+          provenance,
+        );
+      }
+
+      let verdictCode: string | null = null;
+      if (
+        eventName === 'VerdictSettled' &&
+        outcomeCode !== null &&
+        this.finalityPolicy.classifyByCheckpoint(event.blockNumber, checkpoint) ===
+          DataState.FINALIZED
+      ) {
+        verdictCode = outcomeCode;
+      }
+
+      result.set(row.claimId, {
+        checkpoint: {
+          lastSafeBlock: checkpoint.lastSafeBlock,
+          lastFinalizedBlock: checkpoint.lastFinalizedBlock,
+        },
+        verdictCode,
+      });
+    }
+
+    return result;
   }
 
   private summarizeEvidence(

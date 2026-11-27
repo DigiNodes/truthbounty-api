@@ -6,7 +6,6 @@ import { ClaimFeedService } from './claim-feed.service';
 import { Claim } from '../entities/claim.entity';
 import { Evidence } from '../entities/evidence.entity';
 import { EvidenceVersion } from '../entities/evidence-version.entity';
-import { IndexedEvent } from '../../entities/indexed-event.entity';
 import { Stake } from '../../staking/entities/stake.entity';
 import { ClaimsCache } from '../../cache/claims.cache';
 
@@ -14,7 +13,7 @@ const buildTestDataSource = (): DataSource => {
   const dataSource = new DataSource({
     type: 'better-sqlite3',
     database: ':memory:',
-    entities: [Claim, Evidence, EvidenceVersion, IndexedEvent, Stake],
+    entities: [Claim, Evidence, EvidenceVersion, Stake],
     synchronize: true,
   });
   // The production `Claim` entity uses the postgres `timestamp` column type
@@ -33,14 +32,13 @@ const buildTestDataSource = (): DataSource => {
  * (V2-BE-024). Exercises the projection-backed query surface against an
  * in-memory SQLite database:
  *   - cursor-based feed pagination with stable ordering
- *   - state / creator / date-range filters
- *   - lifecycle state + confirmation/finality metadata + resource links
+ *   - creator / date-range filters
+ *   - legacy metadata responses do not publish verdict/finality
  *   - not-found contract
  */
 describe('ClaimFeedService (integration: projection query surface)', () => {
   let dataSource: DataSource;
   let claimRepo: Repository<Claim>;
-  let indexedEventRepo: Repository<IndexedEvent>;
   let stakeRepo: Repository<Stake>;
   let service: ClaimFeedService;
 
@@ -49,10 +47,9 @@ describe('ClaimFeedService (integration: projection query surface)', () => {
     await dataSource.initialize();
 
     claimRepo = dataSource.getRepository(Claim);
-    indexedEventRepo = dataSource.getRepository(IndexedEvent);
     stakeRepo = dataSource.getRepository(Stake);
 
-    service = new ClaimFeedService(claimRepo, indexedEventRepo, stakeRepo, {
+    service = new ClaimFeedService(claimRepo, stakeRepo, {
       getClaim: jest.fn().mockResolvedValue(null),
       setClaim: jest.fn().mockResolvedValue(undefined),
     } as unknown as ClaimsCache);
@@ -69,9 +66,6 @@ describe('ClaimFeedService (integration: projection query surface)', () => {
       content: 'Test content',
       source: null,
       metadata: null,
-      resolvedVerdict: null,
-      confidenceScore: null,
-      finalized: false,
       createdAt: new Date('2026-08-28T10:00:00Z'),
       deadline: null,
       effectiveAt: null,
@@ -80,7 +74,7 @@ describe('ClaimFeedService (integration: projection query surface)', () => {
     return claimRepo.save(claim);
   };
 
-  it('returns the full feed with lifecycle state, confirmations, and links', async () => {
+  it('returns metadata without legacy verdict or finality fields', async () => {
     const c1 = await seedClaim({
       effectiveAt: new Date('2026-08-30T12:00:00Z'),
     });
@@ -94,13 +88,14 @@ describe('ClaimFeedService (integration: projection query surface)', () => {
     // Ordered by effectiveAt DESC
     expect(feed.data[0].id).toBe(c1.id);
     expect(feed.data[1].id).toBe(c2.id);
-    expect(feed.data[0].lifecycleState).toBe('PENDING');
-    expect(feed.data[0].confirmations).toEqual({
-      current: 0,
-      required: 12,
-      finalized: false,
-    });
+    expect(feed.data[0]).not.toHaveProperty('lifecycleState');
+    expect(feed.data[0]).not.toHaveProperty('resolvedVerdict');
+    expect(feed.data[0]).not.toHaveProperty('confidenceScore');
+    expect(feed.data[0]).not.toHaveProperty('confirmations');
     expect(feed.data[0].links.self).toBe(`/api/v2/claims/${c1.id}`);
+    expect(feed.data[0].links.canonicalReadModel).toBe(
+      `/api/v2/claim-read-models/${c1.id}`,
+    );
     expect(feed.pagination.hasMore).toBe(false);
   });
 
@@ -139,71 +134,32 @@ describe('ClaimFeedService (integration: projection query surface)', () => {
     expect(seenIds.size).toBe(5);
   });
 
-  it('filters by lifecycle state', async () => {
-    await seedClaim({ effectiveAt: new Date('2026-08-30T12:00:00Z') });
-    await seedClaim({
-      effectiveAt: new Date('2026-08-30T11:00:00Z'),
-      resolvedVerdict: true,
-      confidenceScore: 0.85,
-      finalized: false,
-    });
-    await seedClaim({
-      effectiveAt: new Date('2026-08-30T10:00:00Z'),
-      resolvedVerdict: false,
-      confidenceScore: 0.95,
-      finalized: true,
-    });
-
-    const resolved = await service.getFeed({ limit: 20, state: 'RESOLVED' });
-    expect(resolved.data).toHaveLength(1);
-    expect(resolved.data[0].lifecycleState).toBe('RESOLVED');
-
-    const finalized = await service.getFeed({ limit: 20, state: 'FINALIZED' });
-    expect(finalized.data).toHaveLength(1);
-    expect(finalized.data[0].lifecycleState).toBe('FINALIZED');
-
-    const pending = await service.getFeed({ limit: 20, state: 'PENDING' });
-    expect(pending.data).toHaveLength(1);
-    expect(pending.data[0].lifecycleState).toBe('PENDING');
+  it('rejects state filters instead of reading legacy verdict columns', async () => {
+    await expect(
+      service.getFeed({ limit: 20, state: 'FINALIZED' }),
+    ).rejects.toThrow('Claim state filters are available only from');
   });
 
-  it('returns the detail with full lifecycle, confirmations, and related links', async () => {
+  it('returns detail without lifecycle or confirmation claims', async () => {
     const claim = await seedClaim({
       effectiveAt: new Date(Date.UTC(2026, 7, 28, 10, 0, 0)),
       deadline: new Date(Date.UTC(2026, 8, 15, 0, 0, 0)),
     });
-    await indexedEventRepo.save(
-      indexedEventRepo.create({
-        eventType: 'ClaimCreated',
-        contractAddress: '0x0000000000000000000000000000000000000000',
-        transactionHash: '0x' + 'a'.repeat(64),
-        blockNumber: 1000,
-        logIndex: 0,
-        chainId: 10,
-        eventData: {},
-        parsedData: { claimId: claim.id },
-        confirmations: 40,
-        isFinalized: true,
-        isProcessed: true,
-      }),
-    );
-
     const detail = await service.getDetail(claim.id);
 
     expect(detail.id).toBe(claim.id);
-    expect(detail.lifecycleState).toBe('PENDING');
+    expect(detail).not.toHaveProperty('lifecycleState');
+    expect(detail).not.toHaveProperty('resolvedVerdict');
+    expect(detail).not.toHaveProperty('confidenceScore');
+    expect(detail).not.toHaveProperty('confirmations');
     // SQLite round-trips timestamps as UTC strings; verify the parsed
     // Date object reflects the seeded instant (within the local-TZ offset).
     expect(detail.deadline).toBeInstanceOf(Date);
     expect(detail.effectiveAt).toBeInstanceOf(Date);
-    // Ordering/effective value gracefully falls back even across the
-    // SQLite string round-trip by reconstructing the same instant.
-    expect(detail.confirmations).toEqual({
-      current: 40,
-      required: 12,
-      finalized: true,
-    });
     expect(detail.links.self).toBe(`/api/v2/claims/${claim.id}`);
+    expect(detail.links.canonicalReadModel).toBe(
+      `/api/v2/claim-read-models/${claim.id}`,
+    );
     expect(detail.links.evidence).toBe(`/api/v2/claims/${claim.id}/evidence`);
     expect(detail.links.stakes).toBe(`/api/v2/claims/${claim.id}/stakes`);
   });

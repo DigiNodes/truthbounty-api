@@ -324,13 +324,6 @@ export class DashboardService {
         : 'degraded';
 
     const totalClaims = await this.claimRepo.count();
-    const activeClaims = await this.claimRepo.count({
-      where: { finalized: false },
-    });
-    const finalizedClaims = await this.claimRepo.count({
-      where: { finalized: true },
-    });
-    const pendingClaims = Math.max(activeClaims - finalizedClaims, 0);
 
     return {
       system: {
@@ -394,10 +387,11 @@ export class DashboardService {
       },
       protocol: {
         totalClaims,
-        activeClaims,
-        finalizedClaims,
-        pendingClaims,
-        resolvedClaims: totalClaims - pendingClaims - finalizedClaims,
+        activeClaims: null,
+        finalizedClaims: null,
+        pendingClaims: null,
+        resolvedClaims: null,
+        claimStateProjection: 'unavailable' as const,
       },
     };
   }

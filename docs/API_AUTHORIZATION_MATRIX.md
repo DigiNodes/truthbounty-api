@@ -146,9 +146,19 @@ Notation:
 | GET | `/claims/:claimId/evidence` | PUBLIC |
 | GET | `/claims/:claimId/evidence/latest` | PUBLIC |
 | GET | `/claims/evidence/:evidenceId` | PUBLIC |
+| GET | `/api/v2/claim-read-models` | PUBLIC (read-only, release-bound) |
+| GET | `/api/v2/claim-read-models/:claimId` | PUBLIC (read-only, release-bound) |
 | POST | `/claims` | AUTHN |
 | POST | `/claims/:claimId/evidence` | AUTHN |
 | PUT | `/claims/evidence/:evidenceId` | AUTHN |
+
+Claim verdict/finality is not writable through the API. Legacy
+`POST /claims/read-model/:claimId/reproject` and `GET /claims/read-model/:claimId`
+were removed because they exposed/rebuilt an unversioned lifecycle projection.
+The versioned read model fails closed for finalized rows unless a matching
+`VerdictSettled` event, approved artifact version/address, and that contract's
+finality checkpoint are present. Off-chain vote simulations are advisory only
+and do not mutate claim state.
 
 ### Disputes
 

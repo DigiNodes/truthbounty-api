@@ -167,6 +167,15 @@ export class SearchService {
     pagination: PaginationParams,
     sort: SortField,
   ): Promise<SearchResult<Claim>> {
+    if (
+      sanitizedQuery.fieldTerms.has('finalized') ||
+      filters.finalized !== undefined
+    ) {
+      throw new BadRequestException(
+        'Claim finality filters are available only from /api/v2/claim-read-models',
+      );
+    }
+
     const qb = this.claimRepo.createQueryBuilder('claim');
 
     if (sanitizedQuery.terms.length > 0) {
@@ -190,19 +199,6 @@ export class SearchService {
         claimStatusTerm: sanitizedQuery.fieldTerms.get('status'),
       });
     }
-    if (sanitizedQuery.fieldTerms.has('finalized')) {
-      const val = sanitizedQuery.fieldTerms.get('finalized') === 'true';
-      qb.andWhere('claim.finalized = :claimFinalizedTerm', {
-        claimFinalizedTerm: val,
-      });
-    }
-
-    if (filters.finalized !== undefined) {
-      qb.andWhere('claim.finalized = :finalized', {
-        finalized: filters.finalized,
-      });
-    }
-
     if (filters.fromDate) {
       qb.andWhere('claim.createdAt >= :fromDate', {
         fromDate: new Date(filters.fromDate),

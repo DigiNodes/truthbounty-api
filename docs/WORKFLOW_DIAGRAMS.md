@@ -9,81 +9,46 @@ graph TD
     A[User/Client] --> B[POST /claims]
     B --> C[ClaimsController.createClaim]
     C --> D[ClaimsService.createClaim]
-    D --> E[Generate mock verdict & confidence]
-    E --> F[Save Claim to Database]
-    F --> G[Cache Claim]
-    G --> H[Audit Log: CLAIM_CREATED]
-    H --> I[Return Claim Response]
-    
-    I --> J[POST /claims/:claimId/evidence]
-    J --> K[ClaimsController.createEvidence]
-    K --> L[EvidenceService.createEvidence]
-    L --> M[Create Evidence Record]
-    M --> N[Create Evidence Version v1]
-    N --> O[Save to Database]
-    O --> P[Audit Log: EVIDENCE_SUBMITTED]
-    P --> Q[Return Evidence Response]
-    
-    Q --> R[PUT /claims/evidence/:evidenceId]
-    R --> S[ClaimsController.updateEvidence]
-    S --> T[EvidenceService.addEvidenceVersion]
-    T --> U[Update Evidence latestVersion]
-    U --> V[Create New Evidence Version]
-    V --> W[Save to Database]
-    W --> X[Audit Log: EVIDENCE_UPDATED]
-    X --> Y[Return Updated Version]
-    
-    Y --> Z[ClaimsService.resolveClaim]
-    Z --> AA[Update verdict & confidence]
-    AA --> BB[Save Claim]
-    BB --> CC[Cache Updated Claim]
-    CC --> DD[Audit Log: CLAIM_RESOLVED]
-    DD --> EE[Return Updated Claim]
-    
-    EE --> FF[ClaimsService.finalizeClaim]
-    FF --> GG[Set finalized = true]
-    GG --> HH[Save Claim]
-    HH --> II[Cache Finalized Claim]
-    II --> JJ[Audit Log: CLAIM_FINALIZED]
-    JJ --> KK[Return Finalized Claim]
+    D --> E[Save claim metadata only]
+    E --> F[Return metadata and canonical read-model link]
+    F --> G[Canonical event ingestion]
+    G --> H[Approved artifact decode and quarantine]
+    H --> I[Finality checkpoint and projection]
+    I --> J[GET /api/v2/claim-read-models]
+    J --> K{Matching finalized VerdictSettled event?}
+    K -->|Yes| L[Serve finalized projection with provenance]
+    K -->|No| M[Fail closed or retain provisional state]
+
+    F --> N[POST /claims/:claimId/evidence]
+    N --> O[EvidenceService.createEvidence]
+    O --> P[Save evidence record and version]
     
     style A fill:#e1f5fe
-    style I fill:#c8e6c9
-    style Q fill:#c8e6c9
-    style Y fill:#c8e6c9
-    style EE fill:#c8e6c9
-    style KK fill:#4caf50
+    style F fill:#c8e6c9
+    style L fill:#c8e6c9
+    style M fill:#fff3cd
 ```
 
 ### Claim Flow Steps
 
 1. **Claim Creation**
-   - Client submits claim data via `POST /claims`
-   - System generates mock verdict and confidence score
-   - Claim is saved to database and cached
-   - Audit trail records claim creation
+   - Client submits claim metadata via `POST /claims`
+   - The API stores metadata and returns a link to the release-bound read model
+   - Claim creation does not assign a verdict or finality
 
-2. **Evidence Submission**
+2. **Canonical Projection**
+   - Approved contract artifacts decode canonical Optimism/EVM events
+   - Unknown, malformed, or unapproved events are quarantined
+   - Finality is determined by the checkpoint for the emitting contract
+   - The read API serves a finalized claim only when its matching
+     `VerdictSettled` event and approved release provenance are verified
+   - Missing or unfinalized events never produce a finalized claim
+
+3. **Evidence Submission**
    - Client adds evidence via `POST /claims/:claimId/evidence`
    - Evidence record created with version 1
    - Evidence version stored with CID reference
    - Audit trail records evidence submission
-
-3. **Evidence Updates**
-   - Client updates evidence via `PUT /claims/evidence/:evidenceId`
-   - Version number incremented
-   - New evidence version created
-   - Audit trail records evidence update
-
-4. **Claim Resolution**
-   - System resolves claim with verdict and confidence
-   - Claim updated in database and cache
-   - Audit trail records resolution
-
-5. **Claim Finalization**
-   - System finalizes claim (sets finalized flag)
-   - Claim updated in database and cache
-   - Audit trail records finalization
 
 ## Verification Flow
 

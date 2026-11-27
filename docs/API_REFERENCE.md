@@ -534,73 +534,43 @@ Conversational AI assistance over protocol knowledge, with context retrieval, st
 
 ---
 
-## Claim Lifecycle Errors (V1)
+## Claim State and Finality
 
-Claim lifecycle operations fail closed with stable, versioned, typed error codes. Clients MUST switch on the code field and MuST NOT parse human-readable messages. Internal details (SQL / stack traces / raw chain payloads) iss never returned.
+The API does not expose a claim-verdict or finalization write operation.
+`POST /claims` creates claim metadata only; client-supplied `verdict`,
+`confidenceScore`, or `finalized` fields do not set protocol state.
 
-### Error Envelope
+The release-bound, read-only endpoints are:
 
-All claim lifecycle errors return the standard envelope with a typed error object:
+| Method | Route | Behavior |
+|--------|-------|----------|
+| GET | `/api/v2/claim-read-models` | Read-only list with projection freshness and release provenance |
+| GET | `/api/v2/claim-read-models/:claimId` | Read-only claim projection with the same provenance |
+| GET | `/api/v2/claims` and `/api/v2/claims/:id` | Deprecated metadata-only feed; does not publish verdict/finality |
 
-```json
-{
-  "success": false,
-  "requestId": "string",
-  "timestamp": "ISO-8601 string",
-  "data": null,
-  "error": {
-    "code": "CANONICAL_CLAIM_NOT_FOUND",
-    "code": "CANONICAL_CLAIM_NOT_FOUND",
-    "version": "v1",
-    "message": "Claim not found",
-    "details": {
-      "claimId": "string",
-      "chainId": "number",
-      "releaseId": "string",
-      "deploymentBlock": "number",
-      "artifactChecksum": "string"
-    },
-    "retryable": false
-  }
-}
-```
+A `FINALIZED` row is served as finalized only when its source identity matches
+one canonical `VerdictSettled` event, the event's artifact version and verdict
+contract address match the configured release provenance (and `SUBMITTED` rows
+must match the configured claim-registry address), the event has a
+valid opaque verdict code, and that contract's finalized checkpoint covers the
+event block. Otherwise the API fails closed or keeps the outcome provisional.
+The opaque decimal `verdictCode` is included only after finality and is never
+interpreted as a verdict label until the pinned release's mapping is verified.
 
-### Error Codes
+Read-model release configuration must include
+`CLAIM_READ_MODEL_ARTIFACT_VERSION` and
+`CLAIM_READ_MODEL_CLAIM_REGISTRY_ADDRESS` plus
+`CLAIM_READ_MODEL_VERDICT_CONTRACT_ADDRESS` in addition to the chain, release,
+deployment block, and artifact checksum. Missing or mismatched provenance
+returns a fail-closed error.
 
-All codes are prefixed and versioned (`v1`). The code is stable across patch releases; changes to code semantics require a new version prefix.
+The former `GET /claims/read-model/:claimId` and
+`POST /claims/read-model/:claimId/reproject` routes were removed. The latter
+replayed an unversioned lifecycle-event table and was not a safe canonical
+projection input. No compatibility alias is retained.
 
-| HTTP Status | Code | Meaning | Retryable |
-|-------------|------|---------|----------|
-| 404 | `CANONICAL_CLAIM_NOT_FOUND` | Claim does not exist in canonical state for the bound chain / release / deployment block | false |
-| 403 | `CANONICAL_CLAIM_FORBIDDEN` | Actor is not authorized to perform the transition on this claim | false |
-| 409 | `CANONICAL_CLAIM_WRONG_PHASE` | Requested transition is not valid from the claim's current phase | false |
-| 409 | `CANONICAL_CLAIM_DUPLICATE` | Idempotent retry detected an equivalent prior transition with differing payload | false |
-| 409 | `CANONICAL_CLAIM_INVALID_TRANSITION` | Transition is not permitted by the canonical contract state machine | false |
-| 410 | `CANONICAL_CLAIM_STALE_PROJECTION` | Read or write targeted a stale projection (event not yet canonical at the bound deployment block) | true |
-| 410 | `CANONICAL_CLAIM_REORGED` | The claim was affected by a chain reorg and must be re-resolved from canonical events | true |
-| 503 | `CANONICAL_CLAIM_UNAVAILABLE` | Canonical state is temporarily unavailable (indexer catching up or chain REC failure) | true |
-
-### Error Details Contract
-
-The `details` object is stable and contains only non-sensitive, chain-bound identifiers:
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `claimId` | string | Claim identifier |
-| `chainId` | number | Chain ID the claim is bound to |
-| `releaseId` | string | Contract release ID |
-| `deploymentBlock` | number | Deployment block number |
-| `artifactChecksum` | string | Artifact checksum the state was derived from |
-| `currentPhase` | string (optional) | Canonical phase at time of error (wrong-phase / invalid-transition only) |
-
-Internal details (SQL errors, stack traces, raw event payloads, addresses of non-canonical blocks) are never included.
-
-### Idempotent Retry Semantics
-
-Clients MAY retry any error with `retryable: true` using the same request body and idempotency key. The server MUST return the canonical result of the original transition if it already committed. Divergent payloads for the same idempotency key return `CANONICAL_CLAIM_DUPLICATE`.
-
-### State Transition Authority
-
-State transitions are derived exclusively from canonical contracts and finalized events. Client-supplied phase or state values are ignored for authority purposes and are only used for conflict detection.
+`POST /api/v1/blockchain/votes/simulate` is an off-chain analytics simulation.
+Its result is explicitly labeled advisory and must never be treated as claim
+state, settlement, or consensus authority.
 
 ---
