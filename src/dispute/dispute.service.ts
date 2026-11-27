@@ -21,8 +21,6 @@ export interface DisputeConfig {
   LOW_CONFIDENCE_THRESHOLD: number;
   /** Minority opposition ratio at or above which a dispute is triggered (0–1). */
   MINORITY_OPPOSITION_THRESHOLD: number;
-  /** Hours after creation before an open/reviewing dispute is considered expired. */
-  MAX_DISPUTE_DURATION_HOURS: number;
   /** Hours that must pass before a second dispute can be raised on the same claim. */
   DISPUTE_COOLDOWN_HOURS: number;
 }
@@ -30,7 +28,6 @@ export interface DisputeConfig {
 export const DEFAULT_CONFIG: DisputeConfig = {
   LOW_CONFIDENCE_THRESHOLD: 0.6,
   MINORITY_OPPOSITION_THRESHOLD: 0.3,
-  MAX_DISPUTE_DURATION_HOURS: 72,
   DISPUTE_COOLDOWN_HOURS: 24,
 };
 
@@ -151,52 +148,56 @@ export class DisputeService {
 
     this.validateConfidence(originalConfidence, 'originalConfidence');
 
-    // Single query covering both the open-duplicate check and the cooldown check
-    const [activeDispute, recentDispute] = await Promise.all([
-      this.disputeRepository.findOne({
-        where: { claimId, status: DisputeStatus.OPEN },
-      }),
-      this.disputeRepository
-        .createQueryBuilder('d')
-        .where('d.claimId = :claimId', { claimId })
-        .andWhere('d.createdAt > :cooldownTime', {
-          cooldownTime: this.hoursAgo(this.config.DISPUTE_COOLDOWN_HOURS),
-        })
-        .orderBy('d.createdAt', 'DESC')
-        .getOne(),
-    ]);
+    // #866: the duplicate/cooldown check and the insert run on one
+    // transactional manager, so concurrent callers cannot both pass the check.
+    return this.dataSource.transaction(async (manager) => {
+      const [activeDispute, recentDispute] = await Promise.all([
+        manager.findOne(Dispute, {
+          where: { claimId, status: DisputeStatus.OPEN },
+        }),
+        manager
+          .getRepository(Dispute)
+          .createQueryBuilder('d')
+          .where('d.claimId = :claimId', { claimId })
+          .andWhere('d.createdAt > :cooldownTime', {
+            cooldownTime: this.hoursAgo(this.config.DISPUTE_COOLDOWN_HOURS),
+          })
+          .orderBy('d.createdAt', 'DESC')
+          .getOne(),
+      ]);
 
-    if (activeDispute) {
-      throw new ConflictException(
-        `An open dispute already exists for claim ${claimId} (dispute id: ${activeDispute.id})`,
+      if (activeDispute) {
+        throw new ConflictException(
+          `An open dispute already exists for claim ${claimId} (dispute id: ${activeDispute.id})`,
+        );
+      }
+
+      if (recentDispute) {
+        const elapsed = Date.now() - recentDispute.createdAt.getTime();
+        const remainingHours = (
+          this.config.DISPUTE_COOLDOWN_HOURS -
+          elapsed / 3_600_000
+        ).toFixed(1);
+        throw new BadRequestException(
+          `Dispute cooldown active for claim ${claimId}. ${remainingHours}h remaining.`,
+        );
+      }
+
+      const dispute = manager.create(Dispute, {
+        claimId,
+        trigger,
+        originalConfidence,
+        initiatorId,
+        metadata: metadata ?? {},
+        status: DisputeStatus.OPEN,
+      });
+
+      const saved = await manager.save(dispute);
+      this.logger.log(
+        `Dispute ${saved.id} created for claim ${claimId} — trigger=${trigger}, confidence=${originalConfidence}`,
       );
-    }
-
-    if (recentDispute) {
-      const elapsed = Date.now() - recentDispute.createdAt.getTime();
-      const remainingHours = (
-        this.config.DISPUTE_COOLDOWN_HOURS -
-        elapsed / 3_600_000
-      ).toFixed(1);
-      throw new BadRequestException(
-        `Dispute cooldown active for claim ${claimId}. ${remainingHours}h remaining.`,
-      );
-    }
-
-    const dispute = this.disputeRepository.create({
-      claimId,
-      trigger,
-      originalConfidence,
-      initiatorId,
-      metadata: metadata ?? {},
-      status: DisputeStatus.OPEN,
+      return saved;
     });
-
-    const saved = await this.disputeRepository.save(dispute);
-    this.logger.log(
-      `Dispute ${saved.id} created for claim ${claimId} — trigger=${trigger}, confidence=${originalConfidence}`,
-    );
-    return saved;
   }
 
   // ─── Status transitions ──────────────────────────────────────────────────
@@ -272,38 +273,6 @@ export class DisputeService {
     return saved;
   }
 
-  /**
-   * Expire a single dispute that has exceeded MAX_DISPUTE_DURATION_HOURS.
-   * Wraps the update in a transaction to prevent double-expiry races.
-   */
-  async expireDispute(disputeId: string): Promise<Dispute> {
-    return this.dataSource.transaction(async (manager) => {
-      const dispute = await manager.findOne(Dispute, {
-        where: { id: disputeId },
-      });
-
-      if (!dispute)
-        throw new NotFoundException(`Dispute ${disputeId} not found`);
-
-      if (!RESOLVABLE_STATUSES.includes(dispute.status)) {
-        throw new BadRequestException(
-          `Dispute ${disputeId} is in status ${dispute.status} and cannot be expired`,
-        );
-      }
-
-      dispute.status = DisputeStatus.EXPIRED;
-      dispute.resolvedAt = new Date();
-      dispute.metadata = {
-        ...dispute.metadata,
-        expiredReason: `Exceeded ${this.config.MAX_DISPUTE_DURATION_HOURS}h maximum duration`,
-      };
-
-      const saved = await manager.save(dispute);
-      this.logger.log(`Dispute ${disputeId} expired`);
-      return saved;
-    });
-  }
-
   // ─── Queries ─────────────────────────────────────────────────────────────
 
   /**
@@ -325,20 +294,6 @@ export class DisputeService {
       where: { claimId },
       order: { createdAt: 'DESC' },
     });
-  }
-
-  /**
-   * Return disputes whose OPEN/REVIEWING status has outlasted the configured
-   * maximum duration. Intended for a scheduled expiry job.
-   */
-  async getExpiredDisputes(): Promise<Dispute[]> {
-    return this.disputeRepository
-      .createQueryBuilder('d')
-      .where('d.status IN (:...statuses)', { statuses: RESOLVABLE_STATUSES })
-      .andWhere('d.createdAt < :expiryTime', {
-        expiryTime: this.hoursAgo(this.config.MAX_DISPUTE_DURATION_HOURS),
-      })
-      .getMany();
   }
 
   /**

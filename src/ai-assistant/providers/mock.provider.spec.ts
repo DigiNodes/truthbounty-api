@@ -1,3 +1,5 @@
+import { ServiceUnavailableException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { firstValueFrom, toArray } from 'rxjs';
 import { MockProvider } from './mock.provider';
 import { AiChatRequest } from './ai-provider.interface';
@@ -34,6 +36,22 @@ describe('MockProvider', () => {
   it('can be forced unavailable to exercise fallback paths', async () => {
     provider.setAvailable(false);
     await expect(provider.isAvailable()).resolves.toBe(false);
+  });
+
+  it('refuses to serve responses in deployed environments', async () => {
+    const deployed = new MockProvider({
+      get: jest.fn((key: string) =>
+        key === 'NODE_ENV' ? 'production' : undefined,
+      ),
+    } as unknown as ConfigService);
+
+    await expect(deployed.chat(request)).rejects.toThrow(
+      ServiceUnavailableException,
+    );
+    await expect(() => deployed.stream(request)).toThrow(
+      ServiceUnavailableException,
+    );
+    await expect(deployed.isAvailable()).resolves.toBe(false);
   });
 
   it('streams multiple chunks that concatenate to the same content as chat()', async () => {

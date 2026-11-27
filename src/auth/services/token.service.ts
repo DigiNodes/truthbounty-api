@@ -3,7 +3,12 @@ import {
   InternalServerErrorException,
   Logger,
   UnauthorizedException,
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  SetMetadata,
 } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { RedisService } from '../../redis/redis.service';
@@ -12,6 +17,10 @@ import {
   AUTH_GENERIC_FAILURE_MESSAGE,
   timingSafeEqualHex,
 } from '../../common/utils/timing-safe.util';
+import {
+  AuthenticatedPrincipal,
+  extractCapabilitySubject,
+} from '../types/authenticated-request';
 
 /**
  * Token pair returned after successful authentication.
@@ -118,7 +127,8 @@ export interface CapabilityTokenPayload {
 
 export interface IssueCapabilityOptions {
   audience: string;
-  subject: string;
+  subject?: string;
+  principal?: AuthenticatedPrincipal;
   capability: string;
   resource: string;
   chain: string;
@@ -144,6 +154,11 @@ export interface CapabilityToken {
   expiresIn: number;
   nonce: string;
 }
+
+/**
+ * Reconciled distinct type for JWT-based capability tokens.
+ */
+export type JwtCapabilityToken = CapabilityToken;
 
 /**
  * Token Service
@@ -215,9 +230,14 @@ export class TokenService {
   async issueCapabilityToken(
     options: IssueCapabilityOptions,
   ): Promise<CapabilityToken> {
+    const derivedSubject = options.principal
+      ? extractCapabilitySubject(options.principal)
+      : typeof options.subject === 'string' && options.subject.trim().length > 0
+        ? (options.subject.startsWith('0x') ? options.subject.trim().toLowerCase() : options.subject.trim())
+        : undefined;
+
     const {
       audience,
-      subject,
       capability,
       resource,
       chain,
@@ -228,7 +248,7 @@ export class TokenService {
 
     if (
       !audience ||
-      !subject ||
+      !derivedSubject ||
       !capability ||
       !resource ||
       !chain ||
@@ -241,15 +261,22 @@ export class TokenService {
     }
 
     const requestedTtl = options.ttlSeconds ?? this.CAPABILITY_MAX_TTL_SECONDS;
-    const ttlSeconds = Math.min(
-      Math.max(1, requestedTtl),
-      this.CAPABILITY_MAX_TTL_SECONDS,
-    );
+
+if (
+  !Number.isSafeInteger(requestedTtl) ||
+  requestedTtl < 1 ||
+  requestedTtl > this.CAPABILITY_MAX_TTL_SECONDS
+) {
+  this.logger.warn('Capability issuance failed [invalid-ttl]');
+  throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
+}
+
+const ttlSeconds = requestedTtl;
 
     const nonce = randomBytes(16).toString('hex');
     const payload: Omit<CapabilityTokenPayload, 'iat' | 'exp'> = {
       aud: audience,
-      sub: subject.toLowerCase(),
+      sub: derivedSubject.toLowerCase(),
       capability,
       resource,
       nonce,
@@ -262,8 +289,6 @@ export class TokenService {
 
     const token = this.jwtService.sign(payload, {
       expiresIn: ttlSeconds,
-      audience,
-      subject: payload.sub,
     });
 
     // Record nonce so replay can be detected and fail closed.
@@ -769,5 +794,72 @@ export class TokenService {
       return undefined;
     }
     return ipAddress.trim();
+  }
+}
+
+export const REQUIRE_JWT_CAPABILITY_KEY = 'jwt_capability';
+
+export interface JwtCapabilityRequirement {
+  aud: string;
+  cap: string;
+  resource: string;
+  chain?: string;
+  release?: string;
+  deployment?: string;
+  artifact?: string;
+}
+
+export const RequireJwtCapability = (requirement: JwtCapabilityRequirement) =>
+  SetMetadata(REQUIRE_JWT_CAPABILITY_KEY, requirement);
+
+/**
+ * Guard for JWT-based capability tokens issued by TokenService.
+ *
+ * Derives subject strictly from AuthenticatedPrincipal via extractCapabilitySubject.
+ * Rejects HMAC claims objects or any other format (fails closed).
+ */
+@Injectable()
+export class JwtCapabilityTokenGuard implements CanActivate {
+  constructor(
+    private readonly reflector: Reflector,
+    private readonly tokenService: TokenService,
+  ) {}
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    const request = context.switchToHttp().getRequest();
+    const requirement = this.reflector.get<JwtCapabilityRequirement>(
+      REQUIRE_JWT_CAPABILITY_KEY,
+      context.getHandler(),
+    );
+    if (!requirement) {
+      throw new ForbiddenException('Capability requirement missing');
+    }
+
+    const sub = extractCapabilitySubject(request.user);
+    if (!sub) {
+      throw new ForbiddenException('Missing capability token or subject');
+    }
+
+    const rawToken = request.body?.capabilityToken ?? request.headers['x-capability-token'];
+    // Strict token shape check: JWT token must be a string (rejects HMAC claims objects)
+    if (!rawToken || typeof rawToken !== 'string') {
+      throw new ForbiddenException('Malformed capability token');
+    }
+
+    try {
+      await this.tokenService.validateAndConsumeCapabilityToken(rawToken, {
+        audience: requirement.aud,
+        subject: sub,
+        capability: requirement.cap,
+        resource: requirement.resource,
+        chain: requirement.chain ?? request.body?.chain ?? '',
+        release: requirement.release ?? request.body?.release ?? '',
+        deployment: requirement.deployment ?? request.body?.deployment ?? '',
+        artifact: requirement.artifact ?? request.body?.artifact ?? '',
+      });
+      return true;
+    } catch {
+      throw new ForbiddenException('Capability token rejected');
+    }
   }
 }

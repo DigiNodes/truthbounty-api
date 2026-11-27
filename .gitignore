@@ -30,21 +30,15 @@ lerna-debug.log*
 *.sublime-workspace
 
 # IDE - VSCode
-.vscode/*
 !.vscode/settings.json
 !.vscode/tasks.json
 !.vscode/launch.json
 !.vscode/extensions.json
 
 # dotenv environment variable files
-.env
 .env.development.local
 .env.test.local
 .env.production.local
-.env.local
-.env.test
-.env.development
-.env.production
 
 # Hide CI workflow and automation scripts from contributors
 .github/workflows/ci.yml
@@ -67,3 +61,4 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 .issue_context.md
 .pr_feedback.md
 
+config.bat

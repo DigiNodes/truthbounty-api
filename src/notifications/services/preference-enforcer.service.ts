@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { NotificationPreference } from '../entities/notification-preference.entity';
 import { DeliveryChannel } from '../interfaces/notification.types';
 import { EventType } from '../enums/event-type.enum';
+import { UpdatePreferenceSettingsDto } from '../dto/update-preference-settings.dto';
 import { RedisService } from '../../redis/redis.service';
 import { DeliveryHistory } from '../entities/delivery-history.entity';
 import { Notification } from '../entities/notification.entity';
@@ -14,6 +15,26 @@ import {
 } from '../delivery/delivery-channel';
 
 const QUIET_HOURS_TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+/**
+ * Fields ordinary preference updates may change.
+ *
+ * `webhookConfig`, `userId`, `id`, `unsubscribeToken` and timestamps are
+ * deliberately excluded: webhook secrets are write-only and handled by
+ * WebhookPreferencesService, and the remaining fields are server-owned
+ * (PREWAVE-BE-149/#849).
+ */
+const UPDATABLE_PREFERENCE_FIELDS = [
+  'channels',
+  'categorySubscriptions',
+  'quietHours',
+  'digestPreferences',
+  'language',
+  'maxNotificationsPerDay',
+  'maxEmailsPerDay',
+  'emailAddress',
+  'pushConfig',
+] as const;
 
 /**
  * EMAIL channels eligible for the email-specific cap.
@@ -455,20 +476,50 @@ export class PreferenceEnforcer {
   }
 
   /**
-   * Update user preferences
+   * Update user preferences using an explicit allow-list.
+   *
+   * Never assigns caller-provided `webhookConfig`: a signing secret can only
+   * be changed through the dedicated webhook configuration service, and
+   * unrelated updates preserve the existing encrypted secret.
    */
   async updatePreferences(
     userId: string,
-    updates: Partial<NotificationPreference>,
+    updates: UpdatePreferenceSettingsDto,
   ): Promise<NotificationPreference> {
-    const pref = await this.getPreferences(userId);
-    if (updates.channels) {
-      updates.channels = normalizeChannelPreferences(updates.channels);
-    }
-    Object.assign(pref, updates);
-    pref.channels = normalizeChannelPreferences(pref.channels);
-    pref.lastModifiedAt = new Date();
-    return this.preferenceRepository.save(pref);
+  const pref = await this.getPreferences(userId);
+
+  if (updates.channels !== undefined) {
+    pref.channels = normalizeChannelPreferences(updates.channels);
+  }
+
+  if (updates.categorySubscriptions !== undefined) {
+    pref.categorySubscriptions = updates.categorySubscriptions;
+  }
+
+  if (updates.quietHours !== undefined) {
+    pref.quietHours = updates.quietHours;
+  }
+
+  if (updates.digestPreferences !== undefined) {
+    pref.digestPreferences = updates.digestPreferences;
+  }
+
+  if (updates.language !== undefined) {
+    pref.language = updates.language;
+  }
+
+  if (updates.webhookConfig !== undefined) {
+    pref.webhookConfig = updates.webhookConfig;
+  }
+
+  if (updates.pushConfig !== undefined) {
+    pref.pushConfig = updates.pushConfig;
+  }
+
+  pref.channels = normalizeChannelPreferences(pref.channels);
+  pref.lastModifiedAt = new Date();
+
+  return this.preferenceRepository.save(pref);
   }
 
   /**
