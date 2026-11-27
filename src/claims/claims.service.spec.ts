@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException } from '@nestjs/common';
+import { GoneException } from '@nestjs/common';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ClaimsService } from './claims.service';
@@ -73,164 +73,19 @@ describe('ClaimsService', () => {
     expect(service).toBeDefined();
   });
 
-  describe('createClaim', () => {
-    it('should create a claim with valid input data', async () => {
+  describe('createClaim (retired, PREWAVE-BE-132)', () => {
+    it('cannot create a canonical or protocol-shaped local claim row', async () => {
       const createClaimDto: CreateClaimDto =
         ClaimFactory.createCreateClaimDto();
-      const expectedClaim = ClaimFactory.createClaim({
-        ...createClaimDto,
-        resolvedVerdict: null,
-        confidenceScore: null,
-        finalized: false,
-      });
-
-      jest.spyOn(claimRepo, 'create').mockReturnValue(expectedClaim);
-      jest.spyOn(claimRepo, 'save').mockResolvedValue(expectedClaim);
-      jest.spyOn(claimsCache, 'setClaim').mockResolvedValue(undefined);
-      jest.spyOn(redisService, 'del').mockResolvedValue(true);
-
-      const result = await service.createClaim(createClaimDto);
-
-      expect(claimRepo.create).toHaveBeenCalledWith({
-        title: createClaimDto.title,
-        content: createClaimDto.content,
-        source: createClaimDto.source,
-        metadata: createClaimDto.metadata,
-        resolvedVerdict: null,
-        confidenceScore: null,
-        finalized: false,
-      });
-      expect(claimRepo.save).toHaveBeenCalledWith(expectedClaim);
-      expect(claimsCache.setClaim).toHaveBeenCalledWith(
-        expectedClaim.id,
-        expectedClaim,
-      );
-      expect(redisService.del).toHaveBeenCalledWith('claims:latest');
-      expect(result).toEqual(expectedClaim);
-    });
-
-    it('should create a claim without optional fields', async () => {
-      const createClaimDto: CreateClaimDto = {
-        title: 'Simple claim title',
-        content: 'Simple claim content',
-      };
-      const expectedClaim = ClaimFactory.createClaim({
-        ...createClaimDto,
-        source: null,
-        metadata: null,
-        resolvedVerdict: null,
-        confidenceScore: null,
-        finalized: false,
-      });
-
-      jest.spyOn(claimRepo, 'create').mockReturnValue(expectedClaim);
-      jest.spyOn(claimRepo, 'save').mockResolvedValue(expectedClaim);
-      jest.spyOn(claimsCache, 'setClaim').mockResolvedValue(undefined);
-      jest.spyOn(redisService, 'del').mockResolvedValue(true);
-
-      const result = await service.createClaim(createClaimDto);
-
-      expect(claimRepo.create).toHaveBeenCalledWith({
-        title: createClaimDto.title,
-        content: createClaimDto.content,
-        source: null,
-        metadata: null,
-        resolvedVerdict: null,
-        confidenceScore: null,
-        finalized: false,
-      });
-      expect(result).toEqual(expectedClaim);
-    });
-
-    it('should handle database errors gracefully', async () => {
-      const createClaimDto: CreateClaimDto =
-        ClaimFactory.createCreateClaimDto();
-      const expectedClaim = ClaimFactory.createClaim();
-
-      jest.spyOn(claimRepo, 'create').mockReturnValue(expectedClaim);
-      jest
-        .spyOn(claimRepo, 'save')
-        .mockRejectedValue(new Error('Database error'));
 
       await expect(service.createClaim(createClaimDto)).rejects.toThrow(
-        'Database error',
+        GoneException,
       );
-      expect(claimRepo.create).toHaveBeenCalledWith({
-        title: createClaimDto.title,
-        content: createClaimDto.content,
-        source: createClaimDto.source,
-        metadata: createClaimDto.metadata,
-        resolvedVerdict: null,
-        confidenceScore: null,
-        finalized: false,
-      });
-    });
-
-    it('should not set resolvedVerdict and confidenceScore during creation', async () => {
-      const createClaimDto: CreateClaimDto =
-        ClaimFactory.createCreateClaimDto();
-      const expectedClaim = ClaimFactory.createClaim({
-        ...createClaimDto,
-        resolvedVerdict: null,
-        confidenceScore: null,
-        finalized: false,
-      });
-
-      jest.spyOn(claimRepo, 'create').mockReturnValue(expectedClaim);
-      jest.spyOn(claimRepo, 'save').mockResolvedValue(expectedClaim);
-      jest.spyOn(claimsCache, 'setClaim').mockResolvedValue(undefined);
-      jest.spyOn(redisService, 'del').mockResolvedValue(true);
-
-      await service.createClaim(createClaimDto);
-
-      expect(claimRepo.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          resolvedVerdict: null,
-          confidenceScore: null,
-          finalized: false,
-        }),
-      );
-    });
-
-    it('should invalidate cache when creating new claim', async () => {
-      const createClaimDto: CreateClaimDto =
-        ClaimFactory.createCreateClaimDto();
-      const expectedClaim = ClaimFactory.createClaim();
-
-      jest.spyOn(claimRepo, 'create').mockReturnValue(expectedClaim);
-      jest.spyOn(claimRepo, 'save').mockResolvedValue(expectedClaim);
-      jest.spyOn(claimsCache, 'setClaim').mockResolvedValue(undefined);
-      jest.spyOn(redisService, 'del').mockResolvedValue(true);
-
-      await service.createClaim(createClaimDto);
-
-      expect(redisService.del).toHaveBeenCalledWith('claims:latest');
-    });
-
-    it('should throw BadRequestException if claim content length exceeds 5000 characters', async () => {
-      const longContent = 'a'.repeat(5001);
-      const createClaimDto = ClaimFactory.createCreateClaimDto({
-        content: longContent,
-      });
-
-      await expect(service.createClaim(createClaimDto)).rejects.toThrow(
-        new BadRequestException(
-          'Claim content exceeds maximum length of 5000 characters',
-        ),
-      );
-    });
-
-    it('should throw BadRequestException if claim title length exceeds 200 characters', async () => {
-      const longTitle = 'a'.repeat(201);
-      const createClaimDto = ClaimFactory.createCreateClaimDto({
-        title: longTitle,
-      });
-
-      await expect(service.createClaim(createClaimDto)).rejects.toThrow(
-        new BadRequestException(
-          'Claim title exceeds maximum length of 200 characters',
-        ),
-      );
+      expect(claimRepo.create).not.toHaveBeenCalled();
+      expect(claimRepo.save).not.toHaveBeenCalled();
+      expect(claimsCache.setClaim).not.toHaveBeenCalled();
+      expect(redisService.del).not.toHaveBeenCalled();
+      expect(auditTrailService.log).not.toHaveBeenCalled();
     });
   });
 
@@ -507,24 +362,13 @@ describe('ClaimsService', () => {
       expect(savedEntity.resolvedAt).toEqual(existingResolvedAt);
     });
 
-    it('new claim has resolvedAt === null before any resolution (BE-219)', async () => {
+    it('cannot resolve a claim synthesized by the API (BE-219 / PREWAVE-BE-132)', async () => {
       const createClaimDto = ClaimFactory.createCreateClaimDto();
-      const savedClaim = ClaimFactory.createClaim({
-        ...createClaimDto,
-        resolvedVerdict: null,
-        confidenceScore: null,
-        finalized: false,
-        resolvedAt: null,
-      });
 
-      jest.spyOn(claimRepo, 'create').mockReturnValue(savedClaim);
-      jest.spyOn(claimRepo, 'save').mockResolvedValue(savedClaim);
-      jest.spyOn(claimsCache, 'setClaim').mockResolvedValue(undefined);
-      jest.spyOn(redisService, 'del').mockResolvedValue(true);
-
-      const result = await service.createClaim(createClaimDto);
-
-      expect(result.resolvedAt).toBeNull();
+      await expect(service.createClaim(createClaimDto)).rejects.toThrow(
+        GoneException,
+      );
+      expect(claimRepo.save).not.toHaveBeenCalled();
     });
   });
 

@@ -2,88 +2,50 @@
 
 This document contains visual representations of the key backend workflows in the TruthBounty API system.
 
-## Claim Flow
+## Claim Flow (chain-first, PREWAVE-BE-132)
+
+The legacy API-authoritative creation/update path below was retired. No API
+route or service method may create claim, verdict, finalization or evidence
+state; those are contract transitions.
 
 ```mermaid
 graph TD
-    A[User/Client] --> B[POST /claims]
-    B --> C[ClaimsController.createClaim]
-    C --> D[ClaimsService.createClaim]
-    D --> E[Generate mock verdict & confidence]
-    E --> F[Save Claim to Database]
-    F --> G[Cache Claim]
-    G --> H[Audit Log: CLAIM_CREATED]
-    H --> I[Return Claim Response]
-    
-    I --> J[POST /claims/:claimId/evidence]
-    J --> K[ClaimsController.createEvidence]
-    K --> L[EvidenceService.createEvidence]
-    L --> M[Create Evidence Record]
-    M --> N[Create Evidence Version v1]
-    N --> O[Save to Database]
-    O --> P[Audit Log: EVIDENCE_SUBMITTED]
-    P --> Q[Return Evidence Response]
-    
-    Q --> R[PUT /claims/evidence/:evidenceId]
-    R --> S[ClaimsController.updateEvidence]
-    S --> T[EvidenceService.addEvidenceVersion]
-    T --> U[Update Evidence latestVersion]
-    U --> V[Create New Evidence Version]
-    V --> W[Save to Database]
-    W --> X[Audit Log: EVIDENCE_UPDATED]
-    X --> Y[Return Updated Version]
-    
-    Y --> Z[ClaimsService.resolveClaim]
-    Z --> AA[Update verdict & confidence]
-    AA --> BB[Save Claim]
-    BB --> CC[Cache Updated Claim]
-    CC --> DD[Audit Log: CLAIM_RESOLVED]
-    DD --> EE[Return Updated Claim]
-    
-    EE --> FF[ClaimsService.finalizeClaim]
-    FF --> GG[Set finalized = true]
-    GG --> HH[Save Claim]
-    HH --> II[Cache Finalized Claim]
-    II --> JJ[Audit Log: CLAIM_FINALIZED]
-    JJ --> KK[Return Finalized Claim]
-    
+    A[User/Client] --> B[Optional: POST /claims/:claimId/evidence/upload]
+    B --> C[Validate canonical claim from V2 projection]
+    C --> D[Scan content + pin on IPFS]
+    D --> E[202 preparation receipt: canonical=false]
+    E --> F[User signs ClaimCreated / EvidenceRegistered / EvidenceReplaced tx]
+    F --> G[Optimism/EVM finalized event]
+    G --> H[Indexer ingests canonical event]
+    H --> I[Projector updates V2 read model]
+    I --> J[GET /api/v2/claims and /v2/claims/:claimId/evidence]
+
+    X[POST /claims, POST /claims/:claimId/evidence, PUT /claims/evidence/:id] --> Y[410 LEGACY_PROTOCOL_WRITE_RETIRED]
+
     style A fill:#e1f5fe
-    style I fill:#c8e6c9
-    style Q fill:#c8e6c9
-    style Y fill:#c8e6c9
-    style EE fill:#c8e6c9
-    style KK fill:#4caf50
+    style E fill:#fff3e0
+    style J fill:#c8e6c9
+    style Y fill:#ffcdd2
 ```
 
 ### Claim Flow Steps
 
-1. **Claim Creation**
-   - Client submits claim data via `POST /claims`
-   - System generates mock verdict and confidence score
-   - Claim is saved to database and cached
-   - Audit trail records claim creation
-
-2. **Evidence Submission**
-   - Client adds evidence via `POST /claims/:claimId/evidence`
-   - Evidence record created with version 1
-   - Evidence version stored with CID reference
-   - Audit trail records evidence submission
-
-3. **Evidence Updates**
-   - Client updates evidence via `PUT /claims/evidence/:evidenceId`
-   - Version number incremented
-   - New evidence version created
-   - Audit trail records evidence update
-
-4. **Claim Resolution**
-   - System resolves claim with verdict and confidence
-   - Claim updated in database and cache
-   - Audit trail records resolution
-
-5. **Claim Finalization**
-   - System finalizes claim (sets finalized flag)
-   - Claim updated in database and cache
-   - Audit trail records finalization
+1. **Preparation (optional, non-authoritative)**
+   - Client calls `POST /claims/:claimId/evidence/upload` for a canonical claim.
+   - The API validates the claim identity, scans for secrets and pins content.
+   - The receipt states `onChainRegistered=false`, `evidenceRegistered=false`.
+2. **Protocol transition (wallet-owned)**
+   - The user signs and submits the appropriate contract transaction. The API
+     does not create, relay or finalize protocol state.
+3. **Projection (indexer-owned)**
+   - The finalized event is ingested and projected into V2 read models.
+   - Duplicate deliveries are ignored; reorged/quarantined events expose
+     pending/not-found states rather than local rows.
+4. **Read (API-owned)**
+   - Clients read canonical state from `/api/v2/claims`,
+     `/api/v2/claim-read-models/:claimId` and
+     `/v2/claims/:claimId/evidence`.
+   - Legacy `/claims/*` reads remain as deprecated compatibility surfaces.
 
 ## Verification Flow
 

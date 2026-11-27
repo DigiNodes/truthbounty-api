@@ -28,6 +28,7 @@ import { CacheModule } from './cache/cache.module';
 import { ClaimsModule } from './claims/claims.module';
 import { ClaimFeedModule } from './claims/v2/claim-feed.module';
 import { ClaimReadModelsModule } from './claims/v2/read-models/claim-read-models.module';
+import { EvidenceUploadModule } from './claims/evidence-upload/evidence-upload.module';
 import { DisputeReadModelsModule } from './v2/disputes/read-models/dispute-read-models.module';
 import { AuditModule } from './audit/audit.module';
 import { ThemeModule } from './theme.module';
@@ -375,6 +376,8 @@ async function createThrottlerStorage(
     ClaimFeedModule,
     // PREWAVE-BE-005: versioned claim list/detail read models
     ClaimReadModelsModule,
+    // PREWAVE-BE-132: non-authoritative IPFS preparation for canonical claims
+    EvidenceUploadModule,
     // PREWAVE-BE-007: versioned dispute register/detail read models
     DisputeReadModelsModule,
     AuditModule,

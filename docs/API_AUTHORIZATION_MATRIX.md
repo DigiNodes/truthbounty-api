@@ -99,9 +99,16 @@ Notation:
 | GET | `/claims/:claimId/evidence` | PUBLIC |
 | GET | `/claims/:claimId/evidence/latest` | PUBLIC |
 | GET | `/claims/evidence/:evidenceId` | PUBLIC |
-| POST | `/claims` | AUTHN |
-| POST | `/claims/:claimId/evidence` | AUTHN |
-| PUT | `/claims/evidence/:evidenceId` | AUTHN |
+| POST | `/claims` | RETIRED — always `410 Gone` (`LEGACY_PROTOCOL_WRITE_RETIRED`), regardless of role |
+| POST | `/claims/:claimId/evidence` | RETIRED — always `410 Gone` (`LEGACY_PROTOCOL_WRITE_RETIRED`) |
+| PUT | `/claims/evidence/:evidenceId` | RETIRED — always `410 Gone` (`LEGACY_PROTOCOL_WRITE_RETIRED`) |
+| POST | `/claims/:claimId/evidence/upload` | AUTHN + canonical claim already projected (non-authoritative IPFS preparation) |
+
+PREWAVE-BE-132: no app-user role, moderator or admin may create authoritative
+claims or evidence through the API. Protocol mutations are authorized only by
+the user's signed transaction on Optimism/EVM and become visible through V2
+projections. The upload route is support-only and never grants protocol
+authority.
 
 ### Disputes
 

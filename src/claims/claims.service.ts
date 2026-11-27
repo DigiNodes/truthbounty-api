@@ -15,11 +15,10 @@ import {
   AuditActionType,
   AuditEntityType,
 } from '../audit/entities/audit-log.entity';
-import { AuditLog } from '../audit/decorators/audit-log.decorator';
+
 import { assertResolvedAtInvariant } from './claim-resolution.invariant';
 import { CacheUnavailableException } from '../cache/exceptions/cache-unavailable.exception';
 import {
-  ClaimBadRequestError,
   ClaimConflictError,
   ClaimInvalidTransitionError,
   ClaimNotFoundError,
@@ -36,11 +35,8 @@ import {
   ClaimPaginationSort,
   PaginatedClaimsResult,
 } from './claims.pagination.types';
-import {
-  SecretScannerService,
-  SecretScanResult,
-} from './secret-scanner.service';
-import { SecretQuarantineException } from './exceptions/secret-quarantine.exception';
+import { SecretScannerService } from './secret-scanner.service';
+import { assertLegacyProtocolWriteRetired } from './legacy-protocol-write-retirement';
 
 const CLAIMS_PAGINATION_ROUTE = 'claims.list';
 const CLAIMS_PAGINATION_SCHEMA_VERSION = 1;
@@ -310,117 +306,13 @@ export class ClaimsService {
   }
 
   /**
-   * Create a new claim
+   * PREWAVE-BE-132: retired. Claims are protocol state and can only be created
+   * by a user-signed canonical transaction followed by event projection.
+   * Kept as a fail-closed method so internal callers receive the same 410 and
+   * no repository, cache, audit or secret-quarantine side effect can occur.
    */
-  @AuditLog({
-    actionType: AuditActionType.CLAIM_CREATED,
-    entityType: AuditEntityType.CLAIM,
-    descriptionTemplate: 'New claim created: {{title}}',
-    captureAfterState: true,
-  })
-  async createClaim(createClaimDto: CreateClaimDto): Promise<Claim> {
-    if (createClaimDto.title && createClaimDto.title.length > 200) {
-      throw new ClaimBadRequestError( {
-        field: 'title',
-        reason: 'max_length_exceeded',
-        maxLength: 200,
-      });
-    }
-    if (createClaimDto.content && createClaimDto.content.length > 5000) {
-      throw new ClaimBadRequestError({
-        field: 'content',
-        reason: 'max_length_exceeded',
-        maxLength: 5000,
-      });
-    }
-
-    // Scan support submission for secrets before any persistence or forwarding.
-    // High-confidence secrets are quarantined and never echoed into logs or errors.
-    const scanResult: SecretScanResult = this.secretScannerService.scanSupportSubmission({
-      title: createClaimDto.title,
-      content: createClaimDto.content,
-      metadata: (createClaimDto as any).metadata,
-      attachments: (createClaimDto as any).attachments,
-    });
-
-    if (scanResult.blocked) {
-      // Quarantine access is restricted and audited. Only metadata about the
-      // findings (kind/count) -- never the secret material itself -- is recorded.
-      await this.auditTrailService.log({
-        actionType: AuditActionType.CLAIM_SECRET_QUARANTINED,
-        entityType: AuditEntityType.CLAIM,
-        entityId: scanResult.quarantineId,
-        description: `Support submission quarantined: ${scanResult.findings.length} finding(s), highest confidence ${scanResult.highestConfidence}`,
-        afterState: {
-          quarantineId: scanResult.quarantineId,
-          findingKinds: scanResult.findings.map((f) => f.kind),
-        },
-      });
-
-      this.logger.warn(
-        `Support submission quarantined ${scanResult.quarantineId} with ${scanResult.findings.length} finding(s); secret material withheld.`,
-      );
-
-      throw new SecretQuarantineException(scanResult.quarantineId);
-    }
-
-    // Check if a claim with the same content already exists
-    // This helps prevent duplicates even without idempotency keys
-    const existingClaim = await this.claimRepo.findOne({
-      where: {
-        title: createClaimDto.title,
-        content: createClaimDto.content,
-        source: createClaimDto.source,
-      },
-    });
-
-    if (existingClaim) {
-      this.logger.log(
-        `Duplicate claim detected, returning existing: ${existingClaim.id} - ${existingClaim.title}`,
-      );
-      return existingClaim;
-    }
-
-    const claim = this.claimRepo.create({
-      title: createClaimDto.title,
-      content: createClaimDto.content,
-      source: createClaimDto.source ?? null,
-      metadata: createClaimDto.metadata ?? null,
-      resolvedVerdict: null, // Will be computed later
-      confidenceScore: null, // Will be computed later
-      finalized: false,
-    });
-    const savedClaim = await this.claimRepo.save(claim);
-
-    // Cache the new claim (non-critical - failure is isolated)
-    try {
-      await this.claimsCache.setClaim(savedClaim.id, savedClaim);
-    } catch (error) {
-      if (error instanceof CacheUnavailableException) {
-        this.logger.warn(
-          `Cache unavailable for new claim ${savedClaim.id}, skipping cache update: ${error.message}`,
-        );
-        // Continue - cache failure is isolated from canonical state
-      } else {
-        throw error;
-      }
-    }
-
-    // Invalidate latest claims cache since we added a new claim (non-critical)
-    try {
-      await this.redisService.del('claims:latest');
-    } catch (error) {
-      if (error instanceof CacheUnavailableException) {
-        this.logger.warn(
-          `Cache unavailable while invalidating latest claims, continuing: ${error.message}`,
-        );
-        // Continue - cache failure is isolated from canonical state
-      } else {
-        throw error;
-      }
-    }
-
-    return savedClaim;
+  async createClaim(_createClaimDto: CreateClaimDto): Promise<Claim> {
+    return assertLegacyProtocolWriteRetired('claim.create');
   }
 
   /**
