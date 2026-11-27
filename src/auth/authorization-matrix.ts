@@ -117,6 +117,11 @@
  * ├─────────────────────────────────────────────────┼──────────────────────────────────────────┤
  * │ POST   /admin/auth/login                        │ AUTHN (identity bound to verified JWT principal; body address, if any, must match) │
  * │ All other /admin/* routes                       │ ADMIN(varies, see AdminController)       │
+ * ├─────────────────────────────────────────────────┼──────────────────────────────────────────┤
+ * │ POST   /api/v2/internal/notifications/events    │ SERVICE or AUTHN + AdminOnly             │
+ * │ POST   /api/v2/internal/notifications/events/batch │ SERVICE or AUTHN + AdminOnly          │
+ * │ POST   /api/v2/internal/notifications/events/status/:eventId │ SERVICE, ADMIN, or AUTHN (owner/recipient) │
+ * │ POST   /api/v2/internal/notifications/events/metrics │ SERVICE or AUTHN + AdminOnly        │
  * └─────────────────────────────────────────────────┴──────────────────────────────────────────┘
  *
  * FAILURE-CLOSED INVARIANTS

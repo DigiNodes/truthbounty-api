@@ -250,6 +250,15 @@ configuration and audit responses.
 |-------|-------|--------------|
 | GET | `/metrics` | Bearer `METRICS_TOKEN` header |
 
+### Internal Notifications (Event Publisher)
+
+| Method | Route | Authorization |
+|-------|-------|--------------|
+| POST | `/api/v2/internal/notifications/events` | SERVICE (`x-service-api-key`) or AUTHN + `@AdminOnly()` (`ServiceOrAdminGuard`) |
+| POST | `/api/v2/internal/notifications/events/batch` | SERVICE (`x-service-api-key`) or AUTHN + `@AdminOnly()` (`ServiceOrAdminGuard`) |
+| POST | `/api/v2/internal/notifications/events/status/:eventId` | SERVICE (`x-service-api-key`), ADMIN, or AUTHN (owner/recipient only via `ServiceOrJwtAuthGuard`) |
+| POST | `/api/v2/internal/notifications/events/metrics` | SERVICE (`x-service-api-key`) or AUTHN + `@AdminOnly()` (`ServiceOrAdminGuard`) |
+
 ---
 
 ## Failure Modes
