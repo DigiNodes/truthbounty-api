@@ -32,6 +32,10 @@ export class DeliveryTracker {
   /**
    * Check idempotency and track delivery
    * Returns true if should proceed, false if already delivered
+   * 
+   * Enhanced with provider-confirmed delivery protection: once a delivery is
+   * marked as provider-confirmed (with providerMessageId), it can never be
+   * retried, even if the idempotency TTL expires.
    */
   async checkIdempotency(idempotencyKey: string): Promise<boolean> {
     // Fast path: Redis guard
@@ -43,30 +47,58 @@ export class DeliveryTracker {
       return false;
     }
 
-    // Reliable path: Database guard
+    // Reliable path: Database guard with provider-confirmed check
     const history = await this.deliveryHistoryRepository.findOne({
       where: { idempotencyKey },
     });
 
-    if (history && history.status === 'delivered') {
-      // Set Redis guard for future checks
-      await this.redisService.set(
-        redisKey,
-        'true',
-        this.IDEMPOTENCY_TTL_SECONDS,
+    if (history) {
+      // If provider-confirmed delivery exists, never allow retry
+      if (history.status === 'delivered' && history.metadata?.providerMessageId) {
+        this.logger.warn(
+          `Provider-confirmed delivery blocked retry: ${idempotencyKey} ` +
+          `(messageId: ${history.metadata.providerMessageId})`,
+        );
+        // Set Redis guard to prevent future checks
+        await this.redisService.set(
+          redisKey,
+          'provider-confirmed',
+          this.IDEMPOTENCY_TTL_SECONDS,
+        );
+        return false;
+      }
+
+      // Standard delivered status also blocks retry
+      if (history.status === 'delivered') {
+        // Set Redis guard for future checks
+        await this.redisService.set(
+          redisKey,
+          'true',
+          this.IDEMPOTENCY_TTL_SECONDS,
+        );
+        this.logger.debug(`Idempotency guard hit (DB): ${idempotencyKey}`);
+        return false;
+      }
+
+      // If status is 'failed' or 'retrying', allow another attempt
+      this.logger.debug(
+        `Allowing retry for ${idempotencyKey} (current status: ${history.status})`,
       );
-      this.logger.debug(`Idempotency guard hit (DB): ${idempotencyKey}`);
-      return false;
     }
 
     // Mark as attempted (optimistic lock)
-    await this.redisService.setnx(redisKey, 'true', this.IDEMPOTENCY_TTL_SECONDS);
+    await this.redisService.setnx(redisKey, 'attempting', this.IDEMPOTENCY_TTL_SECONDS);
 
     return true;
   }
 
   /**
-   * Record successful delivery
+   * Record successful delivery with provider confirmation
+   * 
+   * When providerMessageId is present in metadata, this marks the delivery as
+   * provider-confirmed, which provides stronger idempotency guarantees. A
+   * provider-confirmed delivery can never be retried, even if the Redis TTL
+   * expires or the system restarts.
    */
   async recordDelivery(
     notificationId: string,
@@ -79,6 +111,8 @@ export class DeliveryTracker {
       where: { idempotencyKey },
     });
 
+    const isProviderConfirmed = metadata?.providerMessageId !== undefined;
+
     if (!history) {
       history = this.deliveryHistoryRepository.create({
         notificationId,
@@ -86,16 +120,43 @@ export class DeliveryTracker {
         status: 'delivered' as any,
         deliveredAt: new Date(),
         idempotencyKey,
-        metadata,
+        metadata: {
+          ...metadata,
+          providerConfirmed: isProviderConfirmed,
+          confirmedAt: isProviderConfirmed ? new Date().toISOString() : undefined,
+        },
         retryAttempts: 0,
       });
     } else {
       history.status = 'delivered' as any;
       history.deliveredAt = new Date();
-      if (metadata) history.metadata = metadata;
+      if (metadata) {
+        history.metadata = {
+          ...history.metadata,
+          ...metadata,
+          providerConfirmed: isProviderConfirmed,
+          confirmedAt: isProviderConfirmed ? new Date().toISOString() : undefined,
+        };
+      }
     }
 
-    return this.deliveryHistoryRepository.save(history);
+    const saved = await this.deliveryHistoryRepository.save(history);
+
+    // If provider-confirmed, set a long-lived Redis guard to prevent future retries
+    if (isProviderConfirmed) {
+      const redisKey = `delivery:idempotency:${idempotencyKey}`;
+      await this.redisService.set(
+        redisKey,
+        'provider-confirmed',
+        this.IDEMPOTENCY_TTL_SECONDS * 7, // 7 days for provider-confirmed
+      );
+      this.logger.debug(
+        `Provider-confirmed delivery recorded: ${idempotencyKey} ` +
+        `(messageId: ${metadata.providerMessageId})`,
+      );
+    }
+
+    return saved;
   }
 
   /**
@@ -277,6 +338,47 @@ export class DeliveryTracker {
       successRate: all > 0 ? (delivered / all) * 100 : 0,
       byChannel,
     };
+  }
+
+  /**
+   * Get provider-confirmed deliveries for audit purposes
+   * 
+   * Returns all deliveries that have been confirmed by the provider with a
+   * message ID. These deliveries have the strongest evidence of completion.
+   */
+  async getProviderConfirmedDeliveries(
+    startDate: Date,
+    endDate: Date,
+    channel?: DeliveryChannel,
+  ): Promise<DeliveryHistory[]> {
+    const query = this.deliveryHistoryRepository
+      .createQueryBuilder('dh')
+      .where('dh.status = :status', { status: 'delivered' })
+      .andWhere('dh.deliveredAt BETWEEN :start AND :end', { start: startDate, end: endDate })
+      .andWhere("dh.metadata->>'providerConfirmed' = 'true'")
+      .orderBy('dh.deliveredAt', 'DESC');
+
+    if (channel) {
+      query.andWhere('dh.channel = :channel', { channel });
+    }
+
+    return query.getMany();
+  }
+
+  /**
+   * Check if a delivery is provider-confirmed by idempotency key
+   */
+  async isProviderConfirmed(idempotencyKey: string): Promise<boolean> {
+    const history = await this.deliveryHistoryRepository.findOne({
+      where: { idempotencyKey },
+    });
+
+    return (
+      history !== null &&
+      history.status === 'delivered' &&
+      history.metadata?.providerConfirmed === true &&
+      history.metadata?.providerMessageId !== undefined
+    );
   }
 
   /**
