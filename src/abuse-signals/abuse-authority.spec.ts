@@ -107,6 +107,8 @@ describe('abuse signals cannot become protocol authority (PREWAVE-BE-086)', () =
       }
     }
     expect([...tableNames].sort()).toEqual([
+      'abuse_actions',
+      'abuse_appeal_decision_history',
       'abuse_appeals',
       'abuse_decisions',
     ]);
