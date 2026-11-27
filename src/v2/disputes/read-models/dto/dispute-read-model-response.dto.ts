@@ -161,8 +161,8 @@ class DisputeTimelineEventDto implements DisputeTimelineEvent {
 }
 
 class DisputeSettlementDto implements DisputeSettlement {
-  @ApiProperty({ example: false })
-  pending: boolean;
+  @ApiProperty({ example: null, nullable: true })
+  pending: boolean | null;
 
   @ApiProperty({ example: 'PENDING_SETTLEMENT', nullable: true })
   state: string | null;
