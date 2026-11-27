@@ -6,49 +6,31 @@ This document contains visual representations of the key backend workflows in th
 
 ```mermaid
 graph TD
-    A[User/Client] --> B[POST /claims]
-    B --> C[ClaimsController.createClaim]
-    C --> D[ClaimsService.createClaim]
-    D --> E[Save claim metadata only]
-    E --> F[Return metadata and canonical read-model link]
-    F --> G[Canonical event ingestion]
-    G --> H[Approved artifact decode and quarantine]
-    H --> I[Finality checkpoint and projection]
-    I --> J[GET /api/v2/claim-read-models]
-    J --> K{Matching finalized VerdictSettled event?}
-    K -->|Yes| L[Serve finalized projection with provenance]
-    K -->|No| M[Fail closed or retain provisional state]
-
-    F --> N[POST /claims/:claimId/evidence]
-    N --> O[EvidenceService.createEvidence]
-    O --> P[Save evidence record and version]
-    
-    style A fill:#e1f5fe
-    style F fill:#c8e6c9
-    style L fill:#c8e6c9
-    style M fill:#fff3cd
+    A[Prepare off-chain content] --> B[Optional content validation and scanning]
+    B --> C[User wallet submits claim transaction]
+    C --> D[Approved contract emits canonical claim event]
+    D --> E[Indexer confirms finality and projects event]
+    E --> F[GET /api/v2/claim-read-models]
+    B --> G[Optional IPFS preparation]
+    G --> H[CID is not protocol registration]
+    H --> I[User wallet submits evidence registration or replacement]
+    I --> J[Contract emits canonical evidence event]
+    J --> E
 ```
 
 ### Claim Flow Steps
 
-1. **Claim Creation**
-   - Client submits claim metadata via `POST /claims`
-   - The API stores metadata and returns a link to the release-bound read model
-   - Claim creation does not assign a verdict or finality
-
-2. **Canonical Projection**
-   - Approved contract artifacts decode canonical Optimism/EVM events
-   - Unknown, malformed, or unapproved events are quarantined
-   - Finality is determined by the checkpoint for the emitting contract
-   - The read API serves a finalized claim only when its matching
-     `VerdictSettled` event and approved release provenance are verified
-   - Missing or unfinalized events never produce a finalized claim
-
-3. **Evidence Submission**
-   - Client adds evidence via `POST /claims/:claimId/evidence`
-   - Evidence record created with version 1
-   - Evidence version stored with CID reference
-   - Audit trail records evidence submission
+1. The API may validate or scan off-chain content. A CID upload, if separately
+   supported by a deployment, is preparation only and is not recorded as
+   registered evidence.
+2. The user's wallet submits claim/evidence state transitions directly to the
+   approved contract. The API does not sign, relay, create, resolve, or finalize
+   protocol state.
+3. The indexer ingests the canonical event, handles finality/reorg rules, and
+   updates its projection.
+4. Clients read only from `/api/v2/claim-read-models` and
+   `/v2/claims/:claimId/evidence`. Until indexed, data may be pending or not
+   found. Legacy `/claims` write/read routes return `410 Gone`.
 
 ## Verification Flow
 

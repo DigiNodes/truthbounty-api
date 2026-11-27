@@ -20,7 +20,7 @@ honestly.
 
 | Prior art | Path | What it did | Why it was not a rebuild |
 | --------- | ---- | ----------- | ------------------------ |
-| Legacy per-claim reprojection | Removed: `ClaimProjectorService` and `/claims/read-model/:claimId/reproject` | Previously replayed stored lifecycle events into a claim read model | It was driven by the legacy `ClaimLifecycleEvent` table, not the versioned canonical event log, and had no release binding or finality checkpoint |
+| Legacy per-claim reprojection | Removed under issue #835; formerly `ClaimProjectorService.reproject` | Replayed local lifecycle events into the claim read model | It was not canonical and is no longer callable; the historical `ClaimLifecycleEvent` table is retained pending the approved retirement plan |
 | Cursor rewind | `EventIndexerService.backfillFromBlock` — `src/indexer/event-indexer.service.ts` | Moves `lastProcessedBlockNumber` back so the RPC poller re-fetches a range | Rewinds an *ingestion* cursor, not a projection cursor. Re-fetches from RPC, applies into a **non-empty** live schema, and is neither resumable nor reportable |
 | Outbox idempotency | `OutboxService` — `src/outbox/outbox.service.ts` | Deterministic idempotency keys, at-least-once relay, dead-lettering | Establishes the *pattern* this pipeline follows (deterministic identity + explicit terminal state); it is a relay, not a projection |
 

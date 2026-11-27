@@ -46,7 +46,7 @@ interface AuthenticatedPrincipal {
 
 | Role | Description |
 |------|------------|
-| `contributor` | Default. Can read public data and submit claims, evidence, votes, disputes. |
+| `contributor` | Default. Can read public data and submit disputes through supported API operations. Claim, evidence, and vote protocol transitions are submitted from the user's wallet to the approved contract. |
 | `moderator` | Can perform state transitions on disputes and governance proposals. |
 | `admin` | Full app-user privileges including reward management, reconcile, proposal execution. |
 
@@ -163,17 +163,19 @@ Notation:
 
 | Method | Route | Authorization |
 |-------|-------|--------------|
-| GET | `/claims/latest` | PUBLIC |
-| GET | `/claims/user/:wallet` | PUBLIC |
-| GET | `/claims/:id` | PUBLIC |
-| GET | `/claims/:claimId/evidence` | PUBLIC |
-| GET | `/claims/:claimId/evidence/latest` | PUBLIC |
-| GET | `/claims/evidence/:evidenceId` | PUBLIC |
-| GET | `/api/v2/claim-read-models` | PUBLIC (read-only, release-bound) |
-| GET | `/api/v2/claim-read-models/:claimId` | PUBLIC (read-only, release-bound) |
-| POST | `/claims` | AUTHN |
-| POST | `/claims/:claimId/evidence` | AUTHN |
-| PUT | `/claims/evidence/:evidenceId` | AUTHN |
+| GET | `/api/v2/claim-read-models` | PUBLIC — canonical projection |
+| GET | `/api/v2/claim-read-models/:claimId` | PUBLIC — canonical projection |
+| GET | `/v2/claims/:claimId/evidence` | PUBLIC — event projection |
+| GET | `/evidence/*` (legacy) | PUBLIC — deprecated, always 410 |
+| GET | `/api/v2/claims/*` (legacy feed) | PUBLIC — deprecated, always 410 |
+| GET | `/claims/*` (legacy reads) | PUBLIC — deprecated, always 410 |
+| POST | `/claims` (legacy) | AUTHN — deprecated, always 410 |
+| POST | `/claims/:claimId/evidence` (legacy) | AUTHN — deprecated, always 410 |
+| PUT | `/claims/evidence/:evidenceId` (legacy) | AUTHN — deprecated, always 410 |
+
+Claim/evidence protocol writes require a user-authorized wallet transaction.
+The API does not create claims, register or replace evidence, sign transactions,
+or treat IPFS uploads as on-chain registration.
 
 Claim verdict/finality is not writable through the API. Legacy
 `POST /claims/read-model/:claimId/reproject` and `GET /claims/read-model/:claimId`

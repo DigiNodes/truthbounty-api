@@ -1,8 +1,14 @@
 # Cache Failure Isolation (V2-BE-116)
 
+> **Authority update:** legacy TypeORM `Claim` rows and their cache entries are
+> not canonical protocol state. Legacy claim routes and `ClaimsService`
+> lookups now return `410 Gone`; canonical claim reads use
+> `/api/v2/claim-read-models`. Cache fallback behavior described below applies
+> only to still-supported non-protocol data paths.
+
 ## Overview
 
-This document describes the implementation of cache failure isolation for the TruthBounty API. Per V2-BE-116, cache failures are now isolated from canonical state (TypeORM/PostgreSQL) to ensure that the API never silently falls back to fabricated state when Redis is unavailable or fails.
+This document describes cache failure isolation for supported non-protocol API data. Protocol truth is derived from approved contracts and finalized canonical events, not TypeORM legacy rows or Redis.
 
 ## Problem Statement
 
@@ -12,7 +18,7 @@ Prior to this implementation, the caching layer had graceful degradation that si
 
 1. **Fail-Closed Behavior**: Cache failures are explicitly thrown as `CacheUnavailableException` rather than silently returning null/false
 2. **Observable Failures**: All cache failures are logged and recorded in metrics for monitoring and alerting
-3. **Canonical State Authority**: TypeORM/PostgreSQL remains the single source of truth; cache is purely a performance optimization
+3. **Canonical State Authority**: database caches are never authoritative for protocol state; V2 claim reads come from event-derived projections
 4. **No Silent Fallback**: Services explicitly catch cache exceptions and serve from database with observable logging
 5. **Protocol Correctness**: Smart contracts and finalized canonical events remain authoritative for protocol state
 
@@ -80,45 +86,13 @@ async getClaim(id: string): Promise<any | null> {
 }
 ```
 
-### 4. Service Layer Updates
+### 4. Legacy claim cache
 
-**ClaimsService** (`src/claims/claims.service.ts`):
-- Catches `CacheUnavailableException` explicitly
-- Logs cache failures observably with warn-level logs
-- Falls back to canonical database state
-- Continues operation without propagating cache errors to clients
-
-**Example**:
-```typescript
-async findOne(id: string): Promise<Claim | null> {
-    try {
-        const cached = await this.claimsCache.getClaim(id);
-        if (cached) return cached;
-    } catch (error) {
-        if (error instanceof CacheUnavailableException) {
-            this.logger.warn(`Cache unavailable for claim ${id}, serving from database: ${error.message}`);
-            // Fall through to database fetch
-        } else {
-            throw error;
-        }
-    }
-
-    const claim = await this.claimRepo.findOneBy({ id });
-    if (claim) {
-        try {
-            await this.claimsCache.setClaim(id, claim);
-        } catch (error) {
-            if (error instanceof CacheUnavailableException) {
-                this.logger.warn(`Cache unavailable for claim ${id}, skipping cache update: ${error.message}`);
-                // Continue - cache failure is isolated
-            } else {
-                throw error;
-            }
-        }
-    }
-    return claim;
-}
-```
+The former `ClaimsService` cache-to-TypeORM fallback is retired. Its read
+methods reject with `410 Gone`, and no production module registers that
+service. Do not populate or read legacy claim cache keys as canonical claim
+state. Canonical claims are queried through the V2 read-model service, which
+applies projection provenance and freshness checks.
 
 ### 5. Metrics Service Enhancements
 

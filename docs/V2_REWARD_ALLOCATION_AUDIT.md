@@ -1,5 +1,10 @@
 # V2-BE-017 — Reward Allocation & Claim Audit
 
+> **Authority update:** references below to `ClaimResolutionService` and
+> legacy TypeORM claims describe historical implementation details only. The
+> API no longer resolves or finalizes claims; claim outcomes are served only
+> from canonical finalized contract-event projections.
+
 > **Scope.** V2-BE-017 asks for projection of the five reward-allocation
 > beneficiary classes — submitter, verifier, challenger, treasury, refund —
 > with claimable/claimed tracking and reconciliation against emitted source
