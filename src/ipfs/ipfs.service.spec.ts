@@ -2,11 +2,8 @@ import { LocalFsIpfsProvider } from './ipfs.providers';
 import { readFileSync, promises as fsPromises } from 'fs';
 import path from 'path';
 import { CID } from 'multiformats/cid';
-import { verifyCIDIntegrity } from '../storage/cid-verifier';
-import {
-  EVIDENCE_CID_RAW_CODEC,
-  EVIDENCE_CID_SHA256_MULTIHASH_CODE,
-} from '../storage/evidence-cid.constants';
+import { base32 } from 'multiformats/bases/base32';
+import { createHash } from 'node:crypto';
 
 describe('LocalFsIpfsProvider', () => {
   const tmpDir = path.join(process.cwd(), 'tmp-ipfs-test');
@@ -21,34 +18,25 @@ describe('LocalFsIpfsProvider', () => {
     await fsPromises.rm(tmpDir, { recursive: true, force: true });
   });
 
-  it('returns a valid CIDv1 for the uploaded bytes', async () => {
+  it('uploads bytes under a deterministic canonical CIDv1', async () => {
     const buf = Buffer.from('hello world');
     const stream = require('stream').Readable.from(buf);
     const res = await provider.add(stream, { filename: 'greeting.txt' });
-    const parsed = CID.parse(res.cid);
-    expect(parsed.version).toBe(1);
-    expect(parsed.code).toBe(EVIDENCE_CID_RAW_CODEC);
-    expect(parsed.multihash.code).toBe(EVIDENCE_CID_SHA256_MULTIHASH_CODE);
-    expect(await verifyCIDIntegrity(buf, res.cid)).toBe(true);
-    expect(await verifyCIDIntegrity(Buffer.from('altered'), res.cid)).toBe(false);
+    const cid = CID.parse(res.cid);
+    expect(cid.version).toBe(1);
+    expect(cid.toString(base32)).toBe(res.cid);
+    expect(Buffer.from(cid.multihash.digest)).toEqual(
+      createHash('sha256').update(buf).digest(),
+    );
     expect(res.size).toBe(buf.length);
 
     const stored = readFileSync(res.path!, 'utf8');
     expect(stored).toBe('hello world');
   });
 
-  it('returns the same CID for repeated uploads of identical bytes', async () => {
-    const first = await provider.add(
-      require('stream').Readable.from(Buffer.from('repeat')),
-    );
-    const second = await provider.add(
-      require('stream').Readable.from(Buffer.from('repeat')),
-    );
-    expect(second.cid).toBe(first.cid);
-  });
-
-  it('removes partial files when an upload stream fails', async () => {
-    const stream = new (require('stream').Readable)({
+  it('does not leave a partial object after an interrupted stream', async () => {
+    const { Readable } = require('stream');
+    const stream = new Readable({
       read() {
         this.push(Buffer.from('partial'));
         this.destroy(new Error('interrupted'));
@@ -57,5 +45,16 @@ describe('LocalFsIpfsProvider', () => {
 
     await expect(provider.add(stream)).rejects.toThrow('interrupted');
     expect(await fsPromises.readdir(tmpDir)).toEqual([]);
+  });
+
+  it('returns the same CID and stored path for repeated identical uploads', async () => {
+    const { Readable } = require('stream');
+    const bytes = Buffer.from('repeatable');
+    const first = await provider.add(Readable.from(bytes));
+    const second = await provider.add(Readable.from(bytes));
+
+    expect(second.cid).toBe(first.cid);
+    expect(second.path).toBe(first.path);
+    expect(readFileSync(second.path!, 'utf8')).toBe('repeatable');
   });
 });

@@ -85,7 +85,10 @@ export class VerificationProjectorService {
     const projectorName = scopedProjectorName(PROJECTOR_NAME, scope.chainId);
     const cursorRepo = this.dataSource.getRepository(ProjectorCursor);
     const cursor = await cursorRepo.findOne({
-      where: { projectorName },
+      where: {
+        projectorName:
+          this.canonicalEvents.getScopedProjectorName(PROJECTOR_NAME),
+      },
     });
     const after = cursor
       ? { blockNumber: cursor.lastBlockNumber, logIndex: cursor.lastLogIndex }
@@ -111,7 +114,8 @@ export class VerificationProjectorService {
         const applied = await this.applyEvent(manager, event);
         await manager.getRepository(ProjectorCursor).upsert(
           {
-            projectorName: scopedProjectorName(PROJECTOR_NAME, event.chainId),
+            projectorName:
+              this.canonicalEvents.getScopedProjectorName(PROJECTOR_NAME),
             lastBlockNumber: event.blockNumber,
             lastLogIndex: event.logIndex,
           },
