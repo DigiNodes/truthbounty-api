@@ -18,7 +18,31 @@ The authorization layer follows these invariants:
 
 ### App-User Plane (Prisma `UserRole`)
 
-Authenticated via wallet-signature → JWT. Role is stored in the Prisma `User.role` field.
+Authenticated via wallet-signature → JWT. The principal is attached by `JwtStrategy` to `request.user` and has the following canonical shape returned by `AuthService.validateToken`:
+
+```typescript
+interface AuthenticatedPrincipal {
+  address: string;              // Required: wallet address (lowercase)
+  userId: string | null;        // Prisma User.id if linked, else null
+  user: {                       // Prisma User record if linked, else null
+    id: string;
+    role: string;               // UserRole: 'contributor', 'moderator', 'admin'
+  } | null;
+  sub?: string;                 // JWT subject (may contain address or userId)
+  jti?: string;                 // JWT token ID for blacklist checks
+}
+```
+
+**Principal Resolution:**
+- `JwtStrategy.validate()` calls `AuthService.validateToken()` with the decoded JWT payload
+- `AuthService.validateToken()` returns the canonical `AuthenticatedPrincipal` shape
+- Passport attaches this principal to `request.user` (canonical field)
+- Guards read from `request.user` (with optional fallback to legacy `request.use` for compatibility)
+
+**Role Enforcement:**
+- `RolesGuard` (auth plane) reads `request.user.user.role` (nested Prisma role field)
+- Role is a string, not an array
+- Fail-closed: missing principal, null user record, missing role, or unrecognized role → ForbiddenException
 
 | Role | Description |
 |------|------------|
@@ -30,6 +54,12 @@ Authenticated via wallet-signature → JWT. Role is stored in the Prisma `User.r
 
 A separate DB-backed identity (`admin_users` table). Requires `AdminGuard` (DB lookup) + `RolesGuard` (hierarchy check). Roles are ordered numerically.
 
+**Principal Resolution:**
+- Admin-plane `AdminGuard` reads from the same `request.user` principal (attached by JwtStrategy)
+- Extracts `request.user.address` for DB lookup in `admin_users` table
+- Attaches the TypeORM `Admin` entity to `request.admin` for downstream use
+- Admin `RolesGuard` reads from `request.admin` (not `request.user`)
+
 | Role | Hierarchy Score | Capabilities |
 |------|---------------|------------|
 | `super_admin` | 100 | All admin capabilities |
@@ -38,6 +68,29 @@ A separate DB-backed identity (`admin_users` table). Requires `AdminGuard` (DB l
 | `governance_operator` | 60 | Governance administration |
 | `moderator` | 50 | Moderation queue, reports |
 | `auditor` | 30 | Read-only audit logs, reports |
+
+#### Admin Role Grant Policy (PREWAVE-BE-135)
+
+Endpoint-level authorization (`RolesGuard`) governs who may reach administrative routes.
+However, **role-grant and account modification authority is decoupled from the numeric role hierarchy** and enforced strictly at the service layer in `AdminService` via `ADMIN_ROLE_GRANT_POLICY` (`src/admin/admin.policy.ts`):
+
+1. **Privilege Escalation Prevention:** An `administrator` (score 80) cannot create an account with `super_admin` (100) or promote any existing lower-privilege account to `super_admin`.
+2. **Account Protection:** An `administrator` cannot modify or alter the role or active status of an existing `super_admin` account.
+3. **Grant Authority Scope:**
+   - `super_admin`: Authorized to grant all admin-operator roles (`super_admin`, `administrator`, `security_analyst`, `governance_operator`, `moderator`, `auditor`).
+   - `administrator`: Authorized to grant roles at or below its own tier (`administrator`, `security_analyst`, `governance_operator`, `moderator`, `auditor`). Under no circumstances can an administrator grant `super_admin`.
+   - `security_analyst`, `governance_operator`, `moderator`, `auditor`: Cannot grant or modify any admin roles (empty set).
+4. **Least-Privilege Defaults:** Account creation without an explicit role defaults to `auditor` (score 30).
+5. **Durable Audit Trail:** All grant, promotion, and status mutation attempts (both permitted and denied) are recorded in the tamper-evident administrative audit trail capturing actor, target, before/after roles, outcome (`success` or `denied`), and reason. Denied attempts fail closed without mutating persistence records.
+
+| Actor Role | Permitted Grant Roles | Can Modify Existing `super_admin`? |
+|---|---|---|
+| `super_admin` | `super_admin`, `administrator`, `security_analyst`, `governance_operator`, `moderator`, `auditor` | Yes |
+| `administrator` | `administrator`, `security_analyst`, `governance_operator`, `moderator`, `auditor` | **No** (Strictly Denied) |
+| `security_analyst` | None (empty set) | No |
+| `governance_operator` | None (empty set) | No |
+| `moderator` | None (empty set) | No |
+| `auditor` | None (empty set) | No |
 
 ---
 
@@ -52,19 +105,36 @@ Request
   |    Requires JWT for all POST/PATCH/PUT/DELETE
   |    GET methods public by default
   |    @Public() decorator bypasses this guard
+  |    Populates request.user via JwtStrategy if valid JWT present
   
   ├─ WalletThrottlerGuard (APP_GUARD)
       Rate-limits by wallet address
   
   ├─ [Route-level guards applied via @UseGuards()]
   |    ├─ JwtAuthGuard         — enforces valid JWT
+  |    |                           (Passport attaches principal to request.user)
   |    ├─ RolesGuard (auth/)   — enforces app-user Prisma role
+  |    |                           (reads request.user.user.role)
   |    ├─ AdminGuard (admin/)  — DB lookup in admin_users
+  |    |                           (reads request.user.address, attaches request.admin)
   |    ├─ RolesGuard (admin/)  — hierarchy check on request.admin
+  |    |                           (reads request.admin.role)
   |    └─ ServiceAuthGuard     — X-service-api-key header
   |
   └─ Controller handler
 ```
+
+**Principal Flow:**
+1. Valid JWT → `JwtStrategy.validate()` → `AuthService.validateToken()` → returns `AuthenticatedPrincipal`
+2. Passport attaches principal to `request.user` (canonical field)
+3. App-user `RolesGuard` reads `request.user.user.role` (Prisma UserRole)
+4. Admin-plane `AdminGuard` reads `request.user.address` for DB lookup, attaches `request.admin`
+5. Admin-plane `RolesGuard` reads `request.admin.role` (TypeORM AdminRole)
+
+**Compatibility Note:**
+- Legacy code may reference `request.use` as an alias for `request.user`
+- Guards support fallback to `request.use` when `request.user` is absent
+- New code should always use the canonical `request.user` field
 
 ---
 
@@ -99,9 +169,19 @@ Notation:
 | GET | `/claims/:claimId/evidence` | PUBLIC |
 | GET | `/claims/:claimId/evidence/latest` | PUBLIC |
 | GET | `/claims/evidence/:evidenceId` | PUBLIC |
+| GET | `/api/v2/claim-read-models` | PUBLIC (read-only, release-bound) |
+| GET | `/api/v2/claim-read-models/:claimId` | PUBLIC (read-only, release-bound) |
 | POST | `/claims` | AUTHN |
 | POST | `/claims/:claimId/evidence` | AUTHN |
 | PUT | `/claims/evidence/:evidenceId` | AUTHN |
+
+Claim verdict/finality is not writable through the API. Legacy
+`POST /claims/read-model/:claimId/reproject` and `GET /claims/read-model/:claimId`
+were removed because they exposed/rebuilt an unversioned lifecycle projection.
+The versioned read model fails closed for finalized rows unless a matching
+`VerdictSettled` event, approved artifact version/address, and that contract's
+finality checkpoint are present. Off-chain vote simulations are advisory only
+and do not mutate claim state.
 
 ### Disputes
 
@@ -231,24 +311,33 @@ configuration and audit responses.
 
 ### Admin (operator plane)
 
-| Method | Route | Authorization |
-|-------|-------|--------------|
-| POST | `/admin/auth/login` | AUTHN (verified JWT principal only; body address, if retained for compatibility, must exactly match the verified principal address before any admin lookup or mutation; non-admin identities receive a uniform non-enumerating response; `lastLoginAt` updates only after successful identity binding and session operation) |
-| GET | `/admin/auth/profile` | ADMIN(auditor) |
-| POST | `/admin/admins` | ADMIN(administrator) |
-| GET | `/admin/admins` | ADMIN(auditor) |
-| GET | `/admin/admins/:id` | ADMIN(auditor) |
-| PATCH | `/admin/admins/:id/role` | ADMIN(administrator) |
-| PATCH | `/admin/admins/:id/status` | ADMIN(administrator) |
-| All `/admin/moderation/*` | varies | See ModerationController |
-| All `/admin/incidents/*` | varies | See IncidentController |
-| All `/admin/protocol/*` | varies | See ProtocolAdminController |
+| Method | Route | Authorization | Notes |
+|-------|-------|--------------|-------|
+| POST | `/admin/auth/login` | AUTHN (verified JWT principal only; body address, if retained for compatibility, must exactly match the verified principal address before any admin lookup or mutation; non-admin identities receive a uniform non-enumerating response; `lastLoginAt` updates only after successful identity binding and session operation) | |
+| GET | `/admin/auth/profile` | ADMIN(auditor) | |
+| POST | `/admin/admins` | ADMIN(administrator) | Enforces AdminRoleGrantPolicy; administrator cannot create super_admin; defaults to auditor; durably audited |
+| GET | `/admin/admins` | ADMIN(auditor) | Paginated list |
+| GET | `/admin/admins/:id` | ADMIN(auditor) | |
+| PATCH | `/admin/admins/:id/role` | ADMIN(administrator) | Enforces AdminRoleGrantPolicy; administrator cannot promote to super_admin or modify existing super_admin; durably audited |
+| PATCH | `/admin/admins/:id/status` | ADMIN(administrator) | Administrator cannot alter super_admin status; durably audited |
+| All `/admin/moderation/*` | varies | See ModerationController | |
+| All `/admin/incidents/*` | varies | See IncidentController | |
+| All `/admin/protocol/*` | varies | See ProtocolAdminController | |
 
 ### Metrics
 
 | Method | Route | Authorization |
 |-------|-------|--------------|
 | GET | `/metrics` | Bearer `METRICS_TOKEN` header |
+
+### Internal Notifications (Event Publisher)
+
+| Method | Route | Authorization |
+|-------|-------|--------------|
+| POST | `/api/v2/internal/notifications/events` | SERVICE (`x-service-api-key`) or AUTHN + `@AdminOnly()` (`ServiceOrAdminGuard`) |
+| POST | `/api/v2/internal/notifications/events/batch` | SERVICE (`x-service-api-key`) or AUTHN + `@AdminOnly()` (`ServiceOrAdminGuard`) |
+| POST | `/api/v2/internal/notifications/events/status/:eventId` | SERVICE (`x-service-api-key`), ADMIN, or AUTHN (owner/recipient only via `ServiceOrJwtAuthGuard`) |
+| POST | `/api/v2/internal/notifications/events/metrics` | SERVICE (`x-service-api-key`) or AUTHN + `@AdminOnly()` (`ServiceOrAdminGuard`) |
 
 ---
 
@@ -264,6 +353,8 @@ configuration and audit responses.
 | Invalid/missing service API key | 401 Unauthorized |
 | Prisma user record absent (no wallet linked) | 403 Forbidden on role-restricted routes |
 | Role field missing or unrecognised | 403 Forbidden |
+| Principal missing required address field | 403 Forbidden |
+| Principal attached to wrong field (not request.user/request.use) | 403 Forbidden (isAuthenticatedRequest returns false) |
 | JWT token blacklisted (jti in Redis) | 401 Unauthorized (via JwtStrategy) |
 | Challenge expired or nonce already used | 401 Unauthorized (via AuthService) |
 | Capability token audience mismatch | 403 Forbidden |
@@ -275,6 +366,12 @@ configuration and audit responses.
 | Capability token signature invalid | 401 Unauthorized |
 
 All failure modes throw exceptions — no silent fallback to fabricated or permissive state.
+
+**Principal Validation:**
+- Guards validate that `request.user` (or fallback `request.use`) contains a valid `AuthenticatedPrincipal`
+- Required fields: `address` (string)
+- App-user role checks additionally require: `user.role` (string, not array)
+- No unverified request fields (e.g., injected `isAdmin`, `roles` array) can grant elevated access
 
 ---
 
@@ -327,10 +424,13 @@ Issuance and use are audited with audience, subject, capability, resource, nonce
 | File | Purpose |
 |------|---------|
 | `src/auth/authorization-matrix.ts` | Canonical machine-readable matrix + type helpers |
-| `src/auth/guards/roles.guard.ts` | App-user plane role enforcement |
-| `src/auth/guards/admin.guard.ts` | Env-list admin gate (used by auth controller) |
-| `src/admin/guards/admin.guard.ts` | DB-backed admin identity gate |
-| `src/admin/guards/roles.guard.ts` | Admin-plane hierarchy enforcement |
+| `src/auth/types/authenticated-request.ts` | AuthenticatedPrincipal and AuthenticatedRequest type definitions |
+| `src/auth/strategies/jwt.strategy.ts` | Passport JWT strategy (attaches principal to request.user) |
+| `src/auth/auth.service.ts` | Token validation, returns canonical AuthenticatedPrincipal |
+| `src/auth/guards/roles.guard.ts` | App-user plane role enforcement (reads request.user.user.role) |
+| `src/auth/guards/admin.guard.ts` | Env-list admin gate (reads request.user for role/wallet check) |
+| `src/admin/guards/admin.guard.ts` | DB-backed admin identity gate (reads request.user.address, attaches request.admin) |
+| `src/admin/guards/roles.guard.ts` | Admin-plane hierarchy enforcement (reads request.admin.role) |
 | `src/auth/global-auth.guard.ts` | Global JWT guard (APP_GUARD) |
 | `src/auth/guards/service-auth.guard.ts` | Service-to-service key guard |
 | `src/auth/capability/capability-token.service.ts` | Issue/verify/revoke short-lived capability tokens (JWS-signed, aud/sub/cap/resource/nonce/exp/iat/chain/release/deployment/artifact) |

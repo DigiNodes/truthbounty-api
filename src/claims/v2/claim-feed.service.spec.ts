@@ -4,14 +4,12 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ClaimFeedService } from './claim-feed.service';
 import { Claim } from '../entities/claim.entity';
-import { IndexedEvent } from '../../entities/indexed-event.entity';
 import { Stake } from '../../staking/entities/stake.entity';
 import { ClaimsCache } from '../../cache/claims.cache';
 
 describe('ClaimFeedService', () => {
   let service: ClaimFeedService;
   let claimRepo: Repository<Claim>;
-  let indexedEventRepo: Repository<IndexedEvent>;
   let stakeRepo: Repository<Stake>;
   let claimsCache: ClaimsCache;
 
@@ -22,20 +20,10 @@ describe('ClaimFeedService', () => {
       content: 'Content',
       source: null,
       metadata: null,
-      resolvedVerdict: null,
-      confidenceScore: null,
-      finalized: false,
       createdAt: new Date('2026-08-28T10:00:00Z'),
-      resolvedAt: null,
       deadline: null,
       effectiveAt: null,
       evidences: [],
-      getCurrentState() {
-        if (this.finalized) return 'FINALIZED' as any;
-        if (this.resolvedVerdict !== null && this.confidenceScore !== null)
-          return 'RESOLVED' as any;
-        return 'PENDING' as any;
-      },
       ...overrides,
     } as Claim;
   }
@@ -46,10 +34,6 @@ describe('ClaimFeedService', () => {
         ClaimFeedService,
         {
           provide: getRepositoryToken(Claim),
-          useClass: Repository,
-        },
-        {
-          provide: getRepositoryToken(IndexedEvent),
           useClass: Repository,
         },
         {
@@ -73,9 +57,6 @@ describe('ClaimFeedService', () => {
     (claimRepo as any).manager = {
       connection: { options: { type: 'better-sqlite3' } },
     };
-    indexedEventRepo = module.get<Repository<IndexedEvent>>(
-      getRepositoryToken(IndexedEvent),
-    );
     stakeRepo = module.get<Repository<Stake>>(getRepositoryToken(Stake));
     claimsCache = module.get<ClaimsCache>(ClaimsCache);
   });
@@ -131,13 +112,16 @@ describe('ClaimFeedService', () => {
         getMany: jest.fn().mockResolvedValue([claim1, claim2]),
       };
       jest.spyOn(claimRepo, 'createQueryBuilder').mockReturnValue(qb as any);
-      jest.spyOn(indexedEventRepo, 'findOne').mockResolvedValue(null);
-
       const result = await service.getFeed({ limit: 20 });
 
       expect(result.data).toHaveLength(2);
       expect(result.data[0].id).toBe('a1');
-      expect(result.data[0].lifecycleState).toBe('PENDING');
+      expect(result.data[0]).not.toHaveProperty('lifecycleState');
+      expect(result.data[0]).not.toHaveProperty('resolvedVerdict');
+      expect(result.data[0]).not.toHaveProperty('confidenceScore');
+      expect(result.data[0].links.canonicalReadModel).toBe(
+        '/api/v2/claim-read-models/a1',
+      );
       expect(result.data[0].links.self).toBe('/api/v2/claims/a1');
       expect(result.pagination.hasMore).toBe(false);
     });
@@ -156,8 +140,6 @@ describe('ClaimFeedService', () => {
         getMany: jest.fn().mockResolvedValue(claims),
       };
       jest.spyOn(claimRepo, 'createQueryBuilder').mockReturnValue(qb as any);
-      jest.spyOn(indexedEventRepo, 'findOne').mockResolvedValue(null);
-
       const result = await service.getFeed({ limit: 20 });
 
       expect(result.data).toHaveLength(20);
@@ -210,24 +192,12 @@ describe('ClaimFeedService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('should apply state filter for RESOLVED', async () => {
-      const qb = {
-        where: jest.fn().mockReturnThis(),
-        andWhere: jest.fn().mockReturnThis(),
-        innerJoin: jest.fn().mockReturnThis(),
-        orderBy: jest.fn().mockReturnThis(),
-        addOrderBy: jest.fn().mockReturnThis(),
-        take: jest.fn().mockReturnThis(),
-        getMany: jest.fn().mockResolvedValue([]),
-      };
-      jest.spyOn(claimRepo, 'createQueryBuilder').mockReturnValue(qb as any);
-
-      await service.getFeed({ limit: 20, state: 'RESOLVED' });
-
-      expect(qb.andWhere).toHaveBeenCalledWith(
-        expect.stringContaining('resolvedVerdict'),
-        expect.any(Object),
-      );
+    it('rejects state filters instead of reading legacy verdict columns', async () => {
+      const createQueryBuilderSpy = jest.spyOn(claimRepo, 'createQueryBuilder');
+      await expect(
+        service.getFeed({ limit: 20, state: 'RESOLVED' }),
+      ).rejects.toThrow(BadRequestException);
+      expect(createQueryBuilderSpy).not.toHaveBeenCalled();
     });
 
     it('should apply creator filter via stake join', async () => {
@@ -281,14 +251,16 @@ describe('ClaimFeedService', () => {
       jest.spyOn(claimsCache, 'getClaim').mockResolvedValue(null);
       jest.spyOn(claimRepo, 'findOneBy').mockResolvedValue(claim);
       jest.spyOn(claimsCache, 'setClaim').mockResolvedValue(undefined);
-      jest.spyOn(indexedEventRepo, 'findOne').mockResolvedValue(null);
-
       const result = await service.getDetail('detail-1');
 
       expect(result.id).toBe('detail-1');
-      expect(result.lifecycleState).toBe('RESOLVED');
-      expect(result.confidenceScore).toBe(0.85);
-      expect(result.resolvedVerdict).toBe(true);
+      expect(result).not.toHaveProperty('lifecycleState');
+      expect(result).not.toHaveProperty('confidenceScore');
+      expect(result).not.toHaveProperty('resolvedVerdict');
+      expect(result).not.toHaveProperty('confirmations');
+      expect(result.links.canonicalReadModel).toBe(
+        '/api/v2/claim-read-models/detail-1',
+      );
       expect(result.links.self).toBe('/api/v2/claims/detail-1');
       expect(result.links.evidence).toBe('/api/v2/claims/detail-1/evidence');
       expect(result.links.stakes).toBe('/api/v2/claims/detail-1/stakes');
@@ -298,8 +270,6 @@ describe('ClaimFeedService', () => {
       const claim = makeClaim({ id: 'cached-1', title: 'Cached claim' });
       jest.spyOn(claimsCache, 'getClaim').mockResolvedValue(claim);
       const findOneBySpy = jest.spyOn(claimRepo, 'findOneBy');
-      jest.spyOn(indexedEventRepo, 'findOne').mockResolvedValue(null);
-
       const result = await service.getDetail('cached-1');
 
       expect(result.title).toBe('Cached claim');
@@ -316,63 +286,4 @@ describe('ClaimFeedService', () => {
     });
   });
 
-  describe('confirmations metadata', () => {
-    it('should return default confirmations when no indexed event present', async () => {
-      const claim = makeClaim({ id: 'conf1' });
-      jest.spyOn(claimsCache, 'getClaim').mockResolvedValue(claim);
-      jest.spyOn(indexedEventRepo, 'findOne').mockResolvedValue(null);
-
-      const result = await service.getDetail('conf1');
-
-      expect(result.confirmations).toEqual({
-        current: 0,
-        required: 12,
-        finalized: false,
-      });
-    });
-
-    it('should reflect indexed event finality when present', async () => {
-      const claim = makeClaim({ id: 'conf2' });
-      jest.spyOn(claimsCache, 'getClaim').mockResolvedValue(null);
-      jest.spyOn(claimRepo, 'findOneBy').mockResolvedValue(claim);
-      jest.spyOn(claimsCache, 'setClaim').mockResolvedValue(undefined);
-      jest.spyOn(indexedEventRepo, 'findOne').mockResolvedValue({
-        confirmations: 40,
-        isFinalized: true,
-      } as IndexedEvent);
-
-      const result = await service.getDetail('conf2');
-
-      expect(result.confirmations.finalized).toBe(true);
-      expect(result.confirmations.current).toBe(40);
-      expect(result.confirmations.required).toBe(12);
-    });
-
-    it('fetches the latest ClaimCreated event exactly once per feed page, not once per row (N+1 regression guard)', async () => {
-      const claims = Array.from({ length: 10 }, (_, i) =>
-        makeClaim({ id: `id-${i}`, effectiveAt: new Date(2026, 7, 30, 0, i) }),
-      );
-      const qb = {
-        where: jest.fn().mockReturnThis(),
-        andWhere: jest.fn().mockReturnThis(),
-        innerJoin: jest.fn().mockReturnThis(),
-        orderBy: jest.fn().mockReturnThis(),
-        addOrderBy: jest.fn().mockReturnThis(),
-        take: jest.fn().mockReturnThis(),
-        getMany: jest.fn().mockResolvedValue(claims),
-      };
-      jest.spyOn(claimRepo, 'createQueryBuilder').mockReturnValue(qb as any);
-      const findOneSpy = jest
-        .spyOn(indexedEventRepo, 'findOne')
-        .mockResolvedValue({
-          confirmations: 5,
-          isFinalized: false,
-        } as IndexedEvent);
-
-      const result = await service.getFeed({ limit: 20 });
-
-      expect(result.data).toHaveLength(10);
-      expect(findOneSpy).toHaveBeenCalledTimes(1);
-    });
-  });
 });

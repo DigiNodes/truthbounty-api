@@ -7,15 +7,12 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Claim } from '../entities/claim.entity';
-import { IndexedEvent } from '../../entities/indexed-event.entity';
 import { Stake } from '../../staking/entities/stake.entity';
 import {
   ClaimFeedQueryDto,
   CLAIM_FEED_MAX_LIMIT,
 } from './dto/claim-feed-query.dto';
 import { ClaimsCache } from '../../cache/claims.cache';
-
-const DEFAULT_CONFIRMATIONS_REQUIRED = 12;
 
 interface CursorPayload {
   effectiveAt: string;
@@ -75,8 +72,6 @@ export class ClaimFeedService {
   constructor(
     @InjectRepository(Claim)
     private readonly claimRepo: Repository<Claim>,
-    @InjectRepository(IndexedEvent)
-    private readonly indexedEventRepo: Repository<IndexedEvent>,
     @InjectRepository(Stake)
     private readonly stakeRepo: Repository<Stake>,
     private readonly claimsCache: ClaimsCache,
@@ -86,6 +81,12 @@ export class ClaimFeedService {
     data: any[];
     pagination: { nextCursor: string | null; hasMore: boolean };
   }> {
+    if (query.state) {
+      throw new BadRequestException(
+        'Claim state filters are available only from /api/v2/claim-read-models',
+      );
+    }
+
     const limit = Math.min(Math.max(query.limit, 1), CLAIM_FEED_MAX_LIMIT);
     const qb = this.claimRepo.createQueryBuilder('claim');
 
@@ -103,27 +104,6 @@ export class ClaimFeedService {
         `(${epoch} < :cursorEpoch) OR (${epoch} = :cursorEpoch AND claim.id < :cursorId)`,
         { cursorEpoch, cursorId: cursor.id },
       );
-    }
-
-    // State filter — derive from entity fields
-    if (query.state) {
-      switch (query.state) {
-        case 'PENDING':
-          qb.andWhere(
-            'claim."resolvedVerdict" IS NULL AND claim."confidenceScore" IS NULL AND claim.finalized = :f',
-            { f: false },
-          );
-          break;
-        case 'RESOLVED':
-          qb.andWhere(
-            'claim."resolvedVerdict" IS NOT NULL AND claim."confidenceScore" IS NOT NULL AND claim.finalized = :f',
-            { f: false },
-          );
-          break;
-        case 'FINALIZED':
-          qb.andWhere('claim.finalized = :f', { f: true });
-          break;
-      }
     }
 
     // Creator filter via stake join
@@ -173,10 +153,7 @@ export class ClaimFeedService {
     // Fetch once for the whole page: the underlying query has no per-claim
     // filter (see getLatestClaimCreatedEvent), so calling it once per row
     // (as toFeedItem used to) issued the same query `limit` times over.
-    const latestEvent = await this.getLatestClaimCreatedEvent();
-    const data = await Promise.all(
-      page.map((claim) => this.toFeedItem(claim, latestEvent)),
-    );
+    const data = page.map((claim) => this.toFeedItem(claim));
 
     return {
       data,
@@ -196,26 +173,18 @@ export class ClaimFeedService {
       throw new NotFoundException(`Claim ${id} not found`);
     }
 
-    const confirmations = this.computeConfirmations(
-      await this.getLatestClaimCreatedEvent(),
-    );
-
     return {
       id: claim.id,
       title: claim.title,
       content: claim.content,
       source: claim.source,
       metadata: claim.metadata,
-      lifecycleState: claim.getCurrentState(),
-      confidenceScore: claim.confidenceScore,
-      resolvedVerdict: claim.resolvedVerdict,
       deadline: normalizeDate(claim.deadline),
-      resolvedAt: normalizeDate(claim.resolvedAt),
       effectiveAt: normalizeDate(claim.effectiveAt ?? claim.createdAt),
       createdAt: normalizeDate(claim.createdAt),
-      confirmations,
       links: {
         self: `/api/v2/claims/${claim.id}`,
+        canonicalReadModel: `/api/v2/claim-read-models/${claim.id}`,
         evidence: `/api/v2/claims/${claim.id}/evidence`,
         stakes: `/api/v2/claims/${claim.id}/stakes`,
         settlement: `/api/v2/claims/${claim.id}/settlement`,
@@ -223,61 +192,18 @@ export class ClaimFeedService {
     };
   }
 
-  private async toFeedItem(
-    claim: Claim,
-    latestEvent: IndexedEvent | null,
-  ): Promise<any> {
-    const confirmations = this.computeConfirmations(latestEvent);
-
+  private toFeedItem(claim: Claim): Record<string, unknown> {
     return {
       id: claim.id,
       title: claim.title,
-      lifecycleState: claim.getCurrentState(),
-      confidenceScore: claim.confidenceScore,
-      resolvedVerdict: claim.resolvedVerdict,
       deadline: normalizeDate(claim.deadline),
       effectiveAt: normalizeDate(claim.effectiveAt ?? claim.createdAt),
       createdAt: normalizeDate(claim.createdAt),
-      confirmations,
       links: {
         self: `/api/v2/claims/${claim.id}`,
+        canonicalReadModel: `/api/v2/claim-read-models/${claim.id}`,
         evidence: `/api/v2/claims/${claim.id}/evidence`,
       },
-    };
-  }
-
-  /**
-   * The confirmations filter is not claim-specific (no claimId column exists
-   * on IndexedEvent), so this is fetched once per request/page rather than
-   * once per claim.
-   */
-  private async getLatestClaimCreatedEvent(): Promise<IndexedEvent | null> {
-    return this.indexedEventRepo.findOne({
-      where: { eventType: 'ClaimCreated' },
-      order: { blockNumber: 'DESC' },
-    });
-  }
-
-  private computeConfirmations(event: IndexedEvent | null): {
-    current: number;
-    required: number;
-    finalized: boolean;
-  } {
-    if (!event) {
-      return {
-        current: 0,
-        required: DEFAULT_CONFIRMATIONS_REQUIRED,
-        finalized: false,
-      };
-    }
-
-    const current = event.confirmations;
-    const required = DEFAULT_CONFIRMATIONS_REQUIRED;
-
-    return {
-      current,
-      required,
-      finalized: current >= required || event.isFinalized,
     };
   }
 

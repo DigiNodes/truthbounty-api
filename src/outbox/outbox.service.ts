@@ -1,4 +1,3 @@
-import { createHash } from 'crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { InjectQueue } from '@nestjs/bullmq';
@@ -11,6 +10,12 @@ import {
   ErrorClassification,
   formatRetryMetadata,
 } from '../queue/retry-utils';
+import { parseDeliveryChannel } from '../notifications/delivery/delivery-channel';
+import { DeliveryChannel } from '../notifications/interfaces/notification.types';
+import {
+  buildDeliveryIdempotencyKey,
+  buildOutboxIdempotencyKey,
+} from '../notifications/delivery/delivery-idempotency-key';
 
 /** Routing-only metadata — no PII, settlement, or claim content */
 export interface OutboxEventPayload {
@@ -180,12 +185,28 @@ export class OutboxService {
         event.retryCount,
       );
 
+      const channel =
+        parseDeliveryChannel(payload.channel) ?? DeliveryChannel.IN_APP;
+      const recipientId = payload.recipientIds?.[0];
+      const aggregateId = payload.notificationId ?? event.aggregateId;
+      const deliveryIdempotencyKey = recipientId
+        ? buildDeliveryIdempotencyKey({
+            eventType: event.eventType,
+            recipientId,
+            channel,
+            aggregateId,
+          })
+        : undefined;
+
       const job = await this.queue.add(
         OUTBOX_JOB_NAME,
         {
-          notificationId: payload.notificationId ?? event.aggregateId,
-          channel: payload.channel,
-          userId: undefined, // never relay userId through queue job data
+          notificationId: aggregateId,
+          channel,
+          userId: recipientId, // opaque recipient id, not PII
+          eventType: event.eventType,
+          aggregateId,
+          deliveryIdempotencyKey,
           idempotencyKey: event.idempotencyKey,
           outboxEventId: event.id,
         },
@@ -281,18 +302,22 @@ export class OutboxService {
   }
 
   /**
-   * Build a deterministic idempotency key for an outbox event.
-   * Key = sha256(eventType + aggregateId + sorted-payload-keys)
+   * Build a deterministic event-level key from the same canonical delivery keys
+   * used by workers and providers. Recipient order is irrelevant.
    */
   buildIdempotencyKey(
     eventType: string,
     aggregateId: string,
     payload: OutboxEventPayload,
   ): string {
-    const channel = payload.channel ?? '';
-    const recipients = (payload.recipientIds ?? []).sort().join(',');
-    const raw = `${eventType}:${aggregateId}:${channel}:${recipients}`;
-    return createHash('sha256').update(raw).digest('hex');
+    const channel =
+      parseDeliveryChannel(payload.channel) ?? DeliveryChannel.IN_APP;
+    return buildOutboxIdempotencyKey(
+      eventType,
+      aggregateId,
+      payload.recipientIds ?? [],
+      channel,
+    );
   }
 
   /** Expose pending count for health checks */

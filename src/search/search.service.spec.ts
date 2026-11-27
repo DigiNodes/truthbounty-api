@@ -281,6 +281,20 @@ describe('SearchService (PREWAVE-BE-068 Harden Search Complexity & Stability)', 
       ).rejects.toThrow(BadRequestException);
     });
 
+    it('does not use legacy claim columns to filter protocol finality', async () => {
+      await expect(
+        service.searchEntity(
+          'claims',
+          'example',
+          { finalized: true },
+          { page: 1, limit: 20, type: PaginationType.OFFSET },
+          SortField.NEWEST,
+        ),
+      ).rejects.toThrow(
+        'Claim finality filters are available only from /api/v2/claim-read-models',
+      );
+    });
+
     it('should never expose private user fields (role, wallets) in user search results', async () => {
       mockUserQb.getManyAndCount.mockResolvedValue([
         [

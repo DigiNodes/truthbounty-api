@@ -1290,6 +1290,7 @@ export type OutboxEventCreateManyArgs<ExtArgs extends runtime.Types.Extensions.I
    * The data used to create many OutboxEvents.
    */
   data: Prisma.OutboxEventCreateManyInput | Prisma.OutboxEventCreateManyInput[]
+  skipDuplicates?: boolean
 }
 
 /**
@@ -1308,6 +1309,7 @@ export type OutboxEventCreateManyAndReturnArgs<ExtArgs extends runtime.Types.Ext
    * The data used to create many OutboxEvents.
    */
   data: Prisma.OutboxEventCreateManyInput | Prisma.OutboxEventCreateManyInput[]
+  skipDuplicates?: boolean
 }
 
 /**

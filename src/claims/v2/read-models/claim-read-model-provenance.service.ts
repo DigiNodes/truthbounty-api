@@ -14,6 +14,18 @@ import {
 export const CLAIM_READ_MODEL_PROVENANCE_CONFIG_KEYS = {
   chainId: ['CLAIM_READ_MODEL_CHAIN_ID', 'CHAIN_ID'],
   releaseId: ['CLAIM_READ_MODEL_RELEASE_ID', 'RELEASE_ID'],
+  artifactVersion: [
+    'CLAIM_READ_MODEL_ARTIFACT_VERSION',
+    'ARTIFACT_VERSION',
+  ],
+  claimRegistryAddress: [
+    'CLAIM_READ_MODEL_CLAIM_REGISTRY_ADDRESS',
+    'CLAIM_REGISTRY_ADDRESS',
+  ],
+  verdictContractAddress: [
+    'CLAIM_READ_MODEL_VERDICT_CONTRACT_ADDRESS',
+    'VERIFICATION_ENGINE_ADDRESS',
+  ],
   deploymentBlock: [
     'CLAIM_READ_MODEL_DEPLOYMENT_BLOCK',
     'RELEASE_DEPLOYMENT_BLOCK',
@@ -32,10 +44,9 @@ const CHECKSUM_PATTERN = /^(0x)?[0-9a-fA-F]{64}$/;
  * Resolves the release the read models are bound to.
  *
  * Every chain-derived field published by the claim read models must be
- * attributable to one release (chainId + releaseId + deploymentBlock +
- * artifactChecksum). If any of those cannot be resolved to a valid value the
- * resolver fails closed: it never invents or defaults a release, because a
- * wrong or missing release silently mismatches the frontend's pinned contract.
+ * attributable to one release (chainId + releaseId + artifactVersion +
+ * deploymentBlock + artifactChecksum). If any of those cannot be resolved to
+ * a valid value the resolver fails closed.
  */
 @Injectable()
 export class ClaimReadModelProvenanceService {
@@ -53,6 +64,19 @@ export class ClaimReadModelProvenanceService {
       CLAIM_READ_MODEL_PROVENANCE_CONFIG_KEYS.releaseId,
       errors,
       { maxLength: 128 },
+    );
+    const artifactVersion = this.readString(
+      CLAIM_READ_MODEL_PROVENANCE_CONFIG_KEYS.artifactVersion,
+      errors,
+      { maxLength: 64 },
+    );
+    const claimRegistryAddress = this.readAddress(
+      CLAIM_READ_MODEL_PROVENANCE_CONFIG_KEYS.claimRegistryAddress,
+      errors,
+    );
+    const verdictContractAddress = this.readAddress(
+      CLAIM_READ_MODEL_PROVENANCE_CONFIG_KEYS.verdictContractAddress,
+      errors,
     );
     const deploymentBlock = this.readInt(
       CLAIM_READ_MODEL_PROVENANCE_CONFIG_KEYS.deploymentBlock,
@@ -79,6 +103,9 @@ export class ClaimReadModelProvenanceService {
     return {
       chainId: chainId as number,
       releaseId: releaseId as string,
+      artifactVersion: artifactVersion as string,
+      claimRegistryAddress: claimRegistryAddress as string,
+      verdictContractAddress: verdictContractAddress as string,
       deploymentBlock: deploymentBlock as number,
       artifactChecksum: artifactChecksum as string,
     };
@@ -139,6 +166,23 @@ export class ClaimReadModelProvenanceService {
       return null;
     }
     return value.startsWith('0x') ? value.slice(2) : value;
+  }
+
+  private readAddress(
+    keys: readonly string[],
+    errors: string[],
+  ): string | null {
+    const raw = this.readRaw(keys);
+    if (raw === undefined || raw === null) {
+      errors.push(`${keys[0]}_missing`);
+      return null;
+    }
+    const value = String(raw).trim().toLowerCase();
+    if (!/^0x[a-f0-9]{40}$/.test(value)) {
+      errors.push(`${keys[0]}_invalid`);
+      return null;
+    }
+    return value;
   }
 
   private readRaw(keys: readonly string[]): string | undefined {

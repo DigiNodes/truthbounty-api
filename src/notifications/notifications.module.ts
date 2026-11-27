@@ -23,16 +23,15 @@ import { NotificationGateway } from './websockets/websocket.gateway';
 import { EmailService } from './services/email.service';
 import { WebhookService } from './services/webhook.service';
 import { NotificationProcessor } from './services/notification.processor';
+import { NotificationEventPublisher } from './services/notification-event-publisher.service';
+import { VerificationEventPublisher } from './services/verification-event-publisher.service';
 import { Notification } from './entities/notification.entity';
 import { NotificationPreference } from './entities/notification-preference.entity';
 import { DeliveryHistory } from './entities/delivery-history.entity';
-import { SmtpConfigService } from './channels/smtp-config.service';
-import { FcmConfigService } from './channels/fcm-config.service';
-import { Claim } from '../claims/entities/claim.entity';
-import { Evidence } from '../claims/entities/evidence.entity';
-import { Vote } from '../governance/entities/proposal.entity';
-import { ClaimStakeholderResolver } from './services/claim-stakeholder-resolver.service';
-import { GovernanceParticipantResolver } from './services/governance-participant-resolver.service';
+import { CanonicalEvent } from '../v2/events/entities/canonical-event.entity';
+import { ProjectVerificationRound } from '../v2/verification/entities/project-verification-round.entity';
+import { ProjectParticipantPosition } from '../v2/verification/entities/project-participant-position.entity';
+import { User } from '../entities/user.entity';
 
 @Module({
   imports: [
@@ -40,9 +39,10 @@ import { GovernanceParticipantResolver } from './services/governance-participant
       Notification,
       NotificationPreference,
       DeliveryHistory,
-      Claim,
-      Evidence,
-      Vote,
+      CanonicalEvent,
+      ProjectVerificationRound,
+      ProjectParticipantPosition,
+      User,
     ]),
     BullModule.registerQueue(
       {
@@ -87,10 +87,8 @@ import { GovernanceParticipantResolver } from './services/governance-participant
     WebhookService,
     NotificationProcessor,
     NotificationGateway,
-    SmtpConfigService,
-    FcmConfigService,
-    ClaimStakeholderResolver,
-    GovernanceParticipantResolver,
+    NotificationEventPublisher,
+    VerificationEventPublisher,
   ],
   exports: [
     NotificationsService,
@@ -100,6 +98,8 @@ import { GovernanceParticipantResolver } from './services/governance-participant
     WebhookSecretCipher,
     DeliveryHistoryService,
     NotificationGateway,
+    NotificationEventPublisher,
+    VerificationEventPublisher,
   ],
 })
 export class NotificationsModule {}

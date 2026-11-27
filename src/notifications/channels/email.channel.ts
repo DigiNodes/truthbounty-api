@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { NotificationChannel, ChannelDeliveryResult, RenderedNotificationPayload } from './channel.interface';
@@ -8,6 +8,7 @@ import { firstValueFrom } from 'rxjs';
 import { escapeHtml, sanitizeActionUrl } from '../notification-templates';
 import * as nodemailer from 'nodemailer';
 import { SmtpConfigService } from './smtp-config.service';
+import { UnsubscribeTokenService } from '../services/unsubscribe-token.service';
 
 /**
  * EmailChannel
@@ -46,7 +47,8 @@ export class EmailChannel implements NotificationChannel {
     private httpService: HttpService,
     private configService: ConfigService,
     private preferenceEnforcer: PreferenceEnforcer,
-    private smtpConfigService: SmtpConfigService,
+    @Optional() private smtpConfigService?: SmtpConfigService,
+    @Optional() private unsubscribeTokenService?: UnsubscribeTokenService,
   ) {
     this.emailProvider = this.configService.get<string>(
       'NOTIFICATION_EMAIL_PROVIDER',
@@ -74,6 +76,12 @@ export class EmailChannel implements NotificationChannel {
    * Called once during service construction.
    */
   private initializeSmtpTransporter(): void {
+    if (!this.smtpConfigService) {
+      this.logger.warn(
+        'SMTP config service not available. Email delivery via SMTP will fail.',
+      );
+      return;
+    }
     const smtpConfig = this.smtpConfigService.getConfig();
     
     if (!smtpConfig) {
@@ -449,8 +457,19 @@ export class EmailChannel implements NotificationChannel {
     `.trim();
   }
 
-  private generateUnsubscribeToken(userId: string): string {
-    // TODO: Generate secure unsubscribe token
-    return `${userId}-${Date.now()}`;
+  generateUnsubscribeToken(userId: string): string {
+    if (this.unsubscribeTokenService) {
+      return this.unsubscribeTokenService.generateToken({
+        userId,
+        channel: DeliveryChannel.EMAIL,
+      });
+    }
+
+    // Fail-safe cryptographically secure token generator
+    const fallbackService = new UnsubscribeTokenService(this.configService);
+    return fallbackService.generateToken({
+      userId,
+      channel: DeliveryChannel.EMAIL,
+    });
   }
 }

@@ -63,11 +63,11 @@ The canonical environment keys are:
 | `JWT_EXPIRATION` | yes | Access token lifetime |
 | `REFRESH_TOKEN_EXPIRATION` | yes | Refresh token lifetime |
 | `SIWE_DOMAIN` | yes | Domain used for Sign-In with Ethereum |
-| `IPFS_GATEWAY_URL` | no | Optional gateway URL; local storage does not expose a public gateway |
-| `IPFS_API_URL` | no | No remote IPFS adapter is currently supported |
 | `CHAIN_ID` | yes | EVM chain ID; must match the release manifest |
 | `RPC_URL` | yes | JSON-RPC endpoint; redacted in logs |
 | `CONTRACT_RELEASE_MANIFEST_PATH` | yes | Path to the versioned canonical release manifest |
+
+IPFS storage is not production-supported. The only implemented provider is local filesystem storage for development and tests; staging and production startup reject it until a shared provider adapter is delivered.
 | `CONTRACT_RELEASE_STRICT` | see `.env.example` | Fail closed when release data is absent or inconsistent; must be true in staging and production |
 | `CONTRACT_RELEASE_ID` | see `.env.example` | Expected release ID; must match the manifest |
 | `CONTRACT_RELEASE_CHAIN_ID` | see `.env.example` | Expected chain ID; must match the manifest (Optimism = 10) |

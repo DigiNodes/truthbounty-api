@@ -9,6 +9,7 @@ import {
 } from '@nestjs/swagger';
 import { ClaimsService } from './claims.service';
 import { EvidenceService } from './evidence.service';
+import { Claim } from './entities/claim.entity';
 import { CreateClaimDto } from './dto/create-claim.dto';
 import { Idempotent } from '../common/idempotency';
 import { PaginationCursorService } from '../common/pagination-cursor.service';
@@ -28,6 +29,21 @@ const REMEDIATION_GUIDANCE =
   'Your submission was blocked because it appears to contain sensitive secret material (for example a seed phrase, private key, API token, auth header, or credentials). ' +
   'For your safety, the content has not been stored or forwarded. ' +
   'Remove the secret material and resubmit. If you believe you exposed a secret, rotate/revoke it immediately and never share it in support messages.';
+
+function toClaimResponse(claim: Claim) {
+  const {
+    resolvedVerdict: _resolvedVerdict,
+    confidenceScore: _confidenceScore,
+    finalized: _finalized,
+    resolvedAt: _resolvedAt,
+    ...metadata
+  } = claim;
+
+  return {
+    ...metadata,
+    canonicalReadModel: `/api/v2/claim-read-models/${claim.id}`,
+  };
+}
 
 @ApiTags('claims')
 @Controller('claims')
@@ -128,7 +144,7 @@ export class ClaimsController {
     const position = this.resolveCursor(effectiveCursor, binding);
     const result = await this.claimsService.findLatestPaginated(limit ? +limit : 10, position);
     return {
-      items: result.items,
+      items: result.items.map(toClaimResponse),
       nextCursor: this.encodeNextCursor(result.nextPosition, binding),
     };
   }
@@ -162,7 +178,7 @@ export class ClaimsController {
       position,
     );
     return {
-      items: result.items,
+      items: result.items.map(toClaimResponse),
       nextCursor: this.encodeNextCursor(result.nextPosition, binding),
     };
   }
@@ -199,7 +215,8 @@ export class ClaimsController {
   @ApiResponse({ status: 200, description: 'Claim details' })
   @ApiResponse({ status: 404, description: 'Claim not found' })
   async getOne(@Param('id') id: string) {
-    return this.claimsService.findOne(id);
+    const claim = await this.claimsService.findOne(id);
+    return claim ? toClaimResponse(claim) : null;
   }
 
   @Post()
@@ -210,7 +227,7 @@ export class ClaimsController {
   @ApiResponse({ status: 422, description: 'Secret material detected and quarantined' })
   async createOne(@Body() createClaimDto: CreateClaimDto) {
     await this.guardSubmission(createClaimDto, { source: 'claims.create' });
-    return this.claimsService.createClaim(createClaimDto);
+    return toClaimResponse(await this.claimsService.createClaim(createClaimDto));
   }
 
   // Evidence endpoints

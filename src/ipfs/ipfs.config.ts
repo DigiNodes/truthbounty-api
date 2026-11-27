@@ -13,8 +13,9 @@ export class IpfsConfigService {
   getConfig(): IpfsConfig {
     const provider = this.configService.get<string>('IPFS_PROVIDER', 'local');
     if (provider !== 'local') {
-      throw new Error(`Unsupported IPFS provider: ${provider}`);
+      throw new Error('Invalid IPFS configuration: unsupported provider');
     }
+
     return {
       provider,
       localStoragePath: this.configService.get(
