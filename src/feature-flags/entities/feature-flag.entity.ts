@@ -55,6 +55,12 @@ export class FeatureFlag {
   @Column({ default: 1 })
   version: number;
 
+  @Column({ type: 'int', nullable: true })
+  rolledBackFromVersion: number | null;
+
+  @Column({ type: 'text', nullable: true })
+  changeReason: string | null;
+
   @Column({ nullable: true })
   createdBy: string;
 

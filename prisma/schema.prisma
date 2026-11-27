@@ -163,29 +163,6 @@ model SybilAppeal {
   @@index([modelVersion])
 }
 
-model User {
-  id        String   @id @default(uuid())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Primary wallet address — canonical identifier for the user
-  walletAddress String? @unique
-
-  reputation Int @default(0)
-
-  role UserRole @default(contributor)
-
-  // Sybil Resistance
-  worldcoinVerified   Boolean   @default(false)
-  worldcoinVerifiedAt DateTime?
-
-  wallets              Wallet[]
-  sybilScores          SybilScore[]
-  sybilAppeals         SybilAppeal[]
-  worldIdVerifications WorldIdVerification[]
-  conversations        Conversation[]
-}
-
 model WorldIdVerification {
   id          String   @id @default(uuid())
   verifiedAt  DateTime @default(now())

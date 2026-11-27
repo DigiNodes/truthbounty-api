@@ -10,6 +10,20 @@ import { DeliveryTracker } from './delivery-tracker.service';
 import { EventType } from '../enums/event-type.enum';
 import { NotificationChannel } from '../channels/channel.interface';
 import * as crypto from 'crypto';
+import {
+  NotificationDeliveryResult,
+  RecipientDeliveryResult,
+  ChannelDeliveryOutcome,
+  DeliveryOutcome,
+  aggregateRecipientResult,
+  aggregateNotificationResult,
+  successOutcome,
+  skippedOutcome,
+  retryableFailureOutcome,
+  terminalFailureOutcome,
+  channelUnavailableOutcome,
+} from '../delivery/delivery-outcome';
+import { narrowDeliveryError } from '../delivery/delivery-error';
 
 /**
  * NotificationOrchestrator
@@ -52,47 +66,50 @@ export class NotificationOrchestrator {
    * @param eventType Type of event that triggered notification
    * @param recipientIds User IDs to notify
    * @param metadata Event metadata for templating
-   * @returns Results per channel
+   * @returns Complete structured delivery results with per-recipient, per-channel outcomes
    */
   async deliverNotification(
     eventType: EventType,
     recipientIds: string[],
     metadata: Record<string, any>,
-  ): Promise<
-    Record<
-      string,
-      {
-        succeeded: number;
-        failed: number;
-        skipped: number;
-        errors: string[];
-      }
-    >
-  > {
-    const results: Record<string, any> = {};
+  ): Promise<NotificationDeliveryResult> {
+    const recipientResults: RecipientDeliveryResult[] = [];
 
     for (const userId of recipientIds) {
       try {
-        await this.deliverToUser(eventType, userId, metadata);
+        const channelOutcomes = await this.deliverToUser(eventType, userId, metadata);
+        const recipientResult = aggregateRecipientResult(userId, channelOutcomes);
+        recipientResults.push(recipientResult);
       } catch (error) {
         this.logger.error(
           `Failed to deliver notification to ${userId}: ${error.message}`,
           error.stack,
         );
+        // If we can't even attempt delivery, record a terminal failure for all channels
+        const errorResult = aggregateRecipientResult(userId, [
+          terminalFailureOutcome(
+            DeliveryChannel.IN_APP,
+            narrowDeliveryError(error).kind,
+            error.message,
+          ),
+        ]);
+        recipientResults.push(errorResult);
       }
     }
 
-    return results;
+    return aggregateNotificationResult(recipientResults);
   }
 
   /**
    * Deliver notification to a single user
+   * 
+   * @returns Array of channel delivery outcomes for this user
    */
   private async deliverToUser(
     eventType: EventType,
     userId: string,
     metadata: Record<string, any>,
-  ): Promise<void> {
+  ): Promise<ChannelDeliveryOutcome[]> {
     this.logger.debug(`Delivering ${eventType} to user ${userId}`);
 
     // Generate idempotency key for this delivery
@@ -102,7 +119,10 @@ export class NotificationOrchestrator {
     const shouldProceed = await this.deliveryTracker.checkIdempotency(idempotencyKey);
     if (!shouldProceed) {
       this.logger.debug(`Idempotent delivery suppressed for ${userId}`);
-      return;
+      // Return skipped outcome for all potential channels
+      return [
+        skippedOutcome(DeliveryChannel.IN_APP, 'Duplicate delivery prevented by idempotency guard'),
+      ];
     }
 
     // Get user preferences
@@ -113,7 +133,9 @@ export class NotificationOrchestrator {
 
     if (enabledChannels.length === 0) {
       this.logger.debug(`User ${userId} has no enabled notification channels`);
-      return;
+      return [
+        skippedOutcome(DeliveryChannel.IN_APP, 'No enabled notification channels'),
+      ];
     }
 
     // Check all constraints
@@ -127,7 +149,10 @@ export class NotificationOrchestrator {
       this.logger.debug(
         `Notification delivery blocked for ${userId}: ${shouldDeliver.reason}`,
       );
-      return;
+      // Return skipped outcomes for all enabled channels
+      return enabledChannels.map((channel) =>
+        skippedOutcome(channel, shouldDeliver.reason || 'Delivery blocked by preferences'),
+      );
     }
 
     // Render templates and send via channels
@@ -142,11 +167,30 @@ export class NotificationOrchestrator {
       ),
     );
 
-    await Promise.allSettled(deliveryPromises);
+    const results = await Promise.allSettled(deliveryPromises);
+    
+    // Extract outcomes from settled promises
+    return results.map((result, index) => {
+      if (result.status === 'fulfilled') {
+        return result.value;
+      } else {
+        // Promise was rejected - treat as terminal failure
+        const channel = enabledChannels[index];
+        const error = narrowDeliveryError(result.reason, { channel });
+        return terminalFailureOutcome(
+          channel,
+          error.kind,
+          error.message,
+          idempotencyKey,
+        );
+      }
+    });
   }
 
   /**
    * Deliver via a specific channel
+   * 
+   * @returns Structured outcome for this channel delivery attempt
    */
   private async deliverViaChannel(
     channel: DeliveryChannel,
@@ -155,13 +199,36 @@ export class NotificationOrchestrator {
     metadata: Record<string, any>,
     preferences: any,
     idempotencyKey: string,
-  ): Promise<void> {
+  ): Promise<ChannelDeliveryOutcome> {
     try {
       // Check if channel is enabled
       const isEnabled = await this.preferenceEnforcer.isChannelEnabled(userId, channel);
       if (!isEnabled) {
         this.logger.debug(`Channel ${channel} disabled for user ${userId}`);
-        return;
+        return skippedOutcome(channel, 'Channel disabled for user');
+      }
+
+      // Get channel implementation
+      const canonical = requireDeliveryChannel(channel);
+      const channelImpl = this.channels.get(canonical);
+      if (!channelImpl) {
+        this.logger.warn(`No implementation registered for channel: ${canonical}`);
+        return channelUnavailableOutcome(
+          channel,
+          'Channel implementation not registered',
+        );
+      }
+
+      // Check if channel config is valid
+      const config = await channelImpl.validateConfig(userId);
+      if (!config.valid) {
+        this.logger.warn(
+          `Channel ${channel} config invalid for ${userId}: ${config.errors.join(', ')}`,
+        );
+        return skippedOutcome(
+          channel,
+          `Invalid configuration: ${config.errors.join(', ')}`,
+        );
       }
 
       // Render template for this channel
@@ -171,23 +238,6 @@ export class NotificationOrchestrator {
         metadata,
         preferences.language,
       );
-
-      // Get channel implementation
-      const canonical = requireDeliveryChannel(channel);
-      const channelImpl = this.channels.get(canonical);
-      if (!channelImpl) {
-        this.logger.warn(`No implementation registered for channel: ${canonical}`);
-        return;
-      }
-
-      // Check if channel config is valid
-      const config = await channelImpl.validateConfig(userId);
-      if (!config.valid) {
-        this.logger.warn(
-          `Channel ${channel} config invalid for ${userId}: ${config.errors.join(', ')}`,
-        );
-        return;
-      }
 
       // Deliver via channel
       this.logger.debug(`Delivering ${eventType} to ${userId} via ${channel}`);
@@ -199,26 +249,44 @@ export class NotificationOrchestrator {
         metadata,
       });
 
-      // Track result
+      // Track result and return structured outcome
       if (result.success) {
         await this.deliveryTracker.recordDelivery(
           metadata.notificationId || eventType,
           userId,
           channel,
           idempotencyKey,
-          { source: 'orchestrator', timestamp: new Date() },
+          {
+            source: 'orchestrator',
+            timestamp: new Date(),
+            providerMessageId: result.channelMessageId,
+          },
         );
         this.logger.debug(`Delivered ${eventType} to ${userId} via ${channel}`);
+        return successOutcome(channel, result.channelMessageId, idempotencyKey);
       } else {
+        // Channel returned a failure - classify it
+        const error = narrowDeliveryError(
+          new Error(result.error || 'Channel delivery failed'),
+          { channel },
+        );
+
         await this.deliveryTracker.recordFailure(
           metadata.notificationId || eventType,
           channel,
-          result.error || 'Unknown error',
+          error.message,
           idempotencyKey,
           0,
-          { source: 'orchestrator', timestamp: new Date() },
+          { source: 'orchestrator', timestamp: new Date(), kind: error.kind },
         );
+
         this.logger.warn(`Failed to deliver to ${userId} via ${channel}: ${result.error}`);
+
+        if (error.disposition === 'retryable') {
+          return retryableFailureOutcome(channel, error.kind, error.message, 0, idempotencyKey);
+        } else {
+          return terminalFailureOutcome(channel, error.kind, error.message, idempotencyKey);
+        }
       }
     } catch (error) {
       this.logger.error(
@@ -226,14 +294,39 @@ export class NotificationOrchestrator {
         error.stack,
       );
 
+      // Classify the error
+      const deliveryError = narrowDeliveryError(error, { channel });
+
       await this.deliveryTracker.recordFailure(
         metadata.notificationId || eventType,
         channel,
-        error.message,
+        deliveryError.message,
         idempotencyKey,
         0,
-        { source: 'orchestrator', errorStack: error.stack },
+        {
+          source: 'orchestrator',
+          errorStack: error.stack,
+          kind: deliveryError.kind,
+        },
       );
+
+      // Return appropriate outcome based on disposition
+      if (deliveryError.disposition === 'retryable') {
+        return retryableFailureOutcome(
+          channel,
+          deliveryError.kind,
+          deliveryError.message,
+          0,
+          idempotencyKey,
+        );
+      } else {
+        return terminalFailureOutcome(
+          channel,
+          deliveryError.kind,
+          deliveryError.message,
+          idempotencyKey,
+        );
+      }
     }
   }
 
