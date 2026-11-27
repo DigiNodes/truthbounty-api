@@ -6,7 +6,11 @@ Staging/production require explicitly supplied deployment settings. All supplied
 
 A release file must match `CONTRACT_RELEASE_SHA256`, `CONTRACT_RELEASE_ID`, `CHAIN_ID` and `CONTRACT_RELEASE_DEPLOYMENT_BLOCK`. This boundary pins metadata; the prerequisite canonical-manifest validator owns ABI/event/freshness and network verification.
 
+IPFS currently supports only the local filesystem adapter, for development and tests. It produces canonical CIDv1 identifiers but does not publish content or provide a gateway. Staging and production reject this adapter; no remote provider is production-supported yet.
+
 Legacy `RELEASE_MANIFEST_MAX_AGE_MS` must migrate to `CONTRACT_RELEASE_MAX_AGE_DAYS`; downstream milliseconds are derived. Same-key file precedence is process environment > `.env.local` > `.env`; duplicate assignments inside either file are rejected.
+
+`AI_PROVIDER` and `DEFAULT_LLM_PROVIDER` select one shared provider; when both are supplied they must agree. Staging/production require an explicit real provider and its matching API key, and reject `mock`.
 
 | Variable | Type | Default | Required explicitly when deployed | Aliases (use only one) |
 | --- | --- | --- | --- | --- |
@@ -116,10 +120,8 @@ Legacy `RELEASE_MANIFEST_MAX_AGE_MS` must migrate to `CONTRACT_RELEASE_MAX_AGE_D
 | CONTRACT_RELEASE_DEPLOYMENT_BLOCK | integer 0..9007199254740991 | 0 | yes | DEPLOYMENT_BLOCK |
 | CONTRACT_RELEASE_MAX_AGE_DAYS | integer 1..365 | 90 | no | MANIFEST_MAX_AGE_DAYS |
 | CONTRACT_RELEASE_STRICT | true or false | true | no | - |
-| IPFS_PROVIDER | local / pinata / web3storage | local | no | - |
+| IPFS_PROVIDER | local | local | no | - |
 | IPFS_LOCAL_STORAGE_PATH | non-empty string | data/ipfs | no | - |
-| IPFS_GATEWAY_URL | URL (https:, http:) | (unset) | yes | - |
-| IPFS_API_URL | URL (https:, http:) | (unset) | yes | - |
 | SMTP_HOST | hostname or IP address (without scheme, credentials or port) | (unset) | yes | - |
 | SMTP_PORT | integer 1..65535 | 587 | no | - |
 | SMTP_USER | non-empty string | (unset) | yes | - |
@@ -128,8 +130,8 @@ Legacy `RELEASE_MANIFEST_MAX_AGE_MS` must migrate to `CONTRACT_RELEASE_MAX_AGE_D
 | NOTIFICATION_QUEUE_DELAY | integer 0..9007199254740991 | 0 | no | - |
 | NOTIFICATION_MAX_RETRIES | integer 0..100 | 5 | no | - |
 | NOTIFICATION_RETRY_DELAY | integer 1..9007199254740991 | 2000 | no | - |
-| AI_PROVIDER | openai / mock | mock | no | - |
-| DEFAULT_LLM_PROVIDER | openai / anthropic | openai | no | - |
+| AI_PROVIDER | openai / anthropic / mock | mock | no | - |
+| DEFAULT_LLM_PROVIDER | openai / anthropic / mock | mock | no | - |
 | OPENAI_API_KEY | non-empty string | (unset) | no | - |
 | ANTHROPIC_API_KEY | non-empty string | (unset) | no | - |
 | OPENAI_BASE_URL | URL (https:, http:) | https://api.openai.com/v1 | no | - |
@@ -142,6 +144,7 @@ Legacy `RELEASE_MANIFEST_MAX_AGE_MS` must migrate to `CONTRACT_RELEASE_MAX_AGE_D
 | AI_CONVO_WINDOW_CACHE_TTL | integer 1..9007199254740991 | 120 | no | - |
 | AI_PROVIDER_AVAILABILITY_CACHE_TTL | integer 1..9007199254740991 | 30 | no | - |
 | AI_REDACT_BEFORE_STORE | true or false | true | no | - |
+| ANALYTICS_CONSENT_SUBJECT_KEY | secret of at least 32 characters | (unset) | no | - |
 | LOG_LEVEL | trace / debug / info / warn / error / fatal / silent | info | no | - |
 | METRICS_TOKEN | non-empty string | (unset) | yes | - |
 | METRICS_ENABLED | true or false | true | no | - |
@@ -222,6 +225,9 @@ Legacy `RELEASE_MANIFEST_MAX_AGE_MS` must migrate to `CONTRACT_RELEASE_MAX_AGE_D
 | FCM_SERVER_KEY | non-empty string | (unset) | no | - |
 | WEBHOOK_REQUIRE_HTTPS | true or false | true | no | - |
 | WEBHOOK_TIMEOUT_MS | integer 1..9007199254740991 | 10000 | no | - |
+| WEBHOOK_SECRET_KEYS | JSON object mapping webhook secret key IDs to base64url-encoded 32-byte AES-GCM keys | (unset) | no | - |
+| WEBHOOK_SECRET_ACTIVE_KEY_ID | key ID used to encrypt newly configured webhook secrets | (unset) | no | - |
+| WEBHOOK_SECRET_KEY | base64url-encoded 32-byte AES-GCM key for single-key deployments | (unset) | no | - |
 | AUDIT_HASH_SECRET | non-empty string | (unset) | yes | - |
 | AUDIT_ARCHIVAL_BUCKET | non-empty string | audit-archive | no | - |
 | AUDIT_ARCHIVAL_ENABLED | true or false | false | no | - |

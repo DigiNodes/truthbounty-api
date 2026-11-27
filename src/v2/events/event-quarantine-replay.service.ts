@@ -15,10 +15,13 @@ import {
 } from '../../audit/entities/audit-log.entity';
 import { AuditTrailService } from '../../audit/services/audit-trail.service';
 import { ProjectorCursor } from '../common/entities/projector-cursor.entity';
+import { In } from 'typeorm';
 import { ArtifactRegistryService } from './artifact-registry.service';
 import { CanonicalEventsService } from './canonical-events.service';
+import { CanonicalEventQueryService } from './canonical-event-query.service';
 import { EventQuarantineService } from './event-quarantine.service';
 import { QuarantineStatus } from './entities/event-quarantine.entity';
+import { getCanonicalEventScope } from './canonical-event-scope';
 
 export interface ReplayQuarantineInput {
   actorId: string;
@@ -53,6 +56,7 @@ export class EventQuarantineReplayService {
     private readonly quarantine: EventQuarantineService,
     private readonly artifacts: ArtifactRegistryService,
     private readonly canonical: CanonicalEventsService,
+    private readonly projectorScope: CanonicalEventQueryService,
     private readonly config: ConfigService,
     @Optional() private readonly audit?: AuditTrailService,
   ) {}
@@ -62,6 +66,16 @@ export class EventQuarantineReplayService {
     input: ReplayQuarantineInput,
   ): Promise<ReplayQuarantineResult> {
     const row = await this.quarantine.getRaw(id);
+    try {
+      this.projectorScope.assertEventInScope(row.chainId, row.blockNumber);
+    } catch {
+      await this.quarantine.markReplayFailed(id, 'event_scope_mismatch');
+      await this.auditReject(id, input, 'event_scope_mismatch');
+      throw new ConflictException({
+        errorCode: 'EVENT_SCOPE_MISMATCH',
+        message: 'The quarantined event is outside the configured release scope.',
+      });
+    }
 
     if (row.status === QuarantineStatus.REPLAYED) {
       return {
@@ -70,6 +84,14 @@ export class EventQuarantineReplayService {
         quarantineId: row.id,
         artifactVersion: row.artifactVersion ?? '',
       };
+    }
+
+    if (row.chainId !== getCanonicalEventScope().chainId) {
+      await this.auditReject(id, input, 'chain_scope_mismatch');
+      throw new ConflictException({
+        errorCode: 'CHAIN_SCOPE_MISMATCH',
+        message: 'The quarantined event is outside the configured chain scope.',
+      });
     }
 
     const raw = row.rawLog as {
@@ -107,6 +129,21 @@ export class EventQuarantineReplayService {
       });
     }
 
+    try {
+      this.projectorScope.assertEventInScope(
+        row.chainId,
+        row.blockNumber,
+        resolved.artifactVersion,
+      );
+    } catch {
+      await this.quarantine.markReplayFailed(id, 'artifact_scope_mismatch');
+      await this.auditReject(id, input, 'artifact_scope_mismatch');
+      throw new ConflictException({
+        errorCode: 'ARTIFACT_SCOPE_MISMATCH',
+        message: 'The resolved artifact is outside the configured release scope.',
+      });
+    }
+
     if (
       input.expectedArtifactVersion &&
       input.expectedArtifactVersion !== resolved.artifactVersion
@@ -139,7 +176,7 @@ export class EventQuarantineReplayService {
       });
     }
 
-    await this.rewindProjectors(row.blockNumber, row.logIndex);
+    await this.rewindProjectors(row.chainId, row.blockNumber, row.logIndex);
 
     const retentionDays = this.retentionDays();
     await this.quarantine.markReplayed(id, {
@@ -195,14 +232,25 @@ export class EventQuarantineReplayService {
    * back to just before it, so the event is re-consumed (idempotently).
    */
   private async rewindProjectors(
+    chainId: number,
     blockNumber: string,
     logIndex: number,
   ): Promise<void> {
     const repo = this.dataSource.getRepository(ProjectorCursor);
-    const cursors = await repo.find();
+    const projectorNames = this.projectorScope.getScopedProjectorNames([
+      'v2-evidence',
+      'v2-verification',
+      'v2-disputes',
+      'v2-rewards',
+    ]);
+    const cursors = await repo.find({
+      where: { projectorName: In(projectorNames) },
+    });
     const targetBlock = BigInt(blockNumber);
+    const scopeSuffix = `:${chainId}`;
 
     for (const cursor of cursors) {
+      if (!cursor.projectorName.endsWith(scopeSuffix)) continue;
       const cursorBlock = BigInt(cursor.lastBlockNumber);
       const passed =
         cursorBlock > targetBlock ||

@@ -11,10 +11,11 @@ export class ClaimFeedController {
 
   @Get()
   @ApiOperation({
-    summary: 'Paginated claim feed with lifecycle state and filters',
+    summary: 'Paginated claim metadata feed',
     description:
-      'Returns a cursor-paginated list of claims ordered by effectiveAt DESC. ' +
-      'Supports filtering by lifecycle state, creator wallet, and date range.',
+      'Returns claim metadata ordered by effectiveAt DESC. This legacy feed does not ' +
+      'publish protocol verdict or finality; use the release-bound claim read-model endpoint.',
+    deprecated: true,
   })
   @ApiResponse({ status: 200, description: 'Paginated claim feed' })
   @ApiResponse({
@@ -27,11 +28,11 @@ export class ClaimFeedController {
 
   @Get(':id')
   @ApiOperation({
-    summary:
-      'Full claim detail with lifecycle, confirmations, and resource links',
+    summary: 'Legacy claim metadata detail',
     description:
-      'Returns complete claim data including lifecycle state, confirmation/finality ' +
-      'metadata, and links to related resources (evidence, stakes).',
+      'Returns claim metadata and resource links only. It does not publish ' +
+      'protocol verdict or finality; use the release-bound claim read-model endpoint.',
+    deprecated: true,
   })
   @ApiResponse({ status: 200, description: 'Claim detail' })
   @ApiResponse({ status: 404, description: 'Claim not found' })

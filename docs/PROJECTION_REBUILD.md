@@ -20,13 +20,36 @@ honestly.
 
 | Prior art | Path | What it did | Why it was not a rebuild |
 | --------- | ---- | ----------- | ------------------------ |
-| Per-claim reprojection | `ClaimProjectorService.reproject` — `src/claims/claim-projector.service.ts` | Replays one claim's stored lifecycle events into its read model | Per-claim, not full-schema; driven by the `ClaimLifecycleEvent` table, not the canonical event log; no checkpoint, no report, no cross-projection coordination |
+| Legacy per-claim reprojection | Removed: `ClaimProjectorService` and `/claims/read-model/:claimId/reproject` | Previously replayed stored lifecycle events into a claim read model | It was driven by the legacy `ClaimLifecycleEvent` table, not the versioned canonical event log, and had no release binding or finality checkpoint |
 | Cursor rewind | `EventIndexerService.backfillFromBlock` — `src/indexer/event-indexer.service.ts` | Moves `lastProcessedBlockNumber` back so the RPC poller re-fetches a range | Rewinds an *ingestion* cursor, not a projection cursor. Re-fetches from RPC, applies into a **non-empty** live schema, and is neither resumable nor reportable |
 | Outbox idempotency | `OutboxService` — `src/outbox/outbox.service.ts` | Deterministic idempotency keys, at-least-once relay, dead-lettering | Establishes the *pattern* this pipeline follows (deterministic identity + explicit terminal state); it is a relay, not a projection |
 
 What was genuinely missing: a **full**, **deterministic**, **resumable**,
 **report-producing** re-derivation of every V2 read model, with a guard that
 keeps a partial rebuild from ever being observable as authoritative.
+
+### Claim projection boundary
+
+The legacy per-claim reproject endpoint and projector are removed. The versioned
+claim read API is read-only. Before it publishes a `FINALIZED` row, it requires
+the row's source identity to match exactly one `VerdictSettled` event in
+`v2_canonical_events`, checks the event's approved artifact version and
+configured claim-registry/verdict-contract addresses against release provenance, validates the
+raw verdict code shape without interpreting its enum, and classifies finality
+against that contract's checkpoint.
+The response exposes the code as an opaque decimal `verdictCode` only after
+the settlement event is finalized; otherwise it remains `null` in the
+provisional projection.
+
+This is a read-side guard, not a claim projection worker. Claim lifecycle
+projection/rebuild is intentionally not registered in the V2 rebuild registry
+until the release's status enum and canonical producer/reorg integration are
+verified. Do not treat legacy `claim_read_models` rows or off-chain vote
+analytics as protocol truth. Configure
+`CLAIM_READ_MODEL_ARTIFACT_VERSION`,
+`CLAIM_READ_MODEL_CLAIM_REGISTRY_ADDRESS`,
+`CLAIM_READ_MODEL_VERDICT_CONTRACT_ADDRESS` from the approved release; missing
+or mismatched values fail closed.
 
 ---
 
@@ -50,7 +73,11 @@ populated first.** Procedure:
    `finalizedBlock` (see `indexer-runbook.md`).
 2. Confirm the log: `SELECT COUNT(*), MIN("blockNumber"), MAX("blockNumber")
    FROM v2_canonical_events WHERE "chainId" = <chainId>;`
-3. Only then run the rebuild.
+3. Configure `CHAIN_ID` for the same Optimism network before running any
+   projector or replay. Incremental projector event reads and cursors are
+   scoped to that configured chain; quarantine replay refuses rows from other
+   chains. Rebuild remains explicitly selected with `--chain-id`.
+4. Only then run the rebuild.
 
 ### Projections in scope
 

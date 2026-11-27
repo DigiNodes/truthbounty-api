@@ -4,6 +4,11 @@ import path from 'path';
 import { pipeline } from 'stream/promises';
 import crypto from 'crypto';
 import { Readable, Transform } from 'stream';
+import { CID } from 'multiformats/cid';
+import { base32 } from 'multiformats/bases/base32';
+import * as Digest from 'multiformats/hashes/digest';
+import { sha256 } from 'multiformats/hashes/sha2';
+import * as raw from 'multiformats/codecs/raw';
 import { IpfsProvider, IpfsAddResult, IPFS_PROVIDER } from './interfaces';
 import { IpfsConfigService } from './ipfs.config';
 
@@ -14,14 +19,14 @@ export class LocalFsIpfsProvider implements IpfsProvider {
     await fsPromises.mkdir(this.storagePath, { recursive: true });
   }
 
-  // Stream to a temp file, compute sha256 while streaming, then rename to content-hash
+  // Stream to a temp file, compute sha256 while streaming, then rename to its CID.
   async add(
     stream: Readable,
     opts?: { filename?: string },
   ): Promise<IpfsAddResult> {
     await this.ensureDir();
 
-    const tmpName = `ipfs-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const tmpName = `ipfs-${crypto.randomUUID()}.tmp`;
     const tmpPath = path.join(this.storagePath, tmpName);
 
     const hash = crypto.createHash('sha256');
@@ -38,18 +43,21 @@ export class LocalFsIpfsProvider implements IpfsProvider {
       },
     });
 
-    await pipeline(stream, transform, writeStream);
+    try {
+      await pipeline(stream, transform, writeStream);
 
-    const digest = hash.digest('hex');
-    const cid = `sha256:${digest}`;
+      const digest = Digest.create(sha256.code, hash.digest());
+      const cid = CID.createV1(raw.code, digest).toString(base32);
+      const finalPath = path.join(this.storagePath, cid);
 
-    const finalName = `${digest}`;
-    const finalPath = path.join(this.storagePath, finalName);
+      // Move the completed file atomically on the same filesystem.
+      await fsPromises.rename(tmpPath, finalPath);
 
-    // move tmp file to final location (atomic on same fs)
-    await fsPromises.rename(tmpPath, finalPath);
-
-    return { cid, size, path: finalPath };
+      return { cid, size, path: finalPath };
+    } catch (error) {
+      await fsPromises.rm(tmpPath, { force: true });
+      throw error;
+    }
   }
 
   getUrl(cid: string): string | undefined {
@@ -68,8 +76,7 @@ export const ipfsProviderFactory = {
       return new LocalFsIpfsProvider(storage) as IpfsProvider;
     }
 
-    // Placeholder: other providers (e.g. http client) can be added here
-    throw new Error(`Unsupported IPFS provider: ${provider}`);
+    throw new Error('Invalid IPFS configuration: unsupported provider');
   },
   inject: [IpfsConfigService],
 } as Provider;

@@ -2,23 +2,48 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { DeliveryHistory } from '../entities/delivery-history.entity';
-import { DeliveryChannel, DeliveryStatus } from '../interfaces/notification.types';
+import {
+  DeliveryChannel,
+  DeliveryClaimContext,
+  DeliveryStatus,
+} from '../interfaces/notification.types';
 import { RedisService } from '../../redis/redis.service';
+import {
+  acquireDeliveryClaim,
+  confirmDeliveryClaim,
+  DEFAULT_CLAIM_TTL_MS,
+  DEFAULT_UNCERTAIN_CLAIM_TTL_MS,
+  expireStaleDeliveryClaims,
+  failDeliveryClaim,
+  markDeliveryClaimUncertain,
+  resolveDeliveryKey,
+  retryDeliveryClaim,
+} from '../delivery/delivery-claim';
+import {
+  deliveredCacheKey,
+  deliveryClaimCacheKey,
+} from '../delivery/delivery-idempotency-key';
+
+const DEFAULT_DELIVERY_HISTORY_PAGE_SIZE = 50;
+const MAX_DELIVERY_HISTORY_PAGE_SIZE = 100;
 
 /**
  * DeliveryTracker
- * 
+ *
  * Tracks notification delivery history and provides idempotency guards.
- * Uses two-level idempotency to prevent duplicate deliveries:
- * 1. Redis guard (fast, TTL-based)
- * 2. Database guard (reliable, persistent)
+ *
+ * The database row keyed by `idempotencyKey` is the correctness boundary. Redis
+ * is only a cache of *confirmed* deliveries and a short-lived claim hint; a
+ * Redis miss, outage or failed SETNX can never authorize a send by itself.
  */
 @Injectable()
 export class DeliveryTracker {
   private readonly logger = new Logger(DeliveryTracker.name);
 
-  // Idempotency guard TTL: 24 hours
   private readonly IDEMPOTENCY_TTL_SECONDS = 86400;
+
+  /** Claim tokens for in-process calls; cross-worker fencing lives in the DB. */
+  private readonly activeClaims = new Map<string, string>();
 
   constructor(
     @InjectRepository(DeliveryHistory)
@@ -27,43 +52,80 @@ export class DeliveryTracker {
   ) {}
 
   /**
-   * Check idempotency and track delivery
-   * Returns true if should proceed, false if already delivered
+   * Acquire the durable claim for one notification-recipient-channel delivery.
+   * Returns true only when this caller owns the claim and may call a provider.
    */
-  async checkIdempotency(idempotencyKey: string): Promise<boolean> {
-    // Fast path: Redis guard
-    const redisKey = `delivery:idempotency:${idempotencyKey}`;
-    const alreadyDelivered = await this.redisService.get(redisKey);
+  async checkIdempotency(
+    input: string | DeliveryClaimContext,
+  ): Promise<boolean> {
+    const context: DeliveryClaimContext =
+      typeof input === 'string' ? { idempotencyKey: input } : input;
+    const idempotencyKey = resolveDeliveryKey(context);
 
-    if (alreadyDelivered) {
+    if (await this.redisService.get(deliveredCacheKey(idempotencyKey))) {
       this.logger.debug(`Idempotency guard hit (Redis): ${idempotencyKey}`);
       return false;
     }
 
-    // Reliable path: Database guard
-    const history = await this.deliveryHistoryRepository.findOne({
-      where: { idempotencyKey },
-    });
+    const result = await acquireDeliveryClaim(
+      this.deliveryHistoryRepository,
+      context,
+    );
 
-    if (history && history.status === 'delivered') {
-      // Set Redis guard for future checks
-      await this.redisService.set(
-        redisKey,
-        'true',
-        this.IDEMPOTENCY_TTL_SECONDS,
+    if (!result.acquired) {
+      if (result.status === DeliveryStatus.DELIVERED) {
+        await this.cacheConfirmedDelivery(idempotencyKey);
+      }
+      this.logger.debug(
+        `Durable delivery claim not acquired (${result.reason}): ${idempotencyKey}`,
       );
-      this.logger.debug(`Idempotency guard hit (DB): ${idempotencyKey}`);
       return false;
     }
 
-    // Mark as attempted (optimistic lock)
-    await this.redisService.setnx(redisKey, 'true', this.IDEMPOTENCY_TTL_SECONDS);
+    this.activeClaims.set(idempotencyKey, result.claimId!);
+    const ttlSeconds = Math.max(
+      1,
+      Math.ceil((context.claimTtlMs ?? DEFAULT_CLAIM_TTL_MS) / 1000),
+    );
+
+    // Optimization only. A false result (including Redis failure) is ignored
+    // because the durable claim above has already been acquired.
+    await this.redisService.setnx(
+      deliveryClaimCacheKey(idempotencyKey),
+      result.claimId!,
+      ttlSeconds,
+    );
 
     return true;
   }
 
+  /** True when a durable DELIVERED record already exists for this key. */
+  async isDelivered(input: string | DeliveryClaimContext): Promise<boolean> {
+    const idempotencyKey = resolveDeliveryKey(
+      typeof input === 'string' ? { idempotencyKey: input } : input,
+    );
+
+    if (await this.redisService.get(deliveredCacheKey(idempotencyKey))) {
+      return true;
+    }
+
+    const history = await this.deliveryHistoryRepository.findOne({
+      where: { idempotencyKey },
+    });
+    const delivered = history?.status === DeliveryStatus.DELIVERED;
+    if (delivered) {
+      await this.cacheConfirmedDelivery(idempotencyKey);
+    }
+    return delivered;
+  }
+
+  async expireStaleClaims(): Promise<number> {
+    return expireStaleDeliveryClaims(this.deliveryHistoryRepository);
+  }
+
   /**
-   * Record successful delivery
+   * Record a provider-confirmed delivery. Only the worker holding the fencing
+   * token may settle the claim; repeated calls for a DELIVERED key are no-ops.
    */
   async recordDelivery(
     notificationId: string,
@@ -72,31 +134,39 @@ export class DeliveryTracker {
     idempotencyKey: string,
     metadata?: Record<string, any>,
   ): Promise<DeliveryHistory> {
-    let history = await this.deliveryHistoryRepository.findOne({
-      where: { idempotencyKey },
+    const key = resolveDeliveryKey({
+      idempotencyKey,
+      notificationId,
+      recipientId: userId,
+      channel,
     });
-
-    if (!history) {
-      history = this.deliveryHistoryRepository.create({
+    const claimId = this.activeClaims.get(key);
+    const record = await confirmDeliveryClaim(
+      this.deliveryHistoryRepository,
+      key,
+      claimId,
+      metadata,
+    );
+    this.activeClaims.delete(key);
+    await this.cacheConfirmedDelivery(key);
+    await this.redisService.del(deliveryClaimCacheKey(key));
+    return (
+      record ??
+      ({
         notificationId,
+        recipientId: userId,
         channel,
-        status: 'delivered' as any,
-        deliveredAt: new Date(),
+        status: DeliveryStatus.DELIVERED,
         idempotencyKey,
+        deliveredAt: new Date(),
         metadata,
-        retryAttempts: 0,
-      });
-    } else {
-      history.status = 'delivered' as any;
-      history.deliveredAt = new Date();
-      if (metadata) history.metadata = metadata;
-    }
-
-    return this.deliveryHistoryRepository.save(history);
+      } as DeliveryHistory)
+    );
   }
 
   /**
-   * Record delivery failure
+   * Record a definite (non-duplicate) provider failure and release the claim so
+   * the shared retry policy may re-acquire it.
    */
   async recordFailure(
     notificationId: string,
@@ -104,35 +174,54 @@ export class DeliveryTracker {
     failureReason: string,
     idempotencyKey?: string,
     retryAttempts: number = 0,
-    metadata?: Record<string, any>,
+    metadataOrUserId?: Record<string, any> | string,
   ): Promise<DeliveryHistory> {
-    let history = await this.deliveryHistoryRepository.findOne({
-      where: { idempotencyKey },
+    const metadata =
+      typeof metadataOrUserId === 'string' ? undefined : metadataOrUserId;
+    const recipientId =
+      typeof metadataOrUserId === 'string' ? metadataOrUserId : undefined;
+    const key = resolveDeliveryKey({
+      idempotencyKey,
+      notificationId,
+      recipientId,
+      channel,
     });
+    const claimId = this.activeClaims.get(key);
 
-    if (!history) {
-      history = this.deliveryHistoryRepository.create({
+    const record = metadata?.terminal
+      ? await failDeliveryClaim(
+          this.deliveryHistoryRepository,
+          key,
+          claimId,
+          failureReason,
+          true,
+        )
+      : await failDeliveryClaim(
+          this.deliveryHistoryRepository,
+          key,
+          claimId,
+          failureReason,
+        );
+
+    this.activeClaims.delete(key);
+    await this.redisService.del(deliveryClaimCacheKey(key));
+
+    return (
+      record ??
+      ({
         notificationId,
+        recipientId,
         channel,
-        status: 'failed' as any,
+        status: DeliveryStatus.FAILED,
         failureReason,
         retryAttempts,
         idempotencyKey,
         metadata,
-      });
-    } else {
-      history.status = 'failed' as any;
-      history.failureReason = failureReason;
-      history.retryAttempts = retryAttempts;
-      if (metadata) history.metadata = metadata;
-    }
-
-    return this.deliveryHistoryRepository.save(history);
+      } as DeliveryHistory)
+    );
   }
 
-  /**
-   * Record retry attempt
-   */
+  /** Record that another retry has been scheduled for this delivery. */
   async recordRetry(
     notificationId: string,
     channel: DeliveryChannel,
@@ -140,28 +229,62 @@ export class DeliveryTracker {
     idempotencyKey?: string,
     metadata?: Record<string, any>,
   ): Promise<DeliveryHistory> {
-    let history = await this.deliveryHistoryRepository.findOne({
-      where: { idempotencyKey },
-    });
-
-    if (!history) {
-      history = this.deliveryHistoryRepository.create({
+    const key = resolveDeliveryKey({ idempotencyKey, notificationId, channel });
+    const claimId = this.activeClaims.get(key);
+    const record = await retryDeliveryClaim(
+      this.deliveryHistoryRepository,
+      key,
+      claimId,
+      retryAttempt,
+      metadata?.failureReason,
+    );
+    this.activeClaims.delete(key);
+    await this.redisService.del(deliveryClaimCacheKey(key));
+    return (
+      record ??
+      ({
         notificationId,
         channel,
-        status: 'retrying' as any,
+        status: DeliveryStatus.RETRYING,
         retryAttempts: retryAttempt,
         lastRetryAt: new Date(),
         idempotencyKey,
         metadata,
-      });
-    } else {
-      history.status = 'retrying' as any;
-      history.retryAttempts = retryAttempt;
-      history.lastRetryAt = new Date();
-      if (metadata) history.metadata = metadata;
-    }
+      } as DeliveryHistory)
+    );
+  }
 
-    return this.deliveryHistoryRepository.save(history);
+  /**
+   * The provider may have accepted the delivery but the worker cannot prove it.
+   * Keep the row PROCESSING with a longer lease and require idempotent recovery
+   * instead of an immediate resend.
+   */
+  async markProviderOutcomeUncertain(
+    notificationId: string,
+    channel: DeliveryChannel,
+    idempotencyKey: string,
+    reason: string,
+  ): Promise<DeliveryHistory | null> {
+    const key = resolveDeliveryKey({ idempotencyKey, notificationId, channel });
+    const claimId = this.activeClaims.get(key);
+    const record = await markDeliveryClaimUncertain(
+      this.deliveryHistoryRepository,
+      key,
+      claimId,
+      reason,
+      DEFAULT_UNCERTAIN_CLAIM_TTL_MS,
+    );
+    this.activeClaims.delete(key);
+    await this.redisService.del(deliveryClaimCacheKey(key));
+    return record;
+  }
+
+  private async cacheConfirmedDelivery(idempotencyKey: string): Promise<void> {
+    await this.redisService.set(
+      deliveredCacheKey(idempotencyKey),
+      '1',
+      this.IDEMPOTENCY_TTL_SECONDS,
+    );
   }
 
   /**
@@ -182,11 +305,10 @@ export class DeliveryTracker {
   async getUserDeliveryHistory(
     userId: string,
     skip: number = 0,
-    take: number = 50,
+    take: number = DEFAULT_DELIVERY_HISTORY_PAGE_SIZE,
   ): Promise<{ items: DeliveryHistory[]; total: number }> {
-    // TODO: This requires a join to notifications table
-    // Placeholder for now
     const [items, total] = await this.deliveryHistoryRepository.findAndCount({
+      where: { recipientId: userId },
       skip,
       take,
       order: { createdAt: 'DESC' },
@@ -208,11 +330,17 @@ export class DeliveryTracker {
     failed: number;
     retrying: number;
     successRate: number;
-    byChannel: Record<DeliveryChannel, { total: number; delivered: number; failed: number }>;
+    byChannel: Record<
+      DeliveryChannel,
+      { total: number; delivered: number; failed: number }
+    >;
   }> {
     const query = this.deliveryHistoryRepository
       .createQueryBuilder('dh')
-      .where('dh.createdAt BETWEEN :start AND :end', { start: startDate, end: endDate });
+      .where('dh.createdAt BETWEEN :start AND :end', {
+        start: startDate,
+        end: endDate,
+      });
 
     if (channel) {
       query.andWhere('dh.channel = :channel', { channel });
@@ -220,19 +348,36 @@ export class DeliveryTracker {
 
     const [all, delivered, failed, retrying] = await Promise.all([
       query.getCount(),
-      query.clone().andWhere('dh.status = :status', { status: 'delivered' }).getCount(),
-      query.clone().andWhere('dh.status = :status', { status: 'failed' }).getCount(),
-      query.clone().andWhere('dh.status = :status', { status: 'retrying' }).getCount(),
+      query
+        .clone()
+        .andWhere('dh.status = :status', { status: DeliveryStatus.DELIVERED })
+        .getCount(),
+      query
+        .clone()
+        .andWhere('dh.status = :status', { status: DeliveryStatus.FAILED })
+        .getCount(),
+      query
+        .clone()
+        .andWhere('dh.status = :status', { status: DeliveryStatus.RETRYING })
+        .getCount(),
     ]);
 
-    // Group by channel
     const byChannelResult = await this.deliveryHistoryRepository
       .createQueryBuilder('dh')
       .select('dh.channel', 'channel')
       .addSelect('COUNT(*)', 'total')
-      .addSelect("SUM(CASE WHEN dh.status = 'delivered' THEN 1 ELSE 0 END)", 'delivered')
-      .addSelect("SUM(CASE WHEN dh.status = 'failed' THEN 1 ELSE 0 END)", 'failed')
-      .where('dh.createdAt BETWEEN :start AND :end', { start: startDate, end: endDate })
+      .addSelect(
+        "SUM(CASE WHEN dh.status = 'delivered' THEN 1 ELSE 0 END)",
+        'delivered',
+      )
+      .addSelect(
+        "SUM(CASE WHEN dh.status = 'failed' THEN 1 ELSE 0 END)",
+        'failed',
+      )
+      .where('dh.createdAt BETWEEN :start AND :end', {
+        start: startDate,
+        end: endDate,
+      })
       .groupBy('dh.channel')
       .getRawMany();
 
@@ -256,9 +401,45 @@ export class DeliveryTracker {
   }
 
   /**
-   * Clear old delivery history (retention policy)
-   * Default: keep 90 days of history
+   * Get provider-confirmed deliveries for audit purposes
+   * 
+   * Returns all deliveries that have been confirmed by the provider with a
+   * message ID. These deliveries have the strongest evidence of completion.
    */
+  async getProviderConfirmedDeliveries(
+    startDate: Date,
+    endDate: Date,
+    channel?: DeliveryChannel,
+  ): Promise<DeliveryHistory[]> {
+    const query = this.deliveryHistoryRepository
+      .createQueryBuilder('dh')
+      .where('dh.status = :status', { status: 'delivered' })
+      .andWhere('dh.deliveredAt BETWEEN :start AND :end', { start: startDate, end: endDate })
+      .andWhere("dh.metadata->>'providerConfirmed' = 'true'")
+      .orderBy('dh.deliveredAt', 'DESC');
+
+    if (channel) {
+      query.andWhere('dh.channel = :channel', { channel });
+    }
+
+    return query.getMany();
+  }
+
+  /**
+   * Check if a delivery is provider-confirmed by idempotency key
+   */
+  async isProviderConfirmed(idempotencyKey: string): Promise<boolean> {
+    const history = await this.deliveryHistoryRepository.findOne({
+      where: { idempotencyKey },
+    });
+
+    return (
+      history !== null &&
+      history.status === 'delivered' &&
+      history.metadata?.providerConfirmed === true &&
+      history.metadata?.providerMessageId !== undefined
+    );
+  }
   async cleanup(retentionDays: number = 90): Promise<number> {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - retentionDays);

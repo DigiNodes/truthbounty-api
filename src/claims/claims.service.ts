@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typorm';
-import { Claim, ClaimState } from './entities/claim.entity';
+import { Claim } from './entities/claim.entity';
 import { CreateClaimDto } from './dto/create-claim.dto';
 import { ClaimsCache } from '../cache/claims.cache';
 import { RedisService } from '../redis/redis.service';
@@ -16,13 +16,10 @@ import {
   AuditEntityType,
 } from '../audit/entities/audit-log.entity';
 import { AuditLog } from '../audit/decorators/audit-log.decorator';
-import { assertResolvedAtInvariant } from './claim-resolution.invariant';
 import { CacheUnavailableException } from '../cache/exceptions/cache-unavailable.exception';
 import {
   ClaimBadRequestError,
   ClaimConflictError,
-  ClaimInvalidTransitionError,
-  ClaimNotFoundError,
   ClaimUnavailableError,
 } from './errors/claim-lifecycle.errors';
 import {
@@ -261,14 +258,16 @@ export class ClaimsService {
   ): Record<string, unknown> {
     const source = filters ?? {};
     const normalized: Record<string, unknown> = {};
-    if (source.state !== undefined && source.state !== null) {
-      normalized.state = source.state;
-    }
     if (source.source !== undefined && source.source !== null) {
       normalized.source = source.source;
     }
-    if (source.finalized !== undefined && source.finalized !== null) {
-      normalized.finalized = source.finalized;
+    if (
+      (source.state !== undefined && source.state !== null) ||
+      (source.finalized !== undefined && source.finalized !== null)
+    ) {
+      throw new BadRequestException(
+        'Claim state filters are available only from /api/v2/claim-read-models',
+      );
     }
     return normalized;
   }
@@ -296,16 +295,8 @@ export class ClaimsService {
     qb: ReturnType<Repository<Claim>['createQueryBuilder']>,
     filters: Record<string, unknown>,
   ): void {
-    if (filters.state !== undefined) {
-      qb.andWhere('claim.state = :state', { state: filters.state });
-    }
     if (filters.source !== undefined) {
       qb.andWhere('claim.source = :source', { source: filters.source });
-    }
-    if (filters.finalized !== undefined) {
-      qb.andWhere('claim.finalized = :finalized', {
-        finalized: filters.finalized,
-      });
     }
   }
 
@@ -386,9 +377,6 @@ export class ClaimsService {
       content: createClaimDto.content,
       source: createClaimDto.source ?? null,
       metadata: createClaimDto.metadata ?? null,
-      resolvedVerdict: null, // Will be computed later
-      confidenceScore: null, // Will be computed later
-      finalized: false,
     });
     const savedClaim = await this.claimRepo.save(claim);
 
@@ -423,119 +411,4 @@ export class ClaimsService {
     return savedClaim;
   }
 
-  /**
-   * Resolve a claim (update verdict and confidence)
-   * Uses state machine validation to ensure valid transitions
-   */
-  async resolveClaim(
-    claimId: string,
-    verdict: boolean,
-    confidenceScore: number,
-    userId?: string,
-  ): Promise<Claim> {
-    const claim = await this.findOne(claimId);
-    if (!claim) throw new ClaimNotFoundError({ claimId });
-
-    const beforeState = { ...claim };
-
-    // Use transitionTo helper for validated state transition
-    // transitionTo sets resolvedAt on the claim entity when first resolved
-    try {
-      claim.transitionTo(ClaimState.RESOLVED, {
-        verdict,
-        confidence: confidenceScore,
-      });
-    } catch (error) {
-      // Translate the generic state-machine rejection into a typed,
-      // client-safe domain error. We never leak the underlying message.
-      throw new ClaimInvalidTransitionError({
-        claimId,
-        currentState: claim.state,
-        targetState: ClaimState.RESOLVED,
-      });
-    }
-
-    // Guard: reject if the object is somehow in an inconsistent state
-    // before we write (e.g. caller mutated fields directly).
-    assertResolvedAtInvariant(claim);
-
-    const updatedClaim = await this.claimRepo.save(claim);
-    // Invalidate both the claim-specific cache and the latest claims list cache (non-critical)
-    try {
-      await this.claimsCache.invalidateClaim(claimId);
-    } catch (error) {
-      if (error instanceof CacheUnavailableException) {
-        this.logger.warn(
-          `Cache unavailable for claim invalidation ${claimId}, skipping: ${error.message}`,
-        );
-        // Continue - cache failure is isolated from canonical state
-      } else {
-        throw error;
-      }
-    }
-
-    // Log the resolution
-    await this.auditTrailService.log( {
-      actionType: AuditActionType.CLAIM_RESOLVED,
-      entityType: AuditEntityType.CLAIM,
-      entityId: claimId,
-      userId,
-      description: `Claim resolved with verdict: ${verdict}, confidence: ${confidenceScore}`,
-      beforeState,
-      afterState: updatedClaim,
-    });
-
-    return updatedClaim;
-  }
-
-  /**
-   * Finalize a claim
-   * Uses state machine validation to ensure valid transitions
-   */
-  async finalizeClaim(claimId: string, userId?: string): Promise<Claim> {
-    const claim = await this.findOne(claimId);
-    if (!claim) throw new ClaimNotFoundError({ claimId });
-
-    const beforeState = { ...claim };
-
-    // Use transitionTo helper for validated state transition
-    // transitionTo preserves resolvedAt if already set (RESOLVED → FINALIZED path)
-    try {
-      claim.transitionTo(ClaimState.FINALIZED);
-    } catch (error) {
-      throw new ClaimInvalidTransitionError({
-        claimId,
-        currentState: claim.state,
-        targetState: ClaimState.FINALIZED,
-      });
-    }
-
-    const updatedClaim = await this.claimRepo.save(claim);
-    // Invalidate both the claim-specific cache and the latest claims list cache (non-critical)
-    try {
-      await this.claimsCache.invalidateClaim(claimId);
-    } catch (error) {
-      if (error instanceof CacheUnavailableException) {
-        this.logger.warn(
-          `Cache unavailable for claim invalidation ${claimId}, skipping: ${error.message}`,
-        );
-        // Continue - cache failure is isolated from canonical state
-      } else {
-        throw error;
-      }
-    }
-
-    // Log the finalization
-    await this.auditTrailService.log( {
-      actionType: AuditActionType.CLAIM_FINALIZED,
-      entityType: AuditEntityType.CLAIM,
-      entityId: claimId,
-      userId,
-      description: 'Claim finalized',
-      beforeState,
-      afterState: updatedClaim,
-    });
-
-    return updatedClaim;
-  }
 }

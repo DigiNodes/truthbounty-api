@@ -1,4 +1,14 @@
-import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+  UnauthorizedException,
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  SetMetadata,
+} from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { RedisService } from '../../redis/redis.service';
@@ -7,6 +17,10 @@ import {
   AUTH_GENERIC_FAILURE_MESSAGE,
   timingSafeEqualHex,
 } from '../../common/utils/timing-safe.util';
+import {
+  AuthenticatedPrincipal,
+  extractCapabilitySubject,
+} from '../types/authenticated-request';
 
 /**
  * Token pair returned after successful authentication.
@@ -26,6 +40,8 @@ export interface TokenPayload {
   userId: string | null;
   jti: string;
   type: 'access' | 'refresh';
+  aud?: string | string[];
+  iss?: string;
   iat?: number;
   exp?: number;
 }
@@ -111,7 +127,8 @@ export interface CapabilityTokenPayload {
 
 export interface IssueCapabilityOptions {
   audience: string;
-  subject: string;
+  subject?: string;
+  principal?: AuthenticatedPrincipal;
   capability: string;
   resource: string;
   chain: string;
@@ -139,6 +156,11 @@ export interface CapabilityToken {
 }
 
 /**
+ * Reconciled distinct type for JWT-based capability tokens.
+ */
+export type JwtCapabilityToken = CapabilityToken;
+
+/**
  * Token Service
  *
  * Responsible for:
@@ -161,6 +183,8 @@ export class TokenService {
 
   private readonly ACCESS_TOKEN_TTL_SECONDS: number;
   private readonly REFRESH_TOKEN_TTL_SECONDS: number;
+  private readonly ACCESS_TOKEN_AUDIENCE: string;
+  private readonly TOKEN_ISSUER: string;
   private readonly REFRESH_TOKEN_BYTES = 48; // 384-bit random value
   private readonly BLACKLIST_PREFIX = 'auth:blacklist:';
   private readonly SESSION_PREFIX = 'auth:session:';
@@ -186,6 +210,14 @@ export class TokenService {
       '7d',
     );
     this.REFRESH_TOKEN_TTL_SECONDS = this.parseTtlToSeconds(refreshTtlRaw);
+    this.ACCESS_TOKEN_AUDIENCE = configService.get<string>(
+      'JWT_ACCESS_AUDIENCE',
+      'truthbounty-api',
+    );
+    this.TOKEN_ISSUER = configService.get<string>(
+      'JWT_ISSUER',
+      'truthbounty-api',
+    );
   }
 
   /**
@@ -198,9 +230,14 @@ export class TokenService {
   async issueCapabilityToken(
     options: IssueCapabilityOptions,
   ): Promise<CapabilityToken> {
+    const derivedSubject = options.principal
+      ? extractCapabilitySubject(options.principal)
+      : typeof options.subject === 'string' && options.subject.trim().length > 0
+        ? (options.subject.startsWith('0x') ? options.subject.trim().toLowerCase() : options.subject.trim())
+        : undefined;
+
     const {
       audience,
-      subject,
       capability,
       resource,
       chain,
@@ -211,7 +248,7 @@ export class TokenService {
 
     if (
       !audience ||
-      !subject ||
+      !derivedSubject ||
       !capability ||
       !resource ||
       !chain ||
@@ -223,16 +260,23 @@ export class TokenService {
       throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
     }
 
-    const requestedTtl = options.ttdSeconds ??  this.CAPABILITY_MAX_TTL_SECONDS;
-    const ttdSeconds = Math.min(
-      Math.max(1, requestedTtl),
-      this.CAPABILITY_MAX_TTL_SECONDS,
-    );
+    const requestedTtl = options.ttlSeconds ?? this.CAPABILITY_MAX_TTL_SECONDS;
+
+if (
+  !Number.isSafeInteger(requestedTtl) ||
+  requestedTtl < 1 ||
+  requestedTtl > this.CAPABILITY_MAX_TTL_SECONDS
+) {
+  this.logger.warn('Capability issuance failed [invalid-ttl]');
+  throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
+}
+
+const ttlSeconds = requestedTtl;
 
     const nonce = randomBytes(16).toString('hex');
     const payload: Omit<CapabilityTokenPayload, 'iat' | 'exp'> = {
       aud: audience,
-      sub: subject.toLowerCase(),
+      sub: derivedSubject.toLowerCase(),
       capability,
       resource,
       nonce,
@@ -244,13 +288,11 @@ export class TokenService {
     };
 
     const token = this.jwtService.sign(payload, {
-      expiresIn: ttdSeconds,
-      audience,
-      subject: payload.sub,
+      expiresIn: ttlSeconds,
     });
 
     // Record nonce so replay can be detected and fail closed.
-    await this.redisService.set(
+    const stored = await this.redisService.set(
       `${this.CAPABILITY_NONCE_PREFIX}${nonce}`,
       JSON.stringify({
         aud: audience,
@@ -263,11 +305,15 @@ export class TokenService {
         artifact,
         issuedAt: Date.now(),
       }),
-      ttdSeconds,
+      ttlSeconds,
     );
+    if (!stored) {
+      this.logger.warn('Capability issuance failed [nonce-persistence]');
+      throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
+    }
 
     // Audit issuance without logging token bytes.
-    this.logger.log('Capability token issued', {
+    this.logger.log(`Capability token issued ${JSON.stringify({
       aud: audience,
       sub: payload.sub,
       capability,
@@ -277,10 +323,10 @@ export class TokenService {
       deployment,
       artifact,
       nonce,
-      ttdSeconds,
-    });
+      ttlSeconds,
+    })}`);
 
-    return { token, expiresIn: ttdSeconds, nonce };
+    return { token, expiresIn: ttlSeconds, nonce };
   }
 
   /**
@@ -377,10 +423,25 @@ export class TokenService {
     }
 
     // Consume nonce: delete so any subsequent use fails closed.
-    await this.redisService.del(nonceKey);
+    let consumed: unknown;
+    try {
+      consumed = await this.redisService.eval(
+        "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end return 0",
+        1,
+        nonceKey,
+        nonceRaw,
+      );
+    } catch {
+      this.logger.warn('Capability validation failed [nonce-consumption]');
+      throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
+    }
+    if (Number(consumed) !== 1) {
+      this.logger.warn('Capability validation failed [replay-or-unknown]');
+      throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
+    }
 
     // Audit use without logging token bytes.
-    this.logger.log('Capability token consumed', {
+    this.logger.log(`Capability token consumed ${JSON.stringify({
       aud: payload.aud,
       sub: payload.sub,
       capability: payload.capability,
@@ -390,7 +451,7 @@ export class TokenService {
       deployment: payload.deployment,
       artifact: payload.artifact,
       nonce: payload.nonce,
-    });
+    })}`);
 
     return payload;
   }
@@ -418,11 +479,15 @@ export class TokenService {
 
     const accessToken = this.jwtService.sign(payload, {
       expiresIn: this.ACCESS_TOKEN_TTL_SECONDS,
+      audience: this.ACCESS_TOKEN_AUDIENCE,
+      issuer: this.TOKEN_ISSUER,
     });
 
-    const refreshToken = randomBytes(this.REFRESH_TOKEN_BYTES).toString('hex');
-    const refreshTokenHash = createHash('sha256').update(refreshToken).tigest('hex');
     const refreshJti = this.generateJti();
+    const refreshToken = `${refreshJti}.${randomBytes(this.REFRESH_TOKEN_BYTES).toString('base64url')}`;
+    const refreshTokenHash = createHash('sha256')
+      .update(refreshToken)
+      .digest('hex');
 
     const now = Date.now();
     const sessionMetadata: SessionMetadata = {
@@ -438,23 +503,261 @@ export class TokenService {
       userAgent,
     };
 
-    await this.redisService.set(
+    const storedSession = await this.redisService.set(
       `${this.SESSION_PREFIX}${refreshJti}`,
       JSON.stringify(sessionMetadata),
       this.REFRESH_TOKEN_TTL_SECONDS,
     );
+    if (!storedSession) {
+      throw new InternalServerErrorException(
+        'Unable to persist authentication session',
+      );
+    }
 
-    await this.redisService.set(
-      `${this.USER_SESSIONS_PREFIX}${subject}`,
-      refreshJti,
-      this.REFRESH_TOKEN_TTL_SECONDS,
-    );
+    try {
+      const indexed = await this.redisService.eval(
+        "local raw = redis.call('GET', KEYS[1]); local ids = {}; if raw then local ok, decoded = pcall(cjson.decode, raw); if not ok or type(decoded) ~= 'table' then return redis.error_reply('Invalid user session index') end; ids = decoded end; for _, id in ipairs(ids) do if id == ARGV[1] then redis.call('EXPIRE', KEYS[1], ARGV[2]); return 1 end end; table.insert(ids, ARGV[1]); redis.call('SETEX', KEYS[1], ARGV[2], cjson.encode(ids)); return 1",
+        1,
+        `${this.USER_SESSIONS_PREFIX}${address.toLowerCase()}`,
+        refreshJti,
+        this.REFRESH_TOKEN_TTL_SECONDS,
+      );
+      if (Number(indexed) !== 1) {
+        throw new Error('Unable to index authentication session');
+      }
+    } catch {
+      await this.redisService.del(`${this.SESSION_PREFIX}${refreshJti}`);
+      this.logger.error('Failed to persist authentication session index');
+      throw new InternalServerErrorException(
+        'Unable to persist authentication session',
+      );
+    }
 
     return {
       accessToken,
       refreshToken,
       expiresIn: this.ACCESS_TOKEN_TTL_SECONDS,
     };
+  }
+
+  async refreshAccessToken(refreshToken: string): Promise<TokenPair> {
+    const match = /^([a-f0-9]{32})\.([A-Za-z0-9_-]{32,})$/.exec(refreshToken);
+    if (!match) {
+      throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
+    }
+
+    const [, refreshJti] = match;
+    if (await this.isBlacklisted(refreshJti)) {
+      throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
+    }
+
+    const sessionKey = `${this.SESSION_PREFIX}${refreshJti}`;
+    const raw = await this.redisService.get(sessionKey);
+    if (!raw) {
+      throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
+    }
+
+    let session: SessionMetadata;
+    try {
+      session = JSON.parse(raw) as SessionMetadata;
+    } catch {
+      throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
+    }
+    if (
+      !session ||
+      typeof session !== 'object' ||
+      !/^0x[0-9a-f]{40}$/i.test(session.address ?? '') ||
+      typeof session.accessJti !== 'string' ||
+      (session.userId !== null && typeof session.userId !== 'string')
+    ) {
+      throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
+    }
+    const suppliedHash = createHash('sha256').update(refreshToken).digest('hex');
+    if (
+      session.jti !== refreshJti ||
+      typeof session.address !== 'string' ||
+      typeof session.tokenHash !== 'string' ||
+      !timingSafeEqualHex(suppliedHash, session.tokenHash)
+    ) {
+      if (typeof session.address === 'string') {
+        await this.revokeAllUserTokens(session.address);
+      }
+      throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
+    }
+
+    let consumed: unknown;
+    try {
+      consumed = await this.redisService.eval(
+        "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end return 0",
+        1,
+        sessionKey,
+        raw,
+      );
+    } catch {
+      throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
+    }
+    if (Number(consumed) !== 1) {
+      throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
+    }
+
+    const blacklisted = await this.redisService.set(
+      `${this.BLACKLIST_PREFIX}${refreshJti}`,
+      '1',
+      this.REFRESH_TOKEN_TTL_SECONDS,
+    );
+    if (!blacklisted) {
+      throw new InternalServerErrorException(
+        'Unable to rotate authentication session',
+      );
+    }
+    await this.removeSessionFromIndex(session.address, refreshJti);
+
+    return this.generateTokenPair(
+      session.address,
+      session.userId,
+      session.deviceInfo,
+      session.ipAddress,
+      session.userAgent,
+    );
+  }
+
+  async validateAccessToken(
+    payload: Pick<TokenPayload, 'sub' | 'address' | 'userId' | 'jti' | 'type'> &
+      Partial<Pick<TokenPayload, 'aud' | 'iss'>>,
+  ): Promise<boolean> {
+    const audiences = Array.isArray(payload.aud)
+      ? payload.aud
+      : payload.aud
+        ? [payload.aud]
+        : [];
+    if (
+      payload.type !== 'access' ||
+      !payload.jti ||
+      !payload.address ||
+      !/^0x[0-9a-f]{40}$/i.test(payload.address) ||
+      !payload.sub ||
+      !audiences.includes(this.ACCESS_TOKEN_AUDIENCE) ||
+      payload.iss !== this.TOKEN_ISSUER ||
+      payload.sub !==
+        (payload.userId ? String(payload.userId) : payload.address.toLowerCase())
+    ) {
+      return false;
+    }
+    return !(await this.isBlacklisted(payload.jti));
+  }
+
+  async logout(payload: {
+    address: string;
+    jti?: string;
+    exp?: number;
+  }): Promise<void> {
+    if (payload.jti) {
+      const remainingTtl = payload.exp
+        ? Math.max(1, payload.exp - Math.floor(Date.now() / 1000))
+        : this.ACCESS_TOKEN_TTL_SECONDS;
+      const blacklisted = await this.redisService.set(
+        `${this.BLACKLIST_PREFIX}${payload.jti}`,
+        '1',
+        remainingTtl,
+      );
+      if (!blacklisted) {
+        throw new InternalServerErrorException(
+          'Unable to revoke authentication token',
+        );
+      }
+    }
+    await this.revokeAllUserTokens(payload.address);
+  }
+
+  async revokeAllUserTokens(address: string): Promise<void> {
+    const normalizedAddress = address.toLowerCase();
+    const indexKey = `${this.USER_SESSIONS_PREFIX}${normalizedAddress}`;
+    const rawIndex = await this.redisService.get(indexKey);
+    if (!rawIndex) return;
+
+    let sessionIds: string[];
+    try {
+      const parsed: unknown = JSON.parse(rawIndex);
+      sessionIds = Array.isArray(parsed)
+        ? parsed.filter((id): id is string => typeof id === 'string')
+        : typeof parsed === 'string'
+          ? [parsed]
+          : [];
+    } catch {
+      if (/^[a-f0-9]{32}$/i.test(rawIndex)) {
+        sessionIds = [rawIndex];
+      } else {
+        throw new InternalServerErrorException(
+          'Unable to read authentication session index',
+        );
+      }
+    }
+
+    for (const sessionId of sessionIds) {
+      const sessionKey = `${this.SESSION_PREFIX}${sessionId}`;
+      const rawSession = await this.redisService.get(sessionKey);
+      if (rawSession) {
+        let session: SessionMetadata;
+        try {
+          session = JSON.parse(rawSession) as SessionMetadata;
+        } catch {
+          throw new InternalServerErrorException(
+            'Unable to read authentication session',
+          );
+        }
+        for (const jti of [session.jti, session.accessJti]) {
+          if (!jti) continue;
+          const ttl =
+            jti === session.jti
+              ? this.REFRESH_TOKEN_TTL_SECONDS
+              : this.ACCESS_TOKEN_TTL_SECONDS;
+          const blacklisted = await this.redisService.set(
+            `${this.BLACKLIST_PREFIX}${jti}`,
+            '1',
+            ttl,
+          );
+          if (!blacklisted) {
+            throw new InternalServerErrorException(
+              'Unable to revoke authentication session',
+            );
+          }
+        }
+      }
+      const removed = await this.redisService.del(sessionKey);
+      if (!removed && rawSession) {
+        throw new InternalServerErrorException(
+          'Unable to remove authentication session',
+        );
+      }
+    }
+
+    const removedIndex = await this.redisService.del(indexKey);
+    if (!removedIndex) {
+      throw new InternalServerErrorException(
+        'Unable to remove authentication session index',
+      );
+    }
+  }
+
+  async isBlacklisted(jti: string): Promise<boolean> {
+    return (await this.redisService.get(`${this.BLACKLIST_PREFIX}${jti}`)) !== null;
+  }
+
+  private async removeSessionFromIndex(
+    address: string,
+    refreshJti: string,
+  ): Promise<void> {
+    const result = await this.redisService.eval(
+      "local raw = redis.call('GET', KEYS[1]); if not raw then return 1 end; local ok, ids = pcall(cjson.decode, raw); if not ok or type(ids) ~= 'table' then return redis.error_reply('Invalid user session index') end; local updated = {}; for _, id in ipairs(ids) do if id ~= ARGV[1] then table.insert(updated, id) end end; if #updated == 0 then return redis.call('DEL', KEYS[1]) end; local ttl = redis.call('TTL', KEYS[1]); redis.call('SET', KEYS[1], cjson.encode(updated)); if ttl > 0 then redis.call('EXPIRE', KEYS[1], ttl) end; return 1",
+      1,
+      `${this.USER_SESSIONS_PREFIX}${address.toLowerCase()}`,
+      refreshJti,
+    );
+    if (Number(result) !== 1) {
+      throw new InternalServerErrorException(
+        'Unable to update authentication session index',
+      );
+    }
   }
 
   /**
@@ -491,5 +794,72 @@ export class TokenService {
       return undefined;
     }
     return ipAddress.trim();
+  }
+}
+
+export const REQUIRE_JWT_CAPABILITY_KEY = 'jwt_capability';
+
+export interface JwtCapabilityRequirement {
+  aud: string;
+  cap: string;
+  resource: string;
+  chain?: string;
+  release?: string;
+  deployment?: string;
+  artifact?: string;
+}
+
+export const RequireJwtCapability = (requirement: JwtCapabilityRequirement) =>
+  SetMetadata(REQUIRE_JWT_CAPABILITY_KEY, requirement);
+
+/**
+ * Guard for JWT-based capability tokens issued by TokenService.
+ *
+ * Derives subject strictly from AuthenticatedPrincipal via extractCapabilitySubject.
+ * Rejects HMAC claims objects or any other format (fails closed).
+ */
+@Injectable()
+export class JwtCapabilityTokenGuard implements CanActivate {
+  constructor(
+    private readonly reflector: Reflector,
+    private readonly tokenService: TokenService,
+  ) {}
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    const request = context.switchToHttp().getRequest();
+    const requirement = this.reflector.get<JwtCapabilityRequirement>(
+      REQUIRE_JWT_CAPABILITY_KEY,
+      context.getHandler(),
+    );
+    if (!requirement) {
+      throw new ForbiddenException('Capability requirement missing');
+    }
+
+    const sub = extractCapabilitySubject(request.user);
+    if (!sub) {
+      throw new ForbiddenException('Missing capability token or subject');
+    }
+
+    const rawToken = request.body?.capabilityToken ?? request.headers['x-capability-token'];
+    // Strict token shape check: JWT token must be a string (rejects HMAC claims objects)
+    if (!rawToken || typeof rawToken !== 'string') {
+      throw new ForbiddenException('Malformed capability token');
+    }
+
+    try {
+      await this.tokenService.validateAndConsumeCapabilityToken(rawToken, {
+        audience: requirement.aud,
+        subject: sub,
+        capability: requirement.cap,
+        resource: requirement.resource,
+        chain: requirement.chain ?? request.body?.chain ?? '',
+        release: requirement.release ?? request.body?.release ?? '',
+        deployment: requirement.deployment ?? request.body?.deployment ?? '',
+        artifact: requirement.artifact ?? request.body?.artifact ?? '',
+      });
+      return true;
+    } catch {
+      throw new ForbiddenException('Capability token rejected');
+    }
   }
 }

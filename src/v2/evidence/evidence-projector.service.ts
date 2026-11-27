@@ -11,6 +11,10 @@ import { ProjectEvidenceVersion } from './entities/project-evidence-version.enti
 import { ProjectorCursor } from '../common/entities/projector-cursor.entity';
 import { EvidenceIntegrityService } from './evidence-integrity.service';
 import { V2OutboxService } from '../outbox/v2-outbox.service';
+import {
+  getCanonicalEventScope,
+  scopedProjectorName,
+} from '../events/canonical-event-scope';
 
 const PROJECTOR_NAME = 'v2-evidence';
 const PG_UNIQUE_VIOLATION = '23505';
@@ -59,15 +63,23 @@ export class EvidenceProjectorService {
       return { processed: 0, applied: 0, duplicates: 0 };
     }
 
+    const scope = getCanonicalEventScope();
+    const projectorName = scopedProjectorName(PROJECTOR_NAME, scope.chainId);
     const cursor = await this.dataSource
       .getRepository(ProjectorCursor)
-      .findOne({ where: { projectorName: PROJECTOR_NAME } });
+      .findOne({
+        where: {
+          projectorName:
+            this.canonicalEvents.getScopedProjectorName(PROJECTOR_NAME),
+        },
+      });
     const after = cursor
       ? { blockNumber: cursor.lastBlockNumber, logIndex: cursor.lastLogIndex }
       : null;
 
     const events = await this.canonicalEvents.findAfter(
       HANDLED_EVENT_NAMES,
+      scope,
       after,
       batchSize,
     );
@@ -97,7 +109,8 @@ export class EvidenceProjectorService {
       // in the same transaction as the projection and its downstream event.
       await manager.getRepository(ProjectorCursor).upsert(
         {
-          projectorName: PROJECTOR_NAME,
+          projectorName:
+            this.canonicalEvents.getScopedProjectorName(PROJECTOR_NAME),
           lastBlockNumber: event.blockNumber,
           lastLogIndex: event.logIndex,
         },

@@ -1612,6 +1612,7 @@ export type FeatureFlagCreateManyArgs<ExtArgs extends runtime.Types.Extensions.I
    * The data used to create many FeatureFlags.
    */
   data: Prisma.FeatureFlagCreateManyInput | Prisma.FeatureFlagCreateManyInput[]
+  skipDuplicates?: boolean
 }
 
 /**
@@ -1630,6 +1631,7 @@ export type FeatureFlagCreateManyAndReturnArgs<ExtArgs extends runtime.Types.Ext
    * The data used to create many FeatureFlags.
    */
   data: Prisma.FeatureFlagCreateManyInput | Prisma.FeatureFlagCreateManyInput[]
+  skipDuplicates?: boolean
 }
 
 /**

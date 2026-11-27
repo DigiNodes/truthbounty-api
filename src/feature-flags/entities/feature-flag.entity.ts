@@ -46,6 +46,9 @@ export class FeatureFlag {
   @Column({ type: 'boolean', default: false })
   isPermanent: boolean;
 
+  @Column({ type: 'boolean', default: false })
+  serverOnly: boolean;
+
   @Column({ type: 'json', nullable: true })
   metadata: Record<string, unknown>;
 
@@ -54,6 +57,12 @@ export class FeatureFlag {
 
   @Column({ default: 1 })
   version: number;
+
+  @Column({ type: 'int', nullable: true })
+  rolledBackFromVersion: number | null;
+
+  @Column({ type: 'text', nullable: true })
+  changeReason: string | null;
 
   @Column({ nullable: true })
   createdBy: string;

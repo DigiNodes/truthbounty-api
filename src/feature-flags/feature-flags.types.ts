@@ -15,6 +15,19 @@ export interface FeatureFlagRuleSet extends Record<string, unknown> {
   endAt?: string;
 }
 
+export interface FeatureFlagConfiguration {
+  key: string;
+  type: FeatureFlagType;
+  enabled: boolean;
+  rolloutPercentage: number;
+  rules: FeatureFlagRuleSet | null;
+  environment: string;
+  description: string | null;
+  isPermanent: boolean;
+  metadata: Record<string, unknown> | null;
+  expiresAt: Date | null;
+}
+
 export interface CreateFeatureFlagInput {
   key: string;
   type: FeatureFlagType;
@@ -25,6 +38,7 @@ export interface CreateFeatureFlagInput {
   description?: string;
   expiresAt?: Date;
   createdBy?: string;
+  serverOnly?: boolean;
 }
 
 export interface UpdateFeatureFlagInput {
@@ -33,6 +47,7 @@ export interface UpdateFeatureFlagInput {
   rules?: FeatureFlagRuleSet;
   description?: string;
   expiresAt?: Date | null;
+  serverOnly?: boolean;
 }
 
 export interface FeatureFlagEvaluationResult {

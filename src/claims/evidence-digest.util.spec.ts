@@ -1,6 +1,10 @@
 import { extractCidDigest } from './evidence-digest.util';
 import { CID } from 'multiformats/cid';
 
+jest.mock('multiformats/cid', () => ({
+  CID: { parse: jest.fn() },
+}));
+
 const cidParse = CID.parse as unknown as jest.Mock;
 
 describe('extractCidDigest', () => {

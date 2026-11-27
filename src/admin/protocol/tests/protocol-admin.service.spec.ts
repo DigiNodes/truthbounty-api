@@ -5,6 +5,8 @@ import { NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { Admin } from '../../entities/admin.entity';
 import { AuditLog } from '../../../audit/entities/audit-log.entity';
+import { Claim } from '../../../claims/entities/claim.entity';
+import { Dispute } from '../../../dispute/entities/dispute.entity';
 import { ProtocolAdminService } from '../protocol-admin.service';
 import { AuditTrailService } from '../../../audit/services/audit-trail.service';
 import { FeatureFlagsService } from '../../../feature-flags/feature-flags.service';
@@ -42,6 +44,24 @@ describe('ProtocolAdminService', () => {
     save: jest.fn(),
     findAndCount: jest.fn(),
     count: jest.fn().mockResolvedValue(42),
+  };
+
+  const mockClaimRepo = {
+    find: jest.fn(),
+    findOne: jest.fn(),
+    create: jest.fn(),
+    save: jest.fn(),
+    findAndCount: jest.fn(),
+    count: jest.fn(),
+  };
+
+  const mockDisputeRepo = {
+    find: jest.fn(),
+    findOne: jest.fn(),
+    create: jest.fn(),
+    save: jest.fn(),
+    findAndCount: jest.fn(),
+    count: jest.fn(),
   };
 
   const mockDataSource = {
@@ -112,6 +132,8 @@ describe('ProtocolAdminService', () => {
         ProtocolAdminService,
         { provide: getRepositoryToken(Admin), useValue: mockAdminRepo },
         { provide: getRepositoryToken(AuditLog), useValue: mockAuditLogRepo },
+        { provide: getRepositoryToken(Claim), useValue: mockClaimRepo },
+        { provide: getRepositoryToken(Dispute), useValue: mockDisputeRepo },
         { provide: DataSource, useValue: mockDataSource },
         { provide: AuditTrailService, useValue: mockAuditTrailService },
         { provide: FeatureFlagsService, useValue: mockFeatureFlagsService },
@@ -164,26 +186,210 @@ describe('ProtocolAdminService', () => {
   });
 
   describe('getOperationalStats', () => {
-    it('should return aggregated operational statistics', async () => {
+    beforeEach(() => {
+      // Set up default mock return values
+      mockAdminRepo.count.mockResolvedValue(5);
+      mockClaimRepo.count.mockResolvedValue(10);
+      mockDisputeRepo.count.mockResolvedValue(3);
+      mockAuditLogRepo.count.mockResolvedValue(42);
+      mockDataSource.query.mockResolvedValue([{ count: 100 }]);
+    });
+
+    it('should return aggregated operational statistics with real metrics', async () => {
+      // Configure specific counts for different claim states
+      mockClaimRepo.count
+        .mockResolvedValueOnce(100) // totalClaims
+        .mockResolvedValueOnce(25) // pendingClaims (finalized = false)
+        .mockResolvedValueOnce(75); // finalizedClaims (finalized = true)
+
+      mockDisputeRepo.count.mockResolvedValueOnce(15); // totalDisputes
+      
+      mockAdminRepo.count
+        .mockResolvedValueOnce(10) // totalAdmins
+        .mockResolvedValueOnce(7); // activeAdmins
+
       const stats = await service.getOperationalStats();
 
-      expect(stats).toHaveProperty('totalUsers');
-      expect(stats).toHaveProperty('totalAdmins');
-      expect(stats).toHaveProperty('auditLogCount');
+      expect(stats.totalUsers).toBe(100);
+      expect(stats.totalClaims).toBe(100);
+      expect(stats.totalDisputes).toBe(15);
+      expect(stats.totalAdmins).toBe(10);
+      expect(stats.activeAdmins).toBe(7);
+      expect(stats.pendingClaims).toBe(25);
+      expect(stats.finalizedClaims).toBe(75);
+      expect(stats.auditLogCount).toBe(42);
       expect(stats.queueMetrics).toHaveProperty('totalWaiting');
       expect(stats.queueMetrics).toHaveProperty('totalActive');
       expect(stats.queueMetrics).toHaveProperty('totalFailed');
       expect(stats.queueMetrics).toHaveProperty('totalCompleted');
       expect(stats.environment).toBeDefined();
       expect(stats.timestamp).toBeDefined();
+      expect(stats.metadata).toBeDefined();
+      expect(stats.metadata.claims).toBeDefined();
+      expect(stats.metadata.disputes).toBeDefined();
+      expect(stats.metadata.admins).toBeDefined();
+      expect(stats.metadata.overall).toBeDefined();
     });
 
-    it('should query database for user and admin counts', async () => {
+    it('should query database for all required counts', async () => {
       await service.getOperationalStats();
 
       expect(mockDataSource.query).toHaveBeenCalled();
       expect(mockAdminRepo.count).toHaveBeenCalled();
+      expect(mockClaimRepo.count).toHaveBeenCalled();
+      expect(mockDisputeRepo.count).toHaveBeenCalled();
       expect(mockAuditLogRepo.count).toHaveBeenCalled();
+    });
+
+    it('should return healthy metadata when all queries succeed', async () => {
+      mockClaimRepo.count.mockResolvedValue(50);
+      mockDisputeRepo.count.mockResolvedValue(10);
+      mockAdminRepo.count.mockResolvedValue(5);
+
+      const stats = await service.getOperationalStats();
+
+      expect(stats.metadata.overall.available).toBe(true);
+      expect(stats.metadata.overall.sourceStatus).toBe('healthy');
+      expect(stats.metadata.overall.reason).toBeUndefined();
+      expect(stats.metadata.claims.available).toBe(true);
+      expect(stats.metadata.claims.sourceStatus).toBe('healthy');
+      expect(stats.metadata.disputes.available).toBe(true);
+      expect(stats.metadata.disputes.sourceStatus).toBe('healthy');
+      expect(stats.metadata.admins.available).toBe(true);
+      expect(stats.metadata.admins.sourceStatus).toBe('healthy');
+    });
+
+    it('should return degraded metadata when some queries fail', async () => {
+      // Simulate partial failure: claims fail, but disputes succeed
+      mockClaimRepo.count.mockRejectedValue(new Error('Database error'));
+      mockDisputeRepo.count.mockResolvedValue(10);
+      mockAdminRepo.count.mockResolvedValue(5);
+
+      const stats = await service.getOperationalStats();
+
+      expect(stats.metadata.overall.available).toBe(true);
+      expect(stats.metadata.overall.sourceStatus).toBe('degraded');
+      expect(stats.metadata.overall.reason).toContain('Some metrics');
+      expect(stats.metadata.claims.available).toBe(false);
+      expect(stats.metadata.claims.sourceStatus).toBe('unavailable');
+      expect(stats.metadata.disputes.available).toBe(true);
+      expect(stats.metadata.disputes.sourceStatus).toBe('healthy');
+      expect(stats.totalClaims).toBe(0); // Returns 0 on error
+      expect(stats.totalDisputes).toBe(10); // Returns actual value
+    });
+
+    it('should return unavailable metadata when all queries fail', async () => {
+      // Simulate complete failure
+      mockClaimRepo.count.mockRejectedValue(new Error('Database down'));
+      mockDisputeRepo.count.mockRejectedValue(new Error('Database down'));
+      mockAdminRepo.count.mockRejectedValue(new Error('Database down'));
+      mockAuditLogRepo.count.mockRejectedValue(new Error('Database down'));
+      mockDataSource.query.mockRejectedValue(new Error('Database down'));
+
+      const stats = await service.getOperationalStats();
+
+      expect(stats.metadata.overall.available).toBe(false);
+      expect(stats.metadata.overall.sourceStatus).toBe('unavailable');
+      expect(stats.totalClaims).toBe(0);
+      expect(stats.totalDisputes).toBe(0);
+      expect(stats.totalAdmins).toBe(0);
+      expect(stats.activeAdmins).toBe(0);
+    });
+
+    it('should correctly count pending vs finalized claims', async () => {
+      // 30 pending (not finalized), 70 finalized
+      mockClaimRepo.count
+        .mockResolvedValueOnce(100) // totalClaims
+        .mockResolvedValueOnce(30) // pendingClaims (finalized = false)
+        .mockResolvedValueOnce(70); // finalizedClaims (finalized = true)
+
+      const stats = await service.getOperationalStats();
+
+      expect(stats.totalClaims).toBe(100);
+      expect(stats.pendingClaims).toBe(30);
+      expect(stats.finalizedClaims).toBe(70);
+      
+      // Verify correct where clauses were used
+      expect(mockClaimRepo.count).toHaveBeenCalledWith();
+      expect(mockClaimRepo.count).toHaveBeenCalledWith({
+        where: { finalized: false },
+      });
+      expect(mockClaimRepo.count).toHaveBeenCalledWith({
+        where: { finalized: true },
+      });
+    });
+
+    it('should correctly count active admins', async () => {
+      mockAdminRepo.count
+        .mockResolvedValueOnce(20) // totalAdmins
+        .mockResolvedValueOnce(15); // activeAdmins (isActive = true)
+
+      const stats = await service.getOperationalStats();
+
+      expect(stats.totalAdmins).toBe(20);
+      expect(stats.activeAdmins).toBe(15);
+      
+      // Verify correct where clause for active admins
+      expect(mockAdminRepo.count).toHaveBeenCalledWith();
+      expect(mockAdminRepo.count).toHaveBeenCalledWith({
+        where: { isActive: true },
+      });
+    });
+
+    it('should return true zero when dataset is empty and source is healthy', async () => {
+      // Empty dataset scenario
+      mockClaimRepo.count.mockResolvedValue(0);
+      mockDisputeRepo.count.mockResolvedValue(0);
+      mockAdminRepo.count.mockResolvedValue(0);
+
+      const stats = await service.getOperationalStats();
+
+      expect(stats.totalClaims).toBe(0);
+      expect(stats.totalDisputes).toBe(0);
+      expect(stats.totalAdmins).toBe(0);
+      expect(stats.activeAdmins).toBe(0);
+      expect(stats.pendingClaims).toBe(0);
+      expect(stats.finalizedClaims).toBe(0);
+      // Metadata should still show healthy since queries succeeded
+      expect(stats.metadata.overall.sourceStatus).toBe('healthy');
+      expect(stats.metadata.claims.sourceStatus).toBe('healthy');
+    });
+
+    it('should handle large datasets efficiently with bounded queries', async () => {
+      // Simulate large dataset counts
+      mockClaimRepo.count
+        .mockResolvedValueOnce(1000000) // totalClaims
+        .mockResolvedValueOnce(250000) // pendingClaims
+        .mockResolvedValueOnce(750000); // finalizedClaims
+
+      mockDisputeRepo.count.mockResolvedValueOnce(50000);
+      mockAdminRepo.count
+        .mockResolvedValueOnce(1000)
+        .mockResolvedValueOnce(800);
+
+      const stats = await service.getOperationalStats();
+
+      expect(stats.totalClaims).toBe(1000000);
+      expect(stats.pendingClaims).toBe(250000);
+      expect(stats.finalizedClaims).toBe(750000);
+      expect(stats.totalDisputes).toBe(50000);
+      expect(stats.metadata.overall.sourceStatus).toBe('healthy');
+    });
+
+    it('should include timestamp in metadata', async () => {
+      const beforeTime = new Date().toISOString();
+      const stats = await service.getOperationalStats();
+      const afterTime = new Date().toISOString();
+
+      expect(stats.timestamp).toBeDefined();
+      expect(stats.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+      expect(stats.timestamp >= beforeTime).toBe(true);
+      expect(stats.timestamp <= afterTime).toBe(true);
+      
+      expect(stats.metadata.overall.lastUpdated).toBe(stats.timestamp);
+      expect(stats.metadata.claims.lastUpdated).toBe(stats.timestamp);
+      expect(stats.metadata.disputes.lastUpdated).toBe(stats.timestamp);
+      expect(stats.metadata.admins.lastUpdated).toBe(stats.timestamp);
     });
   });
 

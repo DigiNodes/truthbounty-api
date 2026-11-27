@@ -13,7 +13,6 @@ generator client {
 // authority. Do not reintroduce a second ORM or dialect here.
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 enum UserRole {
@@ -40,6 +39,7 @@ model User {
 
   wallets              Wallet[]
   sybilScores          SybilScore[]
+  sybilAppeals         SybilAppeal[]
   worldIdVerifications WorldIdVerification[]
   conversations        Conversation[]
 }
@@ -94,6 +94,74 @@ model SybilExplanation {
   sybilScore SybilScore @relation(fields: [sybilScoreId], references: [id], onDelete: Cascade)
 }
 
+// ---------------------------------------------------------------------------
+// PREWAVE-BE-103: Persistent Sybil Score Appeals with Provenance
+// ---------------------------------------------------------------------------
+// SybilAppeal records persist user appeals against Sybil score calculations
+// with full provenance tracking. Appeals are durable across service restarts,
+// isolated by owner, and support administrative review workflows.
+//
+// Security: additionalEvidenceSummary stores only privacy-safe references or
+// summaries — never raw sensitive evidence (nullifier hashes, proofs, PII).
+// Status transitions require authorization (owner can submit, reviewers can
+// resolve). Provenance digest binds appeal to the exact model and inputs.
+// ---------------------------------------------------------------------------
+model SybilAppeal {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Stable appeal identifier for external references
+  appealId String @unique
+
+  // User who submitted the appeal
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Appeal lifecycle status: SUBMITTED | UPHELD | RESOLVED | REJECTED
+  status String @default("SUBMITTED")
+
+  // User-provided justification (minimum 5 chars, max 2000)
+  reason String
+
+  // Score state before appeal
+  previousScore     Float
+  previousRiskScore Float
+
+  // Recomputed score state after appeal
+  newScore     Float
+  newRiskScore Float
+
+  // Model version used for recomputation
+  modelVersion String
+
+  // Timestamp when score was recomputed
+  recomputedAt DateTime
+
+  // Cryptographic provenance digest binding appeal to exact computation
+  provenanceDigest String
+
+  // Privacy-safe evidence summary or reference (no raw sensitive data)
+  // Stored as JSON string; never contains nullifier hashes or proofs
+  additionalEvidenceSummary String?
+
+  // Administrative review fields
+  reviewerId   String?
+  reviewedAt   DateTime?
+  reviewNotes  String?
+
+  // Idempotency key: hash of (userId, reason prefix, submission window)
+  // Prevents duplicate appeals for the same issue within a time window
+  idempotencyKey String @unique
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@index([appealId])
+  @@index([userId, status])
+  @@index([idempotencyKey])
+  @@index([modelVersion])
+}
+
 model WorldIdVerification {
   id          String   @id @default(uuid())
   verifiedAt  DateTime @default(now())
@@ -135,6 +203,21 @@ model Message {
   createdAt       DateTime     @default(now())
 
   @@index([conversationId])
+}
+
+model AiMessageOperation {
+  id             String   @id @default(uuid())
+  userId         String
+  conversationId  String
+  idempotencyKey String
+  requestHash    String
+  status         String   @default("PENDING")
+  response       Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([userId, conversationId, idempotencyKey])
+  @@index([status])
 }
 
 model ContextDocument {
@@ -184,6 +267,11 @@ model AnalyticsEvent {
   @@index([entityType, entityId])
   @@index([userId])
 }
+
+// analytics_consent_current and analytics_consent_history are managed by
+// parameterized Prisma raw queries and the corresponding Prisma SQL migration.
+// They intentionally remain outside the generated client to avoid exposing
+// pseudonymous subject keys through general-purpose generated CRUD methods.
 
 model MetricAggregate {
   id         String   @id @default(uuid())
@@ -295,7 +383,6 @@ model BlockCursor {
   releaseId       String @default("")
   projection      String @default("")
   deploymentBlock BigInt @default(0)
-  artifactChecksum String @default("")
   artifactChecksum String @default("")
   checkpointSource String @default("")
 

@@ -6,6 +6,8 @@ import {
   Body,
   Param,
   Query,
+  Req,
+  UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -26,8 +28,16 @@ import {
   CreateAdminDto,
   UpdateAdminRoleDto,
   UpdateAdminStatusDto,
-  AdminLoginDto,
 } from './dto/admin.dto';
+import {
+  AuthenticatedRequest,
+  isAuthenticatedRequest,
+} from '../auth/types/authenticated-request';
+
+const NON_ENUMERATING_LOGIN_RESPONSE = {
+  authenticated: false,
+  message: 'Authentication failed',
+} as const;
 
 @ApiTags('admin')
 @ApiBearerAuth()
@@ -35,15 +45,27 @@ import {
 export class AdminController {
   constructor(private readonly adminService: AdminService) {}
 
+  /**
+   * Admin login is bound exclusively to the wallet identity of the verified
+   * JWT principal (request.user). No caller-supplied identity is accepted.
+   */
   @Post('auth/login')
-  @ApiOperation({ summary: 'Authenticate as admin' })
+  @ApiOperation({
+    summary: 'Authenticate as admin using the verified JWT wallet principal',
+  })
   @ApiResponse({ status: 200, description: 'Admin authenticated successfully' })
-  @ApiResponse({ status: 403, description: 'Not an admin' })
-  async login(@Body() loginDto: AdminLoginDto) {
-    const admin = await this.adminService.findByWallet(loginDto.address);
-    if (!admin) {
-      return { authenticated: false, message: 'Admin not found' };
+  @ApiResponse({ status: 401, description: 'Missing or invalid JWT principal' })
+  async login(@Req() req: AuthenticatedRequest) {
+    if (!isAuthenticatedRequest(req)) {
+      throw new UnauthorizedException('Authentication required');
     }
+
+    const verifiedAddress = req.user.address;
+    const admin = await this.adminService.findByWallet(verifiedAddress);
+    if (!admin) {
+      return NON_ENUMERATING_LOGIN_RESPONSE;
+    }
+
     await this.adminService.recordLogin(admin.walletAddress);
     return {
       authenticated: true,
@@ -68,7 +90,7 @@ export class AdminController {
   )
   @ApiOperation({ summary: 'Get current admin profile' })
   @ApiResponse({ status: 200, description: 'Admin profile' })
-  async getProfile(@CurrentAdmin() admin: Admin) {
+  getProfile(@CurrentAdmin() admin: Admin) {
     return {
       id: admin.id,
       walletAddress: admin.walletAddress,
@@ -82,8 +104,20 @@ export class AdminController {
   @Post('admins')
   @UseGuards(AdminGuard, RolesGuard)
   @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMINISTRATOR)
-  @ApiOperation({ summary: 'Create a new admin (super_admin or admin only)' })
-  @ApiResponse({ status: 201, description: 'Admin created' })
+  @ApiOperation({
+    summary: 'Create a new admin',
+    description:
+      'Creates a new admin account. Super administrators can grant any role. Administrators can grant roles up to administrator (cannot grant super_admin).',
+  })
+  @ApiResponse({ status: 201, description: 'Admin created successfully' })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden: Insufficient permissions to grant requested role',
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'Conflict: Admin with this wallet address already exists',
+  })
   async createAdmin(
     @Body() createAdminDto: CreateAdminDto,
     @CurrentAdmin() admin: Admin,
@@ -113,6 +147,8 @@ export class AdminController {
   @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMINISTRATOR, AdminRole.AUDITOR)
   @ApiOperation({ summary: 'Get admin by ID' })
   @ApiParam({ name: 'id', description: 'Admin ID' })
+  @ApiResponse({ status: 200, description: 'Admin details' })
+  @ApiResponse({ status: 404, description: 'Admin not found' })
   async getAdmin(@Param('id') id: string) {
     return this.adminService.findById(id);
   }
@@ -120,8 +156,19 @@ export class AdminController {
   @Patch('admins/:id/role')
   @UseGuards(AdminGuard, RolesGuard)
   @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMINISTRATOR)
-  @ApiOperation({ summary: 'Update admin role' })
+  @ApiOperation({
+    summary: 'Update admin role',
+    description:
+      'Updates the role of an admin account according to the explicit role-grant policy. Administrators cannot promote accounts to super_admin or alter an existing super_admin account.',
+  })
   @ApiParam({ name: 'id', description: 'Admin ID' })
+  @ApiResponse({ status: 200, description: 'Admin role updated' })
+  @ApiResponse({
+    status: 403,
+    description:
+      'Forbidden: Insufficient permissions to grant requested role or modify super admin',
+  })
+  @ApiResponse({ status: 404, description: 'Admin not found' })
   async updateAdminRole(
     @Param('id') id: string,
     @Body() updateRoleDto: UpdateAdminRoleDto,
@@ -133,8 +180,18 @@ export class AdminController {
   @Patch('admins/:id/status')
   @UseGuards(AdminGuard, RolesGuard)
   @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMINISTRATOR)
-  @ApiOperation({ summary: 'Activate or deactivate an admin' })
+  @ApiOperation({
+    summary: 'Activate or deactivate an admin',
+    description:
+      'Toggles an admin account active status. Administrators cannot alter an existing super_admin account status.',
+  })
   @ApiParam({ name: 'id', description: 'Admin ID' })
+  @ApiResponse({ status: 200, description: 'Admin status updated' })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden: Cannot alter super admin status',
+  })
+  @ApiResponse({ status: 404, description: 'Admin not found' })
   async updateAdminStatus(
     @Param('id') id: string,
     @Body() updateStatusDto: UpdateAdminStatusDto,

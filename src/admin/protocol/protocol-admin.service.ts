@@ -13,6 +13,8 @@ import { Queue } from 'bullmq';
 
 import { Admin } from '../entities/admin.entity';
 import { AuditLog } from '../../audit/entities/audit-log.entity';
+import { Claim } from '../../claims/entities/claim.entity';
+import { Dispute } from '../../dispute/entities/dispute.entity';
 import { AuditTrailService } from '../../audit/services/audit-trail.service';
 import { FeatureFlagsService } from '../../feature-flags/feature-flags.service';
 import { ConfigurationService } from '../../feature-flags/configuration.service';
@@ -85,6 +87,10 @@ export class ProtocolAdminService {
     private readonly adminRepo: Repository<Admin>,
     @InjectRepository(AuditLog)
     private readonly auditLogRepo: Repository<AuditLog>,
+    @InjectRepository(Claim)
+    private readonly claimRepo: Repository<Claim>,
+    @InjectRepository(Dispute)
+    private readonly disputeRepo: Repository<Dispute>,
     private readonly dataSource: DataSource,
     private readonly auditTrailService: AuditTrailService,
     private readonly featureFlagsService: FeatureFlagsService,
@@ -138,10 +144,72 @@ export class ProtocolAdminService {
   }
 
   async getOperationalStats(): Promise<OperationalStatsResponse> {
-    const [totalUsers, totalAdmins, auditLogCount] = await Promise.all([
-      this.countEntity('user'),
-      this.adminRepo.count(),
-      this.auditLogRepo.count(),
+    const queryTimestamp = new Date().toISOString();
+    
+    // Helper to safely execute queries with error handling
+    const safeCount = async (
+      queryFn: () => Promise<number>,
+      metricName: string,
+    ): Promise<{ value: number; error?: Error }> => {
+      try {
+        const value = await queryFn();
+        return { value };
+      } catch (error) {
+        this.logger.error(
+          `Failed to compute ${metricName}: ${(error as Error).message}`,
+        );
+        return { value: 0, error: error as Error };
+      }
+    };
+
+    // Parallel queries for all metrics with error handling
+    const [
+      totalUsersResult,
+      totalAdminsResult,
+      auditLogCountResult,
+      totalClaimsResult,
+      totalDisputesResult,
+      activeAdminsResult,
+      pendingClaimsResult,
+      finalizedClaimsResult,
+    ] = await Promise.all([
+      safeCount(() => this.countEntity('user'), 'totalUsers'),
+      safeCount(() => this.adminRepo.count(), 'totalAdmins'),
+      safeCount(() => this.auditLogRepo.count(), 'auditLogCount'),
+      // Total claims count across all states
+      safeCount(() => this.claimRepo.count(), 'totalClaims'),
+      // Total disputes count across all statuses
+      safeCount(() => this.disputeRepo.count(), 'totalDisputes'),
+      // Active admins: isActive = true
+      safeCount(
+        () =>
+          this.adminRepo.count({
+            where: {
+              isActive: true,
+            },
+          }),
+        'activeAdmins',
+      ),
+      // Pending claims: not finalized (PENDING or RESOLVED states)
+      safeCount(
+        () =>
+          this.claimRepo.count({
+            where: {
+              finalized: false,
+            },
+          }),
+        'pendingClaims',
+      ),
+      // Finalized claims: finalized = true (FINALIZED state)
+      safeCount(
+        () =>
+          this.claimRepo.count({
+            where: {
+              finalized: true,
+            },
+          }),
+        'finalizedClaims',
+      ),
     ]);
 
     const allMetrics = await this.jobsService.getAllQueueMetrics();
@@ -151,15 +219,62 @@ export class ProtocolAdminService {
     const totalFailed = allMetrics.reduce((sum, m) => sum + m.failed, 0);
     const totalCompleted = allMetrics.reduce((sum, m) => sum + m.completed, 0);
 
+    // Compute metadata for each category
+    const claimsMetadata = this.computeMetricMetadata(
+      [totalClaimsResult, pendingClaimsResult, finalizedClaimsResult],
+      'claims',
+      queryTimestamp,
+    );
+
+    const disputesMetadata = this.computeMetricMetadata(
+      [totalDisputesResult],
+      'disputes',
+      queryTimestamp,
+    );
+
+    const adminsMetadata = this.computeMetricMetadata(
+      [totalAdminsResult, activeAdminsResult],
+      'admins',
+      queryTimestamp,
+    );
+
+    // Overall metadata: degraded if any category is degraded, unavailable if any is unavailable
+    const allResults = [
+      totalUsersResult,
+      totalAdminsResult,
+      auditLogCountResult,
+      totalClaimsResult,
+      totalDisputesResult,
+      activeAdminsResult,
+      pendingClaimsResult,
+      finalizedClaimsResult,
+    ];
+
+    const hasErrors = allResults.some((r) => r.error);
+    const allFailed = allResults.every((r) => r.error);
+
+    const overallMetadata = {
+      available: !allFailed,
+      sourceStatus: (allFailed
+        ? 'unavailable'
+        : hasErrors
+          ? 'degraded'
+          : 'healthy') as 'healthy' | 'degraded' | 'unavailable' | 'stale',
+      reason: hasErrors
+        ? 'Some metrics could not be retrieved due to database errors'
+        : undefined,
+      lastUpdated: queryTimestamp,
+    };
+
     return {
-      totalUsers,
-      totalClaims: 0,
-      totalDisputes: 0,
-      totalAdmins,
-      activeAdmins: 0,
-      pendingClaims: 0,
-      finalizedClaims: 0,
-      auditLogCount,
+      totalUsers: totalUsersResult.value,
+      totalClaims: totalClaimsResult.value,
+      totalDisputes: totalDisputesResult.value,
+      totalAdmins: totalAdminsResult.value,
+      activeAdmins: activeAdminsResult.value,
+      pendingClaims: pendingClaimsResult.value,
+      finalizedClaims: finalizedClaimsResult.value,
+      auditLogCount: auditLogCountResult.value,
       queueMetrics: {
         totalWaiting,
         totalActive,
@@ -168,7 +283,54 @@ export class ProtocolAdminService {
       },
       systemUptime: this.getUptime(),
       environment: getRuntimeEnvironment().NODE_ENV ?? 'development',
-      timestamp: new Date().toISOString(),
+      timestamp: queryTimestamp,
+      metadata: {
+        claims: claimsMetadata,
+        disputes: disputesMetadata,
+        admins: adminsMetadata,
+        overall: overallMetadata,
+      },
+    };
+  }
+
+  /**
+   * Compute metadata for a category of metrics based on query results
+   */
+  private computeMetricMetadata(
+    results: Array<{ value: number; error?: Error }>,
+    category: string,
+    timestamp: string,
+  ): {
+    available: boolean;
+    sourceStatus: 'healthy' | 'degraded' | 'unavailable' | 'stale';
+    reason?: string;
+    lastUpdated: string;
+  } {
+    const hasErrors = results.some((r) => r.error);
+    const allFailed = results.every((r) => r.error);
+
+    if (allFailed) {
+      return {
+        available: false,
+        sourceStatus: 'unavailable',
+        reason: `Unable to retrieve ${category} metrics from database`,
+        lastUpdated: timestamp,
+      };
+    }
+
+    if (hasErrors) {
+      return {
+        available: true,
+        sourceStatus: 'degraded',
+        reason: `Some ${category} metrics unavailable; showing partial data`,
+        lastUpdated: timestamp,
+      };
+    }
+
+    return {
+      available: true,
+      sourceStatus: 'healthy',
+      lastUpdated: timestamp,
     };
   }
 

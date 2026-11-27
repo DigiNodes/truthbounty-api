@@ -61,6 +61,37 @@ describe('EventDecoderService', () => {
     expect(normalized.event.payload.digest).toBe(digest);
   });
 
+  it('normalizes claim settlement using the release ABI claim id', () => {
+    const settlementIface = new Interface([
+      'event VerdictSettled(bytes32 indexed claimId, uint8 finalVerdict, uint256 totalPayout)',
+    ]);
+    const claimId = `0x${'22'.repeat(32)}`;
+    const fragment = settlementIface.getEvent('VerdictSettled')!;
+    const topics = settlementIface.encodeFilterTopics(fragment, [claimId]);
+    const data = AbiCoder.defaultAbiCoder().encode(
+      ['uint8', 'uint256'],
+      [2, 123n],
+    );
+    const log = baseLog({ topics: topics as string[], data });
+
+    const decoded = service.decode(log, settlementIface);
+    expect(decoded.status).toBe('decoded');
+    if (decoded.status !== 'decoded') throw new Error('unreachable');
+
+    const normalized = service.normalize(
+      log,
+      '2.0.0-rc.3',
+      decoded.description,
+      decoded.signature,
+    );
+    expect(normalized.status).toBe('normalized');
+    if (normalized.status !== 'normalized') throw new Error('unreachable');
+
+    expect(normalized.event.claimId).toBe(claimId);
+    expect(normalized.event.payload.finalVerdict).toBe('2');
+    expect(normalized.event.payload.totalPayout).toBe('123');
+  });
+
   it('reports unknown_signature for a topic0 the ABI does not contain at all', () => {
     const log = baseLog({ topics: ['0x' + 'ff'.repeat(32)], data: '0x' });
     const decoded = service.decode(log, iface);

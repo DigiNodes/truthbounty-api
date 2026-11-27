@@ -63,11 +63,11 @@ The canonical environment keys are:
 | `JWT_EXPIRATION` | yes | Access token lifetime |
 | `REFRESH_TOKEN_EXPIRATION` | yes | Refresh token lifetime |
 | `SIWE_DOMAIN` | yes | Domain used for Sign-In with Ethereum |
-| `IPFS_GATEWAY_URL` | yes | IPFS gateway endpoint |
-| `IPFS_API_URL` | yes | IPFS API endpoint |
 | `CHAIN_ID` | yes | EVM chain ID; must match the release manifest |
 | `RPC_URL` | yes | JSON-RPC endpoint; redacted in logs |
 | `CONTRACT_RELEASE_MANIFEST_PATH` | yes | Path to the versioned canonical release manifest |
+
+IPFS storage is not production-supported. The only implemented provider is local filesystem storage for development and tests; staging and production startup reject it until a shared provider adapter is delivered.
 | `CONTRACT_RELEASE_STRICT` | see `.env.example` | Fail closed when release data is absent or inconsistent; must be true in staging and production |
 | `CONTRACT_RELEASE_ID` | see `.env.example` | Expected release ID; must match the manifest |
 | `CONTRACT_RELEASE_CHAIN_ID` | see `.env.example` | Expected chain ID; must match the manifest (Optimism = 10) |
@@ -75,6 +75,10 @@ The canonical environment keys are:
 | `LOCAL_DEV_MODE` | no | Must be `true` to allow an empty indexer configuration |
 | `CONTRACT_RELEASE_MAX_AGE_DAYS` | no | Maximum manifest age in days (default 90) |
 | `LOG_REDACT_KEYS` | no | Extra keys to redact in logs; RPC URLs and secrets are always redacted |
+
+`IPFS_PROVIDER=local` is development/test-only and is rejected in staging and
+production. Pinata and Web3.Storage are not accepted until their adapters are
+implemented; do not configure these modes as if they were supported.
 
 
 ### Contract Release Manifest

@@ -12,6 +12,10 @@ import {
   IndexingAnomaly,
   IndexingAnomalyKind,
 } from '../common/entities/indexing-anomaly.entity';
+import {
+  getCanonicalEventScope,
+  scopedProjectorName,
+} from '../events/canonical-event-scope';
 
 const PROJECTOR_NAME = 'v2-disputes';
 const PG_UNIQUE_VIOLATION = '23505';
@@ -75,9 +79,14 @@ export class DisputesProjectorService {
       return { processed: 0, applied: 0, anomalies: 0 };
     }
 
+    const scope = getCanonicalEventScope();
+    const projectorName = scopedProjectorName(PROJECTOR_NAME, scope.chainId);
     const cursorRepo = this.dataSource.getRepository(ProjectorCursor);
     const cursor = await cursorRepo.findOne({
-      where: { projectorName: PROJECTOR_NAME },
+      where: {
+        projectorName:
+          this.canonicalEvents.getScopedProjectorName(PROJECTOR_NAME),
+      },
     });
     const after = cursor
       ? { blockNumber: cursor.lastBlockNumber, logIndex: cursor.lastLogIndex }
@@ -85,6 +94,7 @@ export class DisputesProjectorService {
 
     const events = await this.canonicalEvents.findAfter(
       HANDLED_EVENT_NAMES,
+      scope,
       after,
       batchSize,
     );
@@ -102,7 +112,8 @@ export class DisputesProjectorService {
 
       await cursorRepo.upsert(
         {
-          projectorName: PROJECTOR_NAME,
+          projectorName:
+            this.canonicalEvents.getScopedProjectorName(PROJECTOR_NAME),
           lastBlockNumber: event.blockNumber,
           lastLogIndex: event.logIndex,
         },

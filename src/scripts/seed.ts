@@ -156,43 +156,35 @@ async function seed() {
     // ========================================
     console.log('\n📋 Creating sample claims...');
 
-    // Claim 1: Resolved as TRUE with high confidence
+    // Sample claims contain metadata only; protocol status comes from chain projections.
     const claim1 = claimRepository.create({
-      resolvedVerdict: true,
-      confidenceScore: 0.95,
-      finalized: true,
+      title: 'Sample claim 1',
+      content: 'Sample claim metadata for development.',
     });
     await claimRepository.save(claim1);
 
-    // Claim 2: Resolved as FALSE with moderate confidence
     const claim2 = claimRepository.create({
-      resolvedVerdict: false,
-      confidenceScore: 0.72,
-      finalized: true,
+      title: 'Sample claim 2',
+      content: 'Sample claim metadata for development.',
     });
     await claimRepository.save(claim2);
 
-    // Claim 3: Unresolved (neutral verdict) with moderate confidence
     const claim3 = claimRepository.create({
-      resolvedVerdict: null,
-      confidenceScore: 0.58,
-      finalized: false,
+      title: 'Sample claim 3',
+      content: 'Sample claim metadata for development.',
     });
     await claimRepository.save(claim3);
 
-    // Claim 4: Resolved as TRUE with high confidence
     const claim4 = claimRepository.create({
-      resolvedVerdict: true,
-      confidenceScore: 0.88,
-      finalized: true,
+      title: 'Sample claim 4',
+      content: 'Sample claim metadata for development.',
     });
     await claimRepository.save(claim4);
 
-    // Claim 5: Recently created, not yet finalized
+    // Claim 5: Recently created; status is not synthesized off chain.
     const claim5 = claimRepository.create({
-      resolvedVerdict: null,
-      confidenceScore: null,
-      finalized: false,
+      title: 'Sample claim 5',
+      content: 'Sample claim metadata for development.',
     });
     await claimRepository.save(claim5);
 

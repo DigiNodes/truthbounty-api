@@ -41,9 +41,8 @@ describe('V2 Architectural Module Boundaries & Dependency Enforcement', () => {
   });
 
   it('should enforce that queries and projections modules depend only on read-only read models', () => {
-    // Projectors live under */projectors/ (e.g. src/indexer/projectors,
-    // src/claims/claim-projector.service.ts is a sibling; the historical
-    // src/projections directory no longer exists).
+    // Projectors live under */projectors/. The legacy claim lifecycle
+    // projector was removed because it consumed unversioned lifecycle events.
     const allFiles = scanDirectory(srcDir);
     const projectionFiles = allFiles.filter(
       (f) =>
