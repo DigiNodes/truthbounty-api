@@ -73,3 +73,8 @@ export interface GovernanceProposalListResult {
   items: GovernanceProposal[];
   nextCursor: string | null;
 }
+
+export interface RoleChangeListResult {
+  items: RoleChangeReadModel[];
+  nextCursor: string | null;
+}
