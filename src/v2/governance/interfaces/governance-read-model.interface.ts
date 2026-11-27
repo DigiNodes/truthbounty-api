@@ -43,16 +43,37 @@ export interface GovernanceActionReadModel {
   decodedArgs: Record<string, unknown> | null;
 }
 
+/**
+ * One entry in the canonical lifecycle history returned by the timelock
+ * endpoint. Kept separate from `state`, which is the proposal's current state.
+ */
+export interface ProposalTransitionReadModel {
+  chainId: number;
+  contractAddress: string;
+  proposalId: string;
+  eventName: string;
+  state: ProposalChainState;
+  eta: string | null;
+  txHash: string;
+  logIndex: number;
+  blockNumber: string;
+  blockTimestamp: Date | null;
+  artifactVersion: string;
+}
+
 export interface ProposalTimelockReadModel {
   chainId: number;
   proposalId: string;
   eta: string | null;
+  /** Current state from the proposal projection (not from history). */
   state: ProposalChainState;
   queuedAtBlock: string | null;
   executedAtBlock: string | null;
   cancelledAtBlock: string | null;
   expiredAtBlock: string | null;
   artifactVersion: string;
+  /** Full canonical lifecycle history, ordered by block then log index. */
+  transitions: ProposalTransitionReadModel[];
 }
 
 export interface RoleChangeReadModel {

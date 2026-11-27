@@ -6,6 +6,7 @@ import {
   ProposalChainState,
 } from './entities/governance-proposal.entity';
 import { GovernanceAction } from './entities/governance-action.entity';
+import { GovernanceProposalTransition } from './entities/governance-proposal-transition.entity';
 import {
   ProposalVote,
   VoteSupport,
@@ -16,6 +17,7 @@ import {
   GovernanceProposalListResult,
   GovernanceProposalReadModel,
   ProposalTimelockReadModel,
+  ProposalTransitionReadModel,
   RoleChangeReadModel,
 } from './interfaces/governance-read-model.interface';
 
@@ -49,6 +51,8 @@ export class GovernanceReadService {
     private readonly votes: Repository<ProposalVote>,
     @InjectRepository(RoleChange)
     private readonly roleChanges: Repository<RoleChange>,
+    @InjectRepository(GovernanceProposalTransition)
+    private readonly transitions?: Repository<GovernanceProposalTransition>,
   ) {}
 
   // ── Proposal detail ─────────────────────────────────────────────────────
@@ -152,25 +156,23 @@ export class GovernanceReadService {
       );
     }
 
-    const [queued, executed, cancelled, expired] = await Promise.all([
-      this.actions.findOne({
-        where: { chainId, proposalId },
-      }).then(() => row.state === ProposalChainState.QUEUED ? row.stateChangedAtBlock : null),
-      row.state === ProposalChainState.EXECUTED ? row.stateChangedAtBlock : null,
-      row.state === ProposalChainState.CANCELLED ? row.stateChangedAtBlock : null,
-      row.state === ProposalChainState.EXPIRED ? row.stateChangedAtBlock : null,
-    ]);
+    // PREWAVE-BE-190: lifecycle facts come from the immutable canonical
+    // transition history, never from the current state or from action rows.
+    const history = await this.loadTransitions(chainId, proposalId);
+    const blockFor = (eventName: string): string | null =>
+      history.find((t) => t.eventName === eventName)?.blockNumber ?? null;
 
     return {
       chainId: row.chainId,
       proposalId: row.proposalId,
       eta: row.eta,
       state: row.state,
-      queuedAtBlock: queued,
-      executedAtBlock: executed,
-      cancelledAtBlock: cancelled,
-      expiredAtBlock: expired,
+      queuedAtBlock: blockFor('ProposalQueued'),
+      executedAtBlock: blockFor('ProposalExecuted'),
+      cancelledAtBlock: blockFor('ProposalCanceled'),
+      expiredAtBlock: blockFor('ProposalExpired'),
       artifactVersion: row.artifactVersion,
+      transitions: history.map(this.toTransitionReadModel),
     };
   }
 
@@ -236,6 +238,62 @@ export class GovernanceReadService {
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────────
+
+  /**
+   * Load a proposal's canonical lifecycle history in deterministic order:
+   * block number first, then log index for transitions sharing a block.
+   */
+  private async loadTransitions(
+    chainId: number,
+    proposalId: string,
+  ): Promise<GovernanceProposalTransition[]> {
+    if (!this.transitions) return [];
+
+    let rows: GovernanceProposalTransition[];
+    if (typeof this.transitions.find === 'function') {
+      rows = await this.transitions.find({
+        where: { chainId, proposalId },
+        order: { blockNumber: 'ASC', logIndex: 'ASC' },
+      });
+    } else {
+      rows = await this.transitions
+        .createQueryBuilder('t')
+        .where('t.chainId = :chainId', { chainId })
+        .andWhere('t.proposalId = :proposalId', { proposalId })
+        .orderBy('CAST(t.blockNumber AS NUMERIC)', 'ASC')
+        .addOrderBy('t.logIndex', 'ASC')
+        .getMany();
+    }
+
+    return rows
+      .filter(
+        (t) =>
+          t.chainId === chainId && String(t.proposalId) === String(proposalId),
+      )
+      .sort((a, b) => {
+        const aBlock = BigInt(a.blockNumber);
+        const bBlock = BigInt(b.blockNumber);
+        if (aBlock < bBlock) return -1;
+        if (aBlock > bBlock) return 1;
+        return a.logIndex - b.logIndex;
+      });
+  }
+
+  private toTransitionReadModel = (
+    t: GovernanceProposalTransition,
+  ): ProposalTransitionReadModel => ({
+    chainId: t.chainId,
+    contractAddress: t.contractAddress,
+    proposalId: t.proposalId,
+    eventName: t.eventName,
+    state: t.state,
+    eta: t.eta,
+    txHash: t.txHash,
+    logIndex: t.logIndex,
+    blockNumber: t.blockNumber,
+    blockTimestamp: t.blockTimestamp,
+    artifactVersion: t.artifactVersion,
+  });
 
   private async computeVoteTotals(
     chainId: number,

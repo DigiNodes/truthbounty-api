@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { GovernanceProposal } from './entities/governance-proposal.entity';
+import { GovernanceProposalTransition } from './entities/governance-proposal-transition.entity';
 import { GovernanceAction } from './entities/governance-action.entity';
 import { ProposalVote } from './entities/proposal-vote.entity';
 import { RoleChange } from './entities/role-change.entity';
@@ -19,8 +20,8 @@ import { ContractArtifact } from '../events/entities/contract-artifact.entity';
  * GovernanceV2Module — V2-BE-067
  *
  * Read-only governance surface. Registers:
- *   - The 4 governance read-model entities (proposals, actions, votes,
- *     role changes).
+ *   - The 5 governance read-model entities (proposals, transition history,
+ *     actions, votes, role changes).
  *   - ProposalDecoderService (fail-closed call decoding).
  *   - GovernanceProjectionService (event → read-model projection, reorg
  *     reconciliation).
@@ -35,6 +36,7 @@ import { ContractArtifact } from '../events/entities/contract-artifact.entity';
   imports: [
     TypeOrmModule.forFeature([
       GovernanceProposal,
+      GovernanceProposalTransition,
       GovernanceAction,
       ProposalVote,
       RoleChange,

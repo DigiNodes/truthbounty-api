@@ -6,6 +6,7 @@ import {
   ProposalChainState,
 } from './entities/governance-proposal.entity';
 import { GovernanceAction } from './entities/governance-action.entity';
+import { GovernanceProposalTransition } from './entities/governance-proposal-transition.entity';
 import {
   ProposalVote,
   VoteSupport,
@@ -47,6 +48,8 @@ export class GovernanceProjectionService {
     private readonly events: Repository<CanonicalEvent>,
     private readonly artifactRegistry: ArtifactRegistryService,
     private readonly decoder: ProposalDecoderService,
+    @InjectRepository(GovernanceProposalTransition)
+    private readonly transitions?: Repository<GovernanceProposalTransition>,
   ) {}
 
   /**
@@ -280,8 +283,51 @@ export class GovernanceProjectionService {
     proposal.lastEventLogIndex = event.logIndex;
     await this.proposals.save(proposal);
 
+    // PREWAVE-BE-190: the proposal row only keeps its current state. Record
+    // an immutable, fully-provenanced row for this transition so the timelock
+    // read model can reconstruct the whole lifecycle after later transitions.
+    await this.recordTransition(event, nextState, eta, proposalId);
+
     this.logger.log(`Proposal ${proposalId} → ${nextState}`);
     return 'applied';
+  }
+
+  /**
+   * Append one lifecycle event to the immutable transition history.
+   * Idempotent by (chainId, txHash, logIndex) so replay is a no-op.
+   */
+  private async recordTransition(
+    event: CanonicalEvent,
+    state: ProposalChainState,
+    eta: string | null,
+    proposalId: string,
+  ): Promise<void> {
+    if (!this.transitions) return;
+
+    const existing = await this.transitions.findOne({
+      where: {
+        chainId: event.chainId,
+        txHash: event.txHash,
+        logIndex: event.logIndex,
+      },
+    });
+    if (existing) return;
+
+    await this.transitions.save(
+      this.transitions.create({
+        chainId: event.chainId,
+        contractAddress: event.contractAddress,
+        proposalId,
+        eventName: event.eventName,
+        state,
+        eta,
+        txHash: event.txHash,
+        logIndex: event.logIndex,
+        blockNumber: event.blockNumber,
+        blockTimestamp: event.blockTimestamp,
+        artifactVersion: event.artifactVersion,
+      }),
+    );
   }
 
   // ── VoteCast ────────────────────────────────────────────────────────────
@@ -393,6 +439,20 @@ export class GovernanceProjectionService {
         rollbackToBlock: rollbackBlockStr,
       })
       .execute();
+
+    // Lifecycle history is log-scoped too: drop only the transitions that
+    // were reverted. Canonical transitions at or below the block survive, so
+    // replay rebuilds the rest deterministically.
+    if (this.transitions) {
+      await this.transitions
+        .createQueryBuilder()
+        .delete()
+        .where('chainId = :chainId', { chainId })
+        .andWhere('CAST(blockNumber AS NUMERIC) > :rollbackToBlock', {
+          rollbackToBlock: rollbackBlockStr,
+        })
+        .execute();
+    }
 
     // Proposals: reset state to the last known good canonical event.
     const staleProposals = await this.proposals
