@@ -6,6 +6,8 @@ import {
   Body,
   Param,
   Query,
+  Req,
+  UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -26,8 +28,13 @@ import {
   CreateAdminDto,
   UpdateAdminRoleDto,
   UpdateAdminStatusDto,
-  AdminLoginDto,
 } from './dto/admin.dto';
+import { AuthenticatedRequest, isAuthenticatedRequest } from '../auth/types/authenticated-request';
+
+const NON_ENUMERATING_LOGIN_RESPONSE = {
+  authenticated: false,
+  message: 'Authentication failed',
+} as const;
 
 @ApiTags('admin')
 @ApiBearerAuth()
@@ -35,15 +42,27 @@ import {
 export class AdminController {
   constructor(private readonly adminService: AdminService) {}
 
+  /**
+   * Admin login is bound exclusively to the wallet identity of the verified
+   * JWT principal (request.user). No caller-supplied identity is accepted.
+   */
   @Post('auth/login')
-  @ApiOperation({ summary: 'Authenticate as admin' })
+  @ApiOperation({
+    summary: 'Authenticate as admin using the verified JWT wallet principal',
+  })
   @ApiResponse({ status: 200, description: 'Admin authenticated successfully' })
-  @ApiResponse({ status: 403, description: 'Not an admin' })
-  async login(@Body() loginDto: AdminLoginDto) {
-    const admin = await this.adminService.findByWallet(loginDto.address);
-    if (!admin) {
-      return { authenticated: false, message: 'Admin not found' };
+  @ApiResponse({ status: 401, description: 'Missing or invalid JWT principal' })
+  async login(@Req() req: AuthenticatedRequest) {
+    if (!isAuthenticatedRequest(req)) {
+      throw new UnauthorizedException('Authentication required');
     }
+
+    const verifiedAddress = req.user.address;
+    const admin = await this.adminService.findByWallet(verifiedAddress);
+    if (!admin) {
+      return NON_ENUMERATING_LOGIN_RESPONSE;
+    }
+
     await this.adminService.recordLogin(admin.walletAddress);
     return {
       authenticated: true,

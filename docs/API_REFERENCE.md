@@ -244,6 +244,33 @@ Sybil resistance scoring.
 
 ---
 
+### Admin Authentication
+
+Admin login binds the authentication attempt to the wallet principal of the verified JWT. The caller-supplied request body is not an identity source.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/admin/auth/login` | Authenticate the verified JWT principal as an admin |
+
+**Authorization:** Requires `Authorization: Bearer <token>`. The wallet address is derived exclusively from the verified JWT principal (`request.user`).
+
+**Request Body:** None. The legacy `address` field is not part of the contract. If supplied for compatibility, it must exactly match (after normalization) the verified principal address; any mismatch is rejected before admin lookup or state change.
+
+**Responses:**
+
+| Status | Description |
+|--------|-------------|
+| `200` | Verified principal matches an active admin; login metadata (`lastLoginAt`) updated after successful authentication |
+| `400` | Malformed or mismatched body address |
+| `401` | Missing, malformed, revoked, or expired JWT principal |
+| `403` | Non-admin or inactive identity; response is identical for unknown and inactive admins (non-enumerating) |
+
+**Notes:**
+- `lastLoginAt` is updated only after the principal is matched to an active admin and the session operation has succeeded.
+- This endpoint does not issue an admin session by itself and does not bypass the admin-plane guard or role hierarchy.
+
+---
+
 ### Blockchain
 
 Blockchain event indexing and state management.
@@ -575,3 +602,5 @@ Clients MAY retry any error with `retryable: true` using the same request body a
 ### State Transition Authority
 
 State transitions are derived exclusively from canonical contracts and finalized events. Client-supplied phase or state values are ignored for authority purposes and are only used for conflict detection.
+
+---

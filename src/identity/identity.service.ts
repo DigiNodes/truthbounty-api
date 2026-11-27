@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { LinkWalletDto } from './dto/link-wallet.dto';
+import { AdminLinkWalletDto } from './dto/admin-wallet.dto';
 import { verifyMessage, getAddress } from 'ethers';
 import { Prisma, User, Wallet } from '../generated/client/client';
 import { AuditTrailService } from '../audit/services/audit-trail.service';
@@ -18,6 +19,11 @@ import {
   constantTimeAddressEqual,
   timingSafeEqualUtf8,
 } from '../common/utils/timing-safe.util';
+import {
+  WALLET_LINK_OPERATION,
+  WalletLinkChallenge,
+  WalletLinkChallengeService,
+} from './wallet-link-challenge.service';
 
 export type UserWithWallets = User & { wallets: Wallet[] };
 
@@ -31,6 +37,12 @@ export interface LinkWalletResult {
   alreadyLinked: boolean;
 }
 
+export interface WalletMutationAuditContext {
+  actorId?: string;
+  reason?: string;
+  adminAssisted?: boolean;
+}
+
 const MIN_WALLETS = 1;
 
 @Injectable()
@@ -40,6 +52,7 @@ export class IdentityService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditTrailService: AuditTrailService,
+    private readonly walletLinkChallengeService: WalletLinkChallengeService,
   ) {}
 
   async createUser(): Promise<User> {
@@ -62,33 +75,65 @@ export class IdentityService {
     return user;
   }
 
+  issueWalletLinkChallenge(
+    userId: string,
+    address: string,
+    chain: string,
+  ): WalletLinkChallenge {
+    return this.walletLinkChallengeService.issueChallenge({
+      userId,
+      address,
+      chain,
+    });
+  }
+
   async linkWallet(
     userId: string,
     dto: LinkWalletDto,
+    auditContext?: WalletMutationAuditContext,
   ): Promise<LinkWalletResult> {
-    const { address, chain, signature, message } = dto;
-    const normalizedAddress = this.normalizeAddress(address);
-    this.verifySignature(message, signature, normalizedAddress);
+    const normalizedAddress = this.normalizeAddress(dto.address);
+    const normalizedChain = dto.chain?.trim();
+    if (!normalizedChain) {
+      throw new BadRequestException('Invalid chain identifier');
+    }
 
-    return this.prisma.$transaction(async (tx) => {
-      const existingWallet = await tx.wallet.findFirst({
+    // Verify server-issued, single-use challenge bound to account, address,
+    // chain, operation, expiry, and exact message, then verify signature
+    // and atomically consume the challenge.
+    this.walletLinkChallengeService.verifyAndConsume({
+      nonce: dto.nonce,
+      userId,
+      address: normalizedAddress,
+      chain: normalizedChain,
+      operation: WALLET_LINK_OPERATION,
+      message: dto.message,
+      verifySignature: () =>
+        this.verifySignature(dto.message, dto.signature, normalizedAddress),
+    });
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const existingWallets = await tx.wallet.findMany({
         where: { address: normalizedAddress },
       });
 
-      if (existingWallet) {
+      let sameChainMatch: Wallet | undefined;
+      for (const existingWallet of existingWallets) {
         if (!constantTimeAddressEqual(existingWallet.userId, userId)) {
           // Redacted: do not disclose the address or the owning account.
-          // Same exception type preserved (Conflict) for REST semantics,
-          // but message is constant-shape.
+          // A wallet can never be silently moved between users.
           this.logger.warn('Wallet link failed [already-linked]');
-          // Dummy compare to normalize timing between hit/miss branches.
-          timingSafeEqualUtf8(existingWallet.chain, chain);
+          timingSafeEqualUtf8(existingWallet.chain, normalizedChain);
           throw new ConflictException('Wallet linkage failed');
         }
-        if (timingSafeEqualUtf8(existingWallet.chain, chain)) {
-          this.logger.debug(`Wallet link no-op — already linked`);
-          return { wallet: existingWallet, alreadyLinked: true };
+        if (timingSafeEqualUtf8(existingWallet.chain, normalizedChain)) {
+          sameChainMatch = existingWallet;
         }
+      }
+
+      if (sameChainMatch) {
+        this.logger.debug('Wallet link no-op — already linked');
+        return { wallet: sameChainMatch, alreadyLinked: true };
       }
 
       const user = await tx.user.findUnique({ where: { id: userId } });
@@ -96,14 +141,70 @@ export class IdentityService {
       // distinguish "user missing" from "wallet taken" via message content.
       if (!user) throw new NotFoundException('Wallet linkage failed');
 
-      const wallet = await tx.wallet.create({
-        data: { address: normalizedAddress, chain, userId },
-      });
+      let wallet: Wallet;
+      try {
+        wallet = await tx.wallet.create({
+          data: {
+            address: normalizedAddress,
+            chain: normalizedChain,
+            userId,
+          },
+        });
+      } catch (err) {
+        if (this.isPrismaUniqueViolation(err)) {
+          this.logger.warn('Wallet link failed [concurrent-unique-conflict]');
+          throw new ConflictException('Wallet linkage failed');
+        }
+        throw err;
+      }
 
       this.logger.log(
-        `Wallet ${normalizedAddress} (${chain}) linked to user ${userId}`,
+        `Wallet ${normalizedAddress} (${normalizedChain}) linked to user ${userId}`,
       );
       return { wallet, alreadyLinked: false };
+    });
+
+    if (!result.alreadyLinked) {
+      await this.auditTrailService.log({
+        actionType: AuditActionType.WALLET_LINKED,
+        entityType: AuditEntityType.WALLET,
+        entityId: result.wallet.id,
+        userId,
+        walletAddress: normalizedAddress,
+        description: auditContext?.adminAssisted
+          ? 'Wallet linked by administrator'
+          : 'Wallet linked',
+        metadata: {
+          chain: normalizedChain,
+          ...(auditContext?.adminAssisted
+            ? {
+                adminAssisted: true,
+                actorId: auditContext.actorId,
+                reason: auditContext.reason,
+              }
+            : {}),
+        },
+      });
+    }
+
+    return result;
+  }
+
+  async adminLinkWallet(
+    targetUserId: string,
+    dto: AdminLinkWalletDto,
+    actorId: string,
+  ): Promise<LinkWalletResult> {
+    const trimmedReason = dto.reason?.trim();
+    if (!trimmedReason) {
+      throw new BadRequestException(
+        'Reason is required for admin-assisted wallet link',
+      );
+    }
+    return this.linkWallet(targetUserId, dto, {
+      actorId,
+      reason: trimmedReason,
+      adminAssisted: true,
     });
   }
 
@@ -111,31 +212,49 @@ export class IdentityService {
     userId: string,
     address: string,
     chain: string,
+    auditContext?: WalletMutationAuditContext,
   ): Promise<Wallet> {
     const normalizedAddress = this.normalizeAddress(address);
-    const wallet = await this.prisma.wallet.findUnique({
-      where: { address_chain: { address: normalizedAddress, chain } },
-    });
-
-    // Constant-shape: not-found and not-owned collapse to the same
-    // NotFound + generic message so ownership cannot be enumerated.
-    // Timing-safe user comparison (no short-circuit !== oracle).
-    if (!wallet || !constantTimeAddressEqual(wallet.userId, userId)) {
-      this.logger.warn('Wallet unlink failed [not-found-or-forbidden]');
-      throw new NotFoundException('Wallet unlink failed');
+    const normalizedChain = chain?.trim();
+    if (!normalizedChain) {
+      throw new BadRequestException('Invalid chain identifier');
     }
 
-    if (MIN_WALLETS > 0) {
-      const count = await this.prisma.wallet.count({ where: { userId } });
-      if (count <= MIN_WALLETS) {
-        throw new BadRequestException(
-          `Cannot unlink wallet — users must retain at least ${MIN_WALLETS} linked wallet(s)`,
-        );
+    const deleted = await this.prisma.$transaction(async (tx) => {
+      const wallet = await tx.wallet.findUnique({
+        where: {
+          address_chain: {
+            address: normalizedAddress,
+            chain: normalizedChain,
+          },
+        },
+      });
+
+      // Constant-shape: not-found and not-owned collapse to the same
+      // NotFound + generic message so ownership cannot be enumerated.
+      // Timing-safe user comparison (no short-circuit !== oracle).
+      if (!wallet || !constantTimeAddressEqual(wallet.userId, userId)) {
+        this.logger.warn('Wallet unlink failed [not-found-or-forbidden]');
+        throw new NotFoundException('Wallet unlink failed');
       }
-    }
 
-    const deleted = await this.prisma.wallet.delete({
-      where: { address_chain: { address: normalizedAddress, chain } },
+      if (MIN_WALLETS > 0) {
+        const count = await tx.wallet.count({ where: { userId } });
+        if (count <= MIN_WALLETS) {
+          throw new BadRequestException(
+            `Cannot unlink wallet — users must retain at least ${MIN_WALLETS} linked wallet(s)`,
+          );
+        }
+      }
+
+      return tx.wallet.delete({
+        where: {
+          address_chain: {
+            address: normalizedAddress,
+            chain: normalizedChain,
+          },
+        },
+      });
     });
 
     await this.auditTrailService.log({
@@ -144,13 +263,45 @@ export class IdentityService {
       entityId: deleted.id,
       userId,
       walletAddress: normalizedAddress,
-      description: 'Wallet unlinked',
+      description: auditContext?.adminAssisted
+        ? 'Wallet unlinked by administrator'
+        : 'Wallet unlinked',
+      metadata: {
+        chain: normalizedChain,
+        ...(auditContext?.adminAssisted
+          ? {
+              adminAssisted: true,
+              actorId: auditContext.actorId,
+              reason: auditContext.reason,
+            }
+          : {}),
+      },
     });
 
     this.logger.log(
-      `Wallet ${normalizedAddress} (${chain}) unlinked from user ${userId}`,
+      `Wallet ${normalizedAddress} (${normalizedChain}) unlinked from user ${userId}`,
     );
     return deleted;
+  }
+
+  async adminUnlinkWallet(
+    targetUserId: string,
+    address: string,
+    chain: string,
+    actorId: string,
+    reason: string,
+  ): Promise<Wallet> {
+    const trimmedReason = reason?.trim();
+    if (!trimmedReason) {
+      throw new BadRequestException(
+        'Reason is required for admin-assisted wallet unlink',
+      );
+    }
+    return this.unlinkWallet(targetUserId, address, chain, {
+      actorId,
+      reason: trimmedReason,
+      adminAssisted: true,
+    });
   }
 
   async findUserByAddress(address: string): Promise<User | null> {
