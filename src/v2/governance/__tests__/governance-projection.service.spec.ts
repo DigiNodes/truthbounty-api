@@ -1,4 +1,6 @@
+import { Interface } from 'ethers';
 import { GovernanceProjectionService } from '../governance-projection.service';
+import { ProposalDecoderService } from '../proposal-decoder.service';
 import { ProposalChainState } from '../entities/governance-proposal.entity';
 import { RoleChangeKind } from '../entities/role-change.entity';
 import { CanonicalEvent } from '../../events/entities/canonical-event.entity';
@@ -150,6 +152,55 @@ describe('GovernanceProjectionService', () => {
       artifactRegistry as any,
       decoder as any,
     );
+  });
+
+  it('projects every call when one proposal call has malformed calldata', async () => {
+    const iface = new Interface([
+      'function transfer(address to, uint256 amount) returns (bool)',
+    ]);
+    const target = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const valid = iface.encodeFunctionData('transfer', [
+      '0x1111111111111111111111111111111111111111',
+      1n,
+    ]);
+
+    artifactRegistry.resolve.mockImplementation(async () => ({ iface }));
+    service = new GovernanceProjectionService(
+      proposals as any,
+      actions as any,
+      votes as any,
+      roleChanges as any,
+      events as any,
+      artifactRegistry as any,
+      new ProposalDecoderService(),
+    );
+
+    const event = makeEvent({
+      eventName: 'ProposalCreated',
+      txHash: '0xcreate',
+      payload: {
+        proposalId: '42',
+        targets: [target, target, target],
+        values: ['0', '0', '0'],
+        calldatas: [valid, '0xzz', valid],
+        descriptionHash: '0xdeadbeef',
+        description: 'mixed proposal',
+        proposer: target,
+      } as any,
+    });
+
+    const outcome = await (service as any).projectEvent(event);
+
+    expect(outcome).toBe('applied');
+    expect(actions._store).toHaveLength(3);
+    expect(actions._store.map((a: any) => a.selectorUnknown)).toEqual([
+      false,
+      true,
+      false,
+    ]);
+    expect((actions._store[0] as any).decodedArgs.amount).toBe('1');
+    expect((actions._store[1] as any).decodedArgs).toBeNull();
+    expect((actions._store[2] as any).decodedArgs.amount).toBe('1');
   });
 
   // ─── State transitions ──────────────────────────────────────────────────

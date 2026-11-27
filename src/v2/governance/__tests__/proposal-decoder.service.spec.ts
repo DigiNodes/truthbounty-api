@@ -216,4 +216,137 @@ describe('ProposalDecoderService', () => {
     expect(decoded.selectorUnknown).toBe(true);
     expect(decoded.target).toBe('not-an-address');
   });
+
+  // ─── Calldata validation (PREWAVE-BE-187) ───────────────────────────────
+
+  const TARGET = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+  const transferCalldata = erc20Iface.encodeFunctionData('transfer', [
+    '0x1111111111111111111111111111111111111111',
+    1n,
+  ]);
+  const transferSelector = erc20Iface.getFunction('transfer')!.selector;
+  const oversizedCalldata = `0x${'ab'.repeat(1024 * 1024 + 1)}`;
+
+  const goldenFixtures: Array<{
+    name: string;
+    calldata: string;
+    selectorUnknown: boolean;
+    selector: string | null;
+    checksumExpected: boolean;
+  }> = [
+    {
+      name: 'valid ABI payload',
+      calldata: transferCalldata,
+      selectorUnknown: false,
+      selector: transferSelector,
+      checksumExpected: true,
+    },
+    {
+      name: 'empty calldata',
+      calldata: '0x',
+      selectorUnknown: false,
+      selector: null,
+      checksumExpected: true,
+    },
+    {
+      name: 'missing calldata string',
+      calldata: '',
+      selectorUnknown: false,
+      selector: null,
+      checksumExpected: true,
+    },
+    {
+      name: 'selector-short calldata',
+      calldata: '0x1234',
+      selectorUnknown: true,
+      selector: null,
+      checksumExpected: true,
+    },
+    {
+      name: 'odd-length hex',
+      calldata: '0x123',
+      selectorUnknown: true,
+      selector: null,
+      checksumExpected: false,
+    },
+    {
+      name: 'non-hex characters',
+      calldata: '0xdeadbeefzz',
+      selectorUnknown: true,
+      selector: null,
+      checksumExpected: false,
+    },
+    {
+      name: 'missing 0x prefix',
+      calldata: transferCalldata.slice(2),
+      selectorUnknown: true,
+      selector: null,
+      checksumExpected: false,
+    },
+    {
+      name: 'oversized payload',
+      calldata: oversizedCalldata,
+      selectorUnknown: true,
+      selector: null,
+      checksumExpected: false,
+    },
+  ];
+
+  it.each(goldenFixtures)('golden fixture: $name', (fixture) => {
+    expect(() =>
+      decoder.decodeCall(TARGET, '0', fixture.calldata, erc20Iface),
+    ).not.toThrow();
+
+    const decoded = decoder.decodeCall(
+      TARGET,
+      '0',
+      fixture.calldata,
+      erc20Iface,
+    );
+    expect(decoded.selectorUnknown).toBe(fixture.selectorUnknown);
+    expect(decoded.selector).toBe(fixture.selector);
+    expect(decoded.calldata).toBe(fixture.calldata);
+    if (fixture.checksumExpected) {
+      expect(decoded.calldataChecksum).toMatch(/^[a-f0-9]{64}$/);
+    } else {
+      expect(decoded.calldataChecksum).toBe('');
+      expect(decoded.decodedArgs).toBeNull();
+      expect(decoded.functionSignature).toBeNull();
+    }
+  });
+
+  it('fails closed when the ABI payload arguments are malformed', () => {
+    const truncated = transferCalldata.slice(0, -2);
+
+    const decoded = decoder.decodeCall(TARGET, '0', truncated, erc20Iface);
+
+    expect(decoded.selectorUnknown).toBe(true);
+    expect(decoded.selector).toBe(transferSelector);
+    expect(decoded.functionSignature).toMatch(/^transfer\(address,uint256\)$/);
+    expect(decoded.decodedArgs).toBeNull();
+  });
+
+  it('never includes malformed calldata in warnings', () => {
+    const warn = jest
+      .spyOn((decoder as any).logger, 'warn')
+      .mockImplementation(() => undefined);
+    const calldata = '0xdeadbeefzz';
+
+    decoder.decodeCall(TARGET, '0', calldata, erc20Iface);
+
+    expect(warn).toHaveBeenCalled();
+    expect(warn.mock.calls.join(' ')).not.toContain(calldata);
+    warn.mockRestore();
+  });
+
+  it('keeps sibling calls decodable when one call has malformed calldata', () => {
+    const decoded = [transferCalldata, '0xzz', transferCalldata].map((cd) =>
+      decoder.decodeCall(TARGET, '0', cd, erc20Iface),
+    );
+
+    expect(decoded.map((d) => d.selectorUnknown)).toEqual([false, true, false]);
+    expect(decoded[0].decodedArgs?.amount).toBe('1');
+    expect(decoded[1].decodedArgs).toBeNull();
+    expect(decoded[2].decodedArgs?.amount).toBe('1');
+  });
 });
