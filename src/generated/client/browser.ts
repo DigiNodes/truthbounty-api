@@ -38,6 +38,11 @@ export type SybilScore = Prisma.SybilScoreModel
  */
 export type SybilExplanation = Prisma.SybilExplanationModel
 /**
+ * Model SybilAppeal
+ * 
+ */
+export type SybilAppeal = Prisma.SybilAppealModel
+/**
  * Model WorldIdVerification
  * 
  */
@@ -52,6 +57,11 @@ export type Conversation = Prisma.ConversationModel
  * 
  */
 export type Message = Prisma.MessageModel
+/**
+ * Model AiMessageOperation
+ * 
+ */
+export type AiMessageOperation = Prisma.AiMessageOperationModel
 /**
  * Model ContextDocument
  * 
@@ -103,6 +113,21 @@ export type BlockCursorAncestor = Prisma.BlockCursorAncestorModel
  */
 export type ChainEvent = Prisma.ChainEventModel
 /**
+ * Model StreamSession
+ * 
+ */
+export type StreamSession = Prisma.StreamSessionModel
+/**
+ * Model StreamEvent
+ * 
+ */
+export type StreamEvent = Prisma.StreamEventModel
+/**
+ * Model StreamBackfillRequest
+ * 
+ */
+export type StreamBackfillRequest = Prisma.StreamBackfillRequestModel
+/**
  * Model FeatureFlag
  * 
  */
@@ -123,15 +148,15 @@ export type FeatureFlagAuditEvent = Prisma.FeatureFlagAuditEventModel
  */
 export type SupportSubmission = Prisma.SupportSubmissionModel
 /**
- * Model SupportAttachment
+ * Model DeadLetterReplay
  * 
  */
-export type SupportAttachment = Prisma.SupportAttachmentModel
+export type DeadLetterReplay = Prisma.DeadLetterReplayModel
 /**
- * Model QuarantineAuditLog
+ * Model DeadLetterReplayAudit
  * 
  */
-export type QuarantineAuditLog = Prisma.QuarantineAuditLogModel
+export type DeadLetterReplayAudit = Prisma.DeadLetterReplayAuditModel
 /**
  * Model WebhookProviderConfig
  * 
@@ -142,3 +167,8 @@ export type WebhookProviderConfig = Prisma.WebhookProviderConfigModel
  * 
  */
 export type WebhookDelivery = Prisma.WebhookDeliveryModel
+/**
+ * Model DisputeWorkflow
+ * 
+ */
+export type DisputeWorkflow = Prisma.DisputeWorkflowModel

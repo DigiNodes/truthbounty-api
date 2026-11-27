@@ -1,11 +1,11 @@
-```js
 /** @type {import('jest').Config} */
 module.exports = {
   moduleFileExtensions: ['js', 'json', 'ts'],
   rootDir: '.',
   testRegex: '.*\\.spec\\.ts$',
   transform: {
-    '^.+\\.(t|j)s$': 'ts-jest',
+    '^.+\\.ts$': 'ts-jest',
+    '^.+\\.js$': ['@swc/jest', { module: { type: 'commonjs' } }],
   },
   testRunner: 'jest-circus/runner',
   moduleDirectories: ['node_modules', '<rootDir>/node_modules'],
@@ -16,4 +16,3 @@ module.exports = {
   ],
   testEnvironment: 'node',
 };
-```

@@ -48,6 +48,11 @@ export type ChainEventMinAggregateOutputType = {
   blockTimestamp: Date | null
   payload: string | null
   rawArgs: string | null
+  decoderVersion: string | null
+  releaseId: string | null
+  canonicalKey: string | null
+  removed: boolean | null
+  removedAt: Date | null
   ingestedAt: Date | null
 }
 
@@ -63,6 +68,11 @@ export type ChainEventMaxAggregateOutputType = {
   blockTimestamp: Date | null
   payload: string | null
   rawArgs: string | null
+  decoderVersion: string | null
+  releaseId: string | null
+  canonicalKey: string | null
+  removed: boolean | null
+  removedAt: Date | null
   ingestedAt: Date | null
 }
 
@@ -78,6 +88,11 @@ export type ChainEventCountAggregateOutputType = {
   blockTimestamp: number
   payload: number
   rawArgs: number
+  decoderVersion: number
+  releaseId: number
+  canonicalKey: number
+  removed: number
+  removedAt: number
   ingestedAt: number
   _all: number
 }
@@ -105,6 +120,11 @@ export type ChainEventMinAggregateInputType = {
   blockTimestamp?: true
   payload?: true
   rawArgs?: true
+  decoderVersion?: true
+  releaseId?: true
+  canonicalKey?: true
+  removed?: true
+  removedAt?: true
   ingestedAt?: true
 }
 
@@ -120,6 +140,11 @@ export type ChainEventMaxAggregateInputType = {
   blockTimestamp?: true
   payload?: true
   rawArgs?: true
+  decoderVersion?: true
+  releaseId?: true
+  canonicalKey?: true
+  removed?: true
+  removedAt?: true
   ingestedAt?: true
 }
 
@@ -135,6 +160,11 @@ export type ChainEventCountAggregateInputType = {
   blockTimestamp?: true
   payload?: true
   rawArgs?: true
+  decoderVersion?: true
+  releaseId?: true
+  canonicalKey?: true
+  removed?: true
+  removedAt?: true
   ingestedAt?: true
   _all?: true
 }
@@ -237,6 +267,11 @@ export type ChainEventGroupByOutputType = {
   blockTimestamp: Date | null
   payload: string
   rawArgs: string
+  decoderVersion: string
+  releaseId: string | null
+  canonicalKey: string
+  removed: boolean
+  removedAt: Date | null
   ingestedAt: Date
   _count: ChainEventCountAggregateOutputType | null
   _avg: ChainEventAvgAggregateOutputType | null
@@ -275,6 +310,11 @@ export type ChainEventWhereInput = {
   blockTimestamp?: Prisma.DateTimeNullableFilter<"ChainEvent"> | Date | string | null
   payload?: Prisma.StringFilter<"ChainEvent"> | string
   rawArgs?: Prisma.StringFilter<"ChainEvent"> | string
+  decoderVersion?: Prisma.StringFilter<"ChainEvent"> | string
+  releaseId?: Prisma.StringNullableFilter<"ChainEvent"> | string | null
+  canonicalKey?: Prisma.StringFilter<"ChainEvent"> | string
+  removed?: Prisma.BoolFilter<"ChainEvent"> | boolean
+  removedAt?: Prisma.DateTimeNullableFilter<"ChainEvent"> | Date | string | null
   ingestedAt?: Prisma.DateTimeFilter<"ChainEvent"> | Date | string
 }
 
@@ -290,11 +330,17 @@ export type ChainEventOrderByWithRelationInput = {
   blockTimestamp?: Prisma.SortOrderInput | Prisma.SortOrder
   payload?: Prisma.SortOrder
   rawArgs?: Prisma.SortOrder
+  decoderVersion?: Prisma.SortOrder
+  releaseId?: Prisma.SortOrderInput | Prisma.SortOrder
+  canonicalKey?: Prisma.SortOrder
+  removed?: Prisma.SortOrder
+  removedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   ingestedAt?: Prisma.SortOrder
 }
 
 export type ChainEventWhereUniqueInput = Prisma.AtLeast<{
   id?: string
+  canonicalKey?: string
   chainId_blockHash_txHash_logIndex?: Prisma.ChainEventChainIdBlockHashTxHashLogIndexCompoundUniqueInput
   AND?: Prisma.ChainEventWhereInput | Prisma.ChainEventWhereInput[]
   OR?: Prisma.ChainEventWhereInput[]
@@ -309,8 +355,12 @@ export type ChainEventWhereUniqueInput = Prisma.AtLeast<{
   blockTimestamp?: Prisma.DateTimeNullableFilter<"ChainEvent"> | Date | string | null
   payload?: Prisma.StringFilter<"ChainEvent"> | string
   rawArgs?: Prisma.StringFilter<"ChainEvent"> | string
+  decoderVersion?: Prisma.StringFilter<"ChainEvent"> | string
+  releaseId?: Prisma.StringNullableFilter<"ChainEvent"> | string | null
+  removed?: Prisma.BoolFilter<"ChainEvent"> | boolean
+  removedAt?: Prisma.DateTimeNullableFilter<"ChainEvent"> | Date | string | null
   ingestedAt?: Prisma.DateTimeFilter<"ChainEvent"> | Date | string
-}, "id" | "chainId_blockHash_txHash_logIndex">
+}, "id" | "canonicalKey" | "chainId_blockHash_txHash_logIndex">
 
 export type ChainEventOrderByWithAggregationInput = {
   id?: Prisma.SortOrder
@@ -324,6 +374,11 @@ export type ChainEventOrderByWithAggregationInput = {
   blockTimestamp?: Prisma.SortOrderInput | Prisma.SortOrder
   payload?: Prisma.SortOrder
   rawArgs?: Prisma.SortOrder
+  decoderVersion?: Prisma.SortOrder
+  releaseId?: Prisma.SortOrderInput | Prisma.SortOrder
+  canonicalKey?: Prisma.SortOrder
+  removed?: Prisma.SortOrder
+  removedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   ingestedAt?: Prisma.SortOrder
   _count?: Prisma.ChainEventCountOrderByAggregateInput
   _avg?: Prisma.ChainEventAvgOrderByAggregateInput
@@ -347,6 +402,11 @@ export type ChainEventScalarWhereWithAggregatesInput = {
   blockTimestamp?: Prisma.DateTimeNullableWithAggregatesFilter<"ChainEvent"> | Date | string | null
   payload?: Prisma.StringWithAggregatesFilter<"ChainEvent"> | string
   rawArgs?: Prisma.StringWithAggregatesFilter<"ChainEvent"> | string
+  decoderVersion?: Prisma.StringWithAggregatesFilter<"ChainEvent"> | string
+  releaseId?: Prisma.StringNullableWithAggregatesFilter<"ChainEvent"> | string | null
+  canonicalKey?: Prisma.StringWithAggregatesFilter<"ChainEvent"> | string
+  removed?: Prisma.BoolWithAggregatesFilter<"ChainEvent"> | boolean
+  removedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"ChainEvent"> | Date | string | null
   ingestedAt?: Prisma.DateTimeWithAggregatesFilter<"ChainEvent"> | Date | string
 }
 
@@ -362,6 +422,11 @@ export type ChainEventCreateInput = {
   blockTimestamp?: Date | string | null
   payload: string
   rawArgs: string
+  decoderVersion?: string
+  releaseId?: string | null
+  canonicalKey: string
+  removed?: boolean
+  removedAt?: Date | string | null
   ingestedAt?: Date | string
 }
 
@@ -377,6 +442,11 @@ export type ChainEventUncheckedCreateInput = {
   blockTimestamp?: Date | string | null
   payload: string
   rawArgs: string
+  decoderVersion?: string
+  releaseId?: string | null
+  canonicalKey: string
+  removed?: boolean
+  removedAt?: Date | string | null
   ingestedAt?: Date | string
 }
 
@@ -392,6 +462,11 @@ export type ChainEventUpdateInput = {
   blockTimestamp?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   payload?: Prisma.StringFieldUpdateOperationsInput | string
   rawArgs?: Prisma.StringFieldUpdateOperationsInput | string
+  decoderVersion?: Prisma.StringFieldUpdateOperationsInput | string
+  releaseId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  canonicalKey?: Prisma.StringFieldUpdateOperationsInput | string
+  removed?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  removedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   ingestedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
@@ -407,6 +482,11 @@ export type ChainEventUncheckedUpdateInput = {
   blockTimestamp?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   payload?: Prisma.StringFieldUpdateOperationsInput | string
   rawArgs?: Prisma.StringFieldUpdateOperationsInput | string
+  decoderVersion?: Prisma.StringFieldUpdateOperationsInput | string
+  releaseId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  canonicalKey?: Prisma.StringFieldUpdateOperationsInput | string
+  removed?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  removedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   ingestedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
@@ -422,6 +502,11 @@ export type ChainEventCreateManyInput = {
   blockTimestamp?: Date | string | null
   payload: string
   rawArgs: string
+  decoderVersion?: string
+  releaseId?: string | null
+  canonicalKey: string
+  removed?: boolean
+  removedAt?: Date | string | null
   ingestedAt?: Date | string
 }
 
@@ -437,6 +522,11 @@ export type ChainEventUpdateManyMutationInput = {
   blockTimestamp?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   payload?: Prisma.StringFieldUpdateOperationsInput | string
   rawArgs?: Prisma.StringFieldUpdateOperationsInput | string
+  decoderVersion?: Prisma.StringFieldUpdateOperationsInput | string
+  releaseId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  canonicalKey?: Prisma.StringFieldUpdateOperationsInput | string
+  removed?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  removedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   ingestedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
@@ -452,6 +542,11 @@ export type ChainEventUncheckedUpdateManyInput = {
   blockTimestamp?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   payload?: Prisma.StringFieldUpdateOperationsInput | string
   rawArgs?: Prisma.StringFieldUpdateOperationsInput | string
+  decoderVersion?: Prisma.StringFieldUpdateOperationsInput | string
+  releaseId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  canonicalKey?: Prisma.StringFieldUpdateOperationsInput | string
+  removed?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  removedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   ingestedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
@@ -474,6 +569,11 @@ export type ChainEventCountOrderByAggregateInput = {
   blockTimestamp?: Prisma.SortOrder
   payload?: Prisma.SortOrder
   rawArgs?: Prisma.SortOrder
+  decoderVersion?: Prisma.SortOrder
+  releaseId?: Prisma.SortOrder
+  canonicalKey?: Prisma.SortOrder
+  removed?: Prisma.SortOrder
+  removedAt?: Prisma.SortOrder
   ingestedAt?: Prisma.SortOrder
 }
 
@@ -494,6 +594,11 @@ export type ChainEventMaxOrderByAggregateInput = {
   blockTimestamp?: Prisma.SortOrder
   payload?: Prisma.SortOrder
   rawArgs?: Prisma.SortOrder
+  decoderVersion?: Prisma.SortOrder
+  releaseId?: Prisma.SortOrder
+  canonicalKey?: Prisma.SortOrder
+  removed?: Prisma.SortOrder
+  removedAt?: Prisma.SortOrder
   ingestedAt?: Prisma.SortOrder
 }
 
@@ -509,6 +614,11 @@ export type ChainEventMinOrderByAggregateInput = {
   blockTimestamp?: Prisma.SortOrder
   payload?: Prisma.SortOrder
   rawArgs?: Prisma.SortOrder
+  decoderVersion?: Prisma.SortOrder
+  releaseId?: Prisma.SortOrder
+  canonicalKey?: Prisma.SortOrder
+  removed?: Prisma.SortOrder
+  removedAt?: Prisma.SortOrder
   ingestedAt?: Prisma.SortOrder
 }
 
@@ -531,6 +641,11 @@ export type ChainEventSelect<ExtArgs extends runtime.Types.Extensions.InternalAr
   blockTimestamp?: boolean
   payload?: boolean
   rawArgs?: boolean
+  decoderVersion?: boolean
+  releaseId?: boolean
+  canonicalKey?: boolean
+  removed?: boolean
+  removedAt?: boolean
   ingestedAt?: boolean
 }, ExtArgs["result"]["chainEvent"]>
 
@@ -546,6 +661,11 @@ export type ChainEventSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Ex
   blockTimestamp?: boolean
   payload?: boolean
   rawArgs?: boolean
+  decoderVersion?: boolean
+  releaseId?: boolean
+  canonicalKey?: boolean
+  removed?: boolean
+  removedAt?: boolean
   ingestedAt?: boolean
 }, ExtArgs["result"]["chainEvent"]>
 
@@ -561,6 +681,11 @@ export type ChainEventSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Ex
   blockTimestamp?: boolean
   payload?: boolean
   rawArgs?: boolean
+  decoderVersion?: boolean
+  releaseId?: boolean
+  canonicalKey?: boolean
+  removed?: boolean
+  removedAt?: boolean
   ingestedAt?: boolean
 }, ExtArgs["result"]["chainEvent"]>
 
@@ -576,10 +701,15 @@ export type ChainEventSelectScalar = {
   blockTimestamp?: boolean
   payload?: boolean
   rawArgs?: boolean
+  decoderVersion?: boolean
+  releaseId?: boolean
+  canonicalKey?: boolean
+  removed?: boolean
+  removedAt?: boolean
   ingestedAt?: boolean
 }
 
-export type ChainEventOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "chainId" | "contractAddress" | "eventName" | "blockNumber" | "blockHash" | "txHash" | "logIndex" | "blockTimestamp" | "payload" | "rawArgs" | "ingestedAt", ExtArgs["result"]["chainEvent"]>
+export type ChainEventOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "chainId" | "contractAddress" | "eventName" | "blockNumber" | "blockHash" | "txHash" | "logIndex" | "blockTimestamp" | "payload" | "rawArgs" | "decoderVersion" | "releaseId" | "canonicalKey" | "removed" | "removedAt" | "ingestedAt", ExtArgs["result"]["chainEvent"]>
 
 export type $ChainEventPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "ChainEvent"
@@ -596,6 +726,11 @@ export type $ChainEventPayload<ExtArgs extends runtime.Types.Extensions.Internal
     blockTimestamp: Date | null
     payload: string
     rawArgs: string
+    decoderVersion: string
+    releaseId: string | null
+    canonicalKey: string
+    removed: boolean
+    removedAt: Date | null
     ingestedAt: Date
   }, ExtArgs["result"]["chainEvent"]>
   composites: {}
@@ -1031,6 +1166,11 @@ export interface ChainEventFieldRefs {
   readonly blockTimestamp: Prisma.FieldRef<"ChainEvent", 'DateTime'>
   readonly payload: Prisma.FieldRef<"ChainEvent", 'String'>
   readonly rawArgs: Prisma.FieldRef<"ChainEvent", 'String'>
+  readonly decoderVersion: Prisma.FieldRef<"ChainEvent", 'String'>
+  readonly releaseId: Prisma.FieldRef<"ChainEvent", 'String'>
+  readonly canonicalKey: Prisma.FieldRef<"ChainEvent", 'String'>
+  readonly removed: Prisma.FieldRef<"ChainEvent", 'Boolean'>
+  readonly removedAt: Prisma.FieldRef<"ChainEvent", 'DateTime'>
   readonly ingestedAt: Prisma.FieldRef<"ChainEvent", 'DateTime'>
 }
     
@@ -1242,6 +1382,7 @@ export type ChainEventCreateManyArgs<ExtArgs extends runtime.Types.Extensions.In
    * The data used to create many ChainEvents.
    */
   data: Prisma.ChainEventCreateManyInput | Prisma.ChainEventCreateManyInput[]
+  skipDuplicates?: boolean
 }
 
 /**
@@ -1260,6 +1401,7 @@ export type ChainEventCreateManyAndReturnArgs<ExtArgs extends runtime.Types.Exte
    * The data used to create many ChainEvents.
    */
   data: Prisma.ChainEventCreateManyInput | Prisma.ChainEventCreateManyInput[]
+  skipDuplicates?: boolean
 }
 
 /**
