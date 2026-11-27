@@ -1,4 +1,4 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { NotificationPreference } from '../entities/notification-preference.entity';
@@ -8,7 +8,6 @@ import { UpdatePreferenceSettingsDto } from '../dto/update-preference-settings.d
 import { RedisService } from '../../redis/redis.service';
 import { DeliveryHistory } from '../entities/delivery-history.entity';
 import { Notification } from '../entities/notification.entity';
-import { UnsubscribeTokenService } from './unsubscribe-token.service';
 import {
   parseDeliveryChannel,
   normalizeChannelPreferences,
@@ -110,7 +109,6 @@ export class PreferenceEnforcer {
     @InjectRepository(Notification)
     private notificationRepository: Repository<Notification>,
     private redisService: RedisService,
-    @Optional() private unsubscribeTokenService?: UnsubscribeTokenService,
   ) {}
 
   /**
@@ -592,79 +590,19 @@ export class PreferenceEnforcer {
   }
 
   /**
-   * Check if user is unsubscribed from the channel bound to the token
+   * Check if user is unsubscribed
    */
   async isUnsubscribed(userId: string, unsubscribeToken: string): Promise<boolean> {
-    if (!userId || !unsubscribeToken) {
-      return false;
-    }
-
-    try {
-      if (this.unsubscribeTokenService) {
-        const claims = await this.unsubscribeTokenService.verifyToken(unsubscribeToken);
-        // Cross-user substitution defense: token must match target user
-        if (claims.userId !== userId) {
-          return false;
-        }
-        const pref = await this.getPreferences(userId);
-        const normalized = normalizeChannelPreferences(pref.channels);
-        return normalized[claims.channel] === false;
-      }
-    } catch {
-      // Fall through to legacy check if token verification fails
-    }
-
     const pref = await this.preferenceRepository.findOne({
       where: { userId, unsubscribeToken },
     });
-    return !!pref && pref.channels?.[DeliveryChannel.EMAIL] === false;
+    return !!pref;
   }
 
   /**
-   * Unsubscribe user via single-use signed token.
-   *
-   * Security & Architecture:
-   * - Enforces single-use / replay protection via UnsubscribeTokenService.
-   * - Restricts mutation strictly to the intended channel (e.g. EMAIL); other channels untouched.
-   * - Idempotent: safe against duplicate or repeated requests.
-   * - Never exposes token or secret in logs.
+   * Unsubscribe user via token
    */
   async unsubscribeViaToken(unsubscribeToken: string): Promise<boolean> {
-    if (!unsubscribeToken || typeof unsubscribeToken !== 'string') {
-      return false;
-    }
-
-    try {
-      if (this.unsubscribeTokenService) {
-        const result = await this.unsubscribeTokenService.consumeToken(unsubscribeToken);
-        if (!result.success) {
-          return false;
-        }
-
-        const pref = await this.getPreferences(result.userId);
-        const channel = result.channel;
-
-        if (!pref.channels) {
-          pref.channels = createDefaultChannelPreferences();
-        }
-        pref.channels = normalizeChannelPreferences(pref.channels);
-        pref.channels[channel] = false;
-        pref.channels = normalizeChannelPreferences(pref.channels);
-        pref.lastModifiedAt = new Date();
-
-        await this.preferenceRepository.save(pref);
-
-        this.logger.log(
-          `User ${result.userId} unsubscribed from channel ${channel} via signed token`,
-        );
-        return true;
-      }
-    } catch (err) {
-      this.logger.warn(`Failed unsubscribe attempt: ${(err as Error).message}`);
-      return false;
-    }
-
-    // Fallback for legacy DB tokens during migration
     const pref = await this.preferenceRepository.findOne({
       where: { unsubscribeToken },
     });
@@ -673,13 +611,15 @@ export class PreferenceEnforcer {
       return false;
     }
 
-    if (!pref.channels) {
-      pref.channels = createDefaultChannelPreferences();
-    }
-    pref.channels = normalizeChannelPreferences(pref.channels);
-    pref.channels[DeliveryChannel.EMAIL] = false;
-    pref.channels = normalizeChannelPreferences(pref.channels);
-    pref.lastModifiedAt = new Date();
+    // Disable all channels
+    pref.channels = {
+      [DeliveryChannel.IN_APP]: false,
+      [DeliveryChannel.EMAIL]: false,
+      [DeliveryChannel.PUSH]: false,
+      [DeliveryChannel.WEBHOOK]: false,
+      [DeliveryChannel.WEBSOCKET]: false,
+      [DeliveryChannel.SMS]: false,
+    };
 
     await this.preferenceRepository.save(pref);
     return true;

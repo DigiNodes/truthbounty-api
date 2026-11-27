@@ -3,14 +3,11 @@ import {
   NotFoundException,
   Logger,
   ForbiddenException,
-  Optional,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
+import { AnalyticsConsentService } from '../analytics/analytics-consent.service';
 import { LlmProviderService } from './llm-provider.service';
 import { RagService } from './rag.service';
-import { SafetyGuardrailService } from './services/safety-guardrail.service';
-import { AiConfig } from './config/ai.config';
 import { CreateConversationDto, SendMessageDto } from './dto/ai-assistant.dto';
 
 @Injectable()
@@ -21,34 +18,14 @@ export class AiAssistantService {
     private prisma: PrismaService,
     private llmProvider: LlmProviderService,
     private ragService: RagService,
-    @Optional() private safetyGuardrail?: SafetyGuardrailService,
-    @Optional() private configService?: ConfigService,
-  ) {
-    const aiConfig = this.configService?.get<AiConfig>('ai');
-    const nodeEnv =
-      this.configService?.get<string>('NODE_ENV', 'development')?.toLowerCase();
-    if (
-      ['production', 'staging'].includes(nodeEnv ?? '') &&
-      aiConfig?.redactBeforeStore &&
-      typeof this.safetyGuardrail?.redact !== 'function'
-    ) {
-      throw new Error(
-        'AI_REDACT_BEFORE_STORE=true requires a wired redaction implementation',
-      );
-    }
-  }
+    private readonly analyticsConsent: AnalyticsConsentService,
+  ) {}
 
   async createConversation(userId: string, dto: CreateConversationDto) {
-    const aiConfig = this.configService?.get<AiConfig>('ai');
-    const title = aiConfig?.redactBeforeStore
-      ? this.safetyGuardrail?.redact(dto.title || 'New Conversation').text ||
-        dto.title ||
-        'New Conversation'
-      : dto.title || 'New Conversation';
     return this.prisma.conversation.create({
       data: {
-        userId,
-        title,
+        userId: this.analyticsConsent.getSubjectKey(userId),
+        title: dto.title || 'New Conversation',
       },
     });
   }
@@ -86,11 +63,6 @@ export class AiAssistantService {
     conversationId: string,
     dto: SendMessageDto,
   ) {
-    const aiConfig = this.configService?.get<AiConfig>('ai');
-    const storedUserContent =
-      aiConfig?.redactBeforeStore && this.safetyGuardrail
-        ? this.safetyGuardrail.redact(dto.content).text
-        : dto.content;
     const conversation = await this.prisma.conversation.findUnique({
       where: { id: conversationId },
     });
@@ -110,7 +82,7 @@ export class AiAssistantService {
       data: {
         conversationId,
         role: 'user',
-        content: storedUserContent,
+        content: dto.content,
       },
     });
 
@@ -156,10 +128,7 @@ ${context}
       data: {
         conversationId,
         role: 'assistant',
-        content:
-          aiConfig?.redactBeforeStore && this.safetyGuardrail
-            ? this.safetyGuardrail.redact(llmResponse.content).text
-            : llmResponse.content,
+        content: llmResponse.content,
       },
     });
 
@@ -169,29 +138,39 @@ ${context}
       data: { updatedAt: new Date() },
     });
 
-    // 8. Track Usage Metrics
-    await this.prisma.aiUsageMetric.create({
-      data: {
-        userId,
-        provider: llmResponse.provider,
-        model: llmResponse.model,
-        promptTokens: llmResponse.usage?.prompt_tokens || 0,
-        completionTokens: llmResponse.usage?.completion_tokens || 0,
-        totalTokens: llmResponse.usage?.total_tokens || 0,
-        latencyMs,
-      },
-    });
+    try {
+      await this.analyticsConsent.collectIfValid(userId, (tx) =>
+        tx.aiUsageMetric.create({
+          data: {
+            userId,
+            provider: llmResponse.provider,
+            model: llmResponse.model,
+            promptTokens: llmResponse.usage?.prompt_tokens || 0,
+            completionTokens: llmResponse.usage?.completion_tokens || 0,
+            totalTokens: llmResponse.usage?.total_tokens || 0,
+            latencyMs,
+          },
+        }),
+      );
+    } catch (error) {
+      this.logger.error(
+        'Optional AI usage metric was skipped because consent or persistence could not be verified',
+        error instanceof Error ? error.name : 'Unknown error',
+      );
+    }
 
     // Standardized API response
     return {
       message: assistantMessage,
       metadata: {
         provider: llmResponse.provider,
+        model: llmResponse.model,
         latencyMs,
         tokens: llmResponse.usage?.total_tokens || 0,
         citations,
       },
     };
+
   }
 
   async deleteConversation(userId: string, conversationId: string) {

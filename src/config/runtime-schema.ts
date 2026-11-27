@@ -321,6 +321,8 @@ export const runtimeSchema = {
   CONTRACT_RELEASE_STRICT: boolean(true),
   IPFS_PROVIDER: choice(['local'], 'local'),
   IPFS_LOCAL_STORAGE_PATH: text({ default: 'data/ipfs' }),
+  IPFS_GATEWAY_URL: url(),
+  IPFS_API_URL: url(),
   SMTP_HOST: { ...hostname, productionRequired: true },
   SMTP_PORT: integer(587, 1, 65535),
   SMTP_USER: secret(true),
@@ -374,54 +376,6 @@ export const runtimeSchema = {
   JWT_ACCESS_AUDIENCE: text({ default: 'truthbounty-api' }),
   JWT_ISSUER: text({ default: 'truthbounty-api' }),
   REFRESH_TOKEN_EXPIRATION: { ...duration, default: '7d' },
-  // ── Credential-rotation domain secrets (PREWAVE-BE-112) ──────────────────
-  // Each secret must be at least 32 characters and explicitly provisioned.
-  // Missing or weak values fail startup in production/staging.
-  SIWE_SECRET: {
-    ...secret(true),
-    description: 'SIWE credential domain secret — minimum 32 characters',
-    parse(value: string) {
-      if (value.trim().length < 32)
-        throw new Error('SIWE_SECRET must be at least 32 characters');
-      return value.trim();
-    },
-  },
-  WEBHOOK_SECRET: {
-    ...secret(true),
-    description: 'Webhook credential domain secret — minimum 32 characters',
-    parse(value: string) {
-      if (value.trim().length < 32)
-        throw new Error('WEBHOOK_SECRET must be at least 32 characters');
-      return value.trim();
-    },
-  },
-  ENCRYPTION_SECRET: {
-    ...secret(true),
-    description: 'Encryption credential domain secret — minimum 32 characters',
-    parse(value: string) {
-      if (value.trim().length < 32)
-        throw new Error('ENCRYPTION_SECRET must be at least 32 characters');
-      return value.trim();
-    },
-  },
-  PROVIDER_SECRET: {
-    ...secret(true),
-    description: 'Provider credential domain secret — minimum 32 characters',
-    parse(value: string) {
-      if (value.trim().length < 32)
-        throw new Error('PROVIDER_SECRET must be at least 32 characters');
-      return value.trim();
-    },
-  },
-  DATABASE_SECRET: {
-    ...secret(true),
-    description: 'Database credential domain secret — minimum 32 characters',
-    parse(value: string) {
-      if (value.trim().length < 32)
-        throw new Error('DATABASE_SECRET must be at least 32 characters');
-      return value.trim();
-    },
-  },
   SIWE_DOMAIN: text({ productionRequired: true }),
   IDEMPOTENCY_ENABLED: boolean(true),
   IDEMPOTENCY_TTL: integer(86400),
@@ -743,7 +697,7 @@ export function parseRuntimeConfig(env: Environment): RuntimeConfig {
     }
     if (config.IPFS_PROVIDER === 'local')
       errors.push(
-        'IPFS_PROVIDER: local storage is development-only; no production adapter is supported',
+        'IPFS_PROVIDER: local storage forbidden in staging/production',
       );
     if (effectiveAiProvider === 'mock') {
       errors.push('AI_PROVIDER: mock forbidden in staging/production');
@@ -776,7 +730,11 @@ export function parseRuntimeConfig(env: Environment): RuntimeConfig {
       )
         errors.push(`${key}: development placeholder forbidden`);
     }
-    for (const key of ['RPC_URL'] as const) {
+    for (const key of [
+      'RPC_URL',
+      'IPFS_GATEWAY_URL',
+      'IPFS_API_URL',
+    ] as const) {
       if (config[key] && !/^(https|wss):/.test(config[key]))
         errors.push(`${key}: secure transport required`);
     }

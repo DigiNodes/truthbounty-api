@@ -17,7 +17,6 @@ export interface AiConfig {
   convoWindowCacheTtl: number;
   providerAvailabilityCacheTtl: number;
   redactBeforeStore: boolean;
-  redactionCacheKey: string | undefined;
   blockedTerms: string[];
   promptLeakHeuristics: string[];
 }
@@ -54,10 +53,6 @@ export default registerAs('ai', (): AiConfig => ({
     10,
   ),
   redactBeforeStore: getRuntimeEnvironment().AI_REDACT_BEFORE_STORE === 'true',
-  redactionCacheKey:
-    getRuntimeEnvironment().JWT_SECRET ||
-    getRuntimeEnvironment().AUDIT_HASH_SECRET ||
-    getRuntimeEnvironment().METRICS_TOKEN,
   blockedTerms: [
     // Deliberately small, illustrative starter list — extend via config in production.
     'kill yourself',

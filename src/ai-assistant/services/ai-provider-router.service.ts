@@ -153,7 +153,7 @@ export class AiProviderRouterService {
       const fallbackName = this.fallbackNameFor(provider.name as AiProviderName);
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(
-        `Provider "${provider.name}" chat() failed`,
+        `Provider "${provider.name}" chat() failed: ${redactSecrets(message, this.secrets)}`,
       );
       if (!fallbackName) {
         this.metrics.recordRequest(provider.name, endpoint, 'error');

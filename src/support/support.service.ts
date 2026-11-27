@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, LessThanOrEqual, MoreThan } from 'typeorm';
-import { randomUUID, randomBytes, createHmac } from 'crypto';
+import { randomUUID } from 'crypto';
 import { CreateSupportRequestDto } from './dto/create-support-request.dto';
 import { SupportRequest } from './entities/support-request.entity';
 import { SupportEncryptionService } from './support-encryption.service';

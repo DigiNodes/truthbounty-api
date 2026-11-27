@@ -111,8 +111,8 @@ CREATE INDEX "v2_block_cursor_rollbacks_cursorId_createdAt_idx" ON "v2_block_cur
 -- CreateIndex
 CREATE UNIQUE INDEX "v2_block_cursor_rollbacks_authorizationRef_key" ON "v2_block_cursor_rollbacks"("authorizationRef");
 
--- Monotonic cursor advancement guard: processed height must not move backward,
--- and the cursor must never skip past the finalized head or deployment floor.
+-- Monotonic cursor advancement guard: processed height must not move backward
+-- without a recorded authorized rollback, and must not rewind below the deployment floor.
 CREATE TRIGGER "v2_block_cursors_monotonic_guard"
   BEFORE UPDATE OF "processedHeight", "processedHash", "safeHeight", "finalizedHeight", "deploymentBlock", "version"
   ON "v2_block_cursors"
@@ -124,16 +124,53 @@ CREATE TRIGGER "v2_block_cursors_monotonic_guard"
     SELECT RAISE(ABORT, 'block cursor cannot move backward without authorized rollback');
   END;
 
+-- Identity of cursor scope and provenance must never change on update.
+CREATE TRIGGER "v2_block_cursors_scope_immutable_guard"
+  BEFORE UPDATE OF "chainId", "source", "releaseId", "projectionId", "artifactChecksum"
+  ON "v2_block_cursors"
+  FOR EACH ROW
+  WHEN (
+    NEW."chainId" IS NOT OLD."chainId"
+    OR NEW."source" IS NOT OLD."source"
+    OR NEW."releaseId" IS NOT OLD."releaseId"
+    OR NEW."projectionId" IS NOT OLD."projectionId"
+    OR NEW."artifactChecksum" IS NOT OLD."artifactChecksum"
+  ) BEGIN
+    SELECT RAISE(ABORT, 'block cursor scope and provenance are immutable');
+  END;
+
+-- Compare-and-swap: every mutation must bump version by exactly one.
+CREATE TRIGGER "v2_block_cursors_cas_version_guard"
+  BEFORE UPDATE OF "processedHeight", "processedHash", "safeHeight", "finalizedHeight", "version"
+  ON "v2_block_cursors"
+  FOR EACH ROW
+  WHEN (NEW."version" <> OLD."version" + 1) BEGIN
+    SELECT RAISE(ABORT, 'block cursor update must advance version by exactly one (CAS)');
+  END;
+
+-- Same height with a different hash is a disagreement, never a silent overwrite.
 CREATE TRIGGER "v2_block_cursors_hash_agreement_guard"
-  BEFORE UPDATE OF "processedHeight", "processedHash", "safeHeight", "finalizedHeight", "deploymentBlock", "version"
+  BEFORE UPDATE OF "processedHeight", "processedHash"
   ON "v2_block_cursors"
   FOR EACH ROW
   WHEN (
     NEW."processedHeight" = OLD."processedHeight"
     AND NEW."processedHash" <> OLD."processedHash"
-    AND ABS(NEW."version" - OLD."version") <= 1
+    AND NEW."lastRollbackId" IS OLD."lastRollbackId"
   ) BEGIN
     SELECT RAISE(ABORT, 'block cursor hash disagreement at same height');
+  END;
+
+-- Finalized state cannot be silently rolled back.
+CREATE TRIGGER "v2_block_cursors_finalized_guard"
+  BEFORE UPDATE OF "finalizedHeight", "finalizedHash"
+  ON "v2_block_cursors"
+  FOR EACH ROW
+  WHEN (
+    NEW."finalizedHeight" < OLD."finalizedHeight"
+    OR (NEW."finalizedHeight" = OLD."finalizedHeight" AND NEW."finalizedHash" <> OLD."finalizedHash" AND OLD."finalizedHeight" > 0)
+  ) BEGIN
+    SELECT RAISE(ABORT, 'finalized block cursor cannot be rolled back or rewritten');
   END;
 
 CREATE TRIGGER "v2_block_cursors_floor_guard"
@@ -142,12 +179,11 @@ CREATE TRIGGER "v2_block_cursors_floor_guard"
   FOR EACH ROW
   WHEN (
     NEW."processedHeight" < NEW."deploymentBlock"
-    AND ABS(NEW."version" - OLD."version") <= 1
   ) BEGIN
     SELECT RAISE(ABORT, 'block cursor cannot rewind below deployment floor');
   END;
 
--- Rollbacks must be explicitly authorized and audited.
+-- Rollbacks must be explicitly authorized, audited, reasoned, and move backward.
 CREATE TRIGGER "v2_block_cursor_rollbacks_audit_guard"
   BEFORE INSERT ON "v2_block_cursor_rollbacks"
   FOR EACH ROW
@@ -156,6 +192,22 @@ CREATE TRIGGER "v2_block_cursor_rollbacks_audit_guard"
     OR NEW."authorizationRef" = ''
     OR NEW."reason" = ''
     OR NEW."toHeight" > NEW."fromHeight"
+    OR NEW."toHeight" < 0
   ) BEGIN
     SELECT RAISE(ABORT, 'block cursor rollback must be authorized, audited, and move backward');
+  END;
+
+-- Rollback records are immutable evidence.
+CREATE TRIGGER "v2_block_cursor_rollbacks_immutable_guard"
+  BEFORE UPDATE ON "v2_block_cursor_rollbacks"
+  FOR EACH ROW
+  BEGIN
+    SELECT RAISE(ABORT, 'block cursor rollback audit records are immutable');
+  END;
+
+CREATE TRIGGER "v2_block_cursor_rollbacks_no_delete_guard"
+  BEFORE DELETE ON "v2_block_cursor_rollbacks"
+  FOR EACH ROW
+  BEGIN
+    SELECT RAISE(ABORT, 'block cursor rollback audit records cannot be deleted');
   END;

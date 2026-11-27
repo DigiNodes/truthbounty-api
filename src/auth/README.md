@@ -82,9 +82,14 @@ Response:
 ### 4. Access Protected Endpoints
 
 ```bash
-Protocol claim creation is not an API operation. The user's wallet submits the
-transaction directly to the approved contract; the API exposes the canonical
-event projection after finality and indexing.
+POST /claims
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+Content-Type: application/json
+
+{
+  "title": "Claim title",
+  "description": "Claim description"
+}
 ```
 
 ## Security Features
@@ -147,7 +152,7 @@ JWT_EXPIRATION=7d
 - `GET /*` - All GET endpoints (by default)
 
 ### Protected Endpoints (Auth Required)
-- `POST /claims` - Deprecated; returns 410. Submit claims from the user's wallet.
+- `POST /claims` - Create claim
 - `POST /disputes` - Create dispute
 - `PATCH /disputes/:id/*` - Update dispute
 - `POST /identity/users` - Create user

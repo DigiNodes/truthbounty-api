@@ -4,7 +4,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Notification } from '../entities/notification.entity';
-import { NotificationDispatchControlGuard } from './notification-dispatch-control.guard';
 import { WebSocketService } from './websocket.service';
 import { EmailService } from './email.service';
 import { WebhookService } from './webhook.service';
@@ -14,25 +13,12 @@ import {
   DeliveryChannel,
   DeliveryStatus,
 } from '../interfaces/notification.types';
-import {
-  buildDeliveryIdempotencyKey,
-  deliveredCacheKey,
-  deliveryClaimCacheKey,
-} from '../delivery/delivery-idempotency-key';
-import { DEFAULT_CLAIM_TTL_MS } from '../delivery/delivery-claim';
-import {
-  DeliveryFailureKind,
-  narrowDeliveryError,
-} from '../delivery/delivery-error';
 
 /** BullMQ job payload for notification delivery, relayed from the outbox (V2-BE-048). */
 export interface NotificationDeliveryJob {
   notificationId: string;
   channel: DeliveryChannel;
   userId?: string;
-  eventType?: string;
-  aggregateId?: string;
-  deliveryIdempotencyKey?: string;
 }
 
 import { RedisService } from '../../redis/redis.service';
@@ -43,7 +29,6 @@ import { RedisService } from '../../redis/redis.service';
 @Injectable()
 export class NotificationProcessor extends WorkerHost {
   private readonly logger = new Logger(NotificationProcessor.name);
-  private readonly DELIVERED_CACHE_TTL_SECONDS = 86400;
 
   constructor(
     @InjectRepository(Notification)
@@ -54,7 +39,6 @@ export class NotificationProcessor extends WorkerHost {
     private readonly deliveryHistoryService: DeliveryHistoryService,
     private readonly preferencesService: NotificationPreferencesService,
     private readonly redisService: RedisService,
-    private readonly dispatchControlGuard: NotificationDispatchControlGuard,
   ) {
     super();
   }
@@ -62,36 +46,12 @@ export class NotificationProcessor extends WorkerHost {
   async process(
     job: Job<NotificationDeliveryJob & { idempotencyKey?: string }>,
   ): Promise<any> {
-    const { notificationId, channel } = job.data;
+    const { notificationId, channel, idempotencyKey } = job.data;
     this.logger.debug(
       `Processing notification delivery: ${notificationId} via ${channel} (attempt ${job.attemptsMade + 1})`,
     );
 
-    let deliveryRecord =
-      await this.deliveryHistoryService.findPendingDeliveryByNotificationAndChannel(
-        notificationId,
-        channel,
-      );
-
-    if (!(await this.dispatchControlGuard.isNotificationsEnabled())) {
-      const error = 'Notifications disabled by operational control';
-      this.logger.warn(
-        `[Dispatch Guard] Suppressed notification ${notificationId} via ${channel}: ${error}`,
-      );
-      if (deliveryRecord) {
-        await this.deliveryHistoryService.updateDeliveryStatus(
-          deliveryRecord.id,
-          DeliveryStatus.PERMANENT_FAILURE,
-          error,
-        );
-      }
-      return {
-        success: true,
-        status: DeliveryStatus.PERMANENT_FAILURE,
-        suppressed: true,
-      };
-    }
-
+    // 1. Fast-path Redis SETNX guard for idempotency
     if (idempotencyKey) {
       const redisKey = `idempotency:notification:${idempotencyKey}`;
       const acquiredLock = await this.redisService.setnx(redisKey, '1', 86400); // 24h TTL
@@ -106,6 +66,7 @@ export class NotificationProcessor extends WorkerHost {
         };
       }
 
+      // 2. DB fallback guard (in case Redis was evicted or restarted)
       const existingHistory =
         await this.deliveryHistoryService.findByIdempotencyKey(idempotencyKey);
       if (
@@ -123,6 +84,12 @@ export class NotificationProcessor extends WorkerHost {
       }
     }
 
+    let deliveryRecord =
+      await this.deliveryHistoryService.findPendingDeliveryByNotificationAndChannel(
+        notificationId,
+        channel,
+      );
+
     if (!deliveryRecord) {
       // Auto-create delivery record if dispatched via Outbox pattern
       deliveryRecord = await this.deliveryHistoryService.createDeliveryRecord(
@@ -138,69 +105,41 @@ export class NotificationProcessor extends WorkerHost {
       );
     }
 
-    const result = await this.deliverViaChannel(
-      notification,
-      channel,
-      idempotencyKey,
-    );
+    const notification = await this.notificationRepository.findOne({
+      where: { id: notificationId },
+    });
 
-    if (result.success) {
-      const settlement = await this.deliveryHistoryService.confirmClaim(
-        idempotencyKey,
-        claim.claimId,
-        { providerDeliveredAt: result.deliveredAt?.toISOString() },
-      );
+    if (!notification) {
+      this.logger.error(`Notification ${notificationId} not found`);
       await this.deliveryHistoryService.updateDeliveryStatus(
         deliveryRecord.id,
-        settlement?.status ?? result.status,
-        result.error,
+        DeliveryStatus.FAILED,
+        'Notification not found in database',
       );
-      await this.redisService.set(
-        deliveredCacheKey(idempotencyKey),
-        '1',
-        this.DELIVERED_CACHE_TTL_SECONDS,
-      );
-      this.logger.log(
-        `Notification ${notificationId} delivered successfully via ${channel}`,
-      );
-      return result;
+      return;
     }
 
-    const narrowed = narrowDeliveryError(
-      new Error(result.error ?? 'Delivery failed'),
-      { channel },
+    const result = await this.deliverViaChannel(notification, channel);
+
+    await this.deliveryHistoryService.updateDeliveryStatus(
+      deliveryRecord.id,
+      result.status,
+      result.error,
     );
-    const outcomeUncertain =
-      narrowed.kind === DeliveryFailureKind.TIMEOUT ||
-      narrowed.kind === DeliveryFailureKind.UNAVAILABLE;
 
-    if (outcomeUncertain) {
-      await this.deliveryHistoryService.markClaimUncertain(
-        idempotencyKey,
-        claim.claimId,
-        result.error ?? 'Provider outcome unconfirmed',
-      );
-    } else {
-      const settlement = await this.deliveryHistoryService.failClaim(
-        idempotencyKey,
-        claim.claimId,
-        result.error ?? 'Delivery failed',
-        narrowed.disposition === 'terminal',
-      );
-      await this.deliveryHistoryService.updateDeliveryStatus(
-        deliveryRecord.id,
-        settlement?.status ?? result.status,
-        result.error,
-      );
+    if (!result.success) {
+      throw new Error(result.error || 'Delivery failed');
     }
 
-    throw new Error(result.error || 'Delivery failed');
+    this.logger.log(
+      `Notification ${notificationId} delivered successfully via ${channel}`,
+    );
+    return result;
   }
 
   private async deliverViaChannel(
     notification: Notification,
     channel: DeliveryChannel,
-    idempotencyKey: string,
   ) {
     switch (channel) {
       case DeliveryChannel.WEBSOCKET:
@@ -224,12 +163,11 @@ export class NotificationProcessor extends WorkerHost {
 
         return this.emailService.sendNotificationEmail(
           notification,
-          'user@example.com',
-          idempotencyKey,
+          recipientEmail,
         );
       }
 
-      case DeliveryChannel.WEBHOOK: {
+      case DeliveryChannel.WEBHOOK:
         const userWebhooks = await this.webhookService.getUserWebhooks(
           notification.userId,
         );
@@ -239,7 +177,6 @@ export class NotificationProcessor extends WorkerHost {
               this.webhookService.sendWebhookNotification(
                 notification,
                 webhook,
-                idempotencyKey,
               ),
             ),
           );
@@ -260,7 +197,6 @@ export class NotificationProcessor extends WorkerHost {
           status: DeliveryStatus.FAILED,
           error: 'No webhooks configured for user',
         };
-      }
 
       case DeliveryChannel.IN_APP:
         return {
