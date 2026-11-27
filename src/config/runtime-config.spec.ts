@@ -278,6 +278,7 @@ describe('runtime schema', () => {
     );
     const anthropic = parseRuntimeConfig({
       ...withoutProviders,
+      NODE_ENV: 'development',
       DEFAULT_LLM_PROVIDER: 'anthropic',
       ANTHROPIC_API_KEY: 'anthropic-credential',
     });
@@ -285,6 +286,7 @@ describe('runtime schema', () => {
     expect(anthropic.DEFAULT_LLM_PROVIDER).toBe('anthropic');
     const derived = parseRuntimeConfig({
       ...withoutProviders,
+      NODE_ENV: 'development',
       DEFAULT_LLM_PROVIDER: 'openai',
     });
     expect(derived.AI_PROVIDER).toBe('openai');
@@ -297,12 +299,16 @@ describe('runtime schema', () => {
     expect(() =>
       parseRuntimeConfig({
         ...production,
+        NODE_ENV: 'development',
         DEFAULT_LLM_PROVIDER: 'anthropic',
         ANTHROPIC_API_KEY: 'anthropic-credential',
       }),
     ).toThrow('conflicts');
     expect(() =>
-      parseRuntimeConfig({ ...withoutProviders, DEFAULT_LLM_PROVIDER: 'mock' }),
+      parseRuntimeConfig({
+        ...withoutProviders,
+        DEFAULT_LLM_PROVIDER: 'mock',
+      }),
     ).toThrow('DEFAULT_LLM_PROVIDER: mock');
   });
   it('rejects unimplemented IPFS providers during runtime validation', () => {

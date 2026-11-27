@@ -6,8 +6,6 @@ Staging/production require explicitly supplied deployment settings. All supplied
 
 A release file must match `CONTRACT_RELEASE_SHA256`, `CONTRACT_RELEASE_ID`, `CHAIN_ID` and `CONTRACT_RELEASE_DEPLOYMENT_BLOCK`. This boundary pins metadata; the prerequisite canonical-manifest validator owns ABI/event/freshness and network verification.
 
-IPFS currently supports only the local filesystem adapter, for development and tests. It produces canonical CIDv1 identifiers but does not publish content or provide a gateway. Staging and production reject this adapter; no remote provider is production-supported yet.
-
 Legacy `RELEASE_MANIFEST_MAX_AGE_MS` must migrate to `CONTRACT_RELEASE_MAX_AGE_DAYS`; downstream milliseconds are derived. Same-key file precedence is process environment > `.env.local` > `.env`; duplicate assignments inside either file are rejected.
 
 `AI_PROVIDER` and `DEFAULT_LLM_PROVIDER` select one shared provider; when both are supplied they must agree. Staging/production require an explicit real provider and its matching API key, and reject `mock`.
@@ -159,6 +157,8 @@ Legacy `RELEASE_MANIFEST_MAX_AGE_MS` must migrate to `CONTRACT_RELEASE_MAX_AGE_D
 | LOG_REDACT_RPC_URLS | true or false | true | no | - |
 | JWT_SECRET | non-empty string | (unset) | yes | - |
 | JWT_EXPIRATION | positive duration with s, m, h or d unit | 15m | no | - |
+| JWT_ACCESS_AUDIENCE | non-empty string | truthbounty-api | no | - |
+| JWT_ISSUER | non-empty string | truthbounty-api | no | - |
 | REFRESH_TOKEN_EXPIRATION | positive duration with s, m, h or d unit | 7d | no | - |
 | SIWE_DOMAIN | non-empty string | (unset) | yes | - |
 | IDEMPOTENCY_ENABLED | true or false | true | no | - |
