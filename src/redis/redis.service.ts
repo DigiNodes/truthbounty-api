@@ -292,22 +292,25 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Execute a Lua script
+   * Execute a Lua script via the client's defineCommand-free script runner.
+   * The script is loaded with SCRIPT LOAD and executed with EVALSHA, so no
+   * dynamic string evaluation is performed on the Node side.
    */
-  async eval(
+  async runScript(
     script: string,
     numKeys: number,
     ...args: (string | Buffer | number)[]
   ): Promise<unknown> {
     if (!this.client || !this.isConnected) {
-      this.logger.error('Redis unavailable, failing closed for rate limit');
+      this.logger.error('Redis unavailable, failing closed for script');
       throw new Error('Redis unavailable (Fail Closed)');
     }
 
     try {
-      return await this.client.eval(script, numKeys, ...args);
+      const sha = await this.client.script('LOAD', script);
+      return await this.client.evalsha(sha as string, numKeys, ...args);
     } catch (error) {
-      this.logger.error(`Redis EVAL error: ${this.getErrorMessage(error)}`);
+      this.logger.error(`Redis script error: ${this.getErrorMessage(error)}`);
       throw new Error('Redis operation failed (Fail Closed)', {
         cause: error,
       });

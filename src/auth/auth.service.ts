@@ -191,6 +191,12 @@ export class AuthService {
   /**
    * Verify wallet signature and issue JWT access + refresh tokens.
    * Supports both SIWE (EIP-4361) and legacy message formats.
+   *
+   * The challenge is consumed with a single atomic Redis compare-and-delete
+   * BEFORE any token is issued. Only the request that successfully deletes the
+   * stored challenge may proceed; concurrent or replayed requests see the
+   * challenge as missing and receive the generic failure response. Redis
+   * errors during consumption fail closed.
    */
   async login(loginDto: LoginDto): Promise<LoginResponse> {
     const { address, signature, message } = loginDto;
@@ -259,19 +265,20 @@ export class AuthService {
     try {
       record = JSON.parse(raw) as ChallengeRecord;
     } catch {
-      // Stored value is not a valid record — treat as expired/invalid
-      await this.redisService.del(key).catch(() => null);
+      // Stored value is not a valid record — treat as expired/invalid and
+      // consume it so it can never be used again.
+      await this.consumeChallengeOrFail(key, raw, normalizedAddress, 'challenge-corrupt');
       this.logger.warn('Login failed [challenge-corrupt]');
       timingSafeEqualUtf8(message, message);
       throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
     }
 
-    // App-layer TTA check: enforce expiry independently of Redis to prevent
+    // App-layer TTL check: enforce expiry independently of Redis to prevent
     // Redis-vs-app clock desync (BE-182). Redis TTL is the backstop;
     // this check is the authoritative gate.
     const elapsedSeconds = (Date.now() - record.issuedAt) / 1000;
     if (elapsedSeconds >= this.NONCE_TTL_SECONDS) {
-      await this.redisService.del(key).catch(() => null);
+      await this.consumeChallengeOrFail(key, raw, normalizedAddress, 'challenge-expired');
       this.logger.warn('Login failed [challenge-expired]');
       timingSafeEqualUtf8(message, message);
       throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
@@ -290,32 +297,18 @@ export class AuthService {
       }
     } else {
       const expectedMessage = `Sign in to TruthBounty: ${record.nonce}`;
+      // A mismatched message must NOT consume the active challenge.
       if (!timingSafeEqualUtf8(message, expectedMessage)) {
         this.logger.warn('Login failed [nonce-mismatch]');
         throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
       }
     }
 
-    // Compare-and-delete the exact challenge record atomically so concurrent
-    // logins cannot both consume the same nonce. Redis errors fail closed.
-    let consumed: unknown;
-    try {
-      consumed = await this.redisService.eval(
-        "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end return 0",
-        1,
-        key,
-        raw,
-      );
-    } catch {
-      this.logger.warn('Login failed [challenge-consumption]');
-      throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
-    }
-    if (Number(consumed) !== 1) {
-      this.logger.warn('Login failed [challenge-replayed]');
-      throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
-    }
+    // 4. Atomically consume the challenge. Only one concurrent request can
+    // observe 'consumed'; every other outcome fails closed.
+    await this.consumeChallengeOrFail(key, raw, normalizedAddress, 'challenge-consume-race');
 
-    // 7. Find or create user
+    // 5. Find or create user
     const user = await this.prisma.wallet.findFirst({
       where: { address: verifiedAddress },
       include: { user: true },
@@ -325,7 +318,7 @@ export class AuthService {
     // until they link their wallet properly
     const userId = user?.user?.id || null;
 
-    // 8. Generate token pair (access + refresh)
+    // 6. Generate token pair (access + refresh) — only after successful consume.
     const tokenPair = await this.tokenService.generateTokenPair(
       verifiedAddress,
       userId,
@@ -340,6 +333,39 @@ export class AuthService {
         address: verifiedAddress,
       },
     };
+  }
+
+  /**
+   * Atomically consume a challenge record. Throws the generic 401 unless the
+   * exact stored value was present and deleted by this call. Redis errors and
+   * ambiguous outcomes are treated as failure (fail closed).
+   */
+  private async consumeChallengeOrFail(
+    key: string,
+    expectedRaw: string,
+    normalizedAddress: string,
+    reason: string,
+  ): Promise<void> {
+    let outcome: 'consumed' | 'mismatch' | 'missing';
+    try {
+      outcome = await this.redisService.compareAndDelete(key, expectedRaw);
+    } catch (error) {
+      this.logger.error(
+        `Login failed [consume-unavailable:${reason}] for ${normalizedAddress}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      timingSafeEqualUtf8(expectedRaw, expectedRaw);
+      throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
+    }
+
+    if (outcome !== 'consumed') {
+      this.logger.warn(
+        `Login failed [${outcome === 'missing' ? 'challenge-consumed' : 'challenge-changed'}:${reason}] for ${normalizedAddress}`,
+      );
+      timingSafeEqualUtf8(expectedRaw, expectedRaw);
+      throw new UnauthorizedException(AUTH_GENERIC_FAILURE_MESSAGE);
+    }
   }
 
   /**

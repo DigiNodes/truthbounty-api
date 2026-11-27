@@ -90,7 +90,7 @@ export class AdminController {
   )
   @ApiOperation({ summary: 'Get current admin profile' })
   @ApiResponse({ status: 200, description: 'Admin profile' })
-  getProfile(@CurrentAdmin() admin: Admin) {
+  async getProfile(@CurrentAdmin() admin: Admin) {
     return {
       id: admin.id,
       walletAddress: admin.walletAddress,
