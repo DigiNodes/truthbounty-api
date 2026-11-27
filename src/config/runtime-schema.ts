@@ -374,6 +374,54 @@ export const runtimeSchema = {
   JWT_ACCESS_AUDIENCE: text({ default: 'truthbounty-api' }),
   JWT_ISSUER: text({ default: 'truthbounty-api' }),
   REFRESH_TOKEN_EXPIRATION: { ...duration, default: '7d' },
+  // ── Credential-rotation domain secrets (PREWAVE-BE-112) ──────────────────
+  // Each secret must be at least 32 characters and explicitly provisioned.
+  // Missing or weak values fail startup in production/staging.
+  SIWE_SECRET: {
+    ...secret(true),
+    description: 'SIWE credential domain secret — minimum 32 characters',
+    parse(value: string) {
+      if (value.trim().length < 32)
+        throw new Error('SIWE_SECRET must be at least 32 characters');
+      return value.trim();
+    },
+  },
+  WEBHOOK_SECRET: {
+    ...secret(true),
+    description: 'Webhook credential domain secret — minimum 32 characters',
+    parse(value: string) {
+      if (value.trim().length < 32)
+        throw new Error('WEBHOOK_SECRET must be at least 32 characters');
+      return value.trim();
+    },
+  },
+  ENCRYPTION_SECRET: {
+    ...secret(true),
+    description: 'Encryption credential domain secret — minimum 32 characters',
+    parse(value: string) {
+      if (value.trim().length < 32)
+        throw new Error('ENCRYPTION_SECRET must be at least 32 characters');
+      return value.trim();
+    },
+  },
+  PROVIDER_SECRET: {
+    ...secret(true),
+    description: 'Provider credential domain secret — minimum 32 characters',
+    parse(value: string) {
+      if (value.trim().length < 32)
+        throw new Error('PROVIDER_SECRET must be at least 32 characters');
+      return value.trim();
+    },
+  },
+  DATABASE_SECRET: {
+    ...secret(true),
+    description: 'Database credential domain secret — minimum 32 characters',
+    parse(value: string) {
+      if (value.trim().length < 32)
+        throw new Error('DATABASE_SECRET must be at least 32 characters');
+      return value.trim();
+    },
+  },
   SIWE_DOMAIN: text({ productionRequired: true }),
   IDEMPOTENCY_ENABLED: boolean(true),
   IDEMPOTENCY_TTL: integer(86400),
