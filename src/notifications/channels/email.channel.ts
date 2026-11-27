@@ -5,6 +5,9 @@ import { NotificationChannel, ChannelDeliveryResult, RenderedNotificationPayload
 import { DeliveryChannel } from '../interfaces/notification.types';
 import { PreferenceEnforcer } from '../services/preference-enforcer.service';
 import { firstValueFrom } from 'rxjs';
+import { escapeHtml, sanitizeActionUrl } from '../notification-templates';
+import * as nodemailer from 'nodemailer';
+import { SmtpConfigService } from './smtp-config.service';
 
 /**
  * EmailChannel
@@ -37,11 +40,13 @@ export class EmailChannel implements NotificationChannel {
   private readonly mailgunDomain?: string;
   private readonly mailgunKey?: string;
   private readonly sendgridKey?: string;
+  private smtpTransporter: nodemailer.Transporter | null = null;
 
   constructor(
     private httpService: HttpService,
     private configService: ConfigService,
     private preferenceEnforcer: PreferenceEnforcer,
+    private smtpConfigService: SmtpConfigService,
   ) {
     this.emailProvider = this.configService.get<string>(
       'NOTIFICATION_EMAIL_PROVIDER',
@@ -57,6 +62,54 @@ export class EmailChannel implements NotificationChannel {
     this.mailgunDomain = this.configService.get<string>('MAILGUN_DOMAIN');
     this.mailgunKey = this.configService.get<string>('MAILGUN_API_KEY');
     this.sendgridKey = this.configService.get<string>('SENDGRID_API_KEY');
+
+    // Initialize SMTP transporter if configured
+    if (this.emailProvider === 'smtp') {
+      this.initializeSmtpTransporter();
+    }
+  }
+
+  /**
+   * Initialize SMTP transporter with connection pooling.
+   * Called once during service construction.
+   */
+  private initializeSmtpTransporter(): void {
+    const smtpConfig = this.smtpConfigService.getConfig();
+    
+    if (!smtpConfig) {
+      const errors = this.smtpConfigService.getErrors();
+      this.logger.warn(
+        `SMTP not configured properly: ${errors.join(', ')}. Email delivery via SMTP will fail.`
+      );
+      return;
+    }
+
+    try {
+      this.smtpTransporter = nodemailer.createTransport({
+        host: smtpConfig.host,
+        port: smtpConfig.port,
+        secure: smtpConfig.secure,
+        auth: {
+          user: smtpConfig.auth.user,
+          pass: smtpConfig.auth.pass,
+        },
+        connectionTimeout: smtpConfig.connectionTimeout,
+        greetingsTimeout: smtpConfig.greetingsTimeout,
+        pool: true, // Use connection pooling
+        maxConnections: 5,
+        maxMessages: 100,
+      });
+
+      this.logger.log(
+        `SMTP transporter initialized: ${smtpConfig.host}:${smtpConfig.port} (secure: ${smtpConfig.secure})`
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to initialize SMTP transporter: ${error.message}`,
+        error.stack
+      );
+      this.smtpTransporter = null;
+    }
   }
 
   async isEnabled(userId: string): Promise<boolean> {
@@ -152,8 +205,19 @@ export class EmailChannel implements NotificationChannel {
         }
         break;
       case 'smtp':
-        if (!this.smtpHost || !this.smtpUser || !this.smtpPassword) {
-          errors.push('SMTP configuration incomplete');
+        // Use SmtpConfigService for comprehensive validation
+        const smtpValidation = this.smtpConfigService.validateConfig();
+        if (!smtpValidation.valid) {
+          errors.push(...smtpValidation.errors);
+        }
+
+        // Optional: Test SMTP connection (can be expensive, only if config is valid)
+        if (smtpValidation.valid && this.smtpTransporter) {
+          try {
+            await this.smtpTransporter.verify();
+          } catch (error) {
+            errors.push(`SMTP connection test failed: ${error.message}`);
+          }
         }
         break;
     }
@@ -222,19 +286,120 @@ export class EmailChannel implements NotificationChannel {
   }
 
   /**
-   * Send via SMTP (placeholder - would use nodemailer in real implementation)
+   * Send via SMTP using nodemailer.
+   * Returns provider-confirmed message ID or throws on failure.
+   * 
+   * Security: Never logs SMTP credentials. Redacts recipient email from logs.
+   * 
+   * Error Classification:
+   * - Connection timeout: retryable
+   * - Authentication failure: permanent
+   * - Invalid recipient: permanent
+   * - TLS/SSL error: permanent
+   * - Provider rejection (5xx): check response code for retry
    */
   private async sendViaSMTP(emailData: any): Promise<string> {
-    // TODO: Implement SMTP using nodemailer
-    // For now, returning mock messageId
-    this.logger.warn('SMTP provider not fully implemented, using mock delivery');
-    return `smtp-${Date.now()}`;
+    // Fail-closed: validate configuration
+    if (!this.smtpTransporter) {
+      throw new Error('SMTP not configured');
+    }
+
+    const smtpConfig = this.smtpConfigService.getConfig();
+    if (!smtpConfig) {
+      throw new Error('SMTP configuration invalid');
+    }
+
+    try {
+      // Send email via nodemailer
+      const info = await this.smtpTransporter.sendMail({
+        from: `${smtpConfig.from.name} <${smtpConfig.from.address}>`,
+        to: emailData.to,
+        subject: emailData.subject,
+        text: emailData.text,
+        html: emailData.html,
+      });
+
+      // Fail-closed: require provider-confirmed message ID
+      if (!info.messageId) {
+        throw new Error('SMTP provider did not return message ID');
+      }
+
+      // Log success without PII
+      this.logger.debug(
+        `SMTP email sent successfully (messageId: ${info.messageId})`,
+        {
+          messageId: info.messageId,
+          accepted: info.accepted?.length || 0,
+          rejected: info.rejected?.length || 0,
+        }
+      );
+
+      return info.messageId;
+    } catch (error) {
+      // Classify error for retry logic
+      const errorCode = error.code || 'UNKNOWN';
+      const isRetryable = this.isSmtpErrorRetryable(error);
+
+      // Log error without exposing credentials or PII
+      this.logger.error(
+        `SMTP delivery failed: ${error.message} (code: ${errorCode}, retryable: ${isRetryable})`,
+        {
+          errorCode,
+          isRetryable,
+          command: error.command,
+          // Never log credentials or recipient email
+        }
+      );
+
+      throw error;
+    }
+  }
+
+  /**
+   * Classify SMTP errors as retryable or permanent.
+   * 
+   * Retryable: Connection timeout, temporary server errors
+   * Permanent: Authentication failure, invalid recipient, TLS errors
+   */
+  private isSmtpErrorRetryable(error: any): boolean {
+    const errorCode = error.code || '';
+    const responseCode = error.responseCode || 0;
+
+    // Connection/timeout errors - retryable
+    if (errorCode === 'ETIMEDOUT' || errorCode === 'ECONNECTION' || 
+        errorCode === 'ESOCKET' || errorCode === 'ECONNREFUSED') {
+      return true;
+    }
+
+    // Authentication errors - permanent
+    if (errorCode === 'EAUTH' || responseCode === 535) {
+      return false;
+    }
+
+    // TLS/SSL errors - permanent
+    if (errorCode === 'ETLS' || errorCode === 'ECERT') {
+      return false;
+    }
+
+    // Invalid recipient - permanent
+    if (responseCode >= 500 && responseCode < 600) {
+      return false;
+    }
+
+    // Temporary server errors - retryable
+    if (responseCode >= 400 && responseCode < 500) {
+      return true;
+    }
+
+    // Unknown errors - retryable (safe default)
+    return true;
   }
 
   /**
    * Build HTML email with header, body, footer, and unsubscribe link
    */
   private buildHtmlEmail(body: string, actionUrl?: string, unsubscribeToken?: string): string {
+    const safeActionUrl = sanitizeActionUrl(actionUrl);
     return `
 <!DOCTYPE html>
 <html>
@@ -261,8 +426,8 @@ export class EmailChannel implements NotificationChannel {
         <div class="content">
             ${body}
             ${
-              actionUrl
-                ? `<a href="${actionUrl}" class="cta-button">View More</a>`
+              safeActionUrl
+                ? `<a href="${escapeHtml(safeActionUrl)}" class="cta-button">View More</a>`
                 : ''
             }
         </div>

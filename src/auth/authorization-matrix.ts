@@ -40,6 +40,11 @@
  * │ GET    /auth/profile                            │ AUTHN                                    │
  * │ DELETE /auth/sessions/:address                  │ AUTHN + AdminOnly (env-list gate)        │
  * ├─────────────────────────────────────────────────┼──────────────────────────────────────────┤
+ * │ POST   /support/requests                         │ PUBLIC (validated support submission)   │
+ * │ GET    /support/requests                         │ ROLE(moderator,admin)                    │
+ * │ GET    /support/requests/:id                     │ ROLE(moderator,admin)                    │
+ * │ DELETE /support/requests/:id                     │ ROLE(moderator,admin)                    │
+ * ├─────────────────────────────────────────────────┼──────────────────────────────────────────┤
  * │ GET    /claims/latest                           │ PUBLIC                                   │
  * │ GET    /claims/user/:wallet                     │ PUBLIC                                   │
  * │ GET    /claims/:id                              │ PUBLIC                                   │
@@ -110,7 +115,7 @@
  * │ GET    /v2/verification/*                       │ PUBLIC (read-only chain projections)     │
  * │ GET    /v2/disputes/*                           │ PUBLIC (read-only chain projections)     │
  * ├─────────────────────────────────────────────────┼──────────────────────────────────────────┤
- * │ POST   /admin/auth/login                        │ PUBLIC (returns admin identity only)     │
+ * │ POST   /admin/auth/login                        │ AUTHN (identity bound to verified JWT principal; body address, if any, must match) │
  * │ All other /admin/* routes                       │ ADMIN(varies, see AdminController)       │
  * ├─────────────────────────────────────────────────┼──────────────────────────────────────────┤
  * │ POST   /api/v2/internal/notifications/events    │ SERVICE or AUTHN + AdminOnly             │

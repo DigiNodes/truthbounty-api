@@ -26,6 +26,34 @@ Each signal carries structured provenance metadata:
 - **Wallet Tenure:** Tracks account tenure, linked wallet count, and history.
 - **Accuracy:** Tracks claims evaluated and correct verdicts from canonical protocol history.
 
+#### Finalized-claim accuracy derivation (`PREWAVE-BE-152`)
+
+`ClaimAccuracyService` derives both accuracy counters exclusively from finalized
+canonical events in `v2_canonical_events`, never from backend-authored verdicts:
+
+- Evaluations are `VerificationRecorded` events whose `verifier` is one of the
+  user's currently linked wallets for the authority's chain. Multiple linked
+  wallets are aggregated without double counting.
+- Settled outcomes come from the latest finalized `VerdictSettled` event for the
+  claim. A finalized `DisputeResolved` outcome overrides the settled verdict;
+  `upheld` keeps it and `overturned` flips it. An unresolved `DisputeRaised`
+  makes the claim ineligible until it reaches a terminal chain event.
+- Abstentions, claims whose author cannot be established from `ClaimSubmitted`,
+  the verifier's own claims, unsettled claims, unknown outcomes, and conflicting
+  duplicate evaluations are excluded and reported in provenance.
+- Events are deduplicated by `(chainId, txHash, logIndex)`, restricted to the
+  pinned chain/release/deployment contracts, and capped at the finalized block
+  from `v2_event_checkpoints`. Reorg rollback removes orphaned events and rewinds
+  the checkpoint, so the next computation derives updated counts deterministically.
+- Unlink/relink and chain changes affect eligibility through the current wallet
+  snapshot; events from unlinked or wrong-chain wallets are never attributed.
+- When the checkpoint or history is unavailable, counters remain zero but
+  provenance records `status: unavailable` and the accuracy feature stays
+  explicitly missing/stale. `failClosedOnMissing`/`failClosedOnStale` reject the
+  computation rather than treating unavailable history as verified inactivity.
+- Scoring is read-only and advisory; no claim or dispute verdict is written by
+  the scoring path.
+
 ### Canonical Consensus Invariant:
 Canonical finalized contract events remain authoritative. Scoring services fail closed (`UnauthorizedProvenanceException`) if:
 - Chain ID, release ID, or contract address does not match canonical deployment manifest.

@@ -16,4 +16,8 @@ export class LinkWalletDto {
   @IsString()
   @IsNotEmpty()
   message: string;
+
+  @IsString()
+  @IsNotEmpty()
+  nonce: string;
 }
