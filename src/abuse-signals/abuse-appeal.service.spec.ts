@@ -310,7 +310,7 @@ describe('AbuseAppealService (PREWAVE-BE-086)', () => {
     expect(pinned.action!.escalationLevel).toBe(action.escalationLevel);
 
     // After the SLA, the pin is released and escalation resumes.
-    const released = appeals.releaseExpiredAppeals(
+    const released = await appeals.releaseExpiredAppeals(
       resolution.subject.key,
       FIXTURE_NOW + 3_600_001,
     );

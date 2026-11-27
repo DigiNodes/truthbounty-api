@@ -24,6 +24,19 @@ export const ADMIN_ONLY_KEY = 'adminOnly';
  * Checks for an 'admin' role in the verified principal or a configured admin
  * wallet list.
  *
+ * This guard is part of the app-user authorization plane and reads the
+ * principal attached by JwtStrategy at request.user. It supports a compatibility
+ * fallback to request.use if that legacy field is present.
+ *
+ * The principal structure comes from AuthService.validateToken and includes:
+ * - address: string (required)
+ * - userId: string | null
+ * - user: { id: string, role: string } | null
+ * - sub: string (optional)
+ * - jti: string (optional)
+ *
+ * The admin role check examines principal.user.role (a string), not a roles array.
+ *
  * Usage:
  *   @UseGuards(AdminGuard)
  *   @AdminOnly()
@@ -64,14 +77,24 @@ export class AdminGuard implements CanActivate {
       throw new ForbiddenException('Authentication required for admin access');
     }
 
-    const authenticatedRequest = request as AuthenticatedRequest;
-    const principal = authenticatedRequest.user ?? authenticatedRequest.use;
+    // Read the canonical principal from request.user (set by JwtStrategy).
+    // Fall back to request.use for compatibility if request.user is absent.
+    const authReq = request as AuthenticatedRequest;
+    const principal = authReq.user || authReq.use;
+
     if (!principal) {
       this.logger.warn('Admin access denied: no authenticated user');
       throw new ForbiddenException('Authentication required for admin access');
     }
 
+    // Validate that the principal has a required address field
+    if (!principal.address) {
+      this.logger.warn('Admin access denied: missing address in principal');
+      throw new ForbiddenException('Authentication required for admin access');
+    }
+
     // Check if user has admin role from the verified principal.
+    // The role is nested as principal.user.role (not a roles array).
     const role = principal.user?.role;
     if (role === 'admin') {
       return true;

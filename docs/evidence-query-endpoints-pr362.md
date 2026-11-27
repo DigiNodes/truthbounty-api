@@ -1,5 +1,13 @@
 # V2-BE-025 — Evidence Query Endpoints (PR Summary)
 
+> **Retired compatibility surface:** this historical implementation summary
+> describes the legacy `/evidence` TypeORM query API. Under issue #835, legacy
+> `/evidence` reads and claim/evidence registration or replacement endpoints
+> return `410 Gone`; canonical evidence reads are under
+> `/v2/claims/:claimId/evidence`. Legacy tables are retained without
+> backfill/deletion pending the approved retirement plan in
+> [`CLAIM_EVIDENCE_RETIREMENT_PLAN.md`](./CLAIM_EVIDENCE_RETIREMENT_PLAN.md).
+
 Branch: `feat/evidence-query-endpoints`
 
 This document satisfies the V2-BE-025 deliverables: the overlapping-code audit

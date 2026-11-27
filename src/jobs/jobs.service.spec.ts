@@ -4,11 +4,8 @@ import { JobsService } from './jobs.service';
 import { JobsProcessor } from './jobs.processor';
 import { Stake } from '../staking/entities/stake.entity';
 import { Wallet } from '../entities/wallet.entity';
-import { Claim } from '../claims/entities/claim.entity';
 import { User } from '../entities/user.entity';
-import { ClaimsCache } from '../cache/claims.cache';
 import { RedisService } from '../redis/redis.service';
-import { AggregationService } from '../aggregation/aggregation.service';
 import { SybilResistanceService } from '../sybil-resistance/sybil-resistance.service';
 import { getQueueToken } from '@nestjs/bullmq';
 import { Repository } from 'typeorm';
@@ -94,31 +91,12 @@ describe('JobsService', () => {
           useClass: Repository,
         },
         {
-          provide: getRepositoryToken(Claim),
-          useClass: Repository,
-        },
-        {
           provide: getRepositoryToken(User),
           useClass: Repository,
         },
         {
-          provide: ClaimsCache,
-          useValue: {
-            invalidateClaim: jest.fn(),
-          },
-        },
-        {
           provide: RedisService,
           useValue: {},
-        },
-        {
-          provide: AggregationService,
-          useValue: {
-            aggregate: jest.fn().mockReturnValue({
-              confidence: 60,
-              status: 'VERIFIED_TRUE',
-            }),
-          },
         },
       ],
     }).compile();

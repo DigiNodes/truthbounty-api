@@ -6,84 +6,31 @@ This document contains visual representations of the key backend workflows in th
 
 ```mermaid
 graph TD
-    A[User/Client] --> B[POST /claims]
-    B --> C[ClaimsController.createClaim]
-    C --> D[ClaimsService.createClaim]
-    D --> E[Generate mock verdict & confidence]
-    E --> F[Save Claim to Database]
-    F --> G[Cache Claim]
-    G --> H[Audit Log: CLAIM_CREATED]
-    H --> I[Return Claim Response]
-    
-    I --> J[POST /claims/:claimId/evidence]
-    J --> K[ClaimsController.createEvidence]
-    K --> L[EvidenceService.createEvidence]
-    L --> M[Create Evidence Record]
-    M --> N[Create Evidence Version v1]
-    N --> O[Save to Database]
-    O --> P[Audit Log: EVIDENCE_SUBMITTED]
-    P --> Q[Return Evidence Response]
-    
-    Q --> R[PUT /claims/evidence/:evidenceId]
-    R --> S[ClaimsController.updateEvidence]
-    S --> T[EvidenceService.addEvidenceVersion]
-    T --> U[Update Evidence latestVersion]
-    U --> V[Create New Evidence Version]
-    V --> W[Save to Database]
-    W --> X[Audit Log: EVIDENCE_UPDATED]
-    X --> Y[Return Updated Version]
-    
-    Y --> Z[ClaimsService.resolveClaim]
-    Z --> AA[Update verdict & confidence]
-    AA --> BB[Save Claim]
-    BB --> CC[Cache Updated Claim]
-    CC --> DD[Audit Log: CLAIM_RESOLVED]
-    DD --> EE[Return Updated Claim]
-    
-    EE --> FF[ClaimsService.finalizeClaim]
-    FF --> GG[Set finalized = true]
-    GG --> HH[Save Claim]
-    HH --> II[Cache Finalized Claim]
-    II --> JJ[Audit Log: CLAIM_FINALIZED]
-    JJ --> KK[Return Finalized Claim]
-    
-    style A fill:#e1f5fe
-    style I fill:#c8e6c9
-    style Q fill:#c8e6c9
-    style Y fill:#c8e6c9
-    style EE fill:#c8e6c9
-    style KK fill:#4caf50
+    A[Prepare off-chain content] --> B[Optional content validation and scanning]
+    B --> C[User wallet submits claim transaction]
+    C --> D[Approved contract emits canonical claim event]
+    D --> E[Indexer confirms finality and projects event]
+    E --> F[GET /api/v2/claim-read-models]
+    B --> G[Optional IPFS preparation]
+    G --> H[CID is not protocol registration]
+    H --> I[User wallet submits evidence registration or replacement]
+    I --> J[Contract emits canonical evidence event]
+    J --> E
 ```
 
 ### Claim Flow Steps
 
-1. **Claim Creation**
-   - Client submits claim data via `POST /claims`
-   - System generates mock verdict and confidence score
-   - Claim is saved to database and cached
-   - Audit trail records claim creation
-
-2. **Evidence Submission**
-   - Client adds evidence via `POST /claims/:claimId/evidence`
-   - Evidence record created with version 1
-   - Evidence version stored with CID reference
-   - Audit trail records evidence submission
-
-3. **Evidence Updates**
-   - Client updates evidence via `PUT /claims/evidence/:evidenceId`
-   - Version number incremented
-   - New evidence version created
-   - Audit trail records evidence update
-
-4. **Claim Resolution**
-   - System resolves claim with verdict and confidence
-   - Claim updated in database and cache
-   - Audit trail records resolution
-
-5. **Claim Finalization**
-   - System finalizes claim (sets finalized flag)
-   - Claim updated in database and cache
-   - Audit trail records finalization
+1. The API may validate or scan off-chain content. A CID upload, if separately
+   supported by a deployment, is preparation only and is not recorded as
+   registered evidence.
+2. The user's wallet submits claim/evidence state transitions directly to the
+   approved contract. The API does not sign, relay, create, resolve, or finalize
+   protocol state.
+3. The indexer ingests the canonical event, handles finality/reorg rules, and
+   updates its projection.
+4. Clients read only from `/api/v2/claim-read-models` and
+   `/v2/claims/:claimId/evidence`. Until indexed, data may be pending or not
+   found. Legacy `/claims` write/read routes return `410 Gone`.
 
 ## Verification Flow
 

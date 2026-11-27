@@ -1,7 +1,7 @@
 import { getRuntimeEnvironment } from '../../config/runtime-config';
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Admin, AdminRole } from '../entities/admin.entity';
 import {
   Incident,
@@ -13,7 +13,8 @@ import {
   ReportStatus,
 } from '../entities/moderation-report.entity';
 import { AuditLog } from '../../audit/entities/audit-log.entity';
-import { Claim } from '../../claims/entities/claim.entity';
+import { ClaimReadModel } from '../../claims/entities/claim-read-model.entity';
+import { ClaimState } from '../../domain/claim/claimState';
 import { JobsService } from '../../jobs/jobs.service';
 import { NotificationService } from '../../notifications/services/notification.service';
 import { RedisService } from '../../redis/redis.service';
@@ -32,8 +33,8 @@ export class DashboardService {
     private readonly reportRepo: Repository<ModerationReport>,
     @InjectRepository(AuditLog)
     private readonly auditLogRepo: Repository<AuditLog>,
-    @InjectRepository(Claim)
-    private readonly claimRepo: Repository<Claim>,
+    @InjectRepository(ClaimReadModel)
+    private readonly claimReadModelRepo: Repository<ClaimReadModel>,
     private readonly jobsService: JobsService,
     private readonly notificationService: NotificationService,
     private readonly redisService: RedisService,
@@ -323,14 +324,23 @@ export class DashboardService {
         ? 'healthy'
         : 'degraded';
 
-    const totalClaims = await this.claimRepo.count();
-    const activeClaims = await this.claimRepo.count({
-      where: { finalized: false },
-    });
-    const finalizedClaims = await this.claimRepo.count({
-      where: { finalized: true },
-    });
-    const pendingClaims = Math.max(activeClaims - finalizedClaims, 0);
+    const [totalClaims, activeClaims, finalizedClaims] = await Promise.all([
+      this.claimReadModelRepo.count(),
+      this.claimReadModelRepo.count({
+        where: {
+          state: In([
+            ClaimState.Submitted,
+            ClaimState.Review,
+            ClaimState.Verified,
+            ClaimState.Disputed,
+          ]),
+        },
+      }),
+      this.claimReadModelRepo.count({
+        where: { state: ClaimState.Finalized },
+      }),
+    ]);
+    const pendingClaims = activeClaims;
 
     return {
       system: {
@@ -394,10 +404,11 @@ export class DashboardService {
       },
       protocol: {
         totalClaims,
-        activeClaims,
-        finalizedClaims,
-        pendingClaims,
-        resolvedClaims: totalClaims - pendingClaims - finalizedClaims,
+        activeClaims: null,
+        finalizedClaims: null,
+        pendingClaims: null,
+        resolvedClaims: null,
+        claimStateProjection: 'unavailable' as const,
       },
     };
   }
@@ -443,7 +454,7 @@ export class DashboardService {
     const [totalAdmins, totalClaims, totalIncidents, totalReports] =
       await Promise.all([
         this.adminRepo.count(),
-        this.claimRepo.count(),
+        this.claimReadModelRepo.count(),
         this.incidentRepo.count(),
         this.reportRepo.count(),
       ]);

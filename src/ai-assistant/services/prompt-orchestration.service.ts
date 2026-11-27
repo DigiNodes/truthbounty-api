@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -12,7 +12,10 @@ import {
   ConversationMode,
 } from '../entities/conversation.entity';
 import { ContextDocumentCategory } from '../entities/context-document.entity';
-import { ContextRetrievalService } from './context-retrieval.service';
+import {
+  ContextRetrievalService,
+  ContextSearchResult,
+} from './context-retrieval.service';
 import { SafetyGuardrailService } from './safety-guardrail.service';
 import { AiAssistantCache } from '../cache/ai-assistant.cache';
 import {
@@ -93,6 +96,7 @@ interface GenerateReplyParams {
 @Injectable()
 export class PromptOrchestrationService {
   private readonly aiConfig: AiConfig;
+  private readonly logger = new Logger(PromptOrchestrationService.name);
 
   constructor(
     @InjectRepository(Message)
@@ -172,13 +176,26 @@ export class PromptOrchestrationService {
     }
 
     const categories = CATEGORY_WEIGHTING[conversation.mode];
-    const contextResults = await this.contextRetrievalService.search(
-      userContent,
-      {
-        topN: this.aiConfig.contextTopN,
-        categories,
-      },
-    );
+    let contextResults: ContextSearchResult[];
+    try {
+      contextResults = await this.contextRetrievalService.search(
+        userContent,
+        {
+          topN: this.aiConfig.contextTopN,
+          categories,
+        },
+      );
+    } catch (error) {
+      this.logger.error(
+        `Verified protocol context retrieval failed: ${(error as Error).message}`,
+      );
+      return {
+        blocked: true,
+        refusalContent:
+          'I cannot answer this request because verified protocol context is unavailable.',
+        flagReason: 'rag_retrieval_failed',
+      };
+    }
 
     const memoryWindow = await this.buildMemoryWindow(conversation.id);
 

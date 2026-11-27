@@ -242,6 +242,7 @@ export type UserWhereInput = {
   worldcoinVerifiedAt?: Prisma.DateTimeNullableFilter<"User"> | Date | string | null
   wallets?: Prisma.WalletListRelationFilter
   sybilScores?: Prisma.SybilScoreListRelationFilter
+  sybilAppeals?: Prisma.SybilAppealListRelationFilter
   worldIdVerifications?: Prisma.WorldIdVerificationListRelationFilter
   conversations?: Prisma.ConversationListRelationFilter
 }
@@ -257,6 +258,7 @@ export type UserOrderByWithRelationInput = {
   worldcoinVerifiedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   wallets?: Prisma.WalletOrderByRelationAggregateInput
   sybilScores?: Prisma.SybilScoreOrderByRelationAggregateInput
+  sybilAppeals?: Prisma.SybilAppealOrderByRelationAggregateInput
   worldIdVerifications?: Prisma.WorldIdVerificationOrderByRelationAggregateInput
   conversations?: Prisma.ConversationOrderByRelationAggregateInput
 }
@@ -275,6 +277,7 @@ export type UserWhereUniqueInput = Prisma.AtLeast<{
   worldcoinVerifiedAt?: Prisma.DateTimeNullableFilter<"User"> | Date | string | null
   wallets?: Prisma.WalletListRelationFilter
   sybilScores?: Prisma.SybilScoreListRelationFilter
+  sybilAppeals?: Prisma.SybilAppealListRelationFilter
   worldIdVerifications?: Prisma.WorldIdVerificationListRelationFilter
   conversations?: Prisma.ConversationListRelationFilter
 }, "id" | "walletAddress">
@@ -320,6 +323,7 @@ export type UserCreateInput = {
   worldcoinVerifiedAt?: Date | string | null
   wallets?: Prisma.WalletCreateNestedManyWithoutUserInput
   sybilScores?: Prisma.SybilScoreCreateNestedManyWithoutUserInput
+  sybilAppeals?: Prisma.SybilAppealCreateNestedManyWithoutUserInput
   worldIdVerifications?: Prisma.WorldIdVerificationCreateNestedManyWithoutUserInput
   conversations?: Prisma.ConversationCreateNestedManyWithoutUserInput
 }
@@ -335,6 +339,7 @@ export type UserUncheckedCreateInput = {
   worldcoinVerifiedAt?: Date | string | null
   wallets?: Prisma.WalletUncheckedCreateNestedManyWithoutUserInput
   sybilScores?: Prisma.SybilScoreUncheckedCreateNestedManyWithoutUserInput
+  sybilAppeals?: Prisma.SybilAppealUncheckedCreateNestedManyWithoutUserInput
   worldIdVerifications?: Prisma.WorldIdVerificationUncheckedCreateNestedManyWithoutUserInput
   conversations?: Prisma.ConversationUncheckedCreateNestedManyWithoutUserInput
 }
@@ -350,6 +355,7 @@ export type UserUpdateInput = {
   worldcoinVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   wallets?: Prisma.WalletUpdateManyWithoutUserNestedInput
   sybilScores?: Prisma.SybilScoreUpdateManyWithoutUserNestedInput
+  sybilAppeals?: Prisma.SybilAppealUpdateManyWithoutUserNestedInput
   worldIdVerifications?: Prisma.WorldIdVerificationUpdateManyWithoutUserNestedInput
   conversations?: Prisma.ConversationUpdateManyWithoutUserNestedInput
 }
@@ -365,6 +371,7 @@ export type UserUncheckedUpdateInput = {
   worldcoinVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   wallets?: Prisma.WalletUncheckedUpdateManyWithoutUserNestedInput
   sybilScores?: Prisma.SybilScoreUncheckedUpdateManyWithoutUserNestedInput
+  sybilAppeals?: Prisma.SybilAppealUncheckedUpdateManyWithoutUserNestedInput
   worldIdVerifications?: Prisma.WorldIdVerificationUncheckedUpdateManyWithoutUserNestedInput
   conversations?: Prisma.ConversationUncheckedUpdateManyWithoutUserNestedInput
 }
@@ -508,6 +515,20 @@ export type UserUpdateOneRequiredWithoutSybilScoresNestedInput = {
   update?: Prisma.XOR<Prisma.XOR<Prisma.UserUpdateToOneWithWhereWithoutSybilScoresInput, Prisma.UserUpdateWithoutSybilScoresInput>, Prisma.UserUncheckedUpdateWithoutSybilScoresInput>
 }
 
+export type UserCreateNestedOneWithoutSybilAppealsInput = {
+  create?: Prisma.XOR<Prisma.UserCreateWithoutSybilAppealsInput, Prisma.UserUncheckedCreateWithoutSybilAppealsInput>
+  connectOrCreate?: Prisma.UserCreateOrConnectWithoutSybilAppealsInput
+  connect?: Prisma.UserWhereUniqueInput
+}
+
+export type UserUpdateOneRequiredWithoutSybilAppealsNestedInput = {
+  create?: Prisma.XOR<Prisma.UserCreateWithoutSybilAppealsInput, Prisma.UserUncheckedCreateWithoutSybilAppealsInput>
+  connectOrCreate?: Prisma.UserCreateOrConnectWithoutSybilAppealsInput
+  upsert?: Prisma.UserUpsertWithoutSybilAppealsInput
+  connect?: Prisma.UserWhereUniqueInput
+  update?: Prisma.XOR<Prisma.XOR<Prisma.UserUpdateToOneWithWhereWithoutSybilAppealsInput, Prisma.UserUpdateWithoutSybilAppealsInput>, Prisma.UserUncheckedUpdateWithoutSybilAppealsInput>
+}
+
 export type UserCreateNestedOneWithoutWorldIdVerificationsInput = {
   create?: Prisma.XOR<Prisma.UserCreateWithoutWorldIdVerificationsInput, Prisma.UserUncheckedCreateWithoutWorldIdVerificationsInput>
   connectOrCreate?: Prisma.UserCreateOrConnectWithoutWorldIdVerificationsInput
@@ -546,6 +567,7 @@ export type UserCreateWithoutWalletsInput = {
   worldcoinVerified?: boolean
   worldcoinVerifiedAt?: Date | string | null
   sybilScores?: Prisma.SybilScoreCreateNestedManyWithoutUserInput
+  sybilAppeals?: Prisma.SybilAppealCreateNestedManyWithoutUserInput
   worldIdVerifications?: Prisma.WorldIdVerificationCreateNestedManyWithoutUserInput
   conversations?: Prisma.ConversationCreateNestedManyWithoutUserInput
 }
@@ -560,6 +582,7 @@ export type UserUncheckedCreateWithoutWalletsInput = {
   worldcoinVerified?: boolean
   worldcoinVerifiedAt?: Date | string | null
   sybilScores?: Prisma.SybilScoreUncheckedCreateNestedManyWithoutUserInput
+  sybilAppeals?: Prisma.SybilAppealUncheckedCreateNestedManyWithoutUserInput
   worldIdVerifications?: Prisma.WorldIdVerificationUncheckedCreateNestedManyWithoutUserInput
   conversations?: Prisma.ConversationUncheckedCreateNestedManyWithoutUserInput
 }
@@ -590,6 +613,7 @@ export type UserUpdateWithoutWalletsInput = {
   worldcoinVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
   worldcoinVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   sybilScores?: Prisma.SybilScoreUpdateManyWithoutUserNestedInput
+  sybilAppeals?: Prisma.SybilAppealUpdateManyWithoutUserNestedInput
   worldIdVerifications?: Prisma.WorldIdVerificationUpdateManyWithoutUserNestedInput
   conversations?: Prisma.ConversationUpdateManyWithoutUserNestedInput
 }
@@ -604,6 +628,7 @@ export type UserUncheckedUpdateWithoutWalletsInput = {
   worldcoinVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
   worldcoinVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   sybilScores?: Prisma.SybilScoreUncheckedUpdateManyWithoutUserNestedInput
+  sybilAppeals?: Prisma.SybilAppealUncheckedUpdateManyWithoutUserNestedInput
   worldIdVerifications?: Prisma.WorldIdVerificationUncheckedUpdateManyWithoutUserNestedInput
   conversations?: Prisma.ConversationUncheckedUpdateManyWithoutUserNestedInput
 }
@@ -618,6 +643,7 @@ export type UserCreateWithoutSybilScoresInput = {
   worldcoinVerified?: boolean
   worldcoinVerifiedAt?: Date | string | null
   wallets?: Prisma.WalletCreateNestedManyWithoutUserInput
+  sybilAppeals?: Prisma.SybilAppealCreateNestedManyWithoutUserInput
   worldIdVerifications?: Prisma.WorldIdVerificationCreateNestedManyWithoutUserInput
   conversations?: Prisma.ConversationCreateNestedManyWithoutUserInput
 }
@@ -632,6 +658,7 @@ export type UserUncheckedCreateWithoutSybilScoresInput = {
   worldcoinVerified?: boolean
   worldcoinVerifiedAt?: Date | string | null
   wallets?: Prisma.WalletUncheckedCreateNestedManyWithoutUserInput
+  sybilAppeals?: Prisma.SybilAppealUncheckedCreateNestedManyWithoutUserInput
   worldIdVerifications?: Prisma.WorldIdVerificationUncheckedCreateNestedManyWithoutUserInput
   conversations?: Prisma.ConversationUncheckedCreateNestedManyWithoutUserInput
 }
@@ -662,6 +689,7 @@ export type UserUpdateWithoutSybilScoresInput = {
   worldcoinVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
   worldcoinVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   wallets?: Prisma.WalletUpdateManyWithoutUserNestedInput
+  sybilAppeals?: Prisma.SybilAppealUpdateManyWithoutUserNestedInput
   worldIdVerifications?: Prisma.WorldIdVerificationUpdateManyWithoutUserNestedInput
   conversations?: Prisma.ConversationUpdateManyWithoutUserNestedInput
 }
@@ -676,6 +704,83 @@ export type UserUncheckedUpdateWithoutSybilScoresInput = {
   worldcoinVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
   worldcoinVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   wallets?: Prisma.WalletUncheckedUpdateManyWithoutUserNestedInput
+  sybilAppeals?: Prisma.SybilAppealUncheckedUpdateManyWithoutUserNestedInput
+  worldIdVerifications?: Prisma.WorldIdVerificationUncheckedUpdateManyWithoutUserNestedInput
+  conversations?: Prisma.ConversationUncheckedUpdateManyWithoutUserNestedInput
+}
+
+export type UserCreateWithoutSybilAppealsInput = {
+  id?: string
+  createdAt?: Date | string
+  updatedAt?: Date | string
+  walletAddress?: string | null
+  reputation?: number
+  role?: $Enums.UserRole
+  worldcoinVerified?: boolean
+  worldcoinVerifiedAt?: Date | string | null
+  wallets?: Prisma.WalletCreateNestedManyWithoutUserInput
+  sybilScores?: Prisma.SybilScoreCreateNestedManyWithoutUserInput
+  worldIdVerifications?: Prisma.WorldIdVerificationCreateNestedManyWithoutUserInput
+  conversations?: Prisma.ConversationCreateNestedManyWithoutUserInput
+}
+
+export type UserUncheckedCreateWithoutSybilAppealsInput = {
+  id?: string
+  createdAt?: Date | string
+  updatedAt?: Date | string
+  walletAddress?: string | null
+  reputation?: number
+  role?: $Enums.UserRole
+  worldcoinVerified?: boolean
+  worldcoinVerifiedAt?: Date | string | null
+  wallets?: Prisma.WalletUncheckedCreateNestedManyWithoutUserInput
+  sybilScores?: Prisma.SybilScoreUncheckedCreateNestedManyWithoutUserInput
+  worldIdVerifications?: Prisma.WorldIdVerificationUncheckedCreateNestedManyWithoutUserInput
+  conversations?: Prisma.ConversationUncheckedCreateNestedManyWithoutUserInput
+}
+
+export type UserCreateOrConnectWithoutSybilAppealsInput = {
+  where: Prisma.UserWhereUniqueInput
+  create: Prisma.XOR<Prisma.UserCreateWithoutSybilAppealsInput, Prisma.UserUncheckedCreateWithoutSybilAppealsInput>
+}
+
+export type UserUpsertWithoutSybilAppealsInput = {
+  update: Prisma.XOR<Prisma.UserUpdateWithoutSybilAppealsInput, Prisma.UserUncheckedUpdateWithoutSybilAppealsInput>
+  create: Prisma.XOR<Prisma.UserCreateWithoutSybilAppealsInput, Prisma.UserUncheckedCreateWithoutSybilAppealsInput>
+  where?: Prisma.UserWhereInput
+}
+
+export type UserUpdateToOneWithWhereWithoutSybilAppealsInput = {
+  where?: Prisma.UserWhereInput
+  data: Prisma.XOR<Prisma.UserUpdateWithoutSybilAppealsInput, Prisma.UserUncheckedUpdateWithoutSybilAppealsInput>
+}
+
+export type UserUpdateWithoutSybilAppealsInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string
+  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  walletAddress?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  reputation?: Prisma.IntFieldUpdateOperationsInput | number
+  role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
+  worldcoinVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  worldcoinVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  wallets?: Prisma.WalletUpdateManyWithoutUserNestedInput
+  sybilScores?: Prisma.SybilScoreUpdateManyWithoutUserNestedInput
+  worldIdVerifications?: Prisma.WorldIdVerificationUpdateManyWithoutUserNestedInput
+  conversations?: Prisma.ConversationUpdateManyWithoutUserNestedInput
+}
+
+export type UserUncheckedUpdateWithoutSybilAppealsInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string
+  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  walletAddress?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  reputation?: Prisma.IntFieldUpdateOperationsInput | number
+  role?: Prisma.EnumUserRoleFieldUpdateOperationsInput | $Enums.UserRole
+  worldcoinVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  worldcoinVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  wallets?: Prisma.WalletUncheckedUpdateManyWithoutUserNestedInput
+  sybilScores?: Prisma.SybilScoreUncheckedUpdateManyWithoutUserNestedInput
   worldIdVerifications?: Prisma.WorldIdVerificationUncheckedUpdateManyWithoutUserNestedInput
   conversations?: Prisma.ConversationUncheckedUpdateManyWithoutUserNestedInput
 }
@@ -691,6 +796,7 @@ export type UserCreateWithoutWorldIdVerificationsInput = {
   worldcoinVerifiedAt?: Date | string | null
   wallets?: Prisma.WalletCreateNestedManyWithoutUserInput
   sybilScores?: Prisma.SybilScoreCreateNestedManyWithoutUserInput
+  sybilAppeals?: Prisma.SybilAppealCreateNestedManyWithoutUserInput
   conversations?: Prisma.ConversationCreateNestedManyWithoutUserInput
 }
 
@@ -705,6 +811,7 @@ export type UserUncheckedCreateWithoutWorldIdVerificationsInput = {
   worldcoinVerifiedAt?: Date | string | null
   wallets?: Prisma.WalletUncheckedCreateNestedManyWithoutUserInput
   sybilScores?: Prisma.SybilScoreUncheckedCreateNestedManyWithoutUserInput
+  sybilAppeals?: Prisma.SybilAppealUncheckedCreateNestedManyWithoutUserInput
   conversations?: Prisma.ConversationUncheckedCreateNestedManyWithoutUserInput
 }
 
@@ -735,6 +842,7 @@ export type UserUpdateWithoutWorldIdVerificationsInput = {
   worldcoinVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   wallets?: Prisma.WalletUpdateManyWithoutUserNestedInput
   sybilScores?: Prisma.SybilScoreUpdateManyWithoutUserNestedInput
+  sybilAppeals?: Prisma.SybilAppealUpdateManyWithoutUserNestedInput
   conversations?: Prisma.ConversationUpdateManyWithoutUserNestedInput
 }
 
@@ -749,6 +857,7 @@ export type UserUncheckedUpdateWithoutWorldIdVerificationsInput = {
   worldcoinVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   wallets?: Prisma.WalletUncheckedUpdateManyWithoutUserNestedInput
   sybilScores?: Prisma.SybilScoreUncheckedUpdateManyWithoutUserNestedInput
+  sybilAppeals?: Prisma.SybilAppealUncheckedUpdateManyWithoutUserNestedInput
   conversations?: Prisma.ConversationUncheckedUpdateManyWithoutUserNestedInput
 }
 
@@ -763,6 +872,7 @@ export type UserCreateWithoutConversationsInput = {
   worldcoinVerifiedAt?: Date | string | null
   wallets?: Prisma.WalletCreateNestedManyWithoutUserInput
   sybilScores?: Prisma.SybilScoreCreateNestedManyWithoutUserInput
+  sybilAppeals?: Prisma.SybilAppealCreateNestedManyWithoutUserInput
   worldIdVerifications?: Prisma.WorldIdVerificationCreateNestedManyWithoutUserInput
 }
 
@@ -777,6 +887,7 @@ export type UserUncheckedCreateWithoutConversationsInput = {
   worldcoinVerifiedAt?: Date | string | null
   wallets?: Prisma.WalletUncheckedCreateNestedManyWithoutUserInput
   sybilScores?: Prisma.SybilScoreUncheckedCreateNestedManyWithoutUserInput
+  sybilAppeals?: Prisma.SybilAppealUncheckedCreateNestedManyWithoutUserInput
   worldIdVerifications?: Prisma.WorldIdVerificationUncheckedCreateNestedManyWithoutUserInput
 }
 
@@ -807,6 +918,7 @@ export type UserUpdateWithoutConversationsInput = {
   worldcoinVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   wallets?: Prisma.WalletUpdateManyWithoutUserNestedInput
   sybilScores?: Prisma.SybilScoreUpdateManyWithoutUserNestedInput
+  sybilAppeals?: Prisma.SybilAppealUpdateManyWithoutUserNestedInput
   worldIdVerifications?: Prisma.WorldIdVerificationUpdateManyWithoutUserNestedInput
 }
 
@@ -821,6 +933,7 @@ export type UserUncheckedUpdateWithoutConversationsInput = {
   worldcoinVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   wallets?: Prisma.WalletUncheckedUpdateManyWithoutUserNestedInput
   sybilScores?: Prisma.SybilScoreUncheckedUpdateManyWithoutUserNestedInput
+  sybilAppeals?: Prisma.SybilAppealUncheckedUpdateManyWithoutUserNestedInput
   worldIdVerifications?: Prisma.WorldIdVerificationUncheckedUpdateManyWithoutUserNestedInput
 }
 
@@ -832,6 +945,7 @@ export type UserUncheckedUpdateWithoutConversationsInput = {
 export type UserCountOutputType = {
   wallets: number
   sybilScores: number
+  sybilAppeals: number
   worldIdVerifications: number
   conversations: number
 }
@@ -839,6 +953,7 @@ export type UserCountOutputType = {
 export type UserCountOutputTypeSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   wallets?: boolean | UserCountOutputTypeCountWalletsArgs
   sybilScores?: boolean | UserCountOutputTypeCountSybilScoresArgs
+  sybilAppeals?: boolean | UserCountOutputTypeCountSybilAppealsArgs
   worldIdVerifications?: boolean | UserCountOutputTypeCountWorldIdVerificationsArgs
   conversations?: boolean | UserCountOutputTypeCountConversationsArgs
 }
@@ -870,6 +985,13 @@ export type UserCountOutputTypeCountSybilScoresArgs<ExtArgs extends runtime.Type
 /**
  * UserCountOutputType without action
  */
+export type UserCountOutputTypeCountSybilAppealsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  where?: Prisma.SybilAppealWhereInput
+}
+
+/**
+ * UserCountOutputType without action
+ */
 export type UserCountOutputTypeCountWorldIdVerificationsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   where?: Prisma.WorldIdVerificationWhereInput
 }
@@ -893,6 +1015,7 @@ export type UserSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = r
   worldcoinVerifiedAt?: boolean
   wallets?: boolean | Prisma.User$walletsArgs<ExtArgs>
   sybilScores?: boolean | Prisma.User$sybilScoresArgs<ExtArgs>
+  sybilAppeals?: boolean | Prisma.User$sybilAppealsArgs<ExtArgs>
   worldIdVerifications?: boolean | Prisma.User$worldIdVerificationsArgs<ExtArgs>
   conversations?: boolean | Prisma.User$conversationsArgs<ExtArgs>
   _count?: boolean | Prisma.UserCountOutputTypeDefaultArgs<ExtArgs>
@@ -935,6 +1058,7 @@ export type UserOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = run
 export type UserInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   wallets?: boolean | Prisma.User$walletsArgs<ExtArgs>
   sybilScores?: boolean | Prisma.User$sybilScoresArgs<ExtArgs>
+  sybilAppeals?: boolean | Prisma.User$sybilAppealsArgs<ExtArgs>
   worldIdVerifications?: boolean | Prisma.User$worldIdVerificationsArgs<ExtArgs>
   conversations?: boolean | Prisma.User$conversationsArgs<ExtArgs>
   _count?: boolean | Prisma.UserCountOutputTypeDefaultArgs<ExtArgs>
@@ -947,6 +1071,7 @@ export type $UserPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs =
   objects: {
     wallets: Prisma.$WalletPayload<ExtArgs>[]
     sybilScores: Prisma.$SybilScorePayload<ExtArgs>[]
+    sybilAppeals: Prisma.$SybilAppealPayload<ExtArgs>[]
     worldIdVerifications: Prisma.$WorldIdVerificationPayload<ExtArgs>[]
     conversations: Prisma.$ConversationPayload<ExtArgs>[]
   }
@@ -1355,6 +1480,7 @@ export interface Prisma__UserClient<T, Null = never, ExtArgs extends runtime.Typ
   readonly [Symbol.toStringTag]: "PrismaPromise"
   wallets<T extends Prisma.User$walletsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.User$walletsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$WalletPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   sybilScores<T extends Prisma.User$sybilScoresArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.User$sybilScoresArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$SybilScorePayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
+  sybilAppeals<T extends Prisma.User$sybilAppealsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.User$sybilAppealsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$SybilAppealPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   worldIdVerifications<T extends Prisma.User$worldIdVerificationsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.User$worldIdVerificationsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$WorldIdVerificationPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   conversations<T extends Prisma.User$conversationsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.User$conversationsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$ConversationPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   /**
@@ -1628,6 +1754,7 @@ export type UserCreateManyArgs<ExtArgs extends runtime.Types.Extensions.Internal
    * The data used to create many Users.
    */
   data: Prisma.UserCreateManyInput | Prisma.UserCreateManyInput[]
+  skipDuplicates?: boolean
 }
 
 /**
@@ -1646,6 +1773,7 @@ export type UserCreateManyAndReturnArgs<ExtArgs extends runtime.Types.Extensions
    * The data used to create many Users.
    */
   data: Prisma.UserCreateManyInput | Prisma.UserCreateManyInput[]
+  skipDuplicates?: boolean
 }
 
 /**
@@ -1830,6 +1958,30 @@ export type User$sybilScoresArgs<ExtArgs extends runtime.Types.Extensions.Intern
   take?: number
   skip?: number
   distinct?: Prisma.SybilScoreScalarFieldEnum | Prisma.SybilScoreScalarFieldEnum[]
+}
+
+/**
+ * User.sybilAppeals
+ */
+export type User$sybilAppealsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  /**
+   * Select specific fields to fetch from the SybilAppeal
+   */
+  select?: Prisma.SybilAppealSelect<ExtArgs> | null
+  /**
+   * Omit specific fields from the SybilAppeal
+   */
+  omit?: Prisma.SybilAppealOmit<ExtArgs> | null
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.SybilAppealInclude<ExtArgs> | null
+  where?: Prisma.SybilAppealWhereInput
+  orderBy?: Prisma.SybilAppealOrderByWithRelationInput | Prisma.SybilAppealOrderByWithRelationInput[]
+  cursor?: Prisma.SybilAppealWhereUniqueInput
+  take?: number
+  skip?: number
+  distinct?: Prisma.SybilAppealScalarFieldEnum | Prisma.SybilAppealScalarFieldEnum[]
 }
 
 /**

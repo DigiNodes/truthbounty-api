@@ -34,6 +34,9 @@ import {
 export const CANONICAL_CLAIM_READ_MODEL_RELEASE: ReleaseProvenance = {
   chainId: 11155420,
   releaseId: 'rel-opsepolia-20261015-v2',
+  artifactVersion: '2.0.0-rc.3',
+  claimRegistryAddress: '0x0000000000000000000000000000000000001001',
+  verdictContractAddress: '0x0000000000000000000000000000000000001002',
   deploymentBlock: 24850000,
   artifactChecksum:
     'f183dd1270bacc47f49f05f3d2ac0c8f021b41138da06d822377a2845cddb22f',
@@ -89,7 +92,7 @@ function item(
     },
     outcome: {
       phase: 'provisional',
-      provisional: { state: 'SUBMITTED', settledAt: null },
+      provisional: { state: 'SUBMITTED', settledAt: null, verdictCode: null },
       final: null,
     },
     release: RELEASE,
@@ -118,7 +121,7 @@ export const claimListProvisionalAndFinalized: ClaimReadModelListResponse = {
     item({ claimId: 'claim-0001', phase: 'provisional' }),
     item({
       claimId: 'claim-0002',
-      state: 'SETTLED',
+      state: 'FINALIZED',
       dataState: DataState.FINALIZED,
       phase: 'finalized',
       lastEvent: {
@@ -141,7 +144,11 @@ export const claimListProvisionalAndFinalized: ClaimReadModelListResponse = {
       outcome: {
         phase: 'finalized',
         provisional: null,
-        final: { state: 'SETTLED', settledAt: '2026-10-15T06:00:00.000Z' },
+        final: {
+          state: 'FINALIZED',
+          settledAt: '2026-10-15T06:00:00.000Z',
+          verdictCode: '2',
+        },
       },
     }),
   ],
@@ -175,12 +182,12 @@ export const claimDetailProvisional: ClaimReadModelDetailResponse = {
   freshness: HEALTHY_FRESHNESS,
   data: item({
     claimId: 'claim-0001',
-    state: 'UNDER_VERIFICATION',
+    state: 'SUBMITTED',
     dataState: DataState.SAFE,
     phase: 'provisional',
     outcome: {
       phase: 'provisional',
-      provisional: { state: 'UNDER_VERIFICATION', settledAt: null },
+      provisional: { state: 'SUBMITTED', settledAt: null, verdictCode: null },
       final: null,
     },
   }),
@@ -194,7 +201,7 @@ export const claimDetailFinalized: ClaimReadModelDetailResponse = {
   freshness: HEALTHY_FRESHNESS,
   data: item({
     claimId: 'claim-0002',
-    state: 'SETTLED',
+    state: 'FINALIZED',
     dataState: DataState.FINALIZED,
     phase: 'finalized',
     deadlines: {
@@ -211,7 +218,11 @@ export const claimDetailFinalized: ClaimReadModelDetailResponse = {
     outcome: {
       phase: 'finalized',
       provisional: null,
-      final: { state: 'SETTLED', settledAt: '2026-10-15T06:00:00.000Z' },
+      final: {
+        state: 'FINALIZED',
+        settledAt: '2026-10-15T06:00:00.000Z',
+        verdictCode: '2',
+      },
     },
   }),
 };
@@ -243,7 +254,7 @@ export const claimEvidenceNotFinalized: ClaimReadModelDetailResponse = {
   freshness: HEALTHY_FRESHNESS,
   data: item({
     claimId: 'claim-0004',
-    state: 'UNDER_VERIFICATION',
+    state: 'SUBMITTED',
     dataState: DataState.OBSERVED,
     phase: 'provisional',
     evidence: {

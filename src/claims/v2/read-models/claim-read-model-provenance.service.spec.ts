@@ -12,6 +12,11 @@ function configFrom(values: Record<string, unknown>): ConfigService {
 const VALID = {
   CLAIM_READ_MODEL_CHAIN_ID: 11155420,
   CLAIM_READ_MODEL_RELEASE_ID: 'rel-opsepolia-20261015-v2',
+  CLAIM_READ_MODEL_ARTIFACT_VERSION: '2.0.0-rc.3',
+  CLAIM_READ_MODEL_CLAIM_REGISTRY_ADDRESS:
+    '0x0000000000000000000000000000000000001001',
+  CLAIM_READ_MODEL_VERDICT_CONTRACT_ADDRESS:
+    '0x0000000000000000000000000000000000001002',
   CLAIM_READ_MODEL_DEPLOYMENT_BLOCK: 24850000,
   CLAIM_READ_MODEL_ARTIFACT_CHECKSUM: 'F'.repeat(64),
 };
@@ -25,6 +30,9 @@ describe('ClaimReadModelProvenanceService', () => {
     expect(provenance).toEqual({
       chainId: 11155420,
       releaseId: 'rel-opsepolia-20261015-v2',
+      artifactVersion: '2.0.0-rc.3',
+      claimRegistryAddress: '0x0000000000000000000000000000000000001001',
+      verdictContractAddress: '0x0000000000000000000000000000000000001002',
       deploymentBlock: 24850000,
       artifactChecksum: 'f'.repeat(64),
     });
@@ -35,12 +43,20 @@ describe('ClaimReadModelProvenanceService', () => {
       configFrom({
         CHAIN_ID: 11155420,
         RELEASE_ID: 'rel-opsepolia-20261015-v2',
+        ARTIFACT_VERSION: '2.0.0-rc.3',
+        CLAIM_REGISTRY_ADDRESS: '0x0000000000000000000000000000000000001001',
+        VERIFICATION_ENGINE_ADDRESS:
+          '0x0000000000000000000000000000000000001002',
         DEPLOYMENT_BLOCK: 24850000,
         ARTIFACT_CHECKSUM: '0x' + 'a'.repeat(64),
       }),
     ).resolve();
 
     expect(provenance.releaseId).toBe('rel-opsepolia-20261015-v2');
+    expect(provenance.artifactVersion).toBe('2.0.0-rc.3');
+    expect(provenance.verdictContractAddress).toBe(
+      '0x0000000000000000000000000000000000001002',
+    );
     expect(provenance.artifactChecksum).toBe('a'.repeat(64));
   });
 

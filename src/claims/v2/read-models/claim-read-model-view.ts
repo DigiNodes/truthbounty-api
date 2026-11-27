@@ -2,6 +2,7 @@ import { DataState } from '../../../v2/common/data-state.enum';
 import { ClaimReadModel } from '../../entities/claim-read-model.entity';
 import {
   ClaimDeadlines,
+  ClaimOutcome,
   ClaimReadModelItem,
   ClaimReadModelPhase,
   EvidenceAvailability,
@@ -13,6 +14,7 @@ export interface ClaimItemInputs {
   provenance: ReleaseProvenance;
   /** Chain finality of the claim's last applied event. */
   dataState: DataState;
+  canonicalVerdictCode: string | null;
   evidence: EvidenceAvailability;
   deadlines: ClaimDeadlines;
 }
@@ -54,6 +56,34 @@ export function toClaimReadModelItem(
 ): ClaimReadModelItem {
   const phase = deriveClaimPhase(row.state, inputs.dataState);
   const settledAt = toIso(row.settledAt);
+  const canonicalVerdictCode = inputs.canonicalVerdictCode;
+  let outcome: ClaimOutcome;
+  if (phase === 'finalized') {
+    if (canonicalVerdictCode === null) {
+      throw new Error(
+        'Finalized claim read model requires a canonical verdict code',
+      );
+    }
+    outcome = {
+      phase,
+      provisional: null,
+      final: {
+        state: row.state,
+        settledAt,
+        verdictCode: canonicalVerdictCode,
+      },
+    };
+  } else {
+    outcome = {
+      phase,
+      provisional: {
+        state: row.state,
+        settledAt,
+        verdictCode: canonicalVerdictCode,
+      },
+      final: null,
+    };
+  }
 
   return {
     claimId: row.claimId,
@@ -78,15 +108,13 @@ export function toClaimReadModelItem(
       finalizedCount: inputs.evidence.finalizedCount,
       latestBlockNumber: inputs.evidence.latestBlockNumber,
     },
-    outcome: {
-      phase,
-      provisional:
-        phase === 'finalized' ? null : { state: row.state, settledAt },
-      final: phase === 'finalized' ? { state: row.state, settledAt } : null,
-    },
+    outcome,
     release: {
       chainId: inputs.provenance.chainId,
       releaseId: inputs.provenance.releaseId,
+      artifactVersion: inputs.provenance.artifactVersion,
+      claimRegistryAddress: inputs.provenance.claimRegistryAddress,
+      verdictContractAddress: inputs.provenance.verdictContractAddress,
       deploymentBlock: inputs.provenance.deploymentBlock,
       artifactChecksum: inputs.provenance.artifactChecksum,
     },

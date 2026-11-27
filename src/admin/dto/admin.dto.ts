@@ -1,21 +1,39 @@
-import { IsString, IsNotEmpty, IsEnum, IsBoolean } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsEnum,
+  IsBoolean,
+  IsOptional,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { AdminRole } from '../entities/admin.entity';
 
 export class CreateAdminDto {
-  @ApiProperty({ description: 'Wallet address of the admin' })
+  @ApiProperty({
+    description: 'Wallet address of the admin',
+    example: '0x1234567890abcdef1234567890abcdef12345678',
+  })
   @IsString()
   @IsNotEmpty()
   walletAddress: string;
 
-  @ApiProperty({ enum: AdminRole, description: 'Admin role' })
+  @ApiPropertyOptional({
+    enum: AdminRole,
+    default: AdminRole.AUDITOR,
+    description:
+      'Role to assign to the new admin (defaults to least-privilege role: auditor). Administrators can grant roles up to administrator; only super_admin can grant super_admin.',
+  })
   @IsEnum(AdminRole)
-  @IsNotEmpty()
-  role: AdminRole;
+  @IsOptional()
+  role?: AdminRole;
 }
 
 export class UpdateAdminRoleDto {
-  @ApiProperty({ enum: AdminRole, description: 'New admin role' })
+  @ApiProperty({
+    enum: AdminRole,
+    description:
+      'New role to assign to the admin. Administrators cannot promote accounts to super_admin.',
+  })
   @IsEnum(AdminRole)
   @IsNotEmpty()
   role: AdminRole;

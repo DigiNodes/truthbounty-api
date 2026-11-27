@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotificationsProcessor } from './notifications.processor';
+import { NotificationDispatchControlGuard } from './services/notification-dispatch-control.guard';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Notification } from './entities/notification.entity';
 import { NotificationPreference } from './entities/notification-preference.entity';
@@ -32,6 +33,12 @@ describe('NotificationsProcessor', () => {
         {
           provide: getRepositoryToken(NotificationPreference),
           useValue: mockPreferenceRepository,
+        },
+        {
+          provide: NotificationDispatchControlGuard,
+          useValue: {
+            isNotificationsEnabled: jest.fn().mockResolvedValue(true),
+          },
         },
       ],
     }).compile();

@@ -40,10 +40,46 @@ export enum DeliveryChannel {
 
 export enum DeliveryStatus {
   PENDING = 'pending',
+  PROCESSING = 'processing',
   DELIVERED = 'delivered',
   FAILED = 'failed',
+  EXPIRED = 'expired',
   PERMANENT_FAILURE = 'permanent_failure',
   RETRYING = 'retrying',
+}
+
+/**
+ * Context required to derive a durable delivery claim key. An explicit
+ * `idempotencyKey` may be supplied by an upstream outbox; otherwise the key is
+ * built from event/recipient/channel/aggregate identity.
+ */
+export interface DeliveryClaimContext {
+  idempotencyKey?: string;
+  notificationId?: string;
+  eventType?: string;
+  aggregateId?: string;
+  recipientId?: string;
+  channel?: DeliveryChannel;
+  /** Provider outcome could not be confirmed before the worker stopped. */
+  providerUnconfirmed?: boolean;
+  claimTtlMs?: number;
+  uncertainTtlMs?: number;
+}
+
+export type DeliveryClaimReason =
+  | 'acquired'
+  | 'delivered'
+  | 'in_progress'
+  | 'retry_wait'
+  | 'permanent_failure'
+  | 'invalid_key';
+
+export interface DeliveryClaimResult {
+  acquired: boolean;
+  idempotencyKey: string;
+  claimId?: string;
+  status: DeliveryStatus | 'absent';
+  reason: DeliveryClaimReason;
 }
 
 export interface NotificationEvent {

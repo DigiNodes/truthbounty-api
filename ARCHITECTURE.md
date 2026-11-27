@@ -1,5 +1,28 @@
 # Event Indexer Architecture
 
+## Canonical AI Assistant implementation
+
+The production AI assistant is wired exclusively by
+`src/ai-assistant/ai-assistant.module.ts`.
+
+- Controllers: `src/ai-assistant/controllers/`
+- Conversation ownership and persistence: `ConversationService`
+- Server-side prompt assembly and safety checks: `PromptOrchestrationService`
+- Verified protocol RAG: `ContextRetrievalService`
+- Provider routing/fallback: `AiProviderRouterService` using `OpenAiProvider`
+  and `MockProvider`
+- Safety: `SafetyGuardrailService`
+
+The assistant is advisory-only. It must not execute protocol mutations, sign
+transactions, or move funds. Every send and stream path performs safety checks
+and RAG preparation before provider invocation. Conversation reads, sends,
+archives, and deletes require the authenticated owner. RAG retrieval failures
+fail closed and do not call a provider.
+
+The removed root-level `ai-assistant.service.ts`, `rag.service.ts`,
+`llm-provider.service.ts`, and their previous `services/` copies are not
+production implementations and must not be reintroduced.
+
 ## High-Level System Diagram
 test in webdev
 ```

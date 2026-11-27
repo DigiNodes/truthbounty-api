@@ -20,14 +20,22 @@ describe('Claims (e2e)', () => {
     await app.close();
   });
 
-  it('GET /claims/:id should return 404 for unknown id', async () => {
+  it('GET /claims/:id returns 410 instead of serving legacy rows', async () => {
     const unknownId = 'non-existent-id';
 
     await request(app.getHttpServer())
       .get(`/claims/${unknownId}`)
-      .expect(404)
+      .expect(410)
       .expect((res) => {
-        expect(res.body.message).toContain('not found');
+        expect(res.body.code).toBe('CANONICAL_CHAIN_STATE_REQUIRED');
+        expect(res.body.canonicalPath).toBe('/api/v2/claim-read-models');
       });
+  });
+
+  it('POST /claims remains authenticated before reaching the deprecated handler', async () => {
+    await request(app.getHttpServer())
+      .post('/claims')
+      .send({ title: 'Test claim', content: 'Not persisted' })
+      .expect(403);
   });
 });

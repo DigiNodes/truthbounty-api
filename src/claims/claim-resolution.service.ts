@@ -1,14 +1,13 @@
 import {
+  BadRequestException,
   Injectable,
   Logger,
 } from '@nestjs/common';
-import { Repository, DataSource } from 'typeorm';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Claim, ClaimState } from './entities/claim.entity';
-import { ClaimsCache } from '../cache/claims.cache';
+import { ClaimState } from './entities/claim.entity';
 import { ClaimError, ClaimErrorCode } from './claim-errors';
 import { SupportSecretScannerService } from '../support/support-secret-scanner.service';
 import { SupportSubmission } from '../support/entities/support-submission.entity';
+import { rejectLegacyProtocolOperation } from './protocol-authority';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -25,12 +24,6 @@ export interface ConfidenceResult {
   margin: number;
   participation: number;
   totalWeight: number;
-}
-
-export interface ResolutionResult {
-  claim: Claim;
-  confidence: ConfidenceResult | null;
-  resolvedAt: Date;
 }
 
 export interface SupportSubmissionScanResult {
@@ -72,10 +65,6 @@ export class ClaimResolutionService {
   private readonly SECRET_QUARANTINE_THRESHOLD = 0.8;
 
   constructor(
-    @InjectRepository(Claim)
-    private readonly claimRepo: Repository<Claim>,
-    private readonly claimsCache: ClaimsCache,
-    private readonly dataSource: DataSource,
     private readonly secretScanner?: SupportSecretScannerService,
   ) {}
 
@@ -127,86 +116,14 @@ export class ClaimResolutionService {
 
   // ─── Resolution ─────────────────────────────────────────────────────────
 
-  /**
-   * Resolve a claim by persisting the verdict and confidence score.
-   *
-   * - Throws `NotFoundException`   if the claim does not exist.
-   * - Throws `ConflictException`   if the claim is already finalized.
-   * - Throws `BadRequestException` if votes fail basic validation.
-   *
-   * The DB save and cache invalidation run inside a transaction so a failed
-   * cache call cannot leave the claim in an inconsistent state.
-   */
+  /** Reject API-authoritative claim resolution; outcomes come from protocol events. */
   async resolveClaim(
-    claimId: string,
-    votes: VoteWeightSummary,
-  ): Promise<ResolutionResult> {
-    this.validateVotes(votes);
-
-    const claim = await this.claimRepo.findOneBy({ id: claimId });
-    if (!claim) {
-      throw new ClaimError(
-        ClaimErrorCode.CLAIM_NOT_FOUND,
-        'Claim not found',
-      );
-    }
-
-    if (claim.finalized) {
-      throw new ClaimError(
-        ClaimErrorCode.CLAIM_ALREADY_FINALIZED,
-        'Claim is already finalized and cannot be re-resolved',
-      );
-    }
-
-    const confidence = this.computeConfidenceScore(votes);
-    const resolvedAt = new Date();
-
-    const savedClaim = await this.dataSource.transaction(async (manager) => {
-      if (confidence) {
-        // Use transitionTo helper for validated state transition
-        // transitionTo also sets resolvedAt on first resolution
-        claim.transitionTo(ClaimState.FINALIZED, {
-          verdict: confidence.verdict === 'true',
-          confidence: confidence.score,
-        });
-      } else {
-        // Insufficient participation — record as inconclusive
-        // Direct assignment since transitionTo requires both verdict and confidence
-        claim.resolvedVerdict = null;
-        claim.confidenceScore = null;
-        claim.finalized = true;
-        // Set resolvedAt for the inconclusive path (only if not already set)
-        if (!claim.resolvedAt) {
-          claim.resolvedAt = resolvedAt;
-        }
-      }
-
-      // Ensure resolvedAt is always set on any resolved/finalized claim
-      if (!claim.resolvedAt) {
-        claim.resolvedAt = resolvedAt;
-      }
-
-      return manager.save(claim);
-    });
-
-    await this.claimsCache.invalidateClaim(claimId);
-
-    this.logger.log(
-      confidence
-        ? `Claim ${claimId} resolved: verdict=${confidence.verdict}, ` +
-            `score=${confidence.score}, margin=${confidence.margin.toFixed(3)}, ` +
-            `participation=${confidence.participation.toFixed(3)}`
-        : `Claim ${claimId} resolved as inconclusive (insufficient participation — ` +
-            `total weight ${votes.trueWeight + votes.falseWeight} < ${this.MIN_REQUIRED_WEIGHT})`,
+    _claimId: string,
+    _votes: VoteWeightSummary,
+  ): Promise<never> {
+    return rejectLegacyProtocolOperation(
+      'The API cannot resolve or finalize claims. Outcomes must come from canonical protocol events.',
     );
-
-    if (confidence && confidence.score >= this.STRONG_CONSENSUS_THRESHOLD) {
-      this.logger.log(
-        `Claim ${claimId} reached strong consensus (score ${confidence.score})`,
-      );
-    }
-
-    return { claim: savedClaim, confidence, resolvedAt };
   }
 
   // ─── Support submission secret scanning ─────────────────────────────────
@@ -291,17 +208,6 @@ export class ClaimResolutionService {
   }
 
   // ─── Helpers ────────────────────────────────────────────────────────────
-
-  /**
-   * Check whether a claim has already been finalized without loading the
-   * full entity — useful for lightweight pre-flight checks in controllers.
-   */
-  async isFinalized(claimId: string): Promise<boolean> {
-    const count = await this.claimRepo.count({
-      where: { id: claimId, finalized: true },
-    });
-    return count > 0;
-  }
 
   /**
    * Guard for state transitions that must be contract-derived. Callers that

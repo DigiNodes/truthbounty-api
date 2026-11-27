@@ -1278,6 +1278,7 @@ export type ReportJobCreateManyArgs<ExtArgs extends runtime.Types.Extensions.Int
    * The data used to create many ReportJobs.
    */
   data: Prisma.ReportJobCreateManyInput | Prisma.ReportJobCreateManyInput[]
+  skipDuplicates?: boolean
 }
 
 /**
@@ -1296,6 +1297,7 @@ export type ReportJobCreateManyAndReturnArgs<ExtArgs extends runtime.Types.Exten
    * The data used to create many ReportJobs.
    */
   data: Prisma.ReportJobCreateManyInput | Prisma.ReportJobCreateManyInput[]
+  skipDuplicates?: boolean
 }
 
 /**
