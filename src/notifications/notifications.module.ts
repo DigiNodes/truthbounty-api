@@ -12,6 +12,7 @@ import { OutboxModule } from '../outbox/outbox.module';
 import { NotificationsController } from './controllers/notifications.controller';
 import { InternalNotificationController } from './controllers/internal-notification.controller';
 import { PreferencesController } from './controllers/preferences.controller';
+import { EmailVerificationController } from './controllers/email-verification.controller';
 import { NotificationsService } from './services/notifications.service';
 import { NotificationPreferencesService } from './services/notification-preferences.service';
 import { PreferenceEnforcer } from './services/preference-enforcer.service';
@@ -25,9 +26,11 @@ import { WebhookService } from './services/webhook.service';
 import { NotificationProcessor } from './services/notification.processor';
 import { NotificationEventPublisher } from './services/notification-event-publisher.service';
 import { VerificationEventPublisher } from './services/verification-event-publisher.service';
+import { EmailVerificationService } from './services/email-verification.service';
 import { Notification } from './entities/notification.entity';
 import { NotificationPreference } from './entities/notification-preference.entity';
 import { DeliveryHistory } from './entities/delivery-history.entity';
+import { EmailVerificationChallenge } from './entities/email-verification-challenge.entity';
 import { CanonicalEvent } from '../v2/events/entities/canonical-event.entity';
 import { ProjectVerificationRound } from '../v2/verification/entities/project-verification-round.entity';
 import { ProjectParticipantPosition } from '../v2/verification/entities/project-participant-position.entity';
@@ -39,6 +42,7 @@ import { User } from '../entities/user.entity';
       Notification,
       NotificationPreference,
       DeliveryHistory,
+      EmailVerificationChallenge,
       CanonicalEvent,
       ProjectVerificationRound,
       ProjectParticipantPosition,
@@ -74,6 +78,7 @@ import { User } from '../entities/user.entity';
     NotificationsController,
     InternalNotificationController,
     PreferencesController,
+    EmailVerificationController,
   ],
   providers: [
     NotificationsService,
@@ -89,6 +94,7 @@ import { User } from '../entities/user.entity';
     NotificationGateway,
     NotificationEventPublisher,
     VerificationEventPublisher,
+    EmailVerificationService,
   ],
   exports: [
     NotificationsService,
@@ -100,6 +106,7 @@ import { User } from '../entities/user.entity';
     NotificationGateway,
     NotificationEventPublisher,
     VerificationEventPublisher,
+    EmailVerificationService,
   ],
 })
 export class NotificationsModule {}

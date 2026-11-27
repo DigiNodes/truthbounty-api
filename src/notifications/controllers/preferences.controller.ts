@@ -6,6 +6,8 @@ import {
   Delete,
   Body,
   Param,
+  HttpCode,
+  HttpStatus,
   UseGuards,
   Logger,
   BadRequestException,
@@ -16,6 +18,7 @@ import { Public } from '../../decorators/public.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { PreferenceEnforcer } from '../services/preference-enforcer.service';
 import { WebhookPreferencesService } from '../services/webhook-preferences.service';
+import { EmailVerificationService } from '../services/email-verification.service';
 import { NotificationPreference } from '../entities/notification-preference.entity';
 import {
   ConfigureWebhookDto,
@@ -39,6 +42,7 @@ export class PreferencesController {
   constructor(
     private preferenceEnforcer: PreferenceEnforcer,
     private webhookPreferences: WebhookPreferencesService,
+    private emailVerificationService: EmailVerificationService,
   ) {}
 
   /**
@@ -160,20 +164,57 @@ export class PreferencesController {
   }
 
   /**
-   * Update email address
+   * Request a notification-email ownership challenge.
+   *
+   * Replaces the previous unsafe direct-write behaviour.  The supplied address
+   * is NOT activated for delivery until the user confirms ownership via
+   * POST /email/verify/confirm.  Use the dedicated EmailVerificationController
+   * endpoints to complete the verification flow.
+   *
+   * This endpoint is kept here (at PATCH /preferences/email) for backwards
+   * compatibility with existing clients; it now delegates to the
+   * EmailVerificationService rather than writing the address directly.
    */
   @Patch('email')
-  @ApiOperation({ summary: 'Update notification email' })
-  @ApiResponse({ status: 200, type: NotificationPreferenceResponseDto })
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({
+    summary:
+      'Request notification email change — triggers an ownership challenge',
+  })
+  @ApiResponse({
+    status: 202,
+    description:
+      'Verification challenge issued. Submit the token to ' +
+      'POST /preferences/email/verify/confirm to activate the address.',
+    schema: {
+      properties: {
+        message: { type: 'string' },
+        expiresAt: { type: 'string', format: 'date-time' },
+        token: { type: 'string' },
+      },
+    },
+  })
+  @ApiResponse({ status: 400, description: 'Invalid email address' })
+  @ApiResponse({
+    status: 409,
+    description: 'Resend throttle — too many recent requests',
+  })
   async updateEmail(
     @CurrentUser('id') userId: string,
     @Body() { email }: { email: string },
-  ): Promise<NotificationPreferenceResponseDto> {
-    // TODO: Verify email before setting
-    const prefs = await this.preferenceEnforcer.getPreferences(userId);
-    prefs.emailAddress = email;
-    const saved = await this.preferenceEnforcer.updatePreferences(userId, prefs);
-    return toNotificationPreferenceResponse(saved);
+  ): Promise<{ message: string; expiresAt: Date; token: string }> {
+    this.logger.debug(`Email update requested by user ${userId}`);
+
+    const { token, expiresAt } =
+      await this.emailVerificationService.requestChallenge(userId, email);
+
+    return {
+      message:
+        'A verification challenge has been issued. ' +
+        'Submit the token to POST /preferences/email/verify/confirm to activate the address.',
+      expiresAt,
+      token,
+    };
   }
 
   /**

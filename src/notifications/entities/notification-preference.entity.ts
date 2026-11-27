@@ -139,11 +139,23 @@ export class NotificationPreference {
   maxEmailsPerDay?: number;
 
   /**
-   * Email address for email notifications
-   * If null, uses user's verified email from User entity
+   * Email address for email notifications.
+   * If null, uses user's verified email from User entity.
+   *
+   * This field is only populated once the address has been confirmed through
+   * an EmailVerificationChallenge.  Setting it directly (e.g. from the
+   * preference update path) is not permitted — use EmailVerificationService.
    */
   @Column({ type: 'varchar', nullable: true })
   emailAddress?: string;
+
+  /**
+   * Whether the current emailAddress has been confirmed via an ownership
+   * challenge.  False/null means the address is unverified and must not
+   * receive notification payloads.
+   */
+  @Column({ type: 'boolean', default: false })
+  emailAddressVerified: boolean;
 
   /**
    * Webhook configuration for custom integrations.
