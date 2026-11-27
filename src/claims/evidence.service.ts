@@ -1,27 +1,12 @@
-import {
-  BadRequestException,
-  Injectable,
-  Logger,
-  NotFoundException,
-} from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Injectable } from '@nestjs/common';
 import { Evidence } from './entities/evidence.entity';
 import { EvidenceVersion } from './entities/evidence-version.entity';
-import {
-  AuditTrailService,
-  AuditLogInput,
-} from '../audit/services/audit-trail.service';
-import {
-  AuditActionType,
-  AuditEntityType,
-} from '../audit/entities/audit-log.entity';
-import { IpfsService } from '../ipfs/ipfs.service';
 import {
   EvidenceListQueryDto,
   EvidenceVersionQueryDto,
 } from './dto/evidence-query.dto';
-import { CidDigest, extractCidDigest } from './evidence-digest.util';
+import { CidDigest } from './evidence-digest.util';
+import { rejectLegacyProtocolOperation } from './protocol-authority';
 
 export interface PaginationMeta {
   total: number;
@@ -35,18 +20,6 @@ export interface Paginated<T> {
   meta: PaginationMeta;
 }
 
-/**
- * Distinct availability outcome separating missing on-chain registration from
- * unavailable off-chain content:
- *
- * - ONCHAIN_NOT_REGISTERED: the indexer has not projected an on-chain
- *   registration for this evidence aggregate. This is a registration (state)
- *   problem, not a content problem.
- * - OFFCHAIN_UNAVAILABLE: the evidence is registered on-chain but the
- *   off-chain content (CID / safe gateway) is not currently available.
- * - AVAILABLE: registered on-chain and off-chain content is addressable via a
- *   safe gateway.
- */
 export enum EvidenceAvailability {
   AVAILABLE = 'AVAILABLE',
   ONCHAIN_NOT_REGISTERED = 'ONCHAIN_NOT_REGISTERED',
@@ -64,367 +37,112 @@ export interface EvidenceAvailabilityStatus {
 
 @Injectable()
 export class EvidenceService {
-  private readonly logger = new Logger(EvidenceService.name);
-  constructor(
-    @InjectRepository(Evidence)
-    private readonly evidenceRepository: Repository<Evidence>,
-    @InjectRepository(EvidenceVersion)
-    private readonly evidenceVersionRepository: Repository<EvidenceVersion>,
-    private readonly auditTrailService: AuditTrailService,
-    private readonly ipfsService: IpfsService,
-  ) {}
-
-  // ─── Write / mutate paths (unchanged behaviour, rebuilt cleanly) ──────────
-
   async createEvidence(
-    claimId: string,
-    cid: string,
-    userId?: string,
-    hash?: string,
+    _claimId: string,
+    _cid: string,
+    _userId?: string,
+    _hash?: string,
   ): Promise<Evidence> {
-    // Check if evidence with the same CID already exists for this claim
-    // This helps prevent duplicates even without idempotency keys
-    const existingEvidence = await this.evidenceRepository.findOne({
-      where: { claimId },
-      relations: { versions: true },
-    });
-
-    if (existingEvidence) {
-      const latestVersion = existingEvidence.versions.find(
-        (v) => v.version === existingEvidence.latestVersion,
-      );
-      if (latestVersion && latestVersion.cid === cid) {
-        this.logger.log(
-          `Duplicate evidence detected for claim ${claimId} with CID: ${cid}, returning existing: ${existingEvidence.id}`,
-        );
-        return existingEvidence;
-      }
-    }
-
-    const evidence = this.evidenceRepository.create({
-      claimId,
-      latestVersion: 1,
-    });
-    const savedEvidence = await this.evidenceRepository.save(evidence);
-
-    const version = this.evidenceVersionRepository.create({
-      evidenceId: savedEvidence.id,
-      version: 1,
-      cid,
-      hash,
-      submittedBy: userId,
-    });
-    await this.evidenceVersionRepository.save(version);
-
-    await this.safeAudit({
-      actionType: AuditActionType.EVIDENCE_SUBMITTED,
-      entityType: AuditEntityType.EVIDENCE,
-      entityId: savedEvidence.id,
-      userId,
-      description: `Evidence submitted for claim ${claimId} with CID: ${cid}`,
-      afterState: { id: savedEvidence.id, claimId, version: 1, cid, hash },
-    });
-
-    return savedEvidence;
+    return rejectLegacyProtocolOperation(
+      'The API cannot register evidence. Submit a user-authorized contract transaction and wait for its canonical event.',
+      '/v2/claims/{claimId}/evidence',
+    );
   }
 
   async addEvidenceVersion(
-    evidenceId: string,
-    cid: string,
-    userId?: string,
-    hash?: string,
+    _evidenceId: string,
+    _cid: string,
+    _userId?: string,
+    _hash?: string,
   ): Promise<EvidenceVersion> {
-    const evidence = await this.evidenceRepository.findOneBy({
-      id: evidenceId,
-    });
-    if (!evidence) {
-      throw new NotFoundException(`Evidence with ID ${evidenceId} not found`);
-    }
-
-    const newVersion = evidence.latestVersion + 1;
-    const version = this.evidenceVersionRepository.create({
-      evidenceId,
-      version: newVersion,
-      cid,
-      hash,
-      submittedBy: userId,
-    });
-    const savedVersion = await this.evidenceVersionRepository.save(version);
-
-    evidence.latestVersion = newVersion;
-    await this.evidenceRepository.save(evidence);
-
-    await this.safeAudit({
-      actionType: AuditActionType.EVIDENCE_UPDATED,
-      entityType: AuditEntityType.EVIDENCE,
-      entityId: evidenceId,
-      userId,
-      description: `Evidence updated to version ${newVersion} with CID: ${cid}`,
-      afterState: { id: evidenceId, version: newVersion, cid, hash },
-    });
-
-    return savedVersion;
+    return rejectLegacyProtocolOperation(
+      'The API cannot replace registered evidence. Submit a user-authorized replacement transaction and wait for its canonical event.',
+      '/v2/claims/{claimId}/evidence',
+    );
   }
 
-  // ─── Read paths (legacy shape) ────────────────────────────────────────────
-
-  async getEvidence(evidenceId: string): Promise<Evidence | null> {
-    return this.evidenceRepository.findOne({
-      where: { id: evidenceId },
-      relations: { versions: true },
-      order: { versions: { version: 'ASC' } },
-    });
+  async getEvidence(_evidenceId: string): Promise<Evidence | null> {
+    return rejectLegacyProtocolOperation(
+      'Legacy evidence rows are not canonical. Query the V2 event projection by claim ID.',
+      '/v2/claims/{claimId}/evidence',
+    );
   }
 
-  async getEvidenceOrFail(evidenceId: string): Promise<Evidence> {
-    const evidence = await this.getEvidence(evidenceId);
-    if (!evidence) {
-      throw new NotFoundException(`Evidence with ID ${evidenceId} not found`);
-    }
-    return evidence;
+  async getEvidenceOrFail(_evidenceId: string): Promise<Evidence> {
+    return rejectLegacyProtocolOperation(
+      'Legacy evidence rows are not canonical. Query the V2 event projection by claim ID.',
+      '/v2/claims/{claimId}/evidence',
+    );
   }
 
   async getLatestEvidenceVersion(
-    evidenceId: string,
+    _evidenceId: string,
   ): Promise<EvidenceVersion | null> {
-    const evidence = await this.evidenceRepository.findOneBy({
-      id: evidenceId,
-    });
-    if (!evidence) return null;
-    return this.evidenceVersionRepository.findOneBy({
-      evidenceId,
-      version: evidence.latestVersion,
-    });
+    return rejectLegacyProtocolOperation(
+      'Legacy evidence versions are not canonical. Query the V2 event projection by claim ID.',
+      '/v2/claims/{claimId}/evidence',
+    );
   }
 
-  async getEvidenceForClaim(claimId: string): Promise<Evidence[]> {
-    return this.evidenceRepository.find({
-      where: { claimId },
-      relations: { versions: true },
-      order: { createdAt: 'ASC', versions: { version: 'ASC' } },
-    });
+  async getEvidenceForClaim(_claimId: string): Promise<Evidence[]> {
+    return rejectLegacyProtocolOperation(
+      'Legacy evidence rows are not canonical. Query the V2 event projection by claim ID.',
+      '/v2/claims/{claimId}/evidence',
+    );
   }
 
   async getLatestEvidenceForClaim(
-    claimId: string,
+    _claimId: string,
   ): Promise<EvidenceVersion | null> {
-    const evidences = await this.getEvidenceForClaim(claimId);
-    if (evidences.length === 0) return null;
-    const evidence = evidences[0];
-    return this.evidenceVersionRepository.findOneBy({
-      evidenceId: evidence.id,
-      version: evidence.latestVersion,
-    });
+    return rejectLegacyProtocolOperation(
+      'Legacy evidence rows are not canonical. Query the V2 event projection by claim ID.',
+      '/v2/claims/{claimId}/evidence',
+    );
   }
 
-  // ─── V2-BE-025 query surface ──────────────────────────────────────────────
-
-  /**
-   * List evidence with bounded pagination and deterministic ordering
-   * (created ASC for a stable cursor across pages, keyed by id for ties).
-   */
-  async listEvidence(
-    query: EvidenceListQueryDto,
-  ): Promise<Paginated<Evidence>> {
-    const page = query.page ?? 1;
-    const limit = query.limit ?? 20;
-    const skip = (page - 1) * limit;
-
-    const where = query.claimId !== undefined ? { claimId: query.claimId } : {};
-
-    const [rows, total] = await this.evidenceRepository.findAndCount({
-      where,
-      relations: { versions: true },
-      skip,
-      take: limit,
-      order: { createdAt: 'ASC', id: 'ASC' },
-    });
-
-    return {
-      data: rows,
-      meta: {
-        total,
-        page,
-        limit,
-        totalPages: total === 0 ? 0 : Math.ceil(total / limit),
-      },
-    };
+  async listEvidence(_query: EvidenceListQueryDto): Promise<Paginated<Evidence>> {
+    return rejectLegacyProtocolOperation(
+      'Legacy evidence rows are not canonical. Query the V2 event projection by claim ID.',
+      '/v2/claims/{claimId}/evidence',
+    );
   }
 
-  /**
-   * List the versions of an evidence aggregate with deterministic ordering
-   * (version DESC, newest first).
-   */
   async listEvidenceVersions(
-    evidenceId: string,
-    query: EvidenceVersionQueryDto,
+    _evidenceId: string,
+    _query: EvidenceVersionQueryDto,
   ): Promise<Paginated<EvidenceVersion>> {
-    const evidence = await this.evidenceRepository.findOneBy({
-      id: evidenceId,
-    });
-    if (!evidence) {
-      throw new NotFoundException(`Evidence with ID ${evidenceId} not found`);
-    }
-
-    const page = query.page ?? 1;
-    const limit = query.limit ?? 20;
-    const skip = (page - 1) * limit;
-
-    const [rows, total] = await this.evidenceVersionRepository.findAndCount({
-      where: { evidenceId },
-      skip,
-      take: limit,
-      order: { version: 'DESC' },
-    });
-
-    return {
-      data: rows,
-      meta: {
-        total,
-        page,
-        limit,
-        totalPages: total === 0 ? 0 : Math.ceil(total / limit),
-      },
-    };
+    return rejectLegacyProtocolOperation(
+      'Legacy evidence versions are not canonical. Query the V2 event projection by claim ID.',
+      '/v2/claims/{claimId}/evidence',
+    );
   }
 
-  /**
-   * Resolve a specific version (or the latest) for an evidence aggregate.
-   */
-  private async resolveVersion(
-    evidenceId: string,
-    requestedVersion?: number,
-  ): Promise<EvidenceVersion> {
-    const evidence = await this.evidenceRepository.findOneBy({
-      id: evidenceId,
-    });
-    if (!evidence) {
-      throw new NotFoundException(`Evidence with ID ${evidenceId} not found`);
-    }
-
-    if (requestedVersion === undefined) {
-      const latest = await this.evidenceVersionRepository.findOneBy({
-        evidenceId,
-        version: evidence.latestVersion,
-      });
-      if (!latest) {
-        throw new NotFoundException(
-          `No versions exist for Evidence with ID ${evidenceId}`,
-        );
-      }
-      return latest;
-    }
-
-    const version = await this.evidenceVersionRepository.findOneBy({
-      evidenceId,
-      version: requestedVersion,
-    });
-    if (!version) {
-      throw new NotFoundException(
-        `Evidence ${evidenceId} has no version ${requestedVersion}`,
-      );
-    }
-    return version;
-  }
-
-  /**
-   * Content digest for an evidence version. The CID itself carries the
-   * multihash content digest; this validates the CID is parseable before
-   * exposing it.
-   */
   async getContentDigest(
-    evidenceId: string,
-    requestedVersion?: number,
+    _evidenceId: string,
+    _requestedVersion?: number,
   ): Promise<CidDigest> {
-    const version = await this.resolveVersion(evidenceId, requestedVersion);
-    const digest = extractCidDigest(version.cid);
-    if (!digest) {
-      throw new BadRequestException(
-        `CID stored on Evidence ${evidenceId} version ${version.version} is not a valid CID`,
-      );
-    }
-    return digest;
+    return rejectLegacyProtocolOperation(
+      'Legacy evidence digests are not canonical. Query the V2 event projection by claim ID.',
+      '/v2/claims/{claimId}/evidence',
+    );
   }
 
-  /**
-   * Safe gateway metadata for an evidence version. The URL is produced by the
-   * IpfsService gateway sanitizer and is undefined when no safe gateway
-   * address is available (e.g. local-only provider or unsafe input).
-   */
   async getSafeGateway(
-    evidenceId: string,
-    requestedVersion?: number,
+    _evidenceId: string,
+    _requestedVersion?: number,
   ): Promise<{ cid: string; gatewayUrl?: string }> {
-    const version = await this.resolveVersion(evidenceId, requestedVersion);
-    const gatewayUrl = this.ipfsService.getGatewayUrl(version.cid);
-    return { cid: version.cid, gatewayUrl };
+    return rejectLegacyProtocolOperation(
+      'Legacy evidence CIDs are not canonical. Query the V2 event projection by claim ID.',
+      '/v2/claims/{claimId}/evidence',
+    );
   }
 
-  /**
-   * Distinguish missing on-chain registration from unavailable off-chain
-   * content. Registration is event-derived (the indexer projection), while
-   * content availability depends on whether a safe gateway can address the CID.
-   */
   async getAvailabilityStatus(
-    evidenceId: string,
+    _evidenceId: string,
   ): Promise<EvidenceAvailabilityStatus> {
-    const evidence = await this.evidenceRepository.findOneBy({
-      id: evidenceId,
-    });
-    if (!evidence) {
-      throw new NotFoundException(`Evidence with ID ${evidenceId} not found`);
-    }
-
-    const latest = await this.evidenceVersionRepository.findOneBy({
-      evidenceId,
-      version: evidence.latestVersion,
-    });
-
-    if (!evidence.onChainRegistered) {
-      return {
-        evidenceId,
-        latestVersion: evidence.latestVersion,
-        availability: EvidenceAvailability.ONCHAIN_NOT_REGISTERED,
-        onChainRegistered: false,
-      };
-    }
-
-    const cid = latest?.cid;
-    if (!cid) {
-      return {
-        evidenceId,
-        latestVersion: evidence.latestVersion,
-        availability: EvidenceAvailability.OFFCHAIN_UNAVAILABLE,
-        onChainRegistered: true,
-      };
-    }
-
-    const gatewayUrl = this.ipfsService.getGatewayUrl(cid);
-    if (!gatewayUrl) {
-      return {
-        evidenceId,
-        latestVersion: evidence.latestVersion,
-        availability: EvidenceAvailability.OFFCHAIN_UNAVAILABLE,
-        onChainRegistered: true,
-        cid,
-      };
-    }
-
-    return {
-      evidenceId,
-      latestVersion: evidence.latestVersion,
-      availability: EvidenceAvailability.AVAILABLE,
-      onChainRegistered: true,
-      cid,
-      gatewayUrl,
-    };
-  }
-
-  private async safeAudit(input: AuditLogInput): Promise<void> {
-    try {
-      await this.auditTrailService.log(input);
-    } catch {
-      // Audit failures must never break the evidence write path.
-    }
+    return rejectLegacyProtocolOperation(
+      'Legacy evidence status is not canonical. Query the V2 event projection by claim ID.',
+      '/v2/claims/{claimId}/evidence',
+    );
   }
 }

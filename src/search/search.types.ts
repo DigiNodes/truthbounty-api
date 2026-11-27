@@ -52,4 +52,5 @@ export interface GlobalSearchResult {
   claims: SearchResult<unknown>;
   disputes: SearchResult<unknown>;
   users: SearchResult<PublicUserResult>;
+  warnings: string[];
 }

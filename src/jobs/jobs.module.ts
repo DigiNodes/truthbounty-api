@@ -17,6 +17,7 @@ import { QueueName } from './jobs.types';
   imports: [
     RedisModule,
     TypeOrmModule.forFeature([Stake, Wallet, User]),
+    AggregationModule,
     SybilResistanceModule,
     BullModule.registerQueue(
       { name: QueueName.DEFAULT },
