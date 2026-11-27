@@ -153,40 +153,9 @@ export class GovernanceProjectionService {
     const description = this.readString(event, 'description');
     const proposer = this.readAddress(event, 'proposer') ?? '0x0';
 
-    // #889: the row stores the Governor proposal id, not the bare
-    // descriptionHash carried in the event payload.
-    const proposalHash = descriptionHash
-      ? this.decoder.computeProposalHash(
-          targets,
-          values,
-          calldatas,
-          descriptionHash,
-        )
-      : '';
-
-    // Decode every call against the approved ABI for its target.
-    const proposalRow = await this.upsertProposal({
-      chainId: event.chainId,
-      proposalId,
-      governorAddress: event.contractAddress,
-      proposer,
-      proposalHash,
-      description,
-      state: ProposalChainState.PENDING,
-      eta: null,
-      stateChangedAtBlock: event.blockNumber,
-      stateChangedAt: event.blockTimestamp,
-      artifactVersion: event.artifactVersion,
-      lastEventTxHash: event.txHash,
-      lastEventLogIndex: event.logIndex,
-    });
-
-    // Replace actions atomically for this proposal version.
-    await this.actions.delete({
-      chainId: event.chainId,
-      proposalId,
-    });
-
+    // Decode every call against the approved ABI for its target *before* any
+    // write, so a decoding failure leaves the last committed projection intact.
+    const decodedActions: Partial<GovernanceAction>[] = [];
     for (let i = 0; i < targets.length; i++) {
       const artifact = await this.artifactRegistry.resolve(
         event.chainId,
@@ -198,23 +167,60 @@ export class GovernanceProjectionService {
         calldatas[i] ?? '0x',
         artifact?.iface ?? null,
       );
-      await this.actions.save(
-        this.actions.create({
-          chainId: event.chainId,
-          proposalId,
-          actionIndex: i,
-          target: decoded.target,
-          valueWei: decoded.valueWei,
-          calldata: decoded.calldata,
-          selector: decoded.selector,
-          functionSignature: decoded.functionSignature,
-          selectorUnknown: decoded.selectorUnknown,
-          decodedArgs: decoded.decodedArgs,
-          calldataChecksum: decoded.calldataChecksum,
-          artifactVersion: event.artifactVersion,
-        }),
-      );
+      decodedActions.push({
+        chainId: event.chainId,
+        proposalId,
+        actionIndex: i,
+        target: decoded.target,
+        valueWei: decoded.valueWei,
+        calldata: decoded.calldata,
+        selector: decoded.selector,
+        functionSignature: decoded.functionSignature,
+        selectorUnknown: decoded.selectorUnknown,
+        decodedArgs: decoded.decodedArgs,
+        calldataChecksum: decoded.calldataChecksum,
+        artifactVersion: event.artifactVersion,
+      });
     }
+
+    // The proposal row and its replacement action set commit as one atomic
+    // projection (#893): any failure rolls the whole replacement back, so a
+    // reader can never observe a proposal with partially replaced actions.
+    const proposalRow = await this.proposals.manager.transaction(
+      async (manager) => {
+        const proposals = manager.getRepository(GovernanceProposal);
+        const actions = manager.getRepository(GovernanceAction);
+
+        const row = await this.upsertProposal(
+          {
+            chainId: event.chainId,
+            proposalId,
+            governorAddress: event.contractAddress,
+            proposer,
+            proposalHash: descriptionHash ?? '',
+            description,
+            state: ProposalChainState.PENDING,
+            eta: null,
+            stateChangedAtBlock: event.blockNumber,
+            stateChangedAt: event.blockTimestamp,
+            artifactVersion: event.artifactVersion,
+            lastEventTxHash: event.txHash,
+            lastEventLogIndex: event.logIndex,
+          },
+          proposals,
+        );
+
+        // Replace actions atomically for this proposal version.
+        await actions.delete({ chainId: event.chainId, proposalId });
+        if (decodedActions.length > 0) {
+          await actions.save(
+            decodedActions.map((action) => actions.create(action)),
+          );
+        }
+
+        return row;
+      },
+    );
 
     this.logger.log(
       `Projected ProposalCreated ${proposalId} (${proposalRow.id}) with ${targets.length} call(s)`,
@@ -407,17 +413,6 @@ export class GovernanceProjectionService {
         .andWhere('e.payload LIKE :propId', {
           propId: `%"proposalId":"${proposal.proposalId}"%`,
         })
-        // #890: only lifecycle transitions restore state. A VoteCast for the
-        // same proposal must not reset a queued/executed proposal to PENDING.
-        .andWhere('e.eventName IN (:...lifecycleEvents)', {
-          lifecycleEvents: [
-            'ProposalCreated',
-            'ProposalQueued',
-            'ProposalExecuted',
-            'ProposalCanceled',
-            'ProposalExpired',
-          ],
-        })
         .orderBy('e.blockNumber', 'DESC')
         .addOrderBy('e.logIndex', 'DESC')
         .getOne();
@@ -458,8 +453,9 @@ export class GovernanceProjectionService {
 
   private async upsertProposal(
     partial: Partial<GovernanceProposal>,
+    repository: Repository<GovernanceProposal> = this.proposals,
   ): Promise<GovernanceProposal> {
-    const existing = await this.proposals.findOne({
+    const existing = await repository.findOne({
       where: {
         chainId: partial.chainId!,
         proposalId: partial.proposalId!,
@@ -467,9 +463,9 @@ export class GovernanceProjectionService {
     });
     if (existing) {
       Object.assign(existing, partial);
-      return this.proposals.save(existing);
+      return repository.save(existing);
     }
-    return this.proposals.save(this.proposals.create(partial));
+    return repository.save(repository.create(partial));
   }
 
   private readBigInt(event: CanonicalEvent, key: string): string | null {

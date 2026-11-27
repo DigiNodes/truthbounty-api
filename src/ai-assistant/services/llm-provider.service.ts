@@ -6,103 +6,166 @@ import {
 import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
+import {
+  ConfiguredAiProvider,
+  isDeployedEnvironment,
+  isRealAiProvider,
+  mockProviderAllowed,
+  normalizeAiProvider,
+  providerSecretKey,
+  redactSecrets,
+} from '../../config/ai-provider';
+
+export interface LlmResponse {
+  content: string;
+  usage: any;
+  provider: ConfiguredAiProvider;
+  model: string;
+}
 
 @Injectable()
 export class LlmProviderService {
   private readonly logger = new Logger(LlmProviderService.name);
   private openai: OpenAI | null = null;
   private anthropic: Anthropic | null = null;
-  private defaultProvider: 'openai' | 'anthropic';
-  private readonly isDeployed: boolean;
-  private readonly requestTimeoutMs: number;
+  private readonly defaultProvider: ConfiguredAiProvider;
+  private readonly deployed: boolean;
+  private readonly mockAllowed: boolean;
+  private readonly secrets: readonly (string | undefined)[];
 
   constructor(private configService: ConfigService) {
-    const nodeEnv = this.configService.get<string>('NODE_ENV');
-    this.isDeployed = nodeEnv === 'production' || nodeEnv === 'staging';
-    this.requestTimeoutMs =
-      this.configService.get<number>('AI_REQUEST_TIMEOUT_MS') ?? 15_000;
+    const openaiKey = this.readSecret('OPENAI_API_KEY');
+    const anthropicKey = this.readSecret('ANTHROPIC_API_KEY');
+    this.secrets = [openaiKey, anthropicKey];
+    if (openaiKey) this.openai = new OpenAI({ apiKey: openaiKey });
+    if (anthropicKey) this.anthropic = new Anthropic({ apiKey: anthropicKey });
 
-    const openaiKey = this.configService.get<string>('OPENAI_API_KEY');
-    if (openaiKey) {
-      this.openai = new OpenAI({ apiKey: openaiKey });
-    }
-
-    const anthropicKey = this.configService.get<string>('ANTHROPIC_API_KEY');
-    if (anthropicKey) {
-      this.anthropic = new Anthropic({ apiKey: anthropicKey });
-    }
-
-    // #885: use the validated runtime provider setting rather than an
-    // unrelated default that staging/production never validates.
-    const validated = this.configService.get<string>('AI_PROVIDER');
+    this.deployed = isDeployedEnvironment(
+      this.configService.get<string>('NODE_ENV'),
+    );
+    this.mockAllowed = mockProviderAllowed(
+      this.configService.get<string>('NODE_ENV'),
+      this.configService.get<string | boolean>('LOCAL_DEV_MODE'),
+    );
     this.defaultProvider =
-      validated === 'openai' || validated === 'anthropic'
-        ? validated
-        : this.configService.get<'openai' | 'anthropic'>(
-            'DEFAULT_LLM_PROVIDER',
-          ) || 'openai';
+      normalizeAiProvider(
+        this.configService.get<string>('DEFAULT_LLM_PROVIDER') ??
+          this.configService.get<string>('AI_PROVIDER'),
+      ) ?? 'openai';
+
+    if (this.deployed) {
+      if (!isRealAiProvider(this.defaultProvider))
+        throw this.unavailable('Configured AI provider is not available.');
+      if (!this.clientFor(this.defaultProvider))
+        throw this.unavailable('Configured AI provider is not available.');
+    }
+  }
+
+  private readSecret(
+    key: 'OPENAI_API_KEY' | 'ANTHROPIC_API_KEY',
+  ): string | undefined {
+    const raw = this.configService.get<string>(key);
+    const value = typeof raw === 'string' ? raw.trim() : undefined;
+    return value || undefined;
+  }
+
+  private clientFor(provider: ConfiguredAiProvider): OpenAI | Anthropic | null {
+    if (provider === 'openai') return this.openai;
+    if (provider === 'anthropic') return this.anthropic;
+    return null;
+  }
+
+  private unavailable(detail: string): ServiceUnavailableException {
+    return new ServiceUnavailableException({
+      code: 'AI_PROVIDER_UNAVAILABLE',
+      message: detail,
+    });
+  }
+
+  private logProviderError(provider: ConfiguredAiProvider, error: unknown): void {
+    const message = error instanceof Error ? error.message : String(error);
+    this.logger.error(
+      `AI provider "${provider}" failed: ${redactSecrets(message, this.secrets)}`,
+    );
+  }
+
+  private mockResponse(
+    messages: { role: 'user' | 'assistant' | 'system'; content: string }[],
+  ): LlmResponse {
+    const lastUser = [...messages].reverse().find((message) => message.role === 'user');
+    const suffix = lastUser ? ` User said: ${lastUser.content}` : '';
+    return {
+      content: `Mock provider output. This is not a real model response.${suffix}`,
+      usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+      provider: 'mock',
+      model: 'mock-model',
+    };
   }
 
   async generateEmbedding(text: string): Promise<number[]> {
-    if (this.openai) {
+    if (!this.openai)
+      throw this.unavailable('OpenAI embeddings are not configured.');
+    try {
       const response = await this.openai.embeddings.create({
         model: 'text-embedding-3-small',
         input: text,
-        timeout: this.requestTimeoutMs,
       });
       return response.data[0].embedding;
+    } catch (error) {
+      this.logProviderError('openai', error);
+      throw this.unavailable('OpenAI embeddings are unavailable.');
     }
-    if (this.isDeployed) {
-      throw new ServiceUnavailableException('Embedding provider not configured');
-    }
-    this.logger.warn('OpenAI not configured, returning mock embedding.');
-    return new Array(1536).fill(0.1);
   }
 
   async generateResponse(
     messages: { role: 'user' | 'assistant' | 'system'; content: string }[],
-    options?: { provider?: 'openai' | 'anthropic'; signal?: AbortSignal },
-  ): Promise<{ content: string; usage: any; provider: string; model: string }> {
-    const provider = options?.provider || this.defaultProvider;
+    options?: { provider?: ConfiguredAiProvider },
+  ): Promise<LlmResponse> {
+    const provider = options?.provider ?? this.defaultProvider;
 
-    if (provider === 'openai' && this.openai) {
-      const model = 'gpt-4o-mini';
-      const response = await this.openai.chat.completions.create({
-        model,
-        messages: messages.map((m) => ({ role: m.role, content: m.content })),
-        timeout: this.requestTimeoutMs,
-        signal: options?.signal,
-      });
-      return {
-        content: response.choices[0].message.content || '',
-        usage: response.usage,
-        provider: 'openai',
-        model,
-      };
-    } else if (provider === 'anthropic' && this.anthropic) {
+    if (provider === 'mock') {
+      if (!this.mockAllowed)
+        throw this.unavailable('Mock provider is not available.');
+      return this.mockResponse(messages);
+    }
+
+    const client = this.clientFor(provider);
+    if (!client) throw this.unavailable('Configured AI provider is not available.');
+
+    try {
+      if (provider === 'openai') {
+        const model = 'gpt-4o-mini';
+        const response = await (client as OpenAI).chat.completions.create({
+          model,
+          messages: messages.map((message) => ({
+            role: message.role,
+            content: message.content,
+          })),
+        });
+        return {
+          content: response.choices[0]?.message?.content ?? '',
+          usage: response.usage,
+          provider: 'openai',
+          model: response.model || model,
+        };
+      }
+
       const model = 'claude-3-haiku-20240307';
-      const systemMessage = messages.find((m) => m.role === 'system')?.content;
-      const otherMessages = messages
-        .filter((m) => m.role !== 'system')
-        .map((m) => ({
-          role:
-            m.role === 'assistant' ? ('assistant' as const) : ('user' as const),
-          content: m.content,
-        }));
-
-      const response = await this.anthropic.messages.create({
+      const systemMessage = messages.find((message) => message.role === 'system')?.content;
+      const response = await (client as Anthropic).messages.create({
         model,
         max_tokens: 1024,
         system: systemMessage,
-        messages: otherMessages,
-        timeout: this.requestTimeoutMs,
-        signal: options?.signal,
+        messages: messages
+          .filter((message) => message.role !== 'system')
+          .map((message) => ({
+            role: message.role === 'assistant' ? ('assistant' as const) : ('user' as const),
+            content: message.content,
+          })),
       });
-
-      const content =
-        response.content[0].type === 'text' ? response.content[0].text : '';
+      const firstContent = response.content[0];
       return {
-        content,
+        content: firstContent?.type === 'text' ? firstContent.text : '',
         usage: {
           prompt_tokens: response.usage.input_tokens,
           completion_tokens: response.usage.output_tokens,
@@ -110,25 +173,11 @@ export class LlmProviderService {
             response.usage.input_tokens + response.usage.output_tokens,
         },
         provider: 'anthropic',
-        model,
+        model: response.model || model,
       };
+    } catch (error) {
+      this.logProviderError(provider, error);
+      throw this.unavailable('Configured AI provider is unavailable.');
     }
-
-    // #885: a mock answer in staging/production is indistinguishable from a
-    // real one to callers, so fail closed there.
-    if (this.isDeployed) {
-      throw new ServiceUnavailableException(
-        `LLM provider ${provider} is not configured`,
-      );
-    }
-    this.logger.warn(
-      `No valid LLM provider configured for ${provider}, using mock response.`,
-    );
-    return {
-      content: `This is a mock response from the AI Assistant because the API keys for ${provider} are not configured. You said: ${messages[messages.length - 1]?.content}`,
-      usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
-      provider: 'mock',
-      model: 'mock-model',
-    };
   }
 }
