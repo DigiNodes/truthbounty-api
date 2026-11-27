@@ -124,6 +124,28 @@ describe('Pinned OpenAPI Paths — Existence', () => {
       expect(typeof meta.breakingChange).toBe('boolean');
     }
   });
+
+  it('marks legacy claim and evidence routes as deprecated and gone', () => {
+    for (const path of [
+      'POST /claims',
+      'POST /claims/:claimId/evidence',
+      'PUT /claims/evidence/:evidenceId',
+      'GET /claims/latest',
+      'GET /claims/user/:wallet',
+      'GET /claims/:id',
+      'GET /claims/:claimId/evidence',
+      'GET /claims/:claimId/evidence/latest',
+      'GET /claims/evidence/:evidenceId',
+      'GET /api/v2/claims',
+      'GET /api/v2/claims/:id',
+    ] as const) {
+      const contract = PINNED_OPENAPI_PATHS[path];
+      expect(contract).toMatchObject({
+        deprecated: true,
+        responses: expect.arrayContaining([410]),
+      });
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

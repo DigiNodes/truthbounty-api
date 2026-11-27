@@ -8,11 +8,9 @@ import {
   Param,
   UseGuards,
   Logger,
-  BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
-import { Public } from '../../decorators/public.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { PreferenceEnforcer } from '../services/preference-enforcer.service';
 import { WebhookPreferencesService } from '../services/webhook-preferences.service';
@@ -221,55 +219,6 @@ export class PreferencesController {
   ): Promise<NotificationPreferenceResponseDto> {
     const saved = await this.webhookPreferences.removeWebhook(userId);
     return toNotificationPreferenceResponse(saved);
-  }
-
-  /**
-   * Public endpoint to unsubscribe via single-use signed token (POST).
-   */
-  @Public()
-  @Post('token-unsubscribe')
-  @ApiOperation({ summary: 'Unsubscribe via single-use signed token' })
-  @ApiResponse({ status: 200, description: 'Successfully unsubscribed' })
-  async unsubscribeViaSignedToken(
-    @Body() body: { token?: string },
-  ): Promise<{ success: boolean; message: string }> {
-    const rawToken = body?.token;
-    if (!rawToken || typeof rawToken !== 'string') {
-      throw new BadRequestException('Unsubscribe token is required');
-    }
-
-    const success = await this.preferenceEnforcer.unsubscribeViaToken(rawToken);
-    if (!success) {
-      throw new BadRequestException(
-        'Invalid, expired, or already used unsubscribe token',
-      );
-    }
-
-    return { success: true, message: 'Successfully unsubscribed from notifications' };
-  }
-
-  /**
-   * Public endpoint to unsubscribe via single-use signed token (GET link).
-   */
-  @Public()
-  @Get('token-unsubscribe/:token')
-  @ApiOperation({ summary: 'Unsubscribe via single-use signed token link' })
-  @ApiResponse({ status: 200, description: 'Successfully unsubscribed' })
-  async unsubscribeViaSignedTokenGet(
-    @Param('token') token: string,
-  ): Promise<{ success: boolean; message: string }> {
-    if (!token || typeof token !== 'string') {
-      throw new BadRequestException('Unsubscribe token is required');
-    }
-
-    const success = await this.preferenceEnforcer.unsubscribeViaToken(token);
-    if (!success) {
-      throw new BadRequestException(
-        'Invalid, expired, or already used unsubscribe token',
-      );
-    }
-
-    return { success: true, message: 'Successfully unsubscribed from notifications' };
   }
 
   /**

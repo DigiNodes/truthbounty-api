@@ -6,7 +6,7 @@ describe('DashboardService', () => {
   let incidentRepo: any;
   let reportRepo: any;
   let auditLogRepo: any;
-  let claimRepo: any;
+  let claimReadModelRepo: any;
   let jobsService: any;
   let notificationService: any;
   let redisService: any;
@@ -28,7 +28,7 @@ describe('DashboardService', () => {
     auditLogRepo = {
       createQueryBuilder: jest.fn(),
     };
-    claimRepo = {
+    claimReadModelRepo = {
       count: jest.fn().mockResolvedValue(3),
     };
     jobsService = {
@@ -51,7 +51,7 @@ describe('DashboardService', () => {
       incidentRepo,
       reportRepo,
       auditLogRepo,
-      claimRepo,
+      claimReadModelRepo,
       jobsService,
       notificationService,
       redisService,

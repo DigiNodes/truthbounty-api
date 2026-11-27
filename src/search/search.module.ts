@@ -3,7 +3,6 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
 import { SearchService } from './search.service';
 import { SearchController } from './search.controller';
-import { Claim } from '../claims/entities/claim.entity';
 import { Dispute } from '../dispute/entities/dispute.entity';
 import { User } from '../entities/user.entity';
 import { RedisModule } from '../redis/redis.module';
@@ -12,7 +11,7 @@ import { WalletThrottlerGuard } from '../common/guards/wallet-throttler.guard';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Claim, Dispute, User]),
+    TypeOrmModule.forFeature([Dispute, User]),
     RedisModule,
     forwardRef(() => AuthModule),
     ConfigModule,

@@ -1,5 +1,4 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConfigService } from '@nestjs/config';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CanonicalEventQueryService } from './canonical-event-query.service';
@@ -8,12 +7,6 @@ import { CanonicalEvent } from './entities/canonical-event.entity';
 describe('CanonicalEventQueryService', () => {
   let service: CanonicalEventQueryService;
   let repo: jest.Mocked<Repository<CanonicalEvent>>;
-  const scopeConfig = {
-    CHAIN_ID: 10,
-    CONTRACT_RELEASE_DEPLOYMENT_BLOCK: 100,
-    CONTRACT_RELEASE_ID: 'op-mainnet-v1',
-    CONTRACT_RELEASE_SHA256: 'a'.repeat(64),
-  };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -23,12 +16,6 @@ describe('CanonicalEventQueryService', () => {
           provide: getRepositoryToken(CanonicalEvent),
           useValue: {
             createQueryBuilder: jest.fn(),
-          },
-        },
-        {
-          provide: ConfigService,
-          useValue: {
-            get: (key: string) => scopeConfig[key as keyof typeof scopeConfig],
           },
         },
       ],
@@ -74,21 +61,11 @@ describe('CanonicalEventQueryService', () => {
     );
 
     expect(rows).toEqual([{ id: '1' }]);
-    expect(qb.where).toHaveBeenCalledWith('e.chainId = :chainId', {
-      chainId: 10,
-    });
-    expect(qb.andWhere).toHaveBeenNthCalledWith(
-      1,
-      'e.blockNumber >= :deploymentBlock',
-      { deploymentBlock: '100' },
+    expect(qb.andWhere).toHaveBeenCalledWith(
+      'e.chainId = :chainId',
+      { chainId: 10 },
     );
-    expect(qb.andWhere).toHaveBeenNthCalledWith(
-      2,
-      'e.artifactVersion = :releaseId',
-      { releaseId: 'op-mainnet-v1' },
-    );
-    expect(qb.andWhere).toHaveBeenNthCalledWith(
-      4,
+    expect(qb.andWhere).toHaveBeenCalledWith(
       '(e.blockNumber > :blockNumber OR (e.blockNumber = :blockNumber AND e.logIndex > :logIndex))',
       {
         blockNumber: '100',
@@ -122,7 +99,7 @@ describe('CanonicalEventQueryService', () => {
     );
 
     expect(qb.andWhere).toHaveBeenNthCalledWith(
-      4,
+      1,
       '(e.blockNumber > :blockNumber OR (e.blockNumber = :blockNumber AND e.logIndex > :logIndex))',
       {
         blockNumber: '100',
@@ -130,7 +107,7 @@ describe('CanonicalEventQueryService', () => {
       },
     );
     expect(qb.andWhere).toHaveBeenNthCalledWith(
-      8,
+      2,
       '(e.blockNumber > :blockNumber OR (e.blockNumber = :blockNumber AND e.logIndex > :logIndex))',
       {
         blockNumber: '200',
@@ -139,28 +116,13 @@ describe('CanonicalEventQueryService', () => {
     );
   });
 
-  it('fails closed without a complete configured chain and release binding', async () => {
-    const invalid = new CanonicalEventQueryService(
-      repo,
-      { get: () => undefined } as never,
-    );
+  it('fails closed for missing or unsupported chain scope', async () => {
     await expect(
-      invalid.findAfter(['EvidenceRegistered'], null, 25),
-    ).rejects.toThrow('Canonical event projector scope is not configured');
+      service.findAfter(['EvidenceRegistered'], null as never, null, 25),
+    ).rejects.toThrow('chain scope is required');
+    await expect(
+      service.findAfter(['EvidenceRegistered'], { chainId: 137 }, null, 25),
+    ).rejects.toThrow('chain scope is required');
     expect(repo.createQueryBuilder).not.toHaveBeenCalled();
-  });
-
-  it('gives each chain/release binding an independent cursor identity', () => {
-    const mainnet = service.getScopedProjectorName('v2-evidence');
-    const otherScope = new CanonicalEventQueryService(
-      repo,
-      {
-        get: (key: string) =>
-          key === 'CHAIN_ID'
-            ? 11155420
-            : scopeConfig[key as keyof typeof scopeConfig],
-      } as never,
-    );
-    expect(otherScope.getScopedProjectorName('v2-evidence')).not.toBe(mainnet);
   });
 });

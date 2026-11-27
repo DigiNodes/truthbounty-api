@@ -38,10 +38,9 @@ export class EmailService {
   async sendNotificationEmail(
     notification: Notification,
     recipientEmail: string,
-    idempotencyKey?: string,
   ): Promise<DeliveryResult> {
     this.logger.debug(
-      `Preparing to send email to ${recipientEmail} for notification ${notification.id} (idempotencyKey=${idempotencyKey ?? 'none'})`,
+      `Preparing to send email to ${recipientEmail} for notification ${notification.id}`,
     );
 
     if (!this.smtpConfigured) {

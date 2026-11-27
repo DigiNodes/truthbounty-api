@@ -1,6 +1,9 @@
 # TruthBounty API Documentation
 
-This document provides a comprehensive reference for all API endpoints in the TruthBounty API. TruthBounty is a decentralized news verification infrastructure that allows users to submit claims, provide evidence, resolve disputes, and earn rewards.
+This document provides a reference for the TruthBounty API. TruthBounty is a
+decentralized news verification infrastructure. Claim and evidence protocol
+transitions are submitted by users through their wallets; the API indexes and
+serves finalized canonical projections.
 
 ## Base URL
 
@@ -26,47 +29,36 @@ http://localhost:3000/api
 
 ---
 
-### Claims
+### Claims and evidence
 
-Manage claims and their evidence.
+The protocol is chain-authoritative. The API does not create claims or register,
+replace, or remove evidence. Claims are submitted by the user's wallet; the API
+serves only event-derived projections. Legacy routes remain as migration
+stubs and return `410 Gone` with a canonical replacement path.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/claims/latest` | Get latest claims |
-| GET | `/claims/user/:wallet` | Get claims by user wallet |
-| GET | `/claims/:id` | Get a single claim by ID |
-| POST | `/claims` | Create a new claim |
-| POST | `/claims/:claimId/evidence` | Add evidence to a claim |
-| PUT | `/claims/evidence/:evidenceId` | Update evidence with new version |
-| GET | `/claims/:claimId/evidence` | Get all evidence for a claim |
-| GET | `/claims/:claimId/evidence/latest` | Get latest evidence for a claim |
-| GET | `/claims/evidence/:evidenceId` | Get a single evidence by ID |
+| GET | `/api/v2/claim-read-models` | Canonical, release-bound claim projection |
+| GET | `/api/v2/claim-read-models/:claimId` | Canonical projected claim detail |
+| GET | `/v2/claims/:claimId/evidence` | Canonical event-projected evidence |
+| GET | `/v2/claims/:claimId/evidence/versions` | Canonical projected evidence versions |
+| GET | `/api/v2/claims/*` (legacy feed) | Deprecated compatibility path; returns 410 |
+| GET | `/claims/*` (legacy) | Deprecated compatibility path; returns 410 |
+| POST | `/claims` (legacy) | Returns 410; submit via the user's wallet |
+| POST | `/claims/:claimId/evidence` (legacy) | Returns 410; registration requires wallet transaction |
+| PUT | `/claims/evidence/:evidenceId` (legacy) | Returns 410; replacement requires wallet transaction |
 
-**Query Parameters:**
-- "limit" (optional): Number of results to return (default: 10)
+#### Chain-first lifecycle
 
-**Path Parameters:**
-- `:wallet` - Wallet address
--  `:id` - Claim ID
-- `:claimId` - Claim ID
-- `:evidenceId` - Evidence ID
-
-**Request Body (POST /claims):**
-```json
-{
-  "title": "string",
-  "content": "string",
-  "category": "string",
-  "wallet": "string"
-}
-```
-
-**Request Body (POST /claims/:claimId/evidence):**
-```json
-{
-  "cid": "string"
-}
-```
+1. Prepare and validate any off-chain content; an IPFS CID alone is not
+   protocol registration. This API currently exposes no claim-evidence upload
+   route.
+2. The user's wallet submits the claim or evidence transaction directly to the
+   approved contract. The API never signs or relays it.
+3. Wait for the contract event to reach the configured finality threshold.
+4. Read the resulting state from the canonical projection endpoints above.
+   Until ingestion completes, the claim/evidence may be pending or not found;
+   never treat a submitted transaction or uploaded CID as projected state.
 
 ---
 
@@ -569,8 +561,36 @@ The former `GET /claims/read-model/:claimId` and
 replayed an unversioned lifecycle-event table and was not a safe canonical
 projection input. No compatibility alias is retained.
 
-`POST /api/v1/blockchain/votes/simulate` is an off-chain analytics simulation.
-Its result is explicitly labeled advisory and must never be treated as claim
-state, settlement, or consensus authority.
+| HTTP Status | Code | Meaning | Retryable |
+|-------------|------|---------|----------|
+| 404 | `CANONICAL_CLAIM_NOT_FOUND` | Claim does not exist in canonical state for the bound chain / release / deployment block | false |
+| 403 | `CANONICAL_CLAIM_FORBIDDEN` | Actor is not authorized to perform the transition on this claim | false |
+| 409 | `CANONICAL_CLAIM_WRONG_PHASE` | Requested transition is not valid from the claim's current phase | false |
+| 409 | `CANONICAL_CLAIM_DUPLICATE` | Idempotent retry detected an equivalent prior transition with differing payload | false |
+| 409 | `CANONICAL_CLAIM_INVALID_TRANSITION` | Transition is not permitted by the canonical contract state machine | false |
+| 410 | `CANONICAL_CLAIM_STALE_PROJECTION` | Read or write targeted a stale projection (event not yet canonical at the bound deployment block) | true |
+| 410 | `CANONICAL_CLAIM_REORGED` | The claim was affected by a chain reorg and must be re-resolved from canonical events | true |
+| 503 | `CANONICAL_CLAIM_UNAVAILABLE` | Canonical state is temporarily unavailable (indexer catching up or chain REC failure) | true |
 
----
+### Error Details Contract
+
+The `details` object is stable and contains only non-sensitive, chain-bound identifiers:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `claimId` | string | Claim identifier |
+| `chainId` | number | Chain ID the claim is bound to |
+| `releaseId` | string | Contract release ID |
+| `deploymentBlock` | number | Deployment block number |
+| `artifactChecksum` | string | Artifact checksum the state was derived from |
+| `currentPhase` | string (optional) | Canonical phase at time of error (wrong-phase / invalid-transition only) |
+
+Internal details (SQL errors, stack traces, raw event payloads, addresses of non-canonical blocks) are never included.
+
+### Idempotent Retry Semantics
+
+Clients MAY retry any error with `retryable: true` using the same request body and idempotency key. The server MUST return the canonical result of the original transition if it already committed. Divergent payloads for the same idempotency key return `CANONICAL_CLAIM_DUPLICATE`.
+
+### State Transition Authority
+
+State transitions are derived exclusively from canonical contracts and finalized events. Client-supplied phase or state values are ignored for authority purposes and are only used for conflict detection.

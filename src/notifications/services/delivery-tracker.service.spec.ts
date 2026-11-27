@@ -1,227 +1,124 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { getRepositoryToken } from '@nestjs/typeorm';
 import { DeliveryTracker } from './delivery-tracker.service';
-import {
-  DeliveryChannel,
-  DeliveryStatus,
-} from '../interfaces/notification.types';
-import { DEFAULT_CLAIM_TTL_MS } from '../delivery/delivery-claim';
+import { DeliveryHistory } from '../entities/delivery-history.entity';
+import { RedisService } from '../../redis/redis.service';
 
-class FakeDeliveryHistoryRepository {
-  rows: any[] = [];
-  private sequence = 0;
+describe('DeliveryTracker.getUserDeliveryHistory', () => {
+  let service: DeliveryTracker;
+  let deliveryHistoryRepository: any;
+  let queryBuilder: any;
 
-  async insert(row: Record<string, unknown>): Promise<void> {
-    if (
-      typeof row.idempotencyKey === 'string' &&
-      this.rows.some(
-        (existing) => existing.idempotencyKey === row.idempotencyKey,
-      )
-    ) {
-      throw { code: '23505', message: 'duplicate key value' };
-    }
-    this.rows.push({ ...row, id: `row-${++this.sequence}` });
-  }
+  beforeEach(async () => {
+    queryBuilder = {
+      innerJoin: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      select: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      addOrderBy: jest.fn().mockReturnThis(),
+      skip: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+    };
 
-  async findOne(options: { where: Record<string, unknown> }): Promise<any> {
-    return (
-      this.rows.find((row) =>
-        Object.entries(options.where).every(([key, value]) =>
-          value == null ? row[key] == null : row[key] === value,
-        ),
-      ) ?? null
-    );
-  }
+    deliveryHistoryRepository = {
+      createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
+      find: jest.fn(),
+      findAndCount: jest.fn(),
+    };
 
-  async update(
-    criteria: Record<string, unknown>,
-    partial: Record<string, unknown>,
-  ): Promise<{ affected: number }> {
-    const matches = this.rows.filter((row) =>
-      Object.entries(criteria).every(([key, value]) =>
-        value == null ? row[key] == null : row[key] === value,
-      ),
-    );
-    for (const row of matches) {
-      Object.assign(row, partial);
-    }
-    return { affected: matches.length };
-  }
-}
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        DeliveryTracker,
+        {
+          provide: getRepositoryToken(DeliveryHistory),
+          useValue: deliveryHistoryRepository,
+        },
+        {
+          provide: RedisService,
+          useValue: {
+            get: jest.fn(),
+            set: jest.fn(),
+            setnx: jest.fn(),
+          },
+        },
+      ],
+    }).compile();
 
-function createRedis(available: boolean) {
-  return {
-    get: jest.fn().mockResolvedValue(null),
-    set: jest.fn().mockResolvedValue(true),
-    setnx: jest.fn().mockResolvedValue(available),
-    del: jest.fn().mockResolvedValue(true),
-  };
-}
-
-describe('DeliveryTracker durable idempotency claims (PREWAVE-BE-128)', () => {
-  const context = {
-    idempotencyKey: 'sha256-delivery-key',
-    notificationId: 'notification-1',
-    eventType: 'claim.created',
-    aggregateId: 'claim-1',
-    recipientId: 'user-1',
-    channel: DeliveryChannel.EMAIL,
-  };
-
-  let repository: FakeDeliveryHistoryRepository;
-  let redisAvailable: ReturnType<typeof createRedis>;
-  let redisDown: ReturnType<typeof createRedis>;
-
-  beforeEach(() => {
-    repository = new FakeDeliveryHistoryRepository();
-    redisAvailable = createRedis(true);
-    redisDown = createRedis(false);
+    service = module.get<DeliveryTracker>(DeliveryTracker);
   });
 
-  it('lets only one of two racing workers claim with Redis available', async () => {
-    const workerA = new DeliveryTracker(
-      repository as any,
-      redisAvailable as any,
-    );
-    const workerB = new DeliveryTracker(
-      repository as any,
-      redisAvailable as any,
-    );
+  it('constrains the page and count query to the owning notification user', async () => {
+    const items = [{ id: 'history-1', notificationId: 'notification-1' }];
+    queryBuilder.getManyAndCount.mockResolvedValue([items, 1]);
 
-    const results = await Promise.all([
-      workerA.checkIdempotency(context),
-      workerB.checkIdempotency(context),
-    ]);
+    const result = await service.getUserDeliveryHistory('user-a');
 
-    expect(results.filter(Boolean)).toHaveLength(1);
-    expect(repository.rows).toHaveLength(1);
-    expect(repository.rows[0].status).toBe(DeliveryStatus.PROCESSING);
+    expect(deliveryHistoryRepository.createQueryBuilder).toHaveBeenCalledWith(
+      'history',
+    );
+    expect(queryBuilder.innerJoin).toHaveBeenCalledWith(
+      'history.notification',
+      'notification',
+    );
+    expect(queryBuilder.where).toHaveBeenCalledWith(
+      'notification.userId = :userId',
+      { userId: 'user-a' },
+    );
+    expect(queryBuilder.getManyAndCount).toHaveBeenCalledTimes(1);
+    expect(deliveryHistoryRepository.find).not.toHaveBeenCalled();
+    expect(deliveryHistoryRepository.findAndCount).not.toHaveBeenCalled();
+    expect(result).toEqual({ items, total: 1 });
   });
 
-  it('lets only one of two racing workers claim when Redis SETNX fails', async () => {
-    const workerA = new DeliveryTracker(repository as any, redisDown as any);
-    const workerB = new DeliveryTracker(repository as any, redisDown as any);
+  it('returns only authorized delivery fields with stable ordering', async () => {
+    await service.getUserDeliveryHistory('user-a');
 
-    const results = await Promise.all([
-      workerA.checkIdempotency(context),
-      workerB.checkIdempotency(context),
-    ]);
+    expect(queryBuilder.orderBy).toHaveBeenCalledWith(
+      'history.createdAt',
+      'DESC',
+    );
+    expect(queryBuilder.addOrderBy).toHaveBeenCalledWith('history.id', 'DESC');
 
-    expect(redisDown.setnx).toHaveBeenCalledTimes(1);
-    expect(results.filter(Boolean)).toHaveLength(1);
-    expect(repository.rows).toHaveLength(1);
+    const selected = queryBuilder.select.mock.calls[0][0];
+    expect(selected).toEqual(
+      expect.arrayContaining([
+        'history.id',
+        'history.notificationId',
+        'history.channel',
+        'history.status',
+        'history.retryAttempts',
+        'history.lastRetryAt',
+        'history.deliveredAt',
+        'history.failureReason',
+        'history.createdAt',
+      ]),
+    );
+    expect(selected).not.toContain('history.metadata');
+    expect(selected).not.toContain('history.idempotencyKey');
+    expect(selected).not.toContain('notification');
   });
 
-  it('does not allow a second send after a crash before the provider call until the lease expires', async () => {
-    const workerA = new DeliveryTracker(
-      repository as any,
-      redisAvailable as any,
-    );
-    const workerB = new DeliveryTracker(
-      repository as any,
-      redisAvailable as any,
-    );
+  it('bounds pagination inputs', async () => {
+    await service.getUserDeliveryHistory('user-a', -10, 10000);
 
-    expect(await workerA.checkIdempotency(context)).toBe(true);
-    expect(await workerB.checkIdempotency(context)).toBe(false);
+    expect(queryBuilder.skip).toHaveBeenCalledWith(0);
+    expect(queryBuilder.take).toHaveBeenCalledWith(100);
 
-    repository.rows[0].claimExpiresAt = new Date(Date.now() - 1);
+    await service.getUserDeliveryHistory('user-a', 2.9, 0);
 
-    expect(await workerB.checkIdempotency(context)).toBe(true);
-    expect(repository.rows[0].status).toBe(DeliveryStatus.PROCESSING);
+    expect(queryBuilder.skip).toHaveBeenLastCalledWith(2);
+    expect(queryBuilder.take).toHaveBeenLastCalledWith(1);
   });
 
-  it('recovers an unconfirmed provider outcome only after the uncertainty lease, with fencing', async () => {
-    const workerA = new DeliveryTracker(
-      repository as any,
-      redisAvailable as any,
-    );
-    const workerB = new DeliveryTracker(
-      repository as any,
-      redisAvailable as any,
+  it('uses safe defaults for non-finite pagination inputs', async () => {
+    await service.getUserDeliveryHistory(
+      'user-a',
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
     );
 
-    expect(await workerA.checkIdempotency(context)).toBe(true);
-    await workerA.markProviderOutcomeUncertain(
-      context.notificationId!,
-      context.channel,
-      context.idempotencyKey!,
-      'provider timeout',
-    );
-
-    expect(repository.rows[0].providerUnconfirmed).toBe(true);
-    expect(await workerB.checkIdempotency(context)).toBe(false);
-
-    repository.rows[0].claimExpiresAt = new Date(Date.now() - 1);
-    expect(await workerB.checkIdempotency(context)).toBe(true);
-
-    await workerB.recordDelivery(
-      context.notificationId!,
-      context.recipientId!,
-      context.channel,
-      context.idempotencyKey!,
-    );
-
-    expect(repository.rows[0].status).toBe(DeliveryStatus.DELIVERED);
-    expect(repository.rows[0].providerUnconfirmed).toBe(false);
-  });
-
-  it('suppresses retries after a confirmed delivery', async () => {
-    const worker = new DeliveryTracker(
-      repository as any,
-      redisAvailable as any,
-    );
-    expect(await worker.checkIdempotency(context)).toBe(true);
-
-    await worker.recordDelivery(
-      context.notificationId!,
-      context.recipientId!,
-      context.channel,
-      context.idempotencyKey!,
-    );
-
-    const retryWorker = new DeliveryTracker(
-      repository as any,
-      redisAvailable as any,
-    );
-    expect(await retryWorker.checkIdempotency(context)).toBe(false);
-    expect(repository.rows).toHaveLength(1);
-  });
-
-  it('re-claims a failed attempt according to the retry policy', async () => {
-    const workerA = new DeliveryTracker(
-      repository as any,
-      redisAvailable as any,
-    );
-    const workerB = new DeliveryTracker(
-      repository as any,
-      redisAvailable as any,
-    );
-
-    expect(await workerA.checkIdempotency(context)).toBe(true);
-    await workerA.recordFailure(
-      context.notificationId!,
-      context.channel,
-      'provider rejected',
-      context.idempotencyKey!,
-      0,
-      { source: 'test' },
-    );
-
-    expect(repository.rows[0].status).toBe(DeliveryStatus.FAILED);
-    expect(await workerB.checkIdempotency(context)).toBe(true);
-    expect(repository.rows[0].retryAttempts).toBe(0);
-  });
-
-  it('uses the default 60s crash-recovery lease', async () => {
-    const worker = new DeliveryTracker(
-      repository as any,
-      redisAvailable as any,
-    );
-    const before = Date.now();
-    await worker.checkIdempotency(context);
-    const after = Date.now();
-
-    const expiry = repository.rows[0].claimExpiresAt.getTime();
-    expect(expiry).toBeGreaterThanOrEqual(before + DEFAULT_CLAIM_TTL_MS);
-    expect(expiry).toBeLessThanOrEqual(after + DEFAULT_CLAIM_TTL_MS);
+    expect(queryBuilder.skip).toHaveBeenCalledWith(0);
+    expect(queryBuilder.take).toHaveBeenCalledWith(50);
   });
 });

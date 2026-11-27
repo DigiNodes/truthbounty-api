@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { redactPromptText } from '../../common/utils/redaction.util';
 
 @Injectable()
 export class SafetyGuardrailService {
@@ -37,7 +38,7 @@ export class SafetyGuardrailService {
   }
 
   redact(content: string): { text: string; redacted: boolean } {
-    return { text: content, redacted: false };
+    return redactPromptText(content);
   }
 
   generateCanaryToken(): string {

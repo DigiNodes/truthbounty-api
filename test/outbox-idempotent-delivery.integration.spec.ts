@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { OutboxService } from '../src/outbox/outbox.service';
 import { NotificationProcessor } from '../src/notifications/services/notification.processor';
+import { NotificationDispatchControlGuard } from '../src/notifications/services/notification-dispatch-control.guard';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { RedisService } from '../src/redis/redis.service';
 import { DeliveryHistoryService } from '../src/notifications/services/delivery-history.service';
@@ -159,6 +160,12 @@ describe('Outbox & Idempotent Delivery Integration Flow', () => {
         {
           provide: WebhookService,
           useValue: { getUserWebhooks: jest.fn().mockResolvedValue([]) },
+        },
+        {
+          provide: NotificationDispatchControlGuard,
+          useValue: {
+            isNotificationsEnabled: jest.fn().mockResolvedValue(true),
+          },
         },
       ],
     }).compile();

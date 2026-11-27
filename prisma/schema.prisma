@@ -13,6 +13,7 @@ generator client {
 // authority. Do not reintroduce a second ORM or dialect here.
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 enum UserRole {

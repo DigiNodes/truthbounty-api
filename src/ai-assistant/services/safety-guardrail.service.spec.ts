@@ -17,4 +17,18 @@ describe('SafetyGuardrailService', () => {
     const result = service.checkContent('What is TruthBounty?');
     expect(result.flagged).toBe(false);
   });
+
+  it('redacts secret fixtures while preserving ordinary protocol text', () => {
+    const secret = service.redact(
+      'password=hunter2 and staking locks tokens',
+    );
+    expect(secret.redacted).toBe(true);
+    expect(secret.text).not.toContain('hunter2');
+    expect(secret.text).toContain('staking locks tokens');
+
+    expect(service.redact('How does staking work?')).toEqual({
+      text: 'How does staking work?',
+      redacted: false,
+    });
+  });
 });

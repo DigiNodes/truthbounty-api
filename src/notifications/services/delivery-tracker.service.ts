@@ -440,6 +440,11 @@ export class DeliveryTracker {
       history.metadata?.providerMessageId !== undefined
     );
   }
+
+  /**
+   * Clear old delivery history (retention policy)
+   * Default: keep 90 days of history
+   */
   async cleanup(retentionDays: number = 90): Promise<number> {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - retentionDays);

@@ -6,7 +6,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, In, Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import {
   RebuildCheckpoint,
   ProjectionRebuildCounter,
@@ -28,7 +28,8 @@ import {
 } from './entities/projection-rebuild-run.entity';
 import { CanonicalEvent } from '../events/entities/canonical-event.entity';
 import { ProjectorCursor } from '../common/entities/projector-cursor.entity';
-import { CanonicalEventQueryService } from '../events/canonical-event-query.service';
+import { scopedProjectorName } from '../events/canonical-event-scope';
+import { getCanonicalEventScope } from '../events/canonical-event-scope';
 
 /** Default event batch handed to each projector per drain iteration. */
 const DEFAULT_EVENT_BATCH = 500;
@@ -126,7 +127,6 @@ export class ProjectionRebuildService {
     @InjectDataSource() private readonly dataSource: DataSource,
     @Inject(PROJECTION_REGISTRY)
     private readonly registry: RebuildableProjection[],
-    private readonly projectorScope: CanonicalEventQueryService,
   ) {}
 
   /**
@@ -141,18 +141,6 @@ export class ProjectionRebuildService {
       );
     }
     this.assertParsableDeploymentBlock(options.deploymentBlock);
-    const scope = this.projectorScope.getScope();
-    if (
-      options.chainId !== scope.chainId ||
-      options.deploymentBlock !== scope.deploymentBlock ||
-      (options.resumeFrom &&
-        (options.resumeFrom.chainId !== scope.chainId ||
-          options.resumeFrom.deploymentBlock !== scope.deploymentBlock))
-    ) {
-      throw new BadRequestException(
-        'Rebuild scope does not match the configured release binding',
-      );
-    }
     this.assertShadowTarget(options);
 
     const runRepo = this.dataSource.getRepository(ProjectionRebuildRun);
@@ -438,15 +426,12 @@ export class ProjectionRebuildService {
     for (const projection of this.registry) {
       await projection.reset();
     }
-    await this.dataSource
-      .getRepository(ProjectorCursor)
-      .delete({
-        projectorName: In(
-          this.projectorScope.getScopedProjectorNames(
-            this.registry.map((projection) => projection.projectorName),
-          ),
-        ),
+    const cursorRepo = this.dataSource.getRepository(ProjectorCursor);
+    for (const projection of this.registry) {
+      await cursorRepo.delete({
+        projectorName: scopedProjectorName(projection.projectorName, chainId),
       });
+    }
     this.logger.log(
       `Reset ${this.registry.length} projections and their chain-scoped cursors`,
     );
@@ -471,18 +456,12 @@ export class ProjectionRebuildService {
    */
   private async seedCursor(deploymentBlock: string, chainId: number): Promise<void> {
     const cursorRepo = this.dataSource.getRepository(ProjectorCursor);
-    const scopedNames = this.projectorScope.getScopedProjectorNames(
-      this.registry.map((projection) => projection.projectorName),
-    );
-    await cursorRepo.delete({ projectorName: In(scopedNames) });
 
     const preceding = (BigInt(deploymentBlock) - 1n).toString();
     for (const projection of this.registry) {
       await cursorRepo.upsert(
         {
-          projectorName: this.projectorScope.getScopedProjectorName(
-            projection.projectorName,
-          ),
+          projectorName: scopedProjectorName(projection.projectorName, chainId),
           lastBlockNumber: preceding,
           lastLogIndex: -1,
         },
@@ -503,17 +482,12 @@ export class ProjectionRebuildService {
     blockNumber: bigint;
     logIndex: number;
   } | null> {
+    const projectorNames = this.registry.map((projection) =>
+      scopedProjectorName(projection.projectorName, chainId),
+    );
     const cursors = await this.dataSource
       .getRepository(ProjectorCursor)
-      .find({
-        where: {
-          projectorName: In(
-            this.projectorScope.getScopedProjectorNames(
-              this.registry.map((projection) => projection.projectorName),
-            ),
-          ),
-        },
-      });
+      .findBy(projectorNames.map((projectorName) => ({ projectorName })));
     let highest: { blockNumber: bigint; logIndex: number } | null = null;
     for (const cursor of cursors) {
       const blockNumber = BigInt(cursor.lastBlockNumber);
@@ -544,9 +518,6 @@ export class ProjectionRebuildService {
     return repo
       .createQueryBuilder('e')
       .where('e.chainId = :chainId', { chainId })
-      .andWhere('e.artifactVersion = :releaseId', {
-        releaseId: this.projectorScope.getScope().releaseId,
-      })
       .andWhere('e.blockNumber >= :fromBlock', {
         fromBlock: fromBlock.toString(),
       })

@@ -16,7 +16,7 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { EvidenceFlagService } from './evidence-flag.service';
-import { EvidenceService } from './evidence.service';
+import { rejectLegacyProtocolOperation } from './protocol-authority';
 import {
   EvidenceListQueryDto,
   EvidenceVersionQueryDto,
@@ -33,7 +33,6 @@ class CreateFlagDto {
 export class EvidenceController {
   constructor(
     private readonly flagService: EvidenceFlagService,
-    private readonly evidenceService: EvidenceService,
   ) {}
 
   // POST /evidence/:id/flag
@@ -58,81 +57,92 @@ export class EvidenceController {
 
   // GET /evidence
   @Get()
-  @ApiOperation({ summary: 'List evidence with bounded pagination' })
+  @ApiOperation({ summary: 'Deprecated legacy evidence list', deprecated: true })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'claimId', required: false, type: String })
-  @ApiResponse({ status: 200, description: 'Paginated evidence list' })
-  async listEvidence(@Query() query: EvidenceListQueryDto) {
-    return this.evidenceService.listEvidence(query);
+  @ApiResponse({ status: 410, description: 'Use canonical V2 evidence' })
+  async listEvidence(@Query() _query: EvidenceListQueryDto) {
+    return rejectLegacyProtocolOperation(
+      'Legacy evidence rows are not canonical. Query evidence by canonical claim ID.',
+      '/v2/claims/{claimId}/evidence',
+    );
   }
 
   // GET /evidence/:id
   @Get(':id')
-  @ApiOperation({ summary: 'Get a single evidence with all versions' })
+  @ApiOperation({ summary: 'Deprecated legacy evidence detail', deprecated: true })
   @ApiParam({ name: 'id', description: 'Evidence ID' })
-  @ApiResponse({ status: 200, description: 'Evidence detail' })
-  @ApiResponse({ status: 404, description: 'Evidence not found' })
-  async getEvidence(@Param('id') id: string) {
-    return this.evidenceService.getEvidenceOrFail(id);
+  @ApiResponse({ status: 410, description: 'Use canonical V2 evidence' })
+  async getEvidence(@Param('id') _id: string) {
+    return rejectLegacyProtocolOperation(
+      'Legacy evidence IDs are not canonical. Query evidence by canonical claim ID.',
+      '/v2/claims/{claimId}/evidence',
+    );
   }
 
   // GET /evidence/:id/versions
   @Get(':id/versions')
-  @ApiOperation({ summary: 'List evidence versions (newest first)' })
+  @ApiOperation({ summary: 'Deprecated legacy evidence versions', deprecated: true })
   @ApiParam({ name: 'id', description: 'Evidence ID' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
-  @ApiResponse({ status: 200, description: 'Paginated versions' })
-  @ApiResponse({ status: 404, description: 'Evidence not found' })
+  @ApiResponse({ status: 410, description: 'Use canonical V2 evidence' })
   async listVersions(
-    @Param('id') id: string,
-    @Query() query: EvidenceVersionQueryDto,
+    @Param('id') _id: string,
+    @Query() _query: EvidenceVersionQueryDto,
   ) {
-    return this.evidenceService.listEvidenceVersions(id, query);
+    return rejectLegacyProtocolOperation(
+      'Legacy evidence versions are not canonical. Query versions by canonical claim ID.',
+      '/v2/claims/{claimId}/evidence',
+    );
   }
 
   // GET /evidence/:id/digest?version=n
   @Get(':id/digest')
-  @ApiOperation({ summary: 'Get content digest for an evidence version' })
+  @ApiOperation({ summary: 'Deprecated legacy evidence digest', deprecated: true })
   @ApiParam({ name: 'id', description: 'Evidence ID' })
   @ApiQuery({ name: 'version', required: false, type: Number })
-  @ApiResponse({ status: 200, description: 'Content digest' })
-  @ApiResponse({ status: 400, description: 'Invalid stored CID' })
-  @ApiResponse({ status: 404, description: 'Evidence or version not found' })
+  @ApiResponse({ status: 410, description: 'Use canonical V2 evidence' })
   async getDigest(
-    @Param('id') id: string,
-    @Query() query: EvidenceVersionSelectionDto,
+    @Param('id') _id: string,
+    @Query() _query: EvidenceVersionSelectionDto,
   ) {
-    return this.evidenceService.getContentDigest(id, query.version);
+    return rejectLegacyProtocolOperation(
+      'Legacy evidence digests are not canonical. Query evidence by canonical claim ID.',
+      '/v2/claims/{claimId}/evidence',
+    );
   }
 
   // GET /evidence/:id/gateway?version=n
   @Get(':id/gateway')
   @ApiOperation({
-    summary: 'Get safe gateway metadata for an evidence version',
+    summary: 'Deprecated legacy evidence gateway', deprecated: true,
   })
   @ApiParam({ name: 'id', description: 'Evidence ID' })
   @ApiQuery({ name: 'version', required: false, type: Number })
-  @ApiResponse({ status: 200, description: 'Safe gateway metadata' })
-  @ApiResponse({ status: 404, description: 'Evidence or version not found' })
+  @ApiResponse({ status: 410, description: 'Use canonical V2 evidence' })
   async getGateway(
-    @Param('id') id: string,
-    @Query() query: EvidenceVersionSelectionDto,
+    @Param('id') _id: string,
+    @Query() _query: EvidenceVersionSelectionDto,
   ) {
-    return this.evidenceService.getSafeGateway(id, query.version);
+    return rejectLegacyProtocolOperation(
+      'Legacy evidence gateway metadata is not canonical. Query evidence by canonical claim ID.',
+      '/v2/claims/{claimId}/evidence',
+    );
   }
 
   // GET /evidence/:id/status
   @Get(':id/status')
   @ApiOperation({
-    summary:
-      'Distinguish missing on-chain registration from unavailable off-chain content',
+    summary: 'Deprecated legacy evidence status', deprecated: true,
   })
   @ApiParam({ name: 'id', description: 'Evidence ID' })
-  @ApiResponse({ status: 200, description: 'Availability status' })
-  @ApiResponse({ status: 404, description: 'Evidence not found' })
-  async getStatus(@Param('id') id: string) {
-    return this.evidenceService.getAvailabilityStatus(id);
+  @ApiResponse({ status: 410, description: 'Use canonical V2 evidence' })
+  async getStatus(@Param('id') _id: string) {
+    return rejectLegacyProtocolOperation(
+      'Legacy evidence status is not canonical. Query evidence by canonical claim ID.',
+      '/v2/claims/{claimId}/evidence',
+    );
   }
 }

@@ -5,8 +5,7 @@ import { Admin } from './entities/admin.entity';
 import { Incident } from './entities/incident.entity';
 import { ModerationReport } from './entities/moderation-report.entity';
 import { AuditLog } from '../audit/entities/audit-log.entity';
-import { Claim } from '../claims/entities/claim.entity';
-import { Dispute } from '../dispute/entities/dispute.entity';
+import { ClaimReadModel } from '../claims/entities/claim-read-model.entity';
 import { AdminService } from './admin.service';
 import { AdminController } from './admin.controller';
 import { ModerationService } from './moderation/moderation.service';
@@ -25,8 +24,12 @@ import { ProtocolAdminService } from './protocol/protocol-admin.service';
 import { ProtocolAdminController } from './protocol/protocol-admin.controller';
 import { FeatureFlagsModule } from '../feature-flags/feature-flags.module';
 import { QueueName } from '../jobs/jobs.types';
+import { OperationalControlReconciler } from './protocol/operational-control-reconciler';
 
 import { PublicIncidentsModule } from '../health/public-incidents/public-incidents.module';
+import { IndexedEvent } from '../entities/indexed-event.entity';
+import { OperationalControl } from './entities/operational-control.entity';
+import { OperationalControlEvent } from './entities/operational-control-event.entity';
 
 @Module({
   imports: [
@@ -36,7 +39,9 @@ import { PublicIncidentsModule } from '../health/public-incidents/public-inciden
       ModerationReport,
       AuditLog,
       Claim,
-      Dispute,
+      IndexedEvent,
+      OperationalControl,
+      OperationalControlEvent,
     ]),
     PublicIncidentsModule,
     FeatureFlagsModule,
@@ -66,6 +71,7 @@ import { PublicIncidentsModule } from '../health/public-incidents/public-inciden
     RolesGuard,
     AdminGuard,
     ProtocolAdminService,
+    OperationalControlReconciler,
   ],
   exports: [
     AdminService,

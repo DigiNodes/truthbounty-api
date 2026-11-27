@@ -5,6 +5,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Notification } from './entities/notification.entity';
 import { NotificationPreference } from './entities/notification-preference.entity';
+import { NotificationDispatchControlGuard } from './services/notification-dispatch-control.guard';
 import { NotificationStatus } from './enums/notification-status.enum';
 import { NotificationChannel } from './enums/notification-channel.enum';
 
@@ -17,6 +18,7 @@ export class NotificationsProcessor extends WorkerHost {
     private notificationRepository: Repository<Notification>,
     @InjectRepository(NotificationPreference)
     private preferenceRepository: Repository<NotificationPreference>,
+    private readonly dispatchControlGuard: NotificationDispatchControlGuard,
   ) {
     super();
   }
@@ -30,6 +32,15 @@ export class NotificationsProcessor extends WorkerHost {
     });
     if (!notification) {
       this.logger.error(`Notification ${notificationId} not found`);
+      return;
+    }
+
+    if (!(await this.dispatchControlGuard.isNotificationsEnabled())) {
+      this.logger.warn(
+        `Notification ${notificationId} dismissed: notifications disabled by operational control`,
+      );
+      notification.status = NotificationStatus.DISMISSED;
+      await this.notificationRepository.save(notification);
       return;
     }
 

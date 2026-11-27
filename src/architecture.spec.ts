@@ -5,6 +5,41 @@ import * as path from 'path';
 describe('V2 Architectural Module Boundaries & Dependency Enforcement', () => {
   const srcDir = path.resolve(__dirname);
 
+  it('should have exactly one production AI assistant implementation', () => {
+    const obsoleteFiles = [
+      'ai-assistant/ai-assistant.service.ts',
+      'ai-assistant/rag.service.ts',
+      'ai-assistant/llm-provider.service.ts',
+      'ai-assistant/ai-assistant.controller.ts',
+      'ai-assistant/services/ai-assistant.service.ts',
+      'ai-assistant/services/rag.service.ts',
+      'ai-assistant/services/llm-provider.service.ts',
+    ];
+
+    for (const relativePath of obsoleteFiles) {
+      expect(fs.existsSync(path.join(srcDir, relativePath))).toBe(false);
+    }
+
+    const allFiles = scanDirectory(srcDir).filter(
+      (file) => !file.includes(`${path.sep}generated${path.sep}`),
+    );
+    const prohibitedLegacyImports = [
+      "'./ai-assistant.service'",
+      "'./rag.service'",
+      "'./llm-provider.service'",
+      "'../ai-assistant.service'",
+      "'../rag.service'",
+      "'../llm-provider.service'",
+    ];
+
+    for (const file of allFiles) {
+      const content = fs.readFileSync(file, 'utf8');
+      for (const forbidden of prohibitedLegacyImports) {
+        expect(content).not.toContain(forbidden);
+      }
+    }
+  });
+
   function scanDirectory(dir: string, fileList: string[] = []): string[] {
     const files = fs.readdirSync(dir);
     files.forEach((file) => {
@@ -69,10 +104,6 @@ describe('V2 Architectural Module Boundaries & Dependency Enforcement', () => {
       'outbox/outbox.service.ts',
       'sybil-resistance/sybil-resistance.service.ts',
       'analytics/analytics.service.ts',
-      'ai-assistant/ai-assistant.service.ts',
-      'ai-assistant/rag.service.ts',
-      'ai-assistant/services/ai-assistant.service.ts',
-      'ai-assistant/services/rag.service.ts',
       'identity/identity.service.ts',
       'identity/worldcoin/worldcoin.service.ts',
     ].map((relativePath) => path.join(srcDir, relativePath));
