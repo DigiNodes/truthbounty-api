@@ -33,7 +33,10 @@ const UPDATABLE_PREFERENCE_FIELDS = [
   'language',
   'maxNotificationsPerDay',
   'maxEmailsPerDay',
-  'emailAddress',
+  // emailAddress is intentionally excluded: the notification email address
+  // must only be set through the ownership-verification flow in
+  // EmailVerificationService.  Direct writes bypass the challenge and would
+  // allow delivery to unconfirmed addresses (issue #621).
   'pushConfig',
 ] as const;
 
@@ -584,11 +587,21 @@ export class PreferenceEnforcer {
   }
 
   /**
-   * Get user's email address for notifications
+   * Get user's verified email address for notifications.
+   *
+   * Returns null when:
+   *  - No address has been recorded.
+   *  - The address has not been confirmed via an EmailVerificationChallenge
+   *    (emailAddressVerified === false / undefined).
+   *
+   * Unverified addresses must never receive notification payloads.
    */
   async getNotificationEmail(userId: string): Promise<string | null> {
     const pref = await this.getPreferences(userId);
-    return pref.emailAddress || null;
+    if (!pref.emailAddress || !pref.emailAddressVerified) {
+      return null;
+    }
+    return pref.emailAddress;
   }
 
   /**
