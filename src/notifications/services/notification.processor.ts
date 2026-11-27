@@ -4,6 +4,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Notification } from '../entities/notification.entity';
+import { NotificationDispatchControlGuard } from './notification-dispatch-control.guard';
 import { WebSocketService } from './websocket.service';
 import { EmailService } from './email.service';
 import { WebhookService } from './webhook.service';
@@ -53,6 +54,7 @@ export class NotificationProcessor extends WorkerHost {
     private readonly deliveryHistoryService: DeliveryHistoryService,
     private readonly preferencesService: NotificationPreferencesService,
     private readonly redisService: RedisService,
+    private readonly dispatchControlGuard: NotificationDispatchControlGuard,
   ) {
     super();
   }
@@ -65,48 +67,37 @@ export class NotificationProcessor extends WorkerHost {
       `Processing notification delivery: ${notificationId} via ${channel} (attempt ${job.attemptsMade + 1})`,
     );
 
-    const notification = await this.notificationRepository.findOne({
-      where: { id: notificationId },
-    });
+    let deliveryRecord =
+      await this.deliveryHistoryService.findPendingDeliveryByNotificationAndChannel(
+        notificationId,
+        channel,
+      );
 
-    if (!notification) {
-      this.logger.error(`Notification ${notificationId} not found`);
-      return;
+    if (!(await this.dispatchControlGuard.isNotificationsEnabled())) {
+      const error = 'Notifications disabled by operational control';
+      this.logger.warn(
+        `[Dispatch Guard] Suppressed notification ${notificationId} via ${channel}: ${error}`,
+      );
+      if (deliveryRecord) {
+        await this.deliveryHistoryService.updateDeliveryStatus(
+          deliveryRecord.id,
+          DeliveryStatus.PERMANENT_FAILURE,
+          error,
+        );
+      }
+      return {
+        success: true,
+        status: DeliveryStatus.PERMANENT_FAILURE,
+        suppressed: true,
+      };
     }
 
-    const eventType = job.data.eventType ?? 'notification.send';
-    const aggregateId = job.data.aggregateId ?? notificationId;
-    const recipientId = job.data.userId ?? notification.userId;
-    const idempotencyKey =
-      job.data.deliveryIdempotencyKey ??
-      job.data.idempotencyKey ??
-      buildDeliveryIdempotencyKey({
-        eventType,
-        recipientId,
-        channel,
-        aggregateId,
-      });
-
-    // The durable claim — not Redis and not the BullMQ job id — decides whether
-    // this worker may call a provider.
-    const claim = await this.deliveryHistoryService.acquireClaim({
-      idempotencyKey,
-      notificationId,
-      eventType,
-      aggregateId,
-      recipientId,
-      channel,
-    });
-
-    if (!claim.acquired) {
-      this.logger.warn(
-        `[Idempotency Guard] Delivery claim not acquired (${claim.reason}): ${idempotencyKey}`,
-      );
-      if (claim.status === DeliveryStatus.DELIVERED) {
-        await this.redisService.set(
-          deliveredCacheKey(idempotencyKey),
-          '1',
-          this.DELIVERED_CACHE_TTL_SECONDS,
+    if (idempotencyKey) {
+      const redisKey = `idempotency:notification:${idempotencyKey}`;
+      const acquiredLock = await this.redisService.setnx(redisKey, '1', 86400); // 24h TTL
+      if (!acquiredLock) {
+        this.logger.warn(
+          `[Idempotency Guard] Duplicate job execution suppressed by Redis SETNX: key=${idempotencyKey}`,
         );
         return {
           success: true,
@@ -114,28 +105,23 @@ export class NotificationProcessor extends WorkerHost {
           deduplicated: true,
         };
       }
-      if (claim.status === DeliveryStatus.PERMANENT_FAILURE) {
+
+      const existingHistory =
+        await this.deliveryHistoryService.findByIdempotencyKey(idempotencyKey);
+      if (
+        existingHistory &&
+        existingHistory.status === DeliveryStatus.DELIVERED
+      ) {
+        this.logger.warn(
+          `[Idempotency Guard] Duplicate job execution suppressed by DB check: key=${idempotencyKey}`,
+        );
         return {
-          success: false,
-          status: DeliveryStatus.PERMANENT_FAILURE,
+          success: true,
+          status: DeliveryStatus.DELIVERED,
           deduplicated: true,
         };
       }
-      throw new Error(
-        `Delivery claim not acquired (${claim.reason}): ${idempotencyKey}`,
-      );
     }
-
-    // Redis is an optimization only. A failed SETNX never grants or revokes
-    // permission to send; the durable claim has already been acquired.
-    await this.redisService.setnx(
-      deliveryClaimCacheKey(idempotencyKey),
-      claim.claimId!,
-      Math.max(1, Math.ceil(DEFAULT_CLAIM_TTL_MS / 1000)),
-    );
-
-    let deliveryRecord =
-      await this.deliveryHistoryService.findByIdempotencyKey(idempotencyKey);
 
     if (!deliveryRecord) {
       // Auto-create delivery record if dispatched via Outbox pattern
@@ -243,7 +229,7 @@ export class NotificationProcessor extends WorkerHost {
         );
       }
 
-      case DeliveryChannel.WEBHOOK:
+      case DeliveryChannel.WEBHOOK: {
         const userWebhooks = await this.webhookService.getUserWebhooks(
           notification.userId,
         );
@@ -274,6 +260,7 @@ export class NotificationProcessor extends WorkerHost {
           status: DeliveryStatus.FAILED,
           error: 'No webhooks configured for user',
         };
+      }
 
       case DeliveryChannel.IN_APP:
         return {

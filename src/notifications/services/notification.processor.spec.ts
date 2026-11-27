@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { NotificationProcessor } from './notification.processor';
+import { NotificationDispatchControlGuard } from './notification-dispatch-control.guard';
 import { Notification } from '../entities/notification.entity';
 import { WebSocketService } from './websocket.service';
 import { EmailService } from './email.service';
@@ -18,6 +19,7 @@ describe('NotificationProcessor', () => {
   let processor: NotificationProcessor;
   let redisService: Partial<RedisService>;
   let deliveryHistoryService: Partial<DeliveryHistoryService>;
+  let dispatchControlGuard: Partial<NotificationDispatchControlGuard>;
   let notificationRepository: any;
   let emailService: { sendNotificationEmail: jest.Mock };
 
@@ -70,6 +72,10 @@ describe('NotificationProcessor', () => {
       markClaimUncertain: jest.fn().mockResolvedValue(mockDeliveryRecord),
     };
 
+    dispatchControlGuard = {
+      isNotificationsEnabled: jest.fn().mockResolvedValue(true),
+    };
+
     notificationRepository = {
       findOne: jest.fn().mockResolvedValue(mockNotification),
     };
@@ -107,6 +113,10 @@ describe('NotificationProcessor', () => {
           },
         },
         { provide: RedisService, useValue: redisService },
+        {
+          provide: NotificationDispatchControlGuard,
+          useValue: dispatchControlGuard,
+        },
       ],
     }).compile();
 
@@ -232,5 +242,37 @@ describe('NotificationProcessor', () => {
     );
     expect(deliveryHistoryService.failClaim).not.toHaveBeenCalled();
     expect(deliveryHistoryService.updateDeliveryStatus).not.toHaveBeenCalled();
+  });
+
+  it('should suppress dispatch when notifications are disabled by operational control', async () => {
+    (
+      dispatchControlGuard.isNotificationsEnabled as jest.Mock
+    ).mockResolvedValueOnce(false);
+
+    const job = {
+      data: {
+        notificationId: 'notif-uuid-1',
+        channel: DeliveryChannel.EMAIL,
+        idempotencyKey: 'key-123',
+      },
+      attemptsMade: 0,
+    } as any;
+
+    const result = await processor.process(job);
+
+    expect(dispatchControlGuard.isNotificationsEnabled).toHaveBeenCalled();
+    expect(redisService.setnx).not.toHaveBeenCalled();
+    expect(deliveryHistoryService.updateDeliveryStatus).toHaveBeenCalledWith(
+      mockDeliveryRecord.id,
+      DeliveryStatus.PERMANENT_FAILURE,
+      'Notifications disabled by operational control',
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        success: true,
+        status: DeliveryStatus.PERMANENT_FAILURE,
+        suppressed: true,
+      }),
+    );
   });
 });

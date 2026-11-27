@@ -23,8 +23,8 @@ import { NotificationGateway } from './websockets/websocket.gateway';
 import { EmailService } from './services/email.service';
 import { WebhookService } from './services/webhook.service';
 import { NotificationProcessor } from './services/notification.processor';
-import { NotificationEventPublisher } from './services/notification-event-publisher.service';
-import { VerificationEventPublisher } from './services/verification-event-publisher.service';
+import { NotificationDispatchControlGuard } from './services/notification-dispatch-control.guard';
+import { OperationalControl } from '../admin/entities/operational-control.entity';
 import { Notification } from './entities/notification.entity';
 import { NotificationPreference } from './entities/notification-preference.entity';
 import { DeliveryHistory } from './entities/delivery-history.entity';
@@ -86,6 +86,7 @@ import { User } from '../entities/user.entity';
     EmailService,
     WebhookService,
     NotificationProcessor,
+    NotificationDispatchControlGuard,
     NotificationGateway,
     NotificationEventPublisher,
     VerificationEventPublisher,
