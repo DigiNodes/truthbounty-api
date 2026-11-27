@@ -1,14 +1,25 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
-import { InjectRepository } from '@typeorm/nestjs-typeorm';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { createHmac, randomUUID, randomBytes } from 'crypto';
-import { promises as dns } from 'dns';
-import { isIP } from 'net';
-import { WebhookEndpointEntity, WebhookEndpointStatus } from './entities/webhook-endpoint.entity';
+import { createHmac, createHash, randomUUID, randomBytes } from 'crypto';
+import {
+  WebhookEndpointEntity,
+  WebhookEndpointStatus,
+} from './entities/webhook-endpoint.entity';
 import {
   WebhookDeliveryEntity,
   WebhookDeliveryStatus,
 } from './entities/webhook-delivery.entity';
+import {
+  validateWebhookDestination,
+  isUnsafeIp,
+  type WebhookUrlOptions,
+} from './delivery/webhook-ssrf.guard';
 
 export const WEBHOOK_ENVELOPE_VERSION = 'v1';
 export const WEBHOOK_SIGNATURE_HEADER = 'X-Webhook-Signature';
@@ -20,7 +31,7 @@ export const WEBHOOK_ATTEMPT_HEADER = 'X-Webhook-Attempt';
 /** Default maximum replay window in seconds. */
 export const DEFAULT_MAX_SKEW = 300;
 
-export interface WebhookEnvelope<T=unknown> {
+export interface WebhookEnvelope<T = unknown> {
   id: string;
   type: string;
   version: string;
@@ -86,7 +97,10 @@ export class OutboundWebhookService {
     return this.endpointsRepo.save(endpoint);
   }
 
-  async rotateSecret(endpointId: string, gracePeriodMs = 86_400_000): Promise<WebhookEndpointEntity> {
+  async rotateSecret(
+    endpointId: string,
+    gracePeriodMs = 86_400_000,
+  ): Promise<WebhookEndpointEntity> {
     const endpoint = await this.getEndpointOrFail(endpointId);
     const newSecret = randomBytes(32).toString('hex');
     endpoint.previousSecret = endpoint.secret;
@@ -114,62 +128,20 @@ export class OutboundWebhookService {
   /**
    * Validate an endpoint URL for safety (SSRF protection).
    * Rejects non-HTTPS, private/loopback/link local/internal addresses.
+   *
+   * Delegates to the shared webhook SSRF guard so every outbound webhook path
+   * applies the same public-destination policy. This endpoint service preserves
+   * its pre-existing permissive port policy (`allowAnyPort: true`); new
+   * user-facing webhook paths use the explicit port allowlist.
    */
   async validateEndpointUrl(rawUrl: string): Promise<void> {
-    let parsed: URL;
-    try {
-      parsed = new URL(rawUrl);
-    } catch {
-      throw new BadRequestException('Webhook URL is not a valid absolute URL');
-    }
-
-    if (parsed.protocol !== 'https:') {
-      throw new BadRequestException('Webhook URL must use https');
-    }
-
-    if (parsed.username || parsed.password) {
-      throw new BadRequestException('Webhook URL must not contain credentials');
-    }
-
-    const hostname = parsed.hostname.toLowerCase();
-    if (!hostname) {
-      throw new BadRequestException('Webhook URL must include a hostname');
-    }
-
-    // Block obvious local names before resolving.
-    if (
-      hostname === 'localhost' ||
-      hostname.endsWith('.local') ||
-      hostname === '[localhost]' ||
-      hostname === '[o::1]'
-    ) {
-      throw new BadRequestException('Webhook URL must not target local hosts');
-    }
-
-    // If the hostname is a literal IP, validate directly.
-    if (isIP(hostname)) {
-      if (this.isUnsafeIp(hostname)) {
-        throw new BadRequestException('Webhook URL must not target private or internal addresses');
-      }
-      return;
-    }
-
-    // Resolve the hostname and reject if any resolved address is unsafe.
-    let addresses: string[];
-    try {
-      addresses = await this.resolveHostname(hostname);
-    } catch {
-      throw new BadRequestException('Webhook URL hostname could not be resolved');
-    }
-
-    if (addresses.length === 0) {
-      throw new BadRequestException('Webhook URL hostname did not resolve to any address');
-    }
-
-    for (const address of addresses) {
-      if (this.isUnsafeIp(address)) {
-        throw new BadRequestException('Webhook URL must not target private or internal addresses');
-      }
+    const options: WebhookUrlOptions = {
+      requireHttps: true,
+      allowAnyPort: true,
+    };
+    const result = await validateWebhookDestination(rawUrl, options);
+    if (!result.valid) {
+      throw new BadRequestException(result.error ?? 'Invalid webhook URL');
     }
   }
 
@@ -189,7 +161,9 @@ export class OutboundWebhookService {
   ): Promise<WebhookDeliveryEntity> {
     const endpoint = await this.getEndpointOrFail(endpointId);
     if (endpoint.status !== WebhookEndpointStatus.ACTIVE) {
-      throw new BadRequestException(`Webhook endpoint ${endpointId} is not active`);
+      throw new BadRequestException(
+        `Webhook endpoint ${endpointId} is not active`,
+      );
     }
     if (
       endpoint.eventTypes.length > 0 &&
@@ -203,8 +177,15 @@ export class OutboundWebhookService {
     // Re-validate at delivery time to close the TOCTU-DNS window.
     await this.validateEndpointUrl(endpoint.url);
 
-    const deliveryId = this.deriveDeliveryId(endpointId, eventType, options.eventId);
-    const maxAttempts = Math.min(Math.max(1, options.maxAttempts ?? endpoint.maxAttempts), 10);
+    const deliveryId = this.deriveDeliveryId(
+      endpointId,
+      eventType,
+      options.eventId,
+    );
+    const maxAttempts = Math.min(
+      Math.max(1, options.maxAttempts ?? endpoint.maxAttempts),
+      10,
+    );
     const retryDelays = options.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS;
 
     let last: WebhookDeliveryEntity | null = null;
@@ -223,7 +204,8 @@ export class OutboundWebhookService {
       }
 
       if (attempt < maxAttempts) {
-        const delay = retryDelays[Math.min(attempt - 1, retryDelays.length - 1)];
+        const delay =
+          retryDelays[Math.min(attempt - 1, retryDelays.length - 1)];
         await this.sleep(delay);
       }
     }
@@ -300,7 +282,8 @@ export class OutboundWebhookService {
         record.status = WebhookDeliveryStatus.FAILED;
         record.responseStatus = response.status;
         record.responseBody = responseBody;
-        record.errorMessage = 'Redirects are not allowed for webhook deliveries';
+        record.errorMessage =
+          'Redirects are not allowed for webhook deliveries';
         record.durationMs = durationMs;
         return this.deliveriesRepo.save(record);
       }
@@ -338,9 +321,15 @@ export class OutboundWebhookService {
    * Stable delivery ID for a logical event. Derived deterministically from
    * (endpoint, eventType, eventId) so duplicate enqueues collapse onto the same id.
    */
-  deriveDeliveryId(endpointId: string, eventType: string, eventId?: string): string {
-    const key = eventId ? `${endpointId}:${eventType}:${eventId}` : randomUUID();
-    return createHmac('sha256').update(key).digest('hex');
+  deriveDeliveryId(
+    endpointId: string,
+    eventType: string,
+    eventId?: string,
+  ): string {
+    const key = eventId
+      ? `${endpointId}:${eventType}:${eventId}`
+      : randomUUID();
+    return createHash('sha256').update(key).digest('hex');
   }
 
   /**
@@ -386,7 +375,9 @@ export class OutboundWebhookService {
   }
 
   /** Return the audit history for a logical delivery ID. */
-  async getDeliveryHistory(deliveryId: string): Promise<WebhookDeliveryEntity[]> {
+  async getDeliveryHistory(
+    deliveryId: string,
+  ): Promise<WebhookDeliveryEntity[]> {
     return this.deliveriesRepo.find({
       where: { deliveryId },
       order: { attempt: 'ASC' },
@@ -395,63 +386,15 @@ export class OutboundWebhookService {
 
   // -----------------------------------------------------------------------
   // Helpers
+  //
+  // DNS resolution and IP classification live in the shared webhook SSRF guard
+  // (`./delivery/webhook-ssrf.guard.ts`); `isUnsafeIp` is re-exported here for
+  // any internal call sites that still reference it.
   // -----------------------------------------------------------------------
 
-  private async resolveHostname(hostname: string): Promise<string[]> {
-    const results = await dns.lookup(hostname, { all: true });
-    return results.map((r) => r.address);
-  }
-
+  /** Re-export of the shared IP classifier for backward compatibility. */
   private isUnsafeIp(address: string): boolean {
-    const family = isIP(address);
-    if (family === 4) {
-      const parts = address.split('.').map(Number);
-      const [a, b, c] = parts;
-      // 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 127.0.0.0/8
-      if (a === 10) return true;
-      if (a === 172 && b >= 16 && b <= 31) return true;
-      if (a === 192 && b === 168) return true;
-      if (a === 127) return true;
-      // 0.0.0.0/8
-      if (a === 0) return true;
-      // 169.254.0.0/16 (link local)
-      if (a === 169 && b === 254) return true;
-      // 100.64.0.0/10 (CGN-NAT)
-      if (a === 100 && b >= 64 && b <= 127) return true;
-      // 192.0.0.0/24 (IET-TF)
-      if (a === 192 && b === 0 && c === 0) return true;
-      // 198.18.0.0/15 (benchmark)
-      if (a === 198 && b === 18) return true;
-      // 224.0.0.0/4 (multicast) and 240.0.0.0/4 (reserved)
-      if (a >= 224) return true;
-      return false;
-    }
-    if (family === 6) {
-      const normalized = address.toLowerCase();
-      if (normalized === '::1' || normalized === '::') {
-        return true;
-      }
-      // fc00::/8 (unique local), fe80::/10 (link local)
-      if (
-        normalized.startsWith('fc') ||
-        normalized.startsWith('fd') ||
-        normalized.startsWith('fe8') ||
-        normalized.startsWith('fe9') ||
-        normalized.startsWith('fea') ||
-        normalized.startsWith('feb')
-      ) {
-        return true;
-      }
-      // ::ffff:IP v4-mapped
-      if (normalized.startsWith('::ffff:')) {
-        const mapped = normalized.slice('::ffff:'.length);
-        if (isIP(mapped) === 4) {
-          return this.isUnsafeIp(mapped);
-        }
-      }
-      return false;
-    }
-    return true;
+    return isUnsafeIp(address);
   }
 
   private async safelyReadBody(response: Response): Promise<string | null> {
