@@ -1,5 +1,10 @@
 # V2-BE-017 — Reward Allocation & Claim Audit
 
+> **Authority update:** references below to `ClaimResolutionService` and
+> legacy TypeORM claims describe historical implementation details only. The
+> API no longer resolves or finalizes claims; claim outcomes are served only
+> from canonical finalized contract-event projections.
+
 > **Scope.** V2-BE-017 asks for projection of the five reward-allocation
 > beneficiary classes — submitter, verifier, challenger, treasury, refund —
 > with claimable/claimed tracking and reconciliation against emitted source
@@ -181,14 +186,12 @@ Recorded here so they are not lost. **None of these was changed by this PR.**
    (`'This action returns all rewards'`). `RewardsService` is registered in
    `RewardsModule`, which `app.module.ts` imports, so it is live — and the
    endpoints behind it return strings, not data.
-3. **`ClaimResolutionService.computeConfidenceScore` derives a verdict from
-   vote weights and `resolveClaim` persists it**
-   (`src/claims/claim-resolution.service.ts`). This is backend-authoritative
-   settlement: the API decides `verdict` and `confidenceScore` from vote
-   totals. Under the project's own stated invariant — the chain is the only
-   authority for protocol truth — this is the single most significant
-   contradiction found during this audit. It is **not** touched here; it needs
-   its own issue, and removing it is a behavioural change, not a refactor.
+3. **The former `ClaimResolutionService` vote-weight verdict writer has been
+   removed** under PREWAVE-BE-129. `ClaimsService` no longer exposes verdict or
+   finality mutation methods, and legacy `Claim` columns are read/write-disabled
+   in TypeORM. Canonical claim projection remains gated on verified release
+   event semantics and reorg integration; do not infer settlement from advisory
+   vote analytics or treat unverified legacy rows as protocol truth.
 4. **`src/health/health.service.ts` contains unresolved merge-conflict
    remnants** — bare expression statements ` feat/be-016-monitoring-api` and
    ` main` at lines 230, 241, 266 and 274 (and the same pattern in

@@ -22,6 +22,8 @@ export interface DisputeReadModelViewOptions {
   now?: Date;
   /** Optional max appeal round gate from contract config. */
   maxAppealRound?: number;
+  /** Finalized deadline from the exact linked appeal round. */
+  appealDeadline?: Date | string | null;
   /** Optional provisional outcome from the challenged round. */
   provisionalOutcome?: string | null;
   /** Optional bond disposition from terminal payload when status is resolved. */
@@ -58,10 +60,12 @@ export function toDisputeReadModelItem(
 ): DisputeReadModelItem {
   const now = options.now ?? new Date();
   const isTerminal =
-    dispute.status === DisputeStatus.RESOLVED ||
-    dispute.status === DisputeStatus.EXPIRED;
+    (dispute.status === DisputeStatus.RESOLVED ||
+      dispute.status === DisputeStatus.EXPIRED) &&
+    options.dataState === DataState.FINALIZED;
 
   // --- Appeal availability (contract-derived fields only) ---
+  const appealDeadline = toIso(options.appealDeadline);
   let appealAvailable = false;
   let appealReason: AppealAvailabilityReason = 'no_deadline';
 
@@ -75,10 +79,10 @@ export function toDisputeReadModelItem(
   ) {
     appealAvailable = false;
     appealReason = 'max_round';
-  } else if (!dispute.deadline) {
+  } else if (!appealDeadline) {
     appealAvailable = false;
     appealReason = 'no_deadline';
-  } else if (now.getTime() > new Date(dispute.deadline).getTime()) {
+  } else if (now.getTime() > new Date(appealDeadline).getTime()) {
     appealAvailable = false;
     appealReason = 'deadline_passed';
   } else {
@@ -100,8 +104,6 @@ export function toDisputeReadModelItem(
   let disposition: BondDisposition = 'unknown';
   if (dispute.status === DisputeStatus.RAISED) {
     disposition = 'locked';
-  } else if (dispute.status === DisputeStatus.EXPIRED) {
-    disposition = 'refunded';
   } else if (dispute.status === DisputeStatus.RESOLVED) {
     disposition = options.terminalBondDisposition ?? 'unknown';
   }
@@ -120,8 +122,8 @@ export function toDisputeReadModelItem(
   // --- Deadlines ---
   const deadlines: DisputeDeadlines = {
     dispute: toIso(dispute.deadline),
-    appeal: null, // TODO: derive from verification round appeal deadline
-    settledAt: toIso(dispute.status === DisputeStatus.RESOLVED || dispute.status === DisputeStatus.EXPIRED ? dispute.updatedAt : null),
+    appeal: appealDeadline,
+    settledAt: null,
   };
 
   // --- Bond ---
@@ -154,14 +156,14 @@ export function toDisputeReadModelItem(
         ? {
             status: dispute.status === DisputeStatus.RESOLVED ? ('resolved' as const) : ('expired' as const),
             outcome: dispute.status === DisputeStatus.RESOLVED ? dispute.resolvedOutcome : null,
-            settledAt: toIso(dispute.updatedAt),
+            settledAt: null,
           }
         : null,
   };
 
   // --- Settlement ---
   const settlement: DisputeSettlement = options.settlement ?? {
-    pending: false,
+    pending: null,
     state: null,
     rewardAmount: null,
     refundAmount: null,

@@ -1,9 +1,7 @@
 import { Claim } from '../entities/claim.entity';
 import { CreateClaimDto } from '../dto/create-claim.dto';
 
-/**
- * Factory for creating Claim entities and DTOs for testing and seeding
- */
+/** Factory for creating Claim entities and DTOs for testing. */
 export class ClaimFactory {
   /**
    * Create a mock CreateClaimDto with realistic data
@@ -25,23 +23,15 @@ export class ClaimFactory {
     };
   }
 
-  /**
-   * Create a mock Claim entity with resolved verdict and confidence for testing
-   */
+  /** Create a persisted-claim fixture without protocol verdict/finality state. */
   static createClaim(overrides: Partial<Claim> = {}): Claim {
     const dto = ClaimFactory.createCreateClaimDto();
-    // Real Claim instance (not a plain object) so prototype methods
-    // getCurrentState()/transitionTo() used by the services are available.
     return Object.assign(new Claim(), {
       id: '00000000-0000-0000-0000-000000000000',
       title: dto.title,
       content: dto.content,
       source: dto.source,
       metadata: dto.metadata,
-      resolvedVerdict: null,
-      resolvedAt: null,
-      confidenceScore: null,
-      finalized: false,
       createdAt: new Date(),
       evidences: [],
       ...overrides,
@@ -61,29 +51,4 @@ export class ClaimFactory {
     );
   }
 
-  /**
-   * Create a claim with specific verdict and confidence for testing edge cases.
-   * Sets resolvedAt atomically with resolvedVerdict (invariant BE-219).
-   */
-  static createClaimWithVerdict(verdict: boolean, confidence: number): Claim {
-    return ClaimFactory.createClaim({
-      resolvedVerdict: verdict,
-      resolvedAt: new Date(),
-      confidenceScore: confidence,
-      finalized: true,
-    });
-  }
-
-  /**
-   * Create claims with varying confidence scores for testing confidence calculations
-   */
-  static createClaimsWithConfidenceScores(): Claim[] {
-    return [
-      ClaimFactory.createClaimWithVerdict(true, 0.95),
-      ClaimFactory.createClaimWithVerdict(false, 0.85),
-      ClaimFactory.createClaimWithVerdict(true, 0.75),
-      ClaimFactory.createClaimWithVerdict(false, 0.6),
-      ClaimFactory.createClaimWithVerdict(true, 0.45),
-    ];
-  }
 }

@@ -70,6 +70,12 @@ export class ServiceControlResponse {
 
   @ApiPropertyOptional()
   currentState?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Persisted manual setting, distinct from effective availability',
+  })
+  savedState?: string;
 }
 
 export class QueueMetricsResponse {

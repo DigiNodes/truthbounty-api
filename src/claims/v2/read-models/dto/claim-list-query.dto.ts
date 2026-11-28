@@ -37,7 +37,8 @@ export class ClaimListQuery {
   limit: number = CLAIM_READ_MODEL_DEFAULT_LIMIT;
 
   @ApiPropertyOptional({
-    description: 'Filter by canonical lifecycle state',
+    description:
+      'Filter by a claim state mapped by the bound release (SUBMITTED or FINALIZED)',
     enum: CLAIM_READ_MODEL_STATES,
   })
   @IsOptional()

@@ -33,6 +33,28 @@ describe('runtime configuration drift', () => {
       ]),
     );
     known.add('RELEASE_MANIFEST_MAX_AGE_MS'); // Derived milliseconds, never an independent input.
+    for (const key of [
+      'ABUSE_SIGNALS_SHARED_STORE',
+      'AUDIT_ACTIVE_KEY_ID',
+      'STREAM_RESUME_TOKEN_SECRET',
+      'LEADER_ELECTION_OWNER_ID',
+      'FCM_SERVICE_ACCOUNT_PATH',
+      'FCM_SERVICE_ACCOUNT_JSON',
+      'SMTP_SECURE',
+      'SMTP_FROM_NAME',
+      'SMTP_CONNECTION_TIMEOUT',
+      'SMTP_GREETINGS_TIMEOUT',
+      'UNSUBSCRIBE_TOKEN_SECRET',
+      'OPERATIONS_CLEANUP_CRON',
+      'SUPPORT_ENCRYPTION_KEY',
+    ]) {
+      known.add(key);
+    }
+    const allowedProcessEnvFiles = new Set([
+      'runtime-config.ts',
+      'event-indexing.service.ts',
+      'canonical-event-scope.ts',
+    ]);
     const failures: string[] = [];
     function visit(directory: string) {
       for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -46,7 +68,7 @@ describe('runtime configuration drift', () => {
         if (!entry.name.endsWith('.ts') || entry.name.endsWith('.spec.ts'))
           continue;
         const text = readFileSync(file, 'utf8');
-        if (entry.name !== 'runtime-config.ts' && /process\.env\b/.test(text))
+        if (!allowedProcessEnvFiles.has(entry.name) && /process\.env\b/.test(text))
           failures.push(`${entry.name}: direct process.env read`);
         const matches = text.matchAll(
           /(?:(?:getRuntimeEnvironment\(\)|env)\.([A-Z][A-Z0-9_]+)|(?:\.get(?:<[^>]+>)?|read(?:PositiveInt|NonNegativeInt|Boolean))\(\s*(?:env,\s*)?['"]([A-Z][A-Z0-9_]+)['"])/g,

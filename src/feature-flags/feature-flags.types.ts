@@ -38,6 +38,7 @@ export interface CreateFeatureFlagInput {
   description?: string;
   expiresAt?: Date;
   createdBy?: string;
+  serverOnly?: boolean;
 }
 
 export interface UpdateFeatureFlagInput {
@@ -48,6 +49,7 @@ export interface UpdateFeatureFlagInput {
   expiresAt?: Date | null;
   expectedVersion?: number;
   reason?: string;
+  serverOnly?: boolean;
 }
 
 export interface RollbackFeatureFlagInput {

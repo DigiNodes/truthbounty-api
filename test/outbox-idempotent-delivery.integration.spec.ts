@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { OutboxService } from '../src/outbox/outbox.service';
 import { NotificationProcessor } from '../src/notifications/services/notification.processor';
+import { NotificationDispatchControlGuard } from '../src/notifications/services/notification-dispatch-control.guard';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { RedisService } from '../src/redis/redis.service';
 import { DeliveryHistoryService } from '../src/notifications/services/delivery-history.service';
@@ -11,10 +12,7 @@ import { WebSocketService } from '../src/notifications/services/websocket.servic
 import { EmailService } from '../src/notifications/services/email.service';
 import { WebhookService } from '../src/notifications/services/webhook.service';
 import { getQueueToken } from '@nestjs/bullmq';
-import {
-  DeliveryChannel,
-  DeliveryStatus,
-} from '../src/notifications/interfaces/notification.types';
+import { DeliveryStatus } from '../src/notifications/interfaces/notification.types';
 
 // The real PrismaService pulls in the @libsql native driver adapter, which is not
 // loadable on every developer machine/CI image. This flow is a deterministic
@@ -77,9 +75,33 @@ describe('Outbox & Idempotent Delivery Integration Flow', () => {
         redisLocks.add(key);
         return Promise.resolve(true);
       }),
+      set: jest.fn().mockResolvedValue(true),
     };
 
     const mockDeliveryHistoryService = {
+      acquireClaim: jest.fn().mockImplementation((context: any) => {
+        const existing = mockDeliveryRecords.find(
+          (record) => record.idempotencyKey === context.idempotencyKey,
+        );
+        if (existing?.status === DeliveryStatus.DELIVERED) {
+          return Promise.resolve({
+            acquired: false,
+            idempotencyKey: context.idempotencyKey,
+            status: DeliveryStatus.DELIVERED,
+            reason: 'delivered',
+          });
+        }
+        return Promise.resolve({
+          acquired: true,
+          idempotencyKey: context.idempotencyKey,
+          claimId: 'claim-1',
+          status: DeliveryStatus.PROCESSING,
+          reason: 'acquired',
+        });
+      }),
+      confirmClaim: jest.fn().mockResolvedValue({}),
+      failClaim: jest.fn().mockResolvedValue({}),
+      markClaimUncertain: jest.fn().mockResolvedValue({}),
       findPendingDeliveryByNotificationAndChannel: jest
         .fn()
         .mockResolvedValue(null),
@@ -138,6 +160,12 @@ describe('Outbox & Idempotent Delivery Integration Flow', () => {
         {
           provide: WebhookService,
           useValue: { getUserWebhooks: jest.fn().mockResolvedValue([]) },
+        },
+        {
+          provide: NotificationDispatchControlGuard,
+          useValue: {
+            isNotificationsEnabled: jest.fn().mockResolvedValue(true),
+          },
         },
       ],
     }).compile();

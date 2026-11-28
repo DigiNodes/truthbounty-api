@@ -122,11 +122,6 @@ Legacy `RELEASE_MANIFEST_MAX_AGE_MS` must migrate to `CONTRACT_RELEASE_MAX_AGE_D
 | IPFS_LOCAL_STORAGE_PATH | non-empty string | data/ipfs | no | - |
 | IPFS_GATEWAY_URL | URL (https:, http:) | (unset) | no | - |
 | IPFS_API_URL | URL (https:, http:) | (unset) | no | - |
-
-`IPFS_PROVIDER=local` stores evidence on the local filesystem and emits a valid
-CIDv1 (raw codec, SHA-256). It is development/test-only and is rejected in
-staging/production. Pinata and Web3.Storage are not currently implemented;
-their settings are not accepted as provider choices.
 | SMTP_HOST | hostname or IP address (without scheme, credentials or port) | (unset) | yes | - |
 | SMTP_PORT | integer 1..65535 | 587 | no | - |
 | SMTP_USER | non-empty string | (unset) | yes | - |
@@ -164,6 +159,8 @@ their settings are not accepted as provider choices.
 | LOG_REDACT_RPC_URLS | true or false | true | no | - |
 | JWT_SECRET | non-empty string | (unset) | yes | - |
 | JWT_EXPIRATION | positive duration with s, m, h or d unit | 15m | no | - |
+| JWT_ACCESS_AUDIENCE | non-empty string | truthbounty-api | no | - |
+| JWT_ISSUER | non-empty string | truthbounty-api | no | - |
 | REFRESH_TOKEN_EXPIRATION | positive duration with s, m, h or d unit | 7d | no | - |
 | SIWE_DOMAIN | non-empty string | (unset) | yes | - |
 | IDEMPOTENCY_ENABLED | true or false | true | no | - |

@@ -179,9 +179,9 @@ export class AbuseSignalsController {
   @Roles(...ABUSE_REVIEWERS)
   @ApiOperation({ summary: 'List abuse appeals for review' })
   @ApiOkResponse({ type: AbuseAppealListDto })
-  listAppeals(): AbuseAppealListDto {
+  async listAppeals(): Promise<AbuseAppealListDto> {
     return {
-      appeals: this.appeals.listAppeals().map((appeal) => this.toDto(appeal)),
+      appeals: (await this.appeals.listAppeals()).map((appeal) => this.toDto(appeal)),
     };
   }
 
@@ -191,8 +191,8 @@ export class AbuseSignalsController {
   @ApiOperation({ summary: 'Get one abuse appeal' })
   @ApiParam({ name: 'id' })
   @ApiOkResponse({ type: AbuseAppealDto })
-  getAppeal(@Param('id') id: string): AbuseAppealDto {
-    const appeal = this.appeals.getAppeal(id);
+  async getAppeal(@Param('id') id: string): Promise<AbuseAppealDto> {
+    const appeal = await this.appeals.getAppeal(id);
     if (!appeal) throw notFound('The appeal was not found.');
     return this.toDto(appeal);
   }

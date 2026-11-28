@@ -129,6 +129,29 @@ export class RollbackResultResponse {
   timestamp: string;
 }
 
+export class MetricMetadata {
+  @ApiProperty({
+    description: 'Whether the metric value is available and reliable',
+  })
+  available: boolean;
+
+  @ApiProperty({
+    description:
+      'Data source status: healthy, degraded, unavailable, or stale',
+  })
+  sourceStatus: 'healthy' | 'degraded' | 'unavailable' | 'stale';
+
+  @ApiPropertyOptional({
+    description: 'Human-readable reason if metric is unavailable or stale',
+  })
+  reason?: string;
+
+  @ApiPropertyOptional({
+    description: 'Timestamp of the last successful data retrieval',
+  })
+  lastUpdated?: string;
+}
+
 export class OperationalStatsResponse {
   @ApiProperty()
   totalUsers: number;
@@ -170,4 +193,15 @@ export class OperationalStatsResponse {
 
   @ApiProperty()
   timestamp: string;
+
+  @ApiProperty({
+    description:
+      'Metadata about data quality, freshness, and availability for each metric category',
+  })
+  metadata: {
+    claims: MetricMetadata;
+    disputes: MetricMetadata;
+    admins: MetricMetadata;
+    overall: MetricMetadata;
+  };
 }

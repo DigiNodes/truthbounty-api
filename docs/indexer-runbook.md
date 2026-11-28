@@ -120,6 +120,25 @@ Notes:
 - Block heights are strings so values beyond `Number.MAX_SAFE_INTEGER` keep
   full precision; cross-driver (PostgreSQL/SQLite) normalization is applied.
 
+### Claim verdict/finality read path
+
+The claim lifecycle reproject route has been removed. The read-only claim
+projection returns a finalized phase only when the projected source matches a
+canonical `VerdictSettled` event from the configured approved artifact version
+and verdict-contract address, or a `ClaimSubmitted` event from the configured
+claim-registry address, and the checkpoint for that contract covers the
+event block. Configure `CLAIM_READ_MODEL_ARTIFACT_VERSION` and
+`CLAIM_READ_MODEL_CLAIM_REGISTRY_ADDRESS` plus
+`CLAIM_READ_MODEL_VERDICT_CONTRACT_ADDRESS` from the release manifest. Missing,
+ambiguous, malformed, wrong-release, or not-yet-final events must not be
+manually repaired by setting legacy `claims.finalized` columns; investigate
+canonical ingestion, quarantine, artifact approval, and the contract checkpoint.
+The opaque decimal verdict code is returned only after settlement finality;
+before then the claim remains provisional and the code is `null`.
+The claim projector is not yet registered in the V2 rebuild registry; legacy
+`claim_read_models` rows must not be treated as canonical solely because they
+exist.
+
 ## Protocol projection DB constraints (issue396)
 
 Enforced at the database boundary by migration

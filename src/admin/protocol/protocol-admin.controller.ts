@@ -23,10 +23,13 @@ import { IdempotencyKey } from '../decorators/idempotency-key.decorator';
 import { CurrentAdmin } from '../decorators/current-admin.decorator';
 import { Admin, AdminRole } from '../entities/admin.entity';
 import { ProtocolAdminService } from './protocol-admin.service';
+import { CanonicalEvidence } from './canonical-evidence';
 import {
+  EmergencyAction,
   ExecuteEmergencyActionDto,
   EmergencyActionResponse,
   SystemStatusResponse,
+  ResolveCanonicalActionDto,
 } from './dto/emergency.dto';
 import {
   SetMaintenanceModeDto,
@@ -238,7 +241,29 @@ export class ProtocolAdminController {
     @CurrentAdmin() admin: Admin,
   ): Promise<void> {
     return this.protocolAdminService.resolveEmergencyAction(
-      action as any,
+      action as EmergencyAction,
+      admin.id,
+    );
+  }
+
+  @Post('canonical-actions/resolve')
+  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMINISTRATOR)
+  @ApiOperation({
+    summary: 'Resolve pending canonical work from a finalized on-chain event',
+  })
+  @ApiResponse({ status: 200, description: 'Canonical evidence confirmed' })
+  async resolveCanonicalAction(
+    @Body() dto: ResolveCanonicalActionDto,
+    @CurrentAdmin() admin: Admin,
+  ): Promise<CanonicalEvidence> {
+    return this.protocolAdminService.resolveCanonicalAction(
+      dto.action,
+      {
+        requestId: dto.requestId,
+        transactionHash: dto.transactionHash,
+        ledger: dto.ledger,
+        eventId: dto.eventId,
+      },
       admin.id,
     );
   }
@@ -345,7 +370,10 @@ export class ProtocolAdminController {
     description: 'Feature flag rolled back',
     type: FeatureFlagRollbackResponse,
   })
-  @ApiResponse({ status: 409, description: 'Stale version or release mismatch' })
+  @ApiResponse({
+    status: 409,
+    description: 'Stale version or release mismatch',
+  })
   @ApiResponse({ status: 422, description: 'Invalid rollback target' })
   async rollbackFeatureFlag(
     @Param('key') key: string,

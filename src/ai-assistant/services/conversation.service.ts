@@ -57,6 +57,23 @@ export class ConversationService {
     private readonly configService: ConfigService,
   ) {
     this.aiConfig = this.configService.get<AiConfig>('ai') as AiConfig;
+    const configuredNodeEnv = this.configService.get<string>(
+      'NODE_ENV',
+      'development',
+    );
+    const nodeEnv =
+      typeof configuredNodeEnv === 'string'
+        ? configuredNodeEnv.toLowerCase()
+        : 'development';
+    if (
+      ['production', 'staging'].includes(nodeEnv) &&
+      this.aiConfig?.redactBeforeStore &&
+      typeof this.safetyGuardrailService?.redact !== 'function'
+    ) {
+      throw new Error(
+        'AI_REDACT_BEFORE_STORE=true requires a wired redaction implementation',
+      );
+    }
   }
 
   private assertModeAllowed(mode: ConversationMode, role: AppUserRole): void {
@@ -163,7 +180,8 @@ export class ConversationService {
     );
 
     if (setTitleIfMissing && !conversation.title) {
-      conversation.title = content.slice(0, 80);
+      const title = this.maybeRedact(content.slice(0, 80));
+      conversation.title = title.content;
       await this.conversationRepository.save(conversation);
     }
 

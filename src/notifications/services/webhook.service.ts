@@ -17,6 +17,7 @@ export class WebhookService {
   async sendWebhookNotification(
     notification: Notification,
     webhook: WebhookConfig,
+    idempotencyKey?: string,
   ): Promise<DeliveryResult> {
     this.logger.debug(
       `Sending webhook notification to ${webhook.url} for notification ${notification.id}`,
@@ -35,6 +36,7 @@ export class WebhookService {
           'Content-Type': 'application/json',
           'X-TruthBounty-Signature': signature,
           'X-TruthBounty-Event': notification.category ?? '',
+          ...(idempotencyKey ? { 'X-Idempotency-Key': idempotencyKey } : {}),
           'User-Agent': 'TruthBounty-Webhook/1.0',
         } as Record<string, string>,
         body: JSON.stringify(payload),

@@ -27,23 +27,11 @@ export const options = {
 const BASE_URL = __ENV.API_URL || 'http://localhost:3000';
 
 export default function () {
-    const url = `${BASE_URL}/claims`;
-    const payload = JSON.stringify({
-        content: `Test claim payload ${Math.random()}`,
-        sourceUrl: `https://example.com/news/${Math.floor(Math.random() * 10000)}`,
-        authorWallet: '0x1234567890123456789012345678901234567890'
-    });
-
-    const params = {
-        headers: {
-            'Content-Type': 'application/json',
-        },
-    };
-
-    const res = http.post(url, payload, params);
+    const url = `${BASE_URL}/api/v2/claim-read-models?limit=20`;
+    const res = http.get(url);
 
     check(res, {
-        'is status 201': (r) => r.status === 201,
+        'is status 200': (r) => r.status === 200,
         'transaction time OK': (r) => r.timings.duration < 500,
     });
 

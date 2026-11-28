@@ -6,6 +6,7 @@ import { SybilResistanceController } from './sybil-resistance.controller';
 import { SybilResistantVotingService } from './sybil-resistant-voting.service';
 import { SybilModelRegistry } from './sybil-model-registry';
 import { SybilProvenanceService } from './sybil-provenance.service';
+import { SybilOwnershipGuard } from './guards/sybil-ownership.guard';
 import { PrismaModule } from '../prisma/prisma.module';
 import { StakeEvent } from '../staking/entities/stake-event.entity';
 import { CanonicalEvent } from '../v2/events/entities/canonical-event.entity';
@@ -25,6 +26,7 @@ import { ClaimAccuracyService } from './claim-accuracy.service';
     SybilModelRegistry,
     SybilProvenanceService,
     ClaimAccuracyService,
+    SybilOwnershipGuard,
   ],
   exports: [
     SybilResistanceService,
@@ -32,6 +34,7 @@ import { ClaimAccuracyService } from './claim-accuracy.service';
     SybilModelRegistry,
     SybilProvenanceService,
     ClaimAccuracyService,
+    SybilOwnershipGuard,
   ],
 })
 export class SybilResistanceModule {}

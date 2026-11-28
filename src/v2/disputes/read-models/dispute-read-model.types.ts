@@ -164,8 +164,8 @@ export interface DisputeTimelineEvent {
 }
 
 export interface DisputeSettlement {
-  /** Whether settlement is pending for this dispute. */
-  pending: boolean;
+  /** Whether settlement is pending; null means no dispute-bound settlement projection is available. */
+  pending: boolean | null;
   /** Settlement state when available (contract-derived). */
   state: string | null;
   /** Exact reward amount string if applicable, or null. */

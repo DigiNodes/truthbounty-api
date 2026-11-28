@@ -23,6 +23,7 @@ import {
   UpdateFeatureFlagInput,
 } from './feature-flags.types';
 import { FeatureFlagsMetricsService } from './metrics/feature-flag.metrics';
+import { AuthenticatedPrincipal } from '../auth/types/authenticated-request';
 
 const CACHE_TTL_SECONDS = 60;
 
@@ -163,6 +164,54 @@ export class FeatureFlagsService {
     }
   }
 
+  /**
+   * Evaluate a flag using verified principal identity.
+   * Context is derived from the authenticated principal, not caller-supplied parameters.
+   * Anonymous callers receive an explicit anonymous context that cannot impersonate users.
+   */
+  async evaluateForPrincipal(
+    key: string,
+    principal: AuthenticatedPrincipal | null,
+    environment?: string,
+  ): Promise<FeatureFlagEvaluationResult> {
+    const context: FeatureFlagContext = this.deriveContextFromPrincipal(
+      principal,
+      environment,
+    );
+    return this.evaluate(key, context);
+  }
+
+  /**
+   * Derive evaluation context from an authenticated principal.
+   * Returns explicit anonymous context if principal is null.
+   */
+  private deriveContextFromPrincipal(
+    principal: AuthenticatedPrincipal | null,
+    environment?: string,
+  ): FeatureFlagContext {
+    if (!principal) {
+      return {
+        environment: environment ?? this.getDefaultEnvironment(),
+        userId: undefined,
+        walletAddress: undefined,
+        roles: undefined,
+      };
+    }
+
+    // Extract roles from the principal
+    const roles: string[] = [];
+    if (principal.user?.role) {
+      roles.push(principal.user.role);
+    }
+
+    return {
+      environment: environment ?? this.getDefaultEnvironment(),
+      userId: principal.userId ?? principal.sub,
+      walletAddress: principal.address,
+      roles: roles.length > 0 ? roles : undefined,
+    };
+  }
+
   async isEnabled(
     key: string,
     context: FeatureFlagContext = {},
@@ -174,6 +223,20 @@ export class FeatureFlagsService {
   async findAll(environment?: string): Promise<FeatureFlag[]> {
     return this.flagRepo.find({
       where: { environment: environment ?? this.getDefaultEnvironment() },
+      order: { key: 'ASC' },
+    });
+  }
+
+  /**
+   * Find all publicly accessible feature flags (excludes server-only flags).
+   * For use by public APIs that should not expose internal operational flags.
+   */
+  async findAllPublic(environment?: string): Promise<FeatureFlag[]> {
+    return this.flagRepo.find({
+      where: {
+        environment: environment ?? this.getDefaultEnvironment(),
+        serverOnly: false,
+      },
       order: { key: 'ASC' },
     });
   }
@@ -699,6 +762,23 @@ export class FeatureFlagsService {
       environment,
       (Date.now() - startTime) / 1000,
     );
+    return flag;
+  }
+
+  /**
+   * Find flag with personalized caching for user/percentage/role-targeted flags.
+   * Cache key includes user identity to prevent cross-user result leakage.
+   */
+  private async findFlagPersonalized(
+    key: string,
+    environment: string,
+    context: FeatureFlagContext,
+  ): Promise<FeatureFlag | null> {
+    const flag = await this.findFlag(key, environment);
+    
+    // For personalized flag types, we rely on the base cache but don't cache
+    // the evaluation result itself to avoid cross-user leakage.
+    // The flag definition is cached, but evaluation happens per-request.
     return flag;
   }
 

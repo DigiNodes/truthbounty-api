@@ -15,11 +15,11 @@ This document describes the database index optimization implemented to improve q
 
 ### Claims Table
 
-| Index Name                    | Columns           | Type                     | Purpose                                        |
-| ----------------------------- | ----------------- | ------------------------ | ---------------------------------------------- |
-| `IDX_claims_finalized`        | `finalized`       | Single                   | Filter finalized vs pending claims             |
-| `IDX_claims_confidence_score` | `confidenceScore` | Partial (WHERE NOT NULL) | Leaderboard queries, high-confidence filtering |
-| `IDX_claims_resolved_verdict` | `resolvedVerdict` | Partial (WHERE NOT NULL) | Filter by verdict outcome                      |
+The `finalized`, `confidenceScore`, and `resolvedVerdict` indexes are legacy
+schema artifacts. Their columns are excluded from TypeORM reads and writes and
+must not be used to answer protocol-state queries. The versioned claim
+read-model endpoint is the API surface for release-bound claim status; its
+finalized rows are gated by canonical events and contract checkpoints.
 
 ### Stake Table
 
@@ -57,24 +57,9 @@ This document describes the database index optimization implemented to improve q
 
 ## Query Patterns Optimized
 
-### 1. Find Finalized Claims
-
-```sql
-SELECT * FROM claims WHERE finalized = true;
-```
-
-**Index Used:** `IDX_claims_finalized`
-
-### 2. Leaderboard - High Confidence Claims
-
-```sql
-SELECT * FROM claims
-WHERE confidenceScore > 0.8
-ORDER BY confidenceScore DESC
-LIMIT 50;
-```
-
-**Index Used:** `IDX_claims_confidence_score`
+Do not query `claims.finalized`, `claims.resolvedVerdict`, or
+`claims.confidenceScore` for protocol status or analytics that imply consensus.
+These legacy fields are intentionally not exposed by claim metadata endpoints.
 
 ### 3. Find Stakes by Claim
 
@@ -191,8 +176,6 @@ Results are saved to `benchmark-results/` with timestamps for comparison.
 
 | Query Type                  | Before | After | Improvement |
 | --------------------------- | ------ | ----- | ----------- |
-| Find finalized claims       | ~50ms  | ~5ms  | 90%         |
-| High confidence leaderboard | ~100ms | ~10ms | 90%         |
 | Stakes by claim             | ~80ms  | ~8ms  | 90%         |
 | Recent stake events         | ~60ms  | ~6ms  | 90%         |
 | Open disputes               | ~40ms  | ~4ms  | 90%         |

@@ -81,6 +81,14 @@ export interface DecideAbuseAppealInput {
   note?: string;
 }
 
+export interface AbuseAppealRegister {
+  put(appeal: AbuseAppeal): Promise<void>;
+  putPending(appeal: AbuseAppeal, maxOpenAppeals: number): Promise<void>;
+  get(id: string): Promise<AbuseAppeal | null>;
+  list(filter?: { subjectKey?: string; status?: AbuseAppealStatus }): Promise<AbuseAppeal[]>;
+  countOpen(subjectKey: string): Promise<number>;
+}
+
 const MAX_REASON_LENGTH = 500;
 
 /**
@@ -90,14 +98,14 @@ const MAX_REASON_LENGTH = 500;
  * appeals to outlive a restart binds a persistent implementation behind the
  * same interface; nothing above this line changes.
  */
-export class InMemoryAbuseAppealRegister {
+export class InMemoryAbuseAppealRegister implements AbuseAppealRegister {
   private readonly appeals = new Map<string, AbuseAppeal>();
   private readonly bySubject = new Map<string, Set<string>>();
   private readonly order: string[] = [];
 
   constructor(private readonly limit = 10_000) {}
 
-  put(appeal: AbuseAppeal): void {
+  put(appeal: AbuseAppeal): Promise<void> {
     if (!this.appeals.has(appeal.id)) {
       this.order.push(appeal.id);
       let ids = this.bySubject.get(appeal.subjectKey);
@@ -117,13 +125,40 @@ export class InMemoryAbuseAppealRegister {
         this.bySubject.get(evicted.subjectKey)?.delete(oldest);
       }
     }
+    return Promise.resolve();
   }
 
-  get(id: string): AbuseAppeal | null {
-    return this.appeals.get(id) ?? null;
+  async putPending(appeal: AbuseAppeal, maxOpenAppeals: number): Promise<void> {
+    if (
+      (await this.list({ subjectKey: appeal.subjectKey })).some(
+        (existing) =>
+          existing.actionId === appeal.actionId &&
+          existing.status === AbuseAppealStatus.PENDING,
+      )
+    ) {
+      throw new AbuseAppealError(
+        409,
+        PublicErrorCode.CONFLICT,
+        'An appeal for this action is already under review.',
+      );
+    }
+    if ((await this.countOpen(appeal.subjectKey)) >= maxOpenAppeals) {
+      throw new AbuseAppealError(
+        429,
+        PublicErrorCode.RATE_LIMITED,
+        'Too many open appeals. Please wait for a decision.',
+      );
+    }
+    await this.put(appeal);
   }
 
-  list(filter?: { subjectKey?: string; status?: AbuseAppealStatus }): AbuseAppeal[] {
+  get(id: string): Promise<AbuseAppeal | null> {
+    return Promise.resolve(this.appeals.get(id) ?? null);
+  }
+
+  list(
+    filter?: { subjectKey?: string; status?: AbuseAppealStatus },
+  ): Promise<AbuseAppeal[]> {
     const items: AbuseAppeal[] = [];
     for (let i = this.order.length - 1; i >= 0; i -= 1) {
       const appeal = this.appeals.get(this.order[i]);
@@ -132,18 +167,18 @@ export class InMemoryAbuseAppealRegister {
       if (filter?.status && appeal.status !== filter.status) continue;
       items.push(appeal);
     }
-    return items;
+    return Promise.resolve(items);
   }
 
-  countOpen(subjectKey: string): number {
+  countOpen(subjectKey: string): Promise<number> {
     const ids = this.bySubject.get(subjectKey);
-    if (!ids) return 0;
+    if (!ids) return Promise.resolve(0);
     let open = 0;
     for (const id of ids) {
       const appeal = this.appeals.get(id);
       if (appeal && appeal.status === AbuseAppealStatus.PENDING) open += 1;
     }
-    return open;
+    return Promise.resolve(open);
   }
 }
 
@@ -160,7 +195,7 @@ export class AbuseAppealService {
   constructor(
     private readonly signals: AbuseSignalService,
     @Inject(ABUSE_APPEAL_REGISTER)
-    private readonly register: InMemoryAbuseAppealRegister,
+    private readonly register: AbuseAppealRegister,
     @Inject(ABUSE_APPEAL_POLICY)
     private readonly policy: AbuseAppealPolicy = DEFAULT_ABUSE_APPEAL_POLICY,
   ) {}
@@ -203,32 +238,7 @@ export class AbuseAppealService {
       );
     }
 
-    const existing = this.register
-      .list({ subjectKey })
-      .find(
-        (appeal) =>
-          appeal.actionId === action.id &&
-          appeal.status === AbuseAppealStatus.PENDING,
-      );
-    if (existing) {
-      throw new AbuseAppealError(
-        409,
-        PublicErrorCode.CONFLICT,
-        'An appeal for this action is already under review.',
-      );
-    }
-
-    this.releaseExpiredAppeals(subjectKey, now);
-    if (
-      this.register.countOpen(subjectKey) >=
-      this.policy.maxOpenAppealsPerSubject
-    ) {
-      throw new AbuseAppealError(
-        429,
-        PublicErrorCode.RATE_LIMITED,
-        'Too many open appeals. Please wait for a decision.',
-      );
-    }
+    await this.releaseExpiredAppeals(subjectKey, now);
 
     const appeal: AbuseAppeal = {
       id: `appeal-${subjectKey.slice(0, 12)}-${action.id}`,
@@ -243,7 +253,7 @@ export class AbuseAppealService {
       decisionNote: null,
     };
 
-    this.register.put(appeal);
+    await this.register.putPending(appeal, this.policy.maxOpenAppealsPerSubject);
     // Pin escalation so the appeal is worth filing, without granting immunity.
     this.signals.pinEscalation(subjectKey, action.escalationLevel);
     this.logger.log(
@@ -256,11 +266,11 @@ export class AbuseAppealService {
   listAppeals(filter?: {
     subjectKey?: string;
     status?: AbuseAppealStatus;
-  }): AbuseAppeal[] {
+  }): Promise<AbuseAppeal[]> {
     return this.register.list(filter);
   }
 
-  getAppeal(id: string): AbuseAppeal | null {
+  async getAppeal(id: string): Promise<AbuseAppeal | null> {
     return this.register.get(id);
   }
 
@@ -284,7 +294,7 @@ export class AbuseAppealService {
       );
     }
 
-    const appeal = this.register.get(input.appealId);
+    const appeal = await this.register.get(input.appealId);
     if (!appeal) {
       throw new AbuseAppealError(
         404,
@@ -312,7 +322,7 @@ export class AbuseAppealService {
       await this.signals.liftAction(appeal.actionId, now);
     }
     this.signals.releaseEscalation(appeal.subjectKey);
-    this.register.put(decided);
+    await this.register.put(decided);
     return decided;
   }
 
@@ -322,9 +332,9 @@ export class AbuseAppealService {
    * This is the recovery path: an appeal nobody reviewed stops holding the
    * subject's escalation level once its SLA passes, without operator action.
    */
-  releaseExpiredAppeals(subjectKey: string, now = Date.now()): AbuseAppeal[] {
+  async releaseExpiredAppeals(subjectKey: string, now = Date.now()): Promise<AbuseAppeal[]> {
     const released: AbuseAppeal[] = [];
-    for (const appeal of this.register.list({ subjectKey })) {
+    for (const appeal of await this.register.list({ subjectKey })) {
       if (appeal.status !== AbuseAppealStatus.PENDING) continue;
       if (Date.parse(appeal.reviewDueAt) > now) continue;
       const expired: AbuseAppeal = {
@@ -334,7 +344,7 @@ export class AbuseAppealService {
         decisionNote: 'Review SLA elapsed without a decision.',
       };
       this.signals.releaseEscalation(subjectKey);
-      this.register.put(expired);
+      await this.register.put(expired);
       released.push(expired);
     }
     return released;

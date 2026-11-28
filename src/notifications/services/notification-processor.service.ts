@@ -11,6 +11,7 @@ import { EventType } from '../enums/event-type.enum';
 import { DeliveryChannel } from '../interfaces/notification.types';
 import { parseDeliveryChannel } from '../delivery/delivery-channel';
 import { planDeliveryRetry } from '../delivery/delivery-retry.policy';
+import { buildDeliveryIdempotencyKey } from '../delivery/delivery-idempotency-key';
 import {
   NotificationDeliveryResult,
   RecipientDeliveryResult,
@@ -42,16 +43,16 @@ export interface NotificationProcessorJob {
 
 /**
  * NotificationProcessor
- * 
+ *
  * BullMQ job processor that handles notification delivery.
- * 
+ *
  * Responsibilities:
  * 1. Dequeue jobs from BullMQ
  * 2. Load outbox event details
  * 3. Call orchestrator to deliver to users
  * 4. Handle errors and retries
  * 5. Update outbox status (DISPATCHED/DEAD_LETTER)
- * 
+ *
  * Job Flow:
  * OutboxScheduler → creates job → BullMQ queue
  *                                      ↓
@@ -104,7 +105,7 @@ export class NotificationProcessor {
       await this.outboxRepository.save(outboxEvent);
 
       // Orchestrate delivery to all recipients and get structured results
-      const deliveryResult: NotificationDeliveryResult = 
+      const deliveryResult: NotificationDeliveryResult =
         await this.orchestrator.deliverNotification(eventType, recipientIds, payload);
 
       // Log detailed outcomes for observability
@@ -193,7 +194,10 @@ export class NotificationProcessor {
         };
       }
     } catch (error) {
-      this.logger.error(`Notification job ${job.id} failed: ${error.message}`, error.stack);
+      this.logger.error(
+        `Notification job ${job.id} failed: ${error.message}`,
+        error.stack,
+      );
 
       // Handle retry or dead-letter
       return await this.handleJobFailure(job, error, outboxEventId);
@@ -290,7 +294,7 @@ export class NotificationProcessor {
 
   /**
    * Determine the final outbox event status based on delivery outcomes.
-   * 
+   *
    * Policy:
    * - DISPATCHED: At least one recipient was successfully delivered to at least one channel
    * - RETRY: No successes, but at least one retryable failure (and we haven't exhausted retries)
@@ -388,7 +392,7 @@ export class NotificationProcessor {
 
   /**
    * Link delivery evidence to outbox event for audit trail.
-   * 
+   *
    * Creates bidirectional links between DeliveryHistory records and the
    * OutboxEvent, enabling reconstruction of which deliveries resulted from
    * which outbox event. Only links provider-confirmed deliveries (those with

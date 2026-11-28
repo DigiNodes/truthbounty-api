@@ -158,8 +158,12 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Set a key only if it does not exist (SETNX) with optional TTL
-   * Returns true if key was set (new key), false if key already existed or Redis unavailable.
+   * Set a key only if it does not exist (SETNX) with optional TTL.
+   *
+   * `true` means Redis definitely created the key. `false` means the key
+   * already existed OR the attempt could not be verified (Redis unavailable or
+   * errored). Callers must never treat `false` as permission to send; a failed
+   * Redis claim can only be compensated by a durable database claim.
    */
   async setnx(
     key: string,
@@ -167,8 +171,10 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     ttlSeconds?: number,
   ): Promise<boolean> {
     if (!this.client || !this.isConnected) {
-      this.logger.debug(`Redis unavailable, skipping SETNX for key: ${key}`);
-      return true; // allow execution when Redis is unavailable (fallback to DB)
+      this.logger.debug(
+        `Redis unavailable, SETNX failed closed for key: ${key}`,
+      );
+      return false;
     }
 
     try {
@@ -183,7 +189,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       this.logger.error(
         `Redis SETNX error for key ${key}: ${this.getErrorMessage(error)}`,
       );
-      return true; // fallback to DB on error
+      return false;
     }
   }
 
@@ -286,22 +292,25 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Execute a Lua script
+   * Execute a Lua script via the client's defineCommand-free script runner.
+   * The script is loaded with SCRIPT LOAD and executed with EVALSHA, so no
+   * dynamic string evaluation is performed on the Node side.
    */
-  async eval(
+  async runScript(
     script: string,
     numKeys: number,
     ...args: (string | Buffer | number)[]
   ): Promise<unknown> {
     if (!this.client || !this.isConnected) {
-      this.logger.error('Redis unavailable, failing closed for rate limit');
+      this.logger.error('Redis unavailable, failing closed for script');
       throw new Error('Redis unavailable (Fail Closed)');
     }
 
     try {
-      return await this.client.eval(script, numKeys, ...args);
+      const sha = await this.client.script('LOAD', script);
+      return await this.client.evalsha(sha as string, numKeys, ...args);
     } catch (error) {
-      this.logger.error(`Redis EVAL error: ${this.getErrorMessage(error)}`);
+      this.logger.error(`Redis script error: ${this.getErrorMessage(error)}`);
       throw new Error('Redis operation failed (Fail Closed)', {
         cause: error,
       });

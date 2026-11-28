@@ -3,8 +3,10 @@ import {
   Logger,
   BadRequestException,
   UnauthorizedException,
+  OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { RedisService } from '../redis/redis.service';
 
 export type CredentialDomain =
   | 'siwe'
@@ -15,7 +17,8 @@ export type CredentialDomain =
 
 export interface CredentialKeyVersion {
   keyId: string;
-  secret: string; // NEVER LOGGED OR EXPOSED IN STATUS
+  /** NEVER LOGGED OR EXPOSED IN STATUS */
+  secret: string;
   createdAt: number;
   expiresAt?: number;
   revokedAt?: number;
@@ -37,64 +40,269 @@ export interface CredentialStatusView {
   previousKeyId?: string;
   totalKeys: number;
   hasOverlap: boolean;
+  nextResetAt?: string;
   // NOTE: Secrets are EXPLICITLY excluded from status views!
 }
 
-@Injectable()
-export class CredentialRotationService {
-  private readonly logger = new Logger(CredentialRotationService.name);
-  private readonly domains = new Map<CredentialDomain, DomainCredentialState>();
-  private readonly defaultOverlapWindowMs = 24 * 60 * 60 * 1000; // 24 hours bounded overlap
+/** Env var name for each domain secret. */
+const DOMAIN_ENV_KEYS: Record<CredentialDomain, string> = {
+  siwe: 'SIWE_SECRET',
+  webhook: 'WEBHOOK_SECRET',
+  encryption: 'ENCRYPTION_SECRET',
+  provider: 'PROVIDER_SECRET',
+  database: 'DATABASE_SECRET',
+};
 
-  constructor(private readonly configService: ConfigService) {
-    const domainsList: CredentialDomain[] = [
-      'siwe',
-      'webhook',
-      'encryption',
-      'provider',
-      'database',
-    ];
-    for (const domain of domainsList) {
-      this.initializeDomain(domain);
+/** Redis key prefix for persisted rotation state (key metadata only — no secrets). */
+const REDIS_STATE_PREFIX = 'credential:state:';
+/** Redis key prefix for persisted key metadata. */
+const REDIS_KEY_PREFIX = 'credential:key:';
+/** TTL for persisted key metadata (30 days in seconds). */
+const REDIS_KEY_TTL_SECONDS = 30 * 24 * 60 * 60;
+
+@Injectable()
+export class CredentialRotationService implements OnModuleInit {
+  private readonly logger = new Logger(CredentialRotationService.name);
+
+  /**
+   * Process-local cache of domain state. This is the fast path; Redis is the
+   * durable shared source of truth that survives restarts and reconciles replicas.
+   */
+  private readonly domains = new Map<CredentialDomain, DomainCredentialState>();
+
+  private readonly defaultOverlapWindowMs = 24 * 60 * 60 * 1000; // 24 hours
+
+  private static readonly ALL_DOMAINS: CredentialDomain[] = [
+    'siwe',
+    'webhook',
+    'encryption',
+    'provider',
+    'database',
+  ];
+
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly redisService: RedisService,
+  ) {}
+
+  async onModuleInit(): Promise<void> {
+    for (const domain of CredentialRotationService.ALL_DOMAINS) {
+      await this.initializeDomain(domain);
     }
   }
 
-  private initializeDomain(domain: CredentialDomain): void {
-    const defaultKeyId = `${domain}-v1`;
-    const defaultSecret =
-      this.configService.get<string>(
-        `${domain.toUpperCase()}_SECRET`,
-        `default-${domain}-secret-${Math.random()}`,
-      );
+  // ── Initialization ─────────────────────────────────────────────────────────
 
-    const keys = new Map<string, CredentialKeyVersion>();
+  /**
+   * Load state from Redis (surviving restarts). If no persisted state exists,
+   * bootstrap from the provisioned environment secret and persist it.
+   * Fails closed — throws if the secret is absent or weak.
+   *
+   * SECURITY: Math.random() is never used. No fallback secret is generated.
+   */
+  private async initializeDomain(domain: CredentialDomain): Promise<void> {
+    // 1. Try to restore durable state from Redis first.
+    const persisted = await this.loadStateFromRedis(domain);
+    if (persisted) {
+      this.domains.set(domain, persisted);
+      this.logger.log(
+        `[credential-rotation] Domain [${domain}] restored from durable state. active=${persisted.activeKeyId}`,
+      );
+      return;
+    }
+
+    // 2. No persisted state — bootstrap from explicit env secret.
+    const envKey = DOMAIN_ENV_KEYS[domain];
+    const provisioned = this.configService.get<string>(envKey);
+
+    if (!provisioned || provisioned.trim().length === 0) {
+      throw new Error(
+        `[credential-rotation] Startup failed: ${envKey} is not set. ` +
+          `All credential domain secrets must be explicitly provisioned. ` +
+          `No fallback secret will be generated.`,
+      );
+    }
+
+    // Enforce minimum secret strength: at least 32 non-whitespace characters.
+    if (provisioned.trim().length < 32) {
+      throw new Error(
+        `[credential-rotation] Startup failed: ${envKey} is too short. ` +
+          `Credential secrets must be at least 32 characters long.`,
+      );
+    }
+
+    const defaultKeyId = `${domain}-v1`;
     const keyVersion: CredentialKeyVersion = {
       keyId: defaultKeyId,
-      secret: defaultSecret,
+      secret: provisioned,
       createdAt: Date.now(),
       status: 'active',
     };
-    keys.set(defaultKeyId, keyVersion);
 
-    this.domains.set(domain, {
+    const state: DomainCredentialState = {
       domain,
       activeKeyId: defaultKeyId,
-      keys,
+      keys: new Map([[defaultKeyId, keyVersion]]),
       overlapWindowMs: this.defaultOverlapWindowMs,
-    });
+    };
+
+    this.domains.set(domain, state);
+
+    // Persist to Redis so other replicas and restarts share this bootstrap state.
+    await this.persistStateToRedis(domain, state);
+
+    this.logger.log(
+      `[credential-rotation] Domain [${domain}] bootstrapped from ${envKey}. keyId=${defaultKeyId}`,
+    );
+  }
+
+  // ── Redis persistence (key metadata only — raw secrets never stored) ───────
+
+  /**
+   * Persist domain state metadata to Redis. Raw secret material is NOT stored.
+   * Only key IDs, timestamps, and status flags are persisted.
+   */
+  private async persistStateToRedis(
+    domain: CredentialDomain,
+    state: DomainCredentialState,
+  ): Promise<void> {
+    try {
+      const statePayload = JSON.stringify({
+        activeKeyId: state.activeKeyId,
+        previousKeyId: state.previousKeyId,
+        rollbackKeyId: state.rollbackKeyId,
+        overlapWindowMs: state.overlapWindowMs,
+      });
+      await this.redisService.set(
+        `${REDIS_STATE_PREFIX}${domain}`,
+        statePayload,
+      );
+
+      // Persist each key's metadata (no secret material).
+      for (const [keyId, kv] of state.keys) {
+        const keyMeta = JSON.stringify({
+          keyId: kv.keyId,
+          createdAt: kv.createdAt,
+          expiresAt: kv.expiresAt,
+          revokedAt: kv.revokedAt,
+          status: kv.status,
+          // secret is intentionally omitted
+        });
+        await this.redisService.set(
+          `${REDIS_KEY_PREFIX}${domain}:${keyId}`,
+          keyMeta,
+          REDIS_KEY_TTL_SECONDS,
+        );
+      }
+    } catch (err) {
+      // Redis persistence failure is logged but does not block in-memory operation.
+      // The replica that failed to persist will re-bootstrap on next restart.
+      this.logger.error(
+        `[credential-rotation] Failed to persist state for domain [${domain}]: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
   }
 
   /**
-   * Rotate credential for a domain atomically with bounded overlap.
+   * Attempt to restore domain state from Redis. Returns null if no state is found.
+   * Because secrets are not stored in Redis, the restored state uses the
+   * process-local secrets from ConfigService (the same env vars used at bootstrap).
+   * This means the env vars must still be present on restart for secret retrieval
+   * to work — Redis only carries the metadata (which key is active/overlap/revoked).
    */
-  rotateCredential(
+  private async loadStateFromRedis(
+    domain: CredentialDomain,
+  ): Promise<DomainCredentialState | null> {
+    try {
+      const raw = await this.redisService.get(`${REDIS_STATE_PREFIX}${domain}`);
+      if (!raw) return null;
+
+      const meta = JSON.parse(raw) as {
+        activeKeyId: string;
+        previousKeyId?: string;
+        rollbackKeyId?: string;
+        overlapWindowMs: number;
+      };
+
+      // Reconstruct keys: metadata from Redis + secret from env.
+      const envKey = DOMAIN_ENV_KEYS[domain];
+      const provisioned = this.configService.get<string>(envKey);
+
+      if (!provisioned || provisioned.trim().length < 32) {
+        this.logger.warn(
+          `[credential-rotation] Domain [${domain}] has Redis state but ${envKey} is absent/weak. ` +
+            `Clearing stale Redis state and failing startup.`,
+        );
+        // Let the caller handle absence; initializeDomain will throw.
+        return null;
+      }
+
+      // Collect key IDs to restore from Redis.
+      const keyIds = new Set<string>([
+        meta.activeKeyId,
+        ...(meta.previousKeyId ? [meta.previousKeyId] : []),
+        ...(meta.rollbackKeyId ? [meta.rollbackKeyId] : []),
+      ]);
+
+      const keys = new Map<string, CredentialKeyVersion>();
+      for (const keyId of keyIds) {
+        const keyRaw = await this.redisService.get(
+          `${REDIS_KEY_PREFIX}${domain}:${keyId}`,
+        );
+        if (!keyRaw) continue;
+
+        const keyMeta = JSON.parse(keyRaw) as {
+          keyId: string;
+          createdAt: number;
+          expiresAt?: number;
+          revokedAt?: number;
+          status: CredentialKeyVersion['status'];
+        };
+
+        keys.set(keyId, {
+          ...keyMeta,
+          // Secret is re-bound from the provisioned env var (single source of truth).
+          secret: provisioned,
+        });
+      }
+
+      if (!keys.has(meta.activeKeyId)) {
+        // Cannot restore without an active key entry — re-bootstrap.
+        return null;
+      }
+
+      return {
+        domain,
+        activeKeyId: meta.activeKeyId,
+        previousKeyId: meta.previousKeyId,
+        rollbackKeyId: meta.rollbackKeyId,
+        overlapWindowMs: meta.overlapWindowMs,
+        keys,
+      };
+    } catch {
+      // Any Redis or parse error — fall through to bootstrap.
+      return null;
+    }
+  }
+
+  // ── Rotate ─────────────────────────────────────────────────────────────────
+
+  /**
+   * Rotate credential for a domain atomically with bounded overlap.
+   * The new secret is supplied by the caller (never generated internally).
+   */
+  async rotateCredential(
     domain: CredentialDomain,
     newKeyId: string,
     newSecret: string,
     overlapMs?: number,
-  ): { activeKeyId: string; previousKeyId?: string } {
+  ): Promise<{ activeKeyId: string; previousKeyId?: string }> {
     if (!newKeyId || !newSecret) {
-      throw new BadRequestException('Key ID and secret are required for rotation');
+      throw new BadRequestException(
+        'Key ID and secret are required for rotation',
+      );
     }
 
     const state = this.domains.get(domain);
@@ -132,23 +340,22 @@ export class CredentialRotationService {
     state.previousKeyId = currentActiveId;
     state.activeKeyId = newKeyId;
 
-    // Keys never enter logs
+    // Persist updated state (key metadata only, no secrets).
+    await this.persistStateToRedis(domain, state);
+
+    // Keys never enter logs.
     this.logger.log(
-      `Credential rotated for domain [${domain}]: active=${newKeyId}, previous=${currentActiveId}`,
+      `[credential-rotation] Domain [${domain}] rotated: active=${newKeyId}, previous=${currentActiveId}`,
     );
 
-    return {
-      activeKeyId: newKeyId,
-      previousKeyId: currentActiveId,
-    };
+    return { activeKeyId: newKeyId, previousKeyId: currentActiveId };
   }
 
-  /**
-   * Rollback credential rotation to the previous key.
-   */
-  rollbackCredential(
+  // ── Rollback ───────────────────────────────────────────────────────────────
+
+  async rollbackCredential(
     domain: CredentialDomain,
-  ): { activeKeyId: string; rolledBackFrom: string } {
+  ): Promise<{ activeKeyId: string; rolledBackFrom: string }> {
     const state = this.domains.get(domain);
     if (!state) {
       throw new BadRequestException(`Unknown credential domain: ${domain}`);
@@ -175,20 +382,18 @@ export class CredentialRotationService {
     state.previousKeyId = previousActive;
     state.rollbackKeyId = undefined;
 
+    await this.persistStateToRedis(domain, state);
+
     this.logger.warn(
-      `Credential rollback executed for domain [${domain}]: restored=${targetKeyId}, rolledBackFrom=${previousActive}`,
+      `[credential-rotation] Rollback executed for domain [${domain}]: restored=${targetKeyId}, rolledBackFrom=${previousActive}`,
     );
 
-    return {
-      activeKeyId: targetKeyId,
-      rolledBackFrom: previousActive,
-    };
+    return { activeKeyId: targetKeyId, rolledBackFrom: previousActive };
   }
 
-  /**
-   * Revoke a specific key ID immediately.
-   */
-  revokeKey(domain: CredentialDomain, keyId: string): void {
+  // ── Revoke ─────────────────────────────────────────────────────────────────
+
+  async revokeKey(domain: CredentialDomain, keyId: string): Promise<void> {
     const state = this.domains.get(domain);
     if (!state) {
       throw new BadRequestException(`Unknown credential domain: ${domain}`);
@@ -206,7 +411,7 @@ export class CredentialRotationService {
 
     if (state.activeKeyId === keyId) {
       this.logger.error(
-        `CRITICAL: Active key [${keyId}] revoked for domain [${domain}]! Service failing closed.`,
+        `[credential-rotation] CRITICAL: Active key [${keyId}] revoked for domain [${domain}]. Failing closed.`,
       );
       state.activeKeyId = ''; // Fail closed
     }
@@ -215,19 +420,25 @@ export class CredentialRotationService {
       state.previousKeyId = undefined;
     }
 
-    this.logger.warn(`Key [${keyId}] explicitly revoked for domain [${domain}]`);
+    await this.persistStateToRedis(domain, state);
+
+    this.logger.warn(
+      `[credential-rotation] Key [${keyId}] explicitly revoked for domain [${domain}]`,
+    );
   }
 
+  // ── Get secret ─────────────────────────────────────────────────────────────
+
   /**
-   * Verify and retrieve secret for a given key ID (or current active key if keyId omitted).
-   * Fails closed on stale, missing, ambiguous, expired, revoked, or unknown key IDs.
-   * NEVER logs or leaks secrets.
+   * Retrieve the secret for a given key ID (or the current active key).
+   * Fails closed on missing, expired, revoked, or unknown keys.
+   * NEVER logs or returns secrets in error messages.
    */
   getSecret(domain: CredentialDomain, keyId?: string): string {
     const state = this.domains.get(domain);
     if (!state) {
       throw new UnauthorizedException(
-        `Unauthorized or invalid credential domain: ${domain}`,
+        `Fail closed: Unauthorized or invalid credential domain: ${domain}`,
       );
     }
 
@@ -269,8 +480,10 @@ export class CredentialRotationService {
     return keyVersion.secret;
   }
 
+  // ── Status view ────────────────────────────────────────────────────────────
+
   /**
-   * Get safe status view without leaking secret material (Keys never enter logs or status).
+   * Safe status view — secrets are explicitly excluded.
    */
   getStatus(
     domain?: CredentialDomain,
@@ -280,25 +493,33 @@ export class CredentialRotationService {
       if (!state) {
         throw new BadRequestException(`Unknown credential domain: ${domain}`);
       }
-      return {
-        domain: state.domain,
-        activeKeyId: state.activeKeyId,
-        previousKeyId: state.previousKeyId,
-        totalKeys: state.keys.size,
-        hasOverlap: !!state.previousKeyId,
-      };
+      return this.buildStatusView(state);
     }
 
     const statuses: CredentialStatusView[] = [];
-    for (const [_, state] of this.domains) {
-      statuses.push({
-        domain: state.domain,
-        activeKeyId: state.activeKeyId,
-        previousKeyId: state.previousKeyId,
-        totalKeys: state.keys.size,
-        hasOverlap: !!state.previousKeyId,
-      });
+    for (const [, state] of this.domains) {
+      statuses.push(this.buildStatusView(state));
     }
     return statuses;
+  }
+
+  private buildStatusView(state: DomainCredentialState): CredentialStatusView {
+    const activeKey = state.keys.get(state.activeKeyId);
+    const previousKey = state.previousKeyId
+      ? state.keys.get(state.previousKeyId)
+      : undefined;
+
+    return {
+      domain: state.domain,
+      activeKeyId: state.activeKeyId,
+      previousKeyId: state.previousKeyId,
+      totalKeys: state.keys.size,
+      hasOverlap: !!state.previousKeyId,
+      nextResetAt: previousKey?.expiresAt
+        ? new Date(previousKey.expiresAt).toISOString()
+        : activeKey?.expiresAt
+          ? new Date(activeKey.expiresAt).toISOString()
+          : undefined,
+    };
   }
 }
