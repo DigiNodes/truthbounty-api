@@ -7,6 +7,7 @@ import {
   AuthenticatedRequest,
   isAuthenticatedRequest,
 } from './types/authenticated-request';
+import { normalizeAddress } from '../abuse-signals/abuse-subject';
 
 /**
  * Wallet-Scoped and Endpoint-Cost Rate Limiter
@@ -202,21 +203,6 @@ export class WalletRateLimiterService {
       }
     }
 
-    const headerWallet = req.headers?.['x-wallet-address'] || req.headers?.['x-wallet'];
-    if (!walletAddress && typeof headerWallet === 'string') {
-      walletAddress = headerWallet.toLowerCase();
-    }
-
-    const apiKeyRaw = req.headers?.['x-api-key'];
-    const apiKey = typeof apiKeyRaw === 'string' ? apiKeyRaw : undefined;
-    if (apiKey) {
-      const apiKeyTrust = await this.getApiKeyTrustLevel(apiKey);
-      if (apiKeyTrust) {
-        isTrusted = true;
-        trustScore = Math.max(trustScore, apiKeyTrust.trustScore);
-      }
-    }
-
     const ipReputation = await this.getIpReputation(ipAddress);
     if (ipReputation.isMalicious) {
       trustScore = Math.min(trustScore, 10);
@@ -384,11 +370,11 @@ export class WalletRateLimiterService {
   }
 
   private getClientIp(req: Request): string {
-    return req.ip || req.socket?.remoteAddress || 'unknown';
-  }
-
-  private async getApiKeyTrustLevel(apiKey: string): Promise<{ tier: string; trustScore: number } | null> {
-    return null;
+    const socketAddress = normalizeAddress(req.socket?.remoteAddress);
+    if (socketAddress) {
+      return socketAddress;
+    }
+    return normalizeAddress(req.ip) ?? 'unknown';
   }
 
   private async getIpReputation(ip: string): Promise<{ isMalicious: boolean; isTrusted: boolean }> {
