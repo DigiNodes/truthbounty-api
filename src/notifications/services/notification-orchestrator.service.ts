@@ -13,6 +13,20 @@ import { DeliveryTracker } from './delivery-tracker.service';
 import { EventType } from '../enums/event-type.enum';
 import { NotificationChannel } from '../channels/channel.interface';
 import { buildDeliveryIdempotencyKey } from '../delivery/delivery-idempotency-key';
+import {
+  NotificationDeliveryResult,
+  RecipientDeliveryResult,
+  ChannelDeliveryOutcome,
+  DeliveryOutcome,
+  aggregateRecipientResult,
+  aggregateNotificationResult,
+  successOutcome,
+  skippedOutcome,
+  retryableFailureOutcome,
+  terminalFailureOutcome,
+  channelUnavailableOutcome,
+} from '../delivery/delivery-outcome';
+import { narrowDeliveryError } from '../delivery/delivery-error';
 
 /**
  * NotificationOrchestrator
@@ -94,7 +108,7 @@ export class NotificationOrchestrator {
 
   /**
    * Deliver notification to a single user
-   * 
+   *
    * @returns Array of channel delivery outcomes for this user
    */
   private async deliverToUser(
@@ -141,7 +155,7 @@ export class NotificationOrchestrator {
     );
 
     const results = await Promise.allSettled(deliveryPromises);
-    
+
     // Extract outcomes from settled promises
     return results.map((result, index) => {
       if (result.status === 'fulfilled') {
@@ -150,6 +164,12 @@ export class NotificationOrchestrator {
         // Promise was rejected - treat as terminal failure
         const channel = enabledChannels[index];
         const error = narrowDeliveryError(result.reason, { channel });
+        const idempotencyKey = this.generateDeliveryIdempotencyKey(
+          eventType,
+          userId,
+          channel,
+          metadata,
+        );
         return terminalFailureOutcome(
           channel,
           error.kind,
@@ -162,7 +182,7 @@ export class NotificationOrchestrator {
 
   /**
    * Deliver via a specific channel
-   * 
+   *
    * @returns Structured outcome for this channel delivery attempt
    */
   private async deliverViaChannel(
@@ -171,7 +191,7 @@ export class NotificationOrchestrator {
     eventType: EventType,
     metadata: Record<string, any>,
     preferences: any,
-  ): Promise<void> {
+  ): Promise<ChannelDeliveryOutcome> {
     const idempotencyKey = this.generateDeliveryIdempotencyKey(
       eventType,
       userId,
@@ -227,7 +247,10 @@ export class NotificationOrchestrator {
         this.logger.debug(
           `Idempotent delivery suppressed for ${userId} via ${channel}`,
         );
-        return;
+        return skippedOutcome(
+          channel,
+          'Duplicate delivery prevented by idempotency guard',
+        );
       }
 
       // Render template for this channel
@@ -237,25 +260,6 @@ export class NotificationOrchestrator {
         metadata,
         preferences.language,
       );
-
-      // Get channel implementation
-      const canonical = requireDeliveryChannel(channel);
-      const channelImpl = this.channels.get(canonical);
-      if (!channelImpl) {
-        this.logger.warn(
-          `No implementation registered for channel: ${canonical}`,
-        );
-        return;
-      }
-
-      // Check if channel config is valid
-      const config = await channelImpl.validateConfig(userId);
-      if (!config.valid) {
-        this.logger.warn(
-          `Channel ${channel} config invalid for ${userId}: ${config.errors.join(', ')}`,
-        );
-        return;
-      }
 
       // Deliver via channel
       this.logger.debug(`Delivering ${eventType} to ${userId} via ${channel}`);
@@ -298,9 +302,16 @@ export class NotificationOrchestrator {
           0,
           { source: 'orchestrator', timestamp: new Date(), kind: error.kind },
         );
+
         this.logger.warn(
           `Failed to deliver to ${userId} via ${channel}: ${result.error}`,
         );
+
+        if (error.disposition === 'retryable') {
+          return retryableFailureOutcome(channel, error.kind, error.message, 0, idempotencyKey);
+        } else {
+          return terminalFailureOutcome(channel, error.kind, error.message, idempotencyKey);
+        }
       }
     } catch (error) {
       this.logger.error(

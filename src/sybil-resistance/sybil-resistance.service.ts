@@ -28,7 +28,6 @@ import {
   StaleFeatureException,
   SybilAppealRecord,
   SybilAppealRequestDto,
-  SybilModelConfig,
   SybilScoreComputationResult,
   SybilSignals,
   SybilVotingScoreDto,

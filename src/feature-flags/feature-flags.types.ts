@@ -47,7 +47,20 @@ export interface UpdateFeatureFlagInput {
   rules?: FeatureFlagRuleSet;
   description?: string;
   expiresAt?: Date | null;
+  expectedVersion?: number;
+  reason?: string;
   serverOnly?: boolean;
+}
+
+export interface RollbackFeatureFlagInput {
+  targetVersion: number;
+  expectedVersion?: number;
+  reason?: string;
+}
+
+export interface EmergencyDisableFeatureFlagInput {
+  expectedVersion?: number;
+  reason?: string;
 }
 
 export interface FeatureFlagEvaluationResult {

@@ -40,6 +40,8 @@ import {
 } from './configuration-redaction';
 import {
   CreateFeatureFlagInput,
+  EmergencyDisableFeatureFlagInput,
+  RollbackFeatureFlagInput,
   UpdateFeatureFlagInput,
 } from './feature-flags.types';
 import {
