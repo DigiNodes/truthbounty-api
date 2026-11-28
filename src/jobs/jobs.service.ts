@@ -198,7 +198,9 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
         `${result.deliveriesDeleted} deliveries`,
     );
     return result;
-  }(queueName: QueueName): Promise<number> {
+  }
+
+  async retryFailed(queueName: QueueName): Promise<number> {
     if (this.gracefulShutdown.isDraining) {
       this.logger.warn(
         `Rejected retry request for ${queueName}; application is draining`,

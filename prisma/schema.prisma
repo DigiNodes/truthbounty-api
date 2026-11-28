@@ -13,7 +13,6 @@ generator client {
 // authority. Do not reintroduce a second ORM or dialect here.
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 enum UserRole {
@@ -869,4 +868,22 @@ model WebhookDelivery {
   @@index([provider, createdAt])
   @@index([status, createdAt])
   @@index([provider, receivedAt])
+}
+
+// Issue 865: HTTP workflow metadata is deliberately not a protocol projection.
+model DisputeWorkflow {
+  id               String   @id @default(uuid())
+  chainId          Int
+  releaseId        String
+  contractAddress  String
+  claimId          String
+  initiatorAddress String
+  reviewStatus     String   @default("REQUESTED")
+  reviewedBy       String?
+  reviewReason     String?
+  metadata         Json     @default("{}")
+  createdAt        DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([chainId, releaseId, contractAddress, claimId])
 }

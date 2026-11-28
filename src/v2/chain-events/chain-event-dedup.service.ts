@@ -38,9 +38,31 @@ export class ChainEventDedupService {
    * subsequent calls.
    */
   async ingest(log: RawChainLog): Promise<ChainEventIngestOutcome> {
+    const isDispute = [
+      'DisputeRaised',
+      'DisputeResolved',
+      'DisputeExpired',
+    ].includes(log.eventName);
+    if (isDispute && (!log.releaseId?.trim() || !log.decoderVersion?.trim())) {
+      throw new Error(
+        'Dispute events require approved release and decoder provenance',
+      );
+    }
+    const decoderVersion = log.decoderVersion ?? 'v1';
+    const canonicalKey = JSON.stringify([
+      log.chainId,
+      log.releaseId ?? null,
+      log.blockHash.toLowerCase(),
+      log.txHash.toLowerCase(),
+      log.logIndex,
+      decoderVersion,
+    ]);
     try {
       const created = await this.prisma.chainEvent.create({
         data: {
+          releaseId: log.releaseId ?? null,
+          decoderVersion,
+          canonicalKey,
           chainId: log.chainId,
           contractAddress: log.contractAddress.toLowerCase(),
           eventName: log.eventName,

@@ -1,49 +1,24 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+﻿import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
-  IsEnum,
   IsNotEmpty,
-  IsNumber,
   IsObject,
   IsOptional,
   IsString,
-  Max,
-  Min,
+  MaxLength,
 } from 'class-validator';
-import { DisputeTrigger } from '../entities/dispute.entity';
 
 export class CreateDisputeDto {
-  @ApiProperty({ description: 'Claim identifier' })
+  @ApiProperty({
+    description:
+      'Claim to request review of; does not raise an on-chain dispute',
+  })
   @IsString()
   @IsNotEmpty()
+  @MaxLength(256)
   claimId: string;
 
-  @ApiProperty({
-    enum: DisputeTrigger,
-    description: 'Reason the dispute was triggered',
-  })
-  @IsEnum(DisputeTrigger)
-  trigger: DisputeTrigger;
-
-  @ApiProperty({
-    description: 'Confidence score before dispute resolution',
-    minimum: 0,
-    maximum: 1,
-  })
-  @IsNumber()
-  @Min(0)
-  @Max(1)
-  originalConfidence: number;
-
   @ApiPropertyOptional({
-    description: 'Optional user identifier for the dispute initiator',
-  })
-  @IsOptional()
-  @IsString()
-  @IsNotEmpty()
-  initiatorId?: string;
-
-  @ApiPropertyOptional({
-    description: 'Optional dispute metadata',
+    description: 'Untrusted workflow metadata; never protocol evidence',
     type: 'object',
     additionalProperties: true,
   })

@@ -167,3 +167,8 @@ export type WebhookProviderConfig = Prisma.WebhookProviderConfigModel
  * 
  */
 export type WebhookDelivery = Prisma.WebhookDeliveryModel
+/**
+ * Model DisputeWorkflow
+ * 
+ */
+export type DisputeWorkflow = Prisma.DisputeWorkflowModel

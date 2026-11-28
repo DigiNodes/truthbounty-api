@@ -5,7 +5,8 @@ module.exports = {
   roots: ['<rootDir>/src', '<rootDir>/test'],
   testRegex: '.*\\.spec\\.ts$',
   transform: {
-    '^.+\\.(t|j)s$': 'ts-jest',
+    '^.+\\.ts$': 'ts-jest',
+    '^.+\\.js$': ['@swc/jest', { module: { type: 'commonjs' } }],
   },
   testRunner: 'jest-circus/runner',
   moduleDirectories: ['node_modules', '<rootDir>/node_modules'],

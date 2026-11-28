@@ -13,15 +13,17 @@ an observed terminal event is not proof of finalized chain state.
 ## Removed legacy behavior
 
 - Removed `MAX_DISPUTE_DURATION_HOURS` and its arbitrary 72-hour default.
-- Removed `getExpiredDisputes()` and `expireDispute()`, including the invalid
-  legacy `DisputeStatus.EXPIRED` assignment and its transaction dependency.
+- Removed the age-based candidate query and terminal expiry write. Issue #865
+  retains `expireDispute()` only as a throwing compatibility method;
+  `getExpiredDisputes()` reads finalized events and never infers expiry from age.
 - Retained `GET /disputes/expired` as an explicitly deprecated HTTP 410 response
   for deployments that still mount `DisputeModule`. It returns
   `LOCAL_DISPUTE_EXPIRY_RETIRED` and points clients to
   `/api/v2/dispute-read-models?status=expired`. The replacement has a versioned,
   paginated response with provenance/freshness metadata, not the legacy array.
-- The default `AppModule` already mounts `V2DisputesModule` and
-  `DisputeReadModelsModule`, not the legacy `DisputeModule`.
+- The default `AppModule` mounts `V2DisputesModule` and `DisputeReadModelsModule`.
+  Issue #865 also mounts the replacement `DisputeModule` for separate review
+  workflows and finalized projections, without registering the legacy entity.
 
 No local expiry worker is registered. Accordingly, local worker locking, retry,
 candidate-age rechecks, expiry metrics, and worker failure audit records are not

@@ -1,3 +1,5 @@
+// This test checks canonical module wiring without initializing Prisma.
+jest.mock('../prisma/prisma.service', () => ({ PrismaService: class {} }));
 import { Global, Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';

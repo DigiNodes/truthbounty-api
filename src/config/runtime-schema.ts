@@ -429,6 +429,9 @@ export const runtimeSchema = {
   CONTRACT_ADDRESS_MANIFEST: text(),
   REWARD_CONTRACT_ADDRESS: address,
   CONTRACT_ADDRESS: address,
+  // Issue 865: optional until the dispute projection's approved release is configured.
+  DISPUTE_PROJECTION_CONTRACT_ADDRESS: address,
+  DISPUTE_PROJECTION_DECODER_VERSION: text(),
   TREASURY_ADDRESS: address,
   VERIFIER_ADDRESS: address,
   FEE_RECIPIENT: address,

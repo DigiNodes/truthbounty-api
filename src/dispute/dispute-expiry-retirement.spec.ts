@@ -1,8 +1,9 @@
+jest.mock('../prisma/prisma.service', () => ({ PrismaService: class {} }));
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { DataSource, Repository } from 'typeorm';
-import { Dispute, DisputeTrigger } from './entities/dispute.entity';
-import { DEFAULT_CONFIG, DisputeService } from './dispute.service';
+import { DisputeService } from './dispute.service';
+import { DisputeJournalStore } from './dispute-journal.store';
+import { DisputeProjectionService } from './dispute-projection.service';
 import { DataState } from '../v2/common/data-state.enum';
 import {
   DisputeStatus,
@@ -31,41 +32,19 @@ describe('Contract-owned dispute expiry (#868)', () => {
     updatedAt: deadline,
   });
 
-  it('exposes no local age policy, candidate query, or terminal expiry command', () => {
-    expect(DEFAULT_CONFIG).not.toHaveProperty('MAX_DISPUTE_DURATION_HOURS');
-    expect(DisputeService.prototype).not.toHaveProperty('expireDispute');
-    expect(DisputeService.prototype).not.toHaveProperty('getExpiredDisputes');
-  });
-
-  it('preserves the upstream transactional duplicate check when creating disputes', async () => {
-    const query = {
-      where: jest.fn().mockReturnThis(),
-      andWhere: jest.fn().mockReturnThis(),
-      orderBy: jest.fn().mockReturnThis(),
-      getOne: jest.fn().mockResolvedValue(null),
-    };
-    const manager = {
-      findOne: jest.fn().mockResolvedValue({ id: 'existing-dispute' }),
-      getRepository: jest.fn().mockReturnValue({
-        createQueryBuilder: jest.fn().mockReturnValue(query),
-      }),
-      save: jest.fn(),
-    };
-    const transaction = jest.fn(async (callback) => callback(manager));
+  it('refuses local expiry commands without writing workflow or projection state', () => {
+    const store = { review: jest.fn(), create: jest.fn() };
+    const projection = { snapshot: jest.fn() };
     const service = new DisputeService(
-      {} as Repository<Dispute>,
-      { transaction } as unknown as DataSource,
+      store as unknown as DisputeJournalStore,
+      projection as unknown as DisputeProjectionService,
     );
-
-    await expect(
-      service.createDispute({
-        claimId: 'claim-1',
-        trigger: DisputeTrigger.MANUAL,
-        originalConfidence: 0.4,
-      }),
-    ).rejects.toThrow('An open dispute already exists');
-    expect(transaction).toHaveBeenCalledTimes(1);
-    expect(manager.save).not.toHaveBeenCalled();
+    expect(() => service.expireDispute('claim-1')).toThrow(
+      'Only finalized contract events establish dispute expiry',
+    );
+    expect(store.review).not.toHaveBeenCalled();
+    expect(store.create).not.toHaveBeenCalled();
+    expect(projection.snapshot).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -75,7 +54,9 @@ describe('Contract-owned dispute expiry (#868)', () => {
   ])('does not turn elapsed time into an expiry event at %s', (clock) => {
     const dispute = Object.freeze(row(DisputeStatus.RAISED));
     const now = new Date(clock);
-    const lifecycle = toDisputeLifecycleView(dispute, DataState.FINALIZED, { now });
+    const lifecycle = toDisputeLifecycleView(dispute, DataState.FINALIZED, {
+      now,
+    });
     const readModel = toDisputeReadModelItem(dispute, {
       now,
       dataState: DataState.FINALIZED,
@@ -114,6 +95,10 @@ describe('Contract-owned dispute expiry (#868)', () => {
     const imports = app.slice(app.indexOf('@Module('));
     expect(imports).toMatch(/\bV2DisputesModule\s*,/);
     expect(imports).toMatch(/\bDisputeReadModelsModule\s*,/);
-    expect(imports).not.toMatch(/\bDisputeModule\s*,/);
+    // Issue 865 mounts the replacement workflow/finalized-projection module.
+    expect(imports).toMatch(/\bDisputeModule\s*,/);
+    const module = readFileSync(join(__dirname, 'dispute.module.ts'), 'utf8');
+    expect(module).toContain('DisputeProjectionService');
+    expect(module).not.toContain('TypeOrmModule');
   });
 });
