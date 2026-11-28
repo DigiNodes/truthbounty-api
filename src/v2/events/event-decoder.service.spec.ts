@@ -145,6 +145,37 @@ describe('EventDecoderService', () => {
     expect(typeof decoded.description.args[0]).toBe('bigint');
   });
 
+  it('normalizes canonical governance events for the governance evidence gate', () => {
+    const abi = [
+      'event VoteCast(address indexed voter,uint256 proposalId,uint8 support,uint256 weight)',
+    ];
+    const localIface = new Interface(abi);
+    const voter = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const fragment = localIface.getEvent('VoteCast')!;
+    const topics = localIface.encodeFilterTopics(fragment, [voter]) as string[];
+    const data = AbiCoder.defaultAbiCoder().encode(
+      ['uint256', 'uint8', 'uint256'],
+      [42n, 1n, 1000n],
+    );
+    const log = baseLog({ topics, data });
+
+    const decoded = service.decode(log, localIface);
+    expect(decoded.status).toBe('decoded');
+    if (decoded.status !== 'decoded') throw new Error('unreachable');
+
+    const normalized = service.normalize(
+      log,
+      'governor-v1',
+      decoded.description,
+      'VoteCast(address,uint256,uint8,uint256)',
+    );
+    expect(normalized.status).toBe('normalized');
+    if (normalized.status !== 'normalized') throw new Error('unreachable');
+    expect(normalized.event.eventName).toBe('VoteCast');
+    expect(normalized.event.actor).toBe(voter);
+    expect(normalized.event.payload.weight).toBe('1000');
+  });
+
   it('reports the topic0 that failed lookup so quarantine records remain investigable', () => {
     const badTopic = topicId('NotAnEvent(uint256)');
     const log = baseLog({ topics: [badTopic], data: '0x' });
