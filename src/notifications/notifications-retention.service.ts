@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeiorm';
+import { InjectRepository } from '@nestjs/typeorm';
 import { In, LessThan, Repository } from 'typeorm';
 import { Notification } from './entities/notification.entity';
 import { DeliveryHistory } from './entities/delivery-history.entity';
@@ -12,6 +12,14 @@ export interface RetentionResult {
 
 export const DEFAULT_NOTIFICATION_RETENTION_DAYS = 90 as number;
 export const DEFAULT_DELIVERY_RETENTION_DAYS = 180 as number;
+
+/** Terminal statuses eligible for retention cleanup. */
+const TERMINAL_STATUSES: NotificationStatus[] = [
+  NotificationStatus.DELIVERED,
+  NotificationStatus.READ,
+  NotificationStatus.DISMISSED,
+  NotificationStatus.FAILED,
+];
 
 @Injectable()
 export class NotificationsRetentionService {
@@ -26,8 +34,10 @@ export class NotificationsRetentionService {
 
   /**
    * Purge notifications and delivery history older than the configured retention
-   * windows. Uses TypeORM operators (LessThan) so the predicates compile and execute
-   * on the production PostgreSQL driver and remain indexable on the createdAt column.
+   * windows. Operates only on terminal records so in-flight deliveries are never
+   * removed out from under the processor.
+   *
+   * Delivery rows are deleted first so foreign-key constraints are not violated.
    */
   async runRetentionCleanup(
     notificationRetentionDays = DEFAULT_NOTIFICATION_RETENTION_DAYS,
@@ -39,12 +49,15 @@ export class NotificationsRetentionService {
     const notificationCutoff = this.cutoffDate(notificationRetentionDays);
     const deliveryCutoff = this.cutoffDate(deliveryRetentionDays);
 
+    // Delivery rows first (FK dependency)
     const deliveriesDeleted = await this.purgeDeliveries(deliveryCutoff);
     const notificationsDeleted = await this.purgeNotifications(notificationCutoff);
 
     this.logger.log(
-      `Retention cleanup completed: ${notificationsDeleted} notifications, ${deliveriesDeleted} deliveries purged. ` +
-        `Notification cutoff=${notificationCutoff.toISOString()}, delivery cutoff=${deliveryCutoff.toISOString()}.`,
+      `Retention cleanup completed: ${notificationsDeleted} notifications, ` +
+        `${deliveriesDeleted} deliveries purged. ` +
+        `Notification cutoff=${notificationCutoff.toISOString()}, ` +
+        `delivery cutoff=${deliveryCutoff.toISOString()}.`,
     );
 
     return { notificationsDeleted, deliveriesDeleted };
@@ -52,7 +65,7 @@ export class NotificationsRetentionService {
 
   private async purgeDeliveries(cutoff: Date): Promise<number> {
     const result = await this.deliveryHistoryRepository.delete({
-      attemptedAt: LessThan(cutoff),
+      createdAt: LessThan(cutoff),
     });
     return result.affected ?? 0;
   }
@@ -62,25 +75,23 @@ export class NotificationsRetentionService {
     // in-flight records must not be deleted out from under the processor.
     const result = await this.notificationRepository.delete({
       createdAt: LessThan(cutoff),
-      status: In(
-        NotificationStatus.DELIVERED,
-        NotificationStatus.READ,
-        NotificationStatus.DISMISSED,
-        NotificationStatus.FAILED,
-      ),
+      status: In(TERMINAL_STATUSES),
     });
     return result.affected ?? 0;
   }
 
+  /** Returns a Date that is exactly `days` calendar days before now (UTC). */
   private cutoffDate(days: number): Date {
     const cutoff = new Date();
-    cutoff.setUTCDate(cutoff.getUTCDate() - days * 24 * 60 * 60 * 1000);
+    cutoff.setUTCDate(cutoff.getUTCDate() - days);
     return cutoff;
   }
 
   private assertPositiveDays(label: string, days: number): void {
     if (!Number.isFinite(days) || days <= 0) {
-      throw new Error(`${label} must be a positive finite number, received: ${days}`);
+      throw new Error(
+        `${label} must be a positive finite number, received: ${days}`,
+      );
     }
   }
 }

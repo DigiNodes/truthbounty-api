@@ -14,6 +14,7 @@ import { User } from '../entities/user.entity';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Job, JobsOptions, Queue } from 'bullmq';
 import { SybilResistanceService } from '../sybil-resistance/sybil-resistance.service';
+import { NotificationsRetentionService } from '../notifications/notifications-retention.service';
 import { Cron } from '@nestjs/schedule';
 import {
   DEFAULT_RETRY_POLICY,
@@ -45,6 +46,7 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly sybilResistanceService: SybilResistanceService,
+    private readonly notificationsRetentionService: NotificationsRetentionService,
     @InjectQueue(QueueName.DEFAULT) private readonly defaultQueue: Queue,
     @InjectQueue(QueueName.NOTIFICATIONS)
     private readonly notificationsQueue: Queue,
@@ -161,18 +163,42 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
   async runHourlyMaintenance(): Promise<void> {
     if (this.gracefulShutdown.isDraining) return;
     this.logger.log('Hourly maintenance cron triggered');
-    // Only run cleanup jobs - compute scores/reputation removed in V2
-    // (no backend-authoritative claim finalization allowed)
-    await this.gracefulShutdown.runTracked('jobs-hourly-maintenance', () =>
-      this.enqueue(
+    await this.gracefulShutdown.runTracked('jobs-hourly-maintenance', async () => {
+      await this.enqueue(
         JobName.CLEANUP_SYBIL_HISTORY,
         {},
         { priority: JobPriority.NORMAL },
-      ),
-    );
+      );
+      await this.enqueue(
+        JobName.CLEANUP_EXPIRED_NOTIFICATIONS,
+        {},
+        { priority: JobPriority.LOW },
+      );
+    });
   }
 
-  async retryFailed(queueName: QueueName): Promise<number> {
+  async cleanupSybilHistory(): Promise<number> {
+    this.logger.debug('cleanupSybilHistory: starting');
+    const count = await this.sybilResistanceService.cleanupScoreHistory();
+    this.logger.debug(`cleanupSybilHistory: deleted ${count} old records`);
+    return count;
+  }
+
+  /**
+   * Purge expired notification and delivery-history records according to the
+   * configured retention policy. Delegates to NotificationsRetentionService
+   * which enforces the data-retention and privacy policy, operates only on
+   * terminal records, and is idempotent (re-running never deletes live records).
+   */
+  async cleanupExpiredNotifications(): Promise<{ notificationsDeleted: number; deliveriesDeleted: number }> {
+    this.logger.debug('cleanupExpiredNotifications: starting');
+    const result = await this.notificationsRetentionService.runRetentionCleanup();
+    this.logger.debug(
+      `cleanupExpiredNotifications: deleted ${result.notificationsDeleted} notifications, ` +
+        `${result.deliveriesDeleted} deliveries`,
+    );
+    return result;
+  }(queueName: QueueName): Promise<number> {
     if (this.gracefulShutdown.isDraining) {
       this.logger.warn(
         `Rejected retry request for ${queueName}; application is draining`,
@@ -272,14 +298,11 @@ export class JobsService implements OnModuleInit, OnModuleDestroy {
     return results.filter((m): m is QueueMetrics => m !== null);
   }
 
-  async cleanupSybilHistory(): Promise<number> {
-    this.logger.debug('cleanupSybilHistory: starting');
-    const count = await this.sybilResistanceService.cleanupScoreHistory();
-    this.logger.debug(`cleanupSybilHistory: deleted ${count} old records`);
-    return count;
-  }
-
-  // Claim finalization is not performed by backend jobs.
+  // V2 Architecture: computeScores and computeReputation methods removed
+  // These methods previously contained backend-authoritative logic that
+  // automatically finalized claims based on backend calculations.
+  // In V2, all claim state transitions must come from on-chain events
+  // projected by the V2 projectors, not from backend calculations.
 
   private getQueue(name: QueueName): Queue | undefined {
     return this.queues.get(name);

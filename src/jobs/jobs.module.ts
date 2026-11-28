@@ -12,11 +12,14 @@ import { JobsProcessor } from './jobs.processor';
 import { SybilResistanceModule } from '../sybil-resistance/sybil-resistance.module';
 import { JobsController } from './jobs.controller';
 import { QueueName } from './jobs.types';
+import { Notification } from '../notifications/entities/notification.entity';
+import { DeliveryHistory } from '../notifications/entities/delivery-history.entity';
+import { NotificationsRetentionService } from '../notifications/notifications-retention.service';
 
 @Module({
   imports: [
     RedisModule,
-    TypeOrmModule.forFeature([Stake, Wallet, User]),
+    TypeOrmModule.forFeature([Stake, Wallet, Claim, User, Notification, DeliveryHistory]),
     AggregationModule,
     SybilResistanceModule,
     BullModule.registerQueue(
@@ -30,7 +33,7 @@ import { QueueName } from './jobs.types';
       adapter: BullMQAdapter,
     }),
   ],
-  providers: [JobsService, JobsProcessor],
+  providers: [JobsService, JobsProcessor, NotificationsRetentionService],
   controllers: [JobsController],
   exports: [JobsService, BullModule],
 })
